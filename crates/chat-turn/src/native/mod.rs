@@ -192,9 +192,65 @@ fn next_offset(calls: &[(f64, Slot)]) -> f64 {
         + 1.0
 }
 
+/// step-supervision.cjs `VERIFY`: the note a `verify` answer adds before the next round.
+const SUPERVISE_VERIFY: &str = "Check the preceding tool results against the user request before continuing. Identify missing evidence and uncertainty. Do not assume a failed tool succeeded.";
+
+/// What step-supervision.cjs `decide` reads of the round's messages: the last 8 tool and assistant messages, each
+/// as `{role, content}` with a text content cut to 1500 UTF-16 units (anything else as '').
+fn supervisor_outputs(messages: &[JValue]) -> Vec<JValue> {
+    let picked: Vec<&JValue> = messages
+        .iter()
+        .filter(|m| matches!(m.get("role").as_str(), Some("tool" | "assistant")))
+        .collect();
+    let skip = picked.len().saturating_sub(8);
+    picked
+        .into_iter()
+        .skip(skip)
+        .map(|m| {
+            js::obj([
+                ("role", m.get("role").clone()),
+                (
+                    "content",
+                    js::s(
+                        m.get("content")
+                            .as_str()
+                            .map_or(String::new(), |c| js::slice(c, 1500)),
+                    ),
+                ),
+            ])
+        })
+        .collect()
+}
+
+/// `new Map([...a, ...b])` as a list of pairs: `a`'s keys in order, then `b`'s new ones; `b`'s values win.
+fn map_merge(a: &[(String, String)], b: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out = a.to_vec();
+    for (k, v) in b {
+        match out.iter_mut().find(|(n, _)| n == k) {
+            Some(slot) => slot.1 = v.clone(),
+            None => out.push((k.clone(), v.clone())),
+        }
+    }
+    out
+}
+
 /// The rounds' own state, across rounds.
 struct Rounds {
     messages: Vec<JValue>,
+    /// chat.cjs `activeTools`: the frame's tools, the widened list once `more_tools` ran.
+    tools: Vec<JValue>,
+    /// `more_tools` ran in this turn (chat.cjs `widened`).
+    widened: bool,
+    /// #1456 `roundWrote`: a write was about to run in this round's tools.
+    round_wrote: bool,
+    /// The tool gate's one retry of a missed required tool was spent (chat.cjs `gateRetried`).
+    gate_retried: bool,
+    /// The gate's prefetch ran: nothing is forced (chat.cjs `forcedTool = null`).
+    prefetched: bool,
+    /// #740 chat.cjs `reasonerTrace`: the trace of a packet the reasoner handed on, and when (`handedAt`).
+    reasoner_trace: Option<(JValue, f64)>,
+    /// chat.cjs `nextToolRoutes`: the widened list's routes, applied when the next round starts.
+    next_routes: Option<Vec<(String, String)>>,
     /// `roundMessages !== prepared.messages`: the round-0 `context` event is sent when they differ.
     changed: bool,
     tools_off: bool,
@@ -222,7 +278,7 @@ impl<H: Host> Turn<'_, H> {
     async fn budget(&self, s: &mut Rounds, fit: &Fit, round: i32) -> Result<(), bool> {
         let host = self.host;
         let p = self.p;
-        let tools = JValue::Arr(p.tools.clone());
+        let tools = JValue::Arr(s.tools.clone());
         let mut budget = context_fit::measure(&s.messages, &tools, fit.limit);
         let mut compacted = false;
         if over(&budget) {
@@ -300,6 +356,37 @@ impl<H: Host> Turn<'_, H> {
         Ok(())
     }
 
+    /// chat.cjs `forceChoice(round)`: the tool gate's required tool, on the first model turn only (and its one
+    /// retry), while the tools are offered and include it.
+    fn forced(&self, s: &Rounds, round: i32) -> Option<String> {
+        let tool = self.p.gate_tool.as_deref()?;
+        (!s.prefetched
+            && !s.tools_off
+            && round == 0
+            && s.tools
+                .iter()
+                .any(|t| t.get("function").get("name").as_str() == Some(tool)))
+        .then(|| tool.to_string())
+    }
+
+    /// The round's request body (chat.cjs 2025), with the gate's `tool_choice` when it forces one.
+    fn body_for(&self, s: &Rounds, fit: &Fit, round: i32) -> JValue {
+        let mut body = self.body(s, fit);
+        if !s.final_pass {
+            if let Some(tool) = self.forced(s, round) {
+                js::set(
+                    &mut body,
+                    "tool_choice",
+                    js::obj([
+                        ("type", js::s("function")),
+                        ("function", js::obj([("name", js::s(tool))])),
+                    ]),
+                );
+            }
+        }
+        body
+    }
+
     /// The round's request body (chat.cjs 2025).
     fn body(&self, s: &Rounds, fit: &Fit) -> JValue {
         let p = self.p;
@@ -326,14 +413,14 @@ impl<H: Host> Turn<'_, H> {
             );
         }
         if !s.final_pass && self.offers_tools(s) {
-            js::set(&mut body, "tools", JValue::Arr(p.tools.clone()));
+            js::set(&mut body, "tools", JValue::Arr(s.tools.clone()));
         }
         body
     }
 
     /// chat.cjs `requestTools().tools`.
     fn offers_tools(&self, s: &Rounds) -> bool {
-        !s.tools_off && !self.p.tools.is_empty()
+        !s.tools_off && !s.tools.is_empty()
     }
 
     async fn rounds(&mut self, fit: Fit) -> Ended {
@@ -343,6 +430,13 @@ impl<H: Host> Turn<'_, H> {
             .then(|| context_fit::thinking::thinking_cap(&p.effort, fit.max_tokens));
         let mut s = Rounds {
             messages: fit.messages.clone(),
+            tools: p.tools.clone(),
+            widened: false,
+            round_wrote: false,
+            gate_retried: false,
+            prefetched: false,
+            reasoner_trace: None,
+            next_routes: None,
             changed: false,
             tools_off: false,
             final_pass: false,
@@ -364,11 +458,18 @@ impl<H: Host> Turn<'_, H> {
             s.changed = true;
         }
         let names = |list: &[String]| list.iter().cloned().collect::<HashSet<String>>();
+        // chat.cjs `allowedToolNames`: the offered names before a narrowed list's more_tools (appended after it,
+        // last; it never runs as a tool).
+        let mut allowed: Vec<String> = p
+            .tools
+            .iter()
+            .filter_map(|t| t.get("function").get("name").as_str().map(str::to_string))
+            .collect();
+        if p.widen.is_some() && allowed.last().map(String::as_str) == Some("more_tools") {
+            allowed.pop();
+        }
         let mut gate = Tools::new(
-            p.tools
-                .iter()
-                .filter_map(|t| t.get("function").get("name").as_str().map(str::to_string))
-                .collect(),
+            allowed,
             names(&p.writes),
             names(&p.public),
             names(&p.automatic_only_writes),
@@ -393,11 +494,24 @@ impl<H: Host> Turn<'_, H> {
         // #769: the untrusted text this exchange has put in front of the model, for the write check.
         gate.provenance = p.provenance.then(Taint::new);
         gate.skills = Some(self.skills);
+        // The tool gate's prefetch: the decided read runs before the model; when it cannot, the tool is required instead.
+        if let (Some(tool), Some(args)) = (p.gate_tool.as_deref(), p.gate_prefetch.as_ref()) {
+            if self.prefetch(&mut s, &mut gate, tool, args).await {
+                s.prefetched = true;
+            } else {
+                host.gate_record("prefetch.failed", tool);
+            }
+        }
         let mut round: i32 = 0;
         loop {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
                 break;
             }
+            // chat.cjs: `new Map([...toolRoutes, ...nextToolRoutes])` (the widened list's routes win from here).
+            if let Some(next) = s.next_routes.take() {
+                gate.routes = map_merge(&gate.routes, &next);
+            }
+            s.round_wrote = false;
             // A loaded skill was disabled or changed: no further model round (#272).
             if self.skills.revoked(host).await {
                 break;
@@ -423,7 +537,7 @@ impl<H: Host> Turn<'_, H> {
             if let Some(taint) = gate.provenance.as_mut() {
                 taint.ingest(&s.messages);
             }
-            let mut body = self.body(&s, &fit);
+            let mut body = self.body_for(&s, &fit, round);
             // chat.cjs takes the round's start before its request (the prefill sample's clock).
             let started = host.now_ms();
             let offered = !s.final_pass && self.offers_tools(&s);
@@ -445,6 +559,34 @@ impl<H: Host> Turn<'_, H> {
                     break;
                 }
             };
+            // The gate's named tool_choice refused by the server (a 4xx naming tool_choice): the form it accepts, only
+            // that tool and a call required.
+            if let Some(tool) = self.forced(&s, round).filter(|_| !s.final_pass) {
+                if (400..500).contains(&answer.status)
+                    && answer
+                        .detail
+                        .as_deref()
+                        .is_some_and(|d| d.to_ascii_lowercase().contains("tool_choice"))
+                {
+                    let only: Vec<JValue> = s
+                        .tools
+                        .iter()
+                        .filter(|t| t.get("function").get("name").as_str() == Some(tool.as_str()))
+                        .cloned()
+                        .collect();
+                    js::set(&mut body, "tools", JValue::Arr(only));
+                    js::set(&mut body, "tool_choice", js::s("required"));
+                    answer = match self.request(&body, &p.effort, cap, true, None).await {
+                        Ok(a) => a,
+                        Err(e) => {
+                            if !host.left() {
+                                host.emit(&unreachable(&e));
+                            }
+                            break;
+                        }
+                    };
+                }
+            }
             // #1002: the engine refused the tools for the model's template: once more without them.
             if offered
                 && p.template_gate
@@ -524,11 +666,43 @@ impl<H: Host> Turn<'_, H> {
                 }
             }
             if !current.saw_anything {
-                self.fallback(&body, cap, self.offers_tools(&s), &mut current)
-                    .await;
+                // chat.cjs's retry body names the forced tool as the round's own request does (forceChoice(round),
+                // on the final pass too, as there).
+                let forced = self.forced(&s, round);
+                self.fallback(
+                    &body,
+                    cap,
+                    self.offers_tools(&s).then_some(s.tools.as_slice()),
+                    forced.as_deref(),
+                    &mut current,
+                )
+                .await;
+            }
+            // The gate required a tool and the model answered without one: one retry of this turn (what it streamed
+            // becomes narration), then whatever the second try gives is kept.
+            if let Some(tool) = self.forced(&s, round) {
+                if current.tool_calls.is_empty() && current.saw_anything && !host.left() {
+                    if !s.gate_retried {
+                        s.gate_retried = true;
+                        host.gate_record("gate.retry", &tool);
+                        if js::has_text(&current.content) {
+                            host.emit(&event(
+                                "preamble",
+                                vec![("text", js::s(current.content.clone()))],
+                            ));
+                        }
+                        // chat.cjs clears the round's content (not its reasoning) and runs the round again.
+                        let mut kept = Round::new(host.now_ms());
+                        kept.reasoning = current.reasoning.clone();
+                        s.last = kept;
+                        continue;
+                    }
+                    host.gate_record("gate.miss", &tool);
+                }
             }
             // #1552: tools on offer, no call, and the reply ends on announcing one: one more try.
-            if current.tool_calls.is_empty()
+            if self.forced(&s, round).is_none()
+                && current.tool_calls.is_empty()
                 && current.saw_anything
                 && !s.announced_retried
                 && round < 2
@@ -607,6 +781,55 @@ impl<H: Host> Turn<'_, H> {
             if s.final_pass || round == 2 || calls == 0 {
                 break;
             }
+            if p.supervise {
+                // A skill revoked in this round's tools: no supervisor call (the close reports it). A client gone:
+                // chat.cjs's supervisor answers at once without asking (its signal is aborted), and the loop ends.
+                if self.skills.is_revoked() || host.left() {
+                    break;
+                }
+                // chat.cjs superviseNextStep after the round's tools: a check note, or the reply paused. The flag is
+                // the cut's (named difference: supervision turned on while the turn runs starts with the next turn).
+                let outputs = supervisor_outputs(&s.messages);
+                let goal = js::slice(&p.message, 1500);
+                match host
+                    .supervise(round, &outputs, &goal, s.round_wrote)
+                    .await
+                    .as_str()
+                {
+                    "verify" => {
+                        s.messages.push(js::obj([
+                            ("role", js::s("user")),
+                            ("content", js::s(SUPERVISE_VERIFY)),
+                        ]));
+                        s.changed = true;
+                    }
+                    "escalate" => {
+                        s.paused = true;
+                        let n = s.applied.len();
+                        let text = if n > 0 {
+                            let saved = if n == 1 {
+                                "1 change was".to_string()
+                            } else {
+                                format!("{n} changes were")
+                            };
+                            format!("{saved} saved. Step checks paused this reply before any further steps.")
+                        } else {
+                            "Step checks paused this reply before any further steps. Nothing was changed."
+                                .to_string()
+                        };
+                        host.emit(&event(
+                            "paused",
+                            vec![
+                                ("reason", js::s("supervision")),
+                                ("applied", js::count(n)),
+                                ("text", js::s(text)),
+                            ],
+                        ));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
             round += 1;
         }
         if host.left() {
@@ -671,6 +894,7 @@ impl<H: Host> Turn<'_, H> {
 
     /// A round's calls: their arguments and ids settled, the narration kept, then each through the gate.
     async fn run_calls(&mut self, gate: &mut Tools<'_>, round: &mut Round, s: &mut Rounds) {
+        let p = self.p;
         let host = self.host;
         for (_, slot) in round.tool_calls.iter_mut() {
             slot.args = if slot.too_large {
@@ -736,6 +960,26 @@ impl<H: Host> Turn<'_, H> {
             if host.left() {
                 break;
             }
+            // Roadmap E: the routed list's more_tools widens to the project's whole selection, once.
+            if c.name == "more_tools" && !c.too_large {
+                if let Some(widen) = &p.widen {
+                    let reply = self.more_tools(s, gate, widen);
+                    host.emit(&event(
+                        "tool_result",
+                        vec![
+                            ("index", js::n(self.exchange.tool_offset + i)),
+                            ("name", js::s(c.name.clone())),
+                            ("text", js::s(js::slice(&reply, 300))),
+                        ],
+                    ));
+                    s.messages.push(js::obj([
+                        ("role", js::s("tool")),
+                        ("tool_call_id", c.id.clone()),
+                        ("content", js::s(reply)),
+                    ]));
+                    continue;
+                }
+            }
             let call = Call {
                 index: *i,
                 id: c.id.clone(),
@@ -744,6 +988,7 @@ impl<H: Host> Turn<'_, H> {
                 too_large: c.too_large,
             };
             let outcome = gate.call(host, &call, self.exchange.tool_offset).await;
+            s.round_wrote |= outcome.wrote;
             host.emit(&outcome.event);
             s.messages.push(outcome.message);
             if let Some(result) = &outcome.read {
@@ -762,6 +1007,193 @@ impl<H: Host> Turn<'_, H> {
                 }
             }
         }
+    }
+
+    /// chat.cjs `prefetchTool`: the gate's read before the first round, its `tool` and `tool_result` events, then the
+    /// round's messages with the note and the exchange (the result framed). False when it did not run or failed (the
+    /// tool is then required instead); the checks are chat.cjs's (a revoked skill, the page save, a client gone, an
+    /// account policy other than allow). The framing reasoner's packet comes from core's condense op (#740); the cloud
+    /// hold never applies here: core keeps those turns.
+    async fn prefetch(
+        &mut self,
+        s: &mut Rounds,
+        gate: &mut Tools<'_>,
+        tool: &str,
+        args: &JValue,
+    ) -> bool {
+        let host = self.host;
+        if self.skills.revoked(host).await
+            || gate.once_tools.contains(tool)
+            || gate.writes.contains(tool)
+            || host.left()
+            // chat.cjs `policyMode(userId, tool)` with isWriteTool(tool): never a write here (refused above, as core
+            // never prefetches one).
+            || host.tool_policy(tool, false) != "allow"
+        {
+            return false;
+        }
+        let call = Call {
+            index: 0.0,
+            id: js::s(format!("gate-{}", host.uuid())),
+            name: tool.to_string(),
+            args: js::stringify(args),
+            too_large: false,
+        };
+        let index = self.exchange.tool_offset;
+        host.emit(&event(
+            "tool",
+            vec![
+                ("index", js::n(index)),
+                ("name", js::s(call.name.clone())),
+                ("args", js::s(call.args.clone())),
+            ],
+        ));
+        let (result, failed) = gate.prefetch(host, &call).await;
+        host.emit(&event(
+            "tool_result",
+            vec![
+                ("index", js::n(index)),
+                ("name", js::s(call.name.clone())),
+                ("text", js::s(js::slice(&result, 300))),
+            ],
+        ));
+        self.exchange.tool_offset = index + 1.0;
+        let reduced = (self.helpers.reduce_tool_result)(&result, self.helpers.tool_result_cap);
+        let framed = prompt_framing::framing::frame_untrusted(
+            &js::to_units("tool result"),
+            &js::to_units(tool),
+            &js::to_units(&reduced),
+        );
+        let is_error = result.starts_with("ERROR")
+            && !result.get(5..).is_some_and(|rest| {
+                rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            });
+        if failed || is_error {
+            return false;
+        }
+        self.skills.note_read(host, &call.args, &result).await;
+        // #740 (framingReasoner): a confirmed search/action frame may hand the answer model the reasoner's task packet
+        // instead of the raw result (core's condense op); any skip keeps the framed result exactly as before.
+        let mut handed = js::from_units(&framed);
+        if let Some(kind) = self.p.reasoner.as_deref() {
+            if let Some((rendered, trace)) = host
+                .condense(kind, &self.p.message, tool, &reduced, &self.p.model)
+                .await
+            {
+                handed = rendered;
+                s.reasoner_trace = Some((trace, host.now_ms()));
+            }
+        }
+        const NOTE: &str = "The following was fetched for you; use it.";
+        match s
+            .messages
+            .iter()
+            .position(|m| m.get("role").as_str() == Some("system"))
+        {
+            Some(at) => {
+                if let Some(m) = s.messages.get_mut(at) {
+                    if let Some(content) = m.get("content").as_str().map(str::to_string) {
+                        js::set(m, "content", js::s(format!("{content}\n\n{NOTE}")));
+                    }
+                }
+            }
+            None => s.messages.insert(
+                0,
+                js::obj([("role", js::s("system")), ("content", js::s(NOTE))]),
+            ),
+        }
+        s.messages.push(js::obj([
+            ("role", js::s("assistant")),
+            ("content", JValue::Null),
+            (
+                "tool_calls",
+                JValue::Arr(vec![js::obj([
+                    ("id", call.id.clone()),
+                    ("type", js::s("function")),
+                    (
+                        "function",
+                        js::obj([
+                            ("name", js::s(call.name.clone())),
+                            ("arguments", js::s(call.args.clone())),
+                        ]),
+                    ),
+                ])]),
+            ),
+        ]));
+        s.messages.push(js::obj([
+            ("role", js::s("tool")),
+            ("tool_call_id", call.id),
+            ("content", js::s(handed)),
+        ]));
+        s.changed = true;
+        true
+    }
+
+    /// chat.cjs's `more_tools` answer: the first call widens the offered tools to the project's whole selection
+    /// (the frame's `widen`, resolved by core at the cut) and says `tools_scope` "all tools"; a later call is told
+    /// they already are. The rest of this round keeps the narrowed routes (a widened name only fills a gap); from
+    /// the next round the widened routes win.
+    ///
+    /// chat.cjs resolves the list at the call, reading the account's policy for each candidate (`blocked`). The
+    /// same reads are made here, in core's order, and a tool blocked now is left out. Named differences (the list
+    /// is core's from the cut): a tool allowed since the cut, or one the tool cap or the token budget (whose
+    /// prefill measurement this turn's first round may move) would then have room for, is not added; a toolbox that
+    /// went away since the cut (an MCP server disconnected) is still offered, and a call to it fails at core's
+    /// execute bridge. Nothing the account blocks now is offered.
+    fn more_tools(
+        &self,
+        s: &mut Rounds,
+        gate: &mut Tools<'_>,
+        widen: &crate::prepared::Widen,
+    ) -> String {
+        if s.widened {
+            return "All of this project's tools are already available.".to_string();
+        }
+        s.widened = true;
+        let mut now_blocked = HashSet::new();
+        for (name, write, _) in &widen.asked {
+            if self.host.tool_policy(name, *write) == "block" {
+                now_blocked.insert(name.as_str());
+            }
+        }
+        let name_of = |t: &JValue| {
+            t.get("function")
+                .get("name")
+                .as_str()
+                .unwrap_or("")
+                .to_string()
+        };
+        let tools: Vec<JValue> = widen
+            .tools
+            .iter()
+            .filter(|t| !now_blocked.contains(name_of(t).as_str()))
+            .cloned()
+            .collect();
+        let names: Vec<String> = tools.iter().map(name_of).collect();
+        let routes: Vec<(String, String)> = widen
+            .routes
+            .iter()
+            .filter(|(n, _)| names.contains(n))
+            .cloned()
+            .collect();
+        s.tools = tools;
+        for n in &names {
+            if gate.allowed.insert(n.clone()) {
+                gate.allowed_order.push(n.clone());
+            }
+        }
+        gate.writes.extend(widen.writes.iter().cloned());
+        gate.public.extend(widen.public.iter().cloned());
+        gate.edit_tools.extend(widen.edit_tools.iter().cloned());
+        gate.once_tools.extend(widen.once_tools.iter().cloned());
+        gate.routes = map_merge(&routes, &gate.routes);
+        s.next_routes = Some(routes);
+        self.host
+            .emit(&event("tools_scope", vec![("text", js::s("all tools"))]));
+        format!(
+            "More tools are now available: {}. Continue with the task.",
+            names.join(", ")
+        )
     }
 
     /// The close: the notes for a reply with no answer, `telemetry` complete, `done`, then the title.
@@ -792,6 +1224,13 @@ impl<H: Host> Turn<'_, H> {
                 ("timeToFirstToken", self.exchange.time_to_first_token()),
             ],
         ));
+        // #740: the person's own opt-in trace (core checks it and writes it): packet, answer length, timings only.
+        if let Some((trace, handed_at)) = &s.reasoner_trace {
+            #[allow(clippy::cast_precision_loss)]
+            let chars = js::len(&s.last.content) as f64;
+            host.reasoner_trace(trace, chars, (host.now_ms() - handed_at).max(0.0))
+                .await;
+        }
         host.emit(&event("done", vec![("model", js::s(p.model.clone()))]));
         self.title(s).await;
         Ended::Done

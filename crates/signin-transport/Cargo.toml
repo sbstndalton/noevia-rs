@@ -1,0 +1,21 @@
+[package]
+name = "signin-transport"
+version = "0.1.0"
+description = "Chat transport of the account sign-in provider: chat-completions bodies to the Responses wire shape and its event stream back, the session cache and the refresh-once rule (port of core's sign-in provider transport; unused leaf)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# uuidFrom (sha256 of user and conversation). MIT OR Apache-2.0; already in Cargo.lock.
+sha2 = "=0.10.9"
+# WHATWG URL parsing for the path check (new URL(url).pathname). MIT OR Apache-2.0; already in Cargo.lock.
+url = "2"
+
+[dev-dependencies]
+proptest = "1"

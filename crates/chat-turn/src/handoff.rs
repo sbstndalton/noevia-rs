@@ -24,9 +24,17 @@ pub const PREPARED_CAP: usize = 40 * 1024 * 1024;
 pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// What this executor runs beyond the first hand-off step, for [`HANDOFF_CAPS_HEADER`]: `skills`, the
 /// instruction skills checks ([`crate::skills`]); `once`, the coworker page save's per-call card (#2446,
-/// [`crate::gate`]); `provenance`, the provenance policy's write checks (#769, [`crate::taint`]). Without them
-/// core keeps a turn whose project has skills, that offers the page save, or that runs with the provenance policy on.
-pub const HANDOFF_CAPS: &str = "skills,once,provenance";
+/// [`crate::gate`]); `provenance`, the provenance policy's write checks (#769, [`crate::taint`]); `more-tools`, the
+/// routed list's `more_tools` widening (Roadmap E, [`crate::native`]); `retrieved-images`, a turn with retrieved images
+/// (#1726: core settles them before the cut, the frame's messages carry their parts and notes, sent as attached images
+/// are); `supervise`, step supervision after a tool round ([`crate::host::Host::supervise`]); `tool-gate`, the tool
+/// gate's decision (`require` mode: `tool_choice` on the first model turn, one retry on a miss; `prefetch` mode: the
+/// read run before the model); `reasoner`, the framing reasoner's packet for that prefetched read on a framed chat
+/// (#740, [`crate::host::Host::condense`]). Without them core keeps a turn whose project has skills, that offers the page save,
+/// that runs with the provenance policy on, whose tools routing narrowed, that retrieved images, that runs while step
+/// supervision is on, whose tool gate decided, or whose prefetch the framing reasoner would condense.
+pub const HANDOFF_CAPS: &str =
+    "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate,reasoner";
 
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]
