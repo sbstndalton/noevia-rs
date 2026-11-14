@@ -1,0 +1,19 @@
+[package]
+name = "embedding-migration"
+version = "0.1.0"
+description = "noevia-core's embedding-config.cjs, embedding-served.cjs and the action half of embedding-migration.cjs (#1636, #1660, #1672) in Rust: the one writer of embedding-config.json (set-next, clear-next, switch, rollback, finish) under the publication flock, with the served-model, coverage and parity checks. Inert: nothing calls it yet (council p2, the native POST /api/embedding)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+embedding-admin = { path = "../embedding-admin" }
+serde_json = "1"
+url = "2"
+
+[dev-dependencies]
+tempfile = "3"
