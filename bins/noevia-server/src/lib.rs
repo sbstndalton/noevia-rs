@@ -96,6 +96,8 @@ pub mod offsite_store;
 pub mod plugin_directory_routes;
 pub mod preset_read_routes;
 pub mod project_config_routes;
+// Track R13: the chat's read_project_file in the front (NOEVIA_RUST_READ_FILE).
+pub mod project_file_read;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
@@ -121,6 +123,8 @@ pub mod routes;
 pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod secrets_rotate_routes;
 pub mod serve;
 pub mod snapshot;
 pub mod source_job_routes;
@@ -983,6 +987,16 @@ async fn handle(
         if req.method() == axum::http::Method::GET && at == reasoning_settings_routes::ROUTE {
             native = Some(routes::Native::ReasoningSettings);
         }
+    }
+    // Track R12: with NOEVIA_RUST_SECRETS_ROTATE=1 the front answers POST /api/admin/secrets/rotate
+    // (secrets_rotate_routes.rs, no routes-file row); unset, the rotation stays Node's.
+    #[cfg(feature = "rust-storage-reads")]
+    if native.is_none()
+        && app.config.secrets_rotate
+        && req.method() == axum::http::Method::POST
+        && whatwg.as_deref().unwrap_or(&path) == secrets_rotate_routes::ROUTE
+    {
+        return secrets_rotate_routes::serve(&app, req).await;
     }
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,
