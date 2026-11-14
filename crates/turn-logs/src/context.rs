@@ -79,7 +79,8 @@ impl Breakdown {
 
 /// core `breakdown`: system, saved summary, other history, schema tokens per tool name, result
 /// tokens per tool message (named by the call that asked for it, else `unknown`), and the call
-/// sequence. A message that is not an object is skipped (core throws on `null`).
+/// sequence. A `null` message, tool or `tool_calls` element is skipped or named `unknown` here,
+/// where core throws.
 pub fn breakdown(messages: &[JValue], tools: &[JValue]) -> Breakdown {
     let mut names_by_id: Vec<(JValue, JValue)> = Vec::new();
     for m in messages {
@@ -206,10 +207,9 @@ pub fn record(r: &Round<'_>) -> JValue {
 pub fn append(dir: &Path, entry: &JValue) -> std::io::Result<()> {
     let file = dir.join(FILE_NAME);
     DirBuilder::new().recursive(true).mode(0o700).create(dir)?;
-    if let Ok(meta) = fs::metadata(&file) {
-        if meta.len() > MAX_BYTES {
-            fs::rename(&file, crate::decision::rotated(&file))?;
-        }
+    // Core: `try { if (statSync(file).size > MAX_BYTES) renameSync(...) } catch {}`, then appends anyway.
+    if fs::metadata(&file).is_ok_and(|m| m.len() > MAX_BYTES) {
+        let _ = fs::rename(&file, crate::decision::rotated(&file));
     }
     let mut line = wtf16::stringify(entry).unwrap_or_else(|| "undefined".into());
     line.push('\n');
@@ -239,10 +239,16 @@ struct SeqRow {
 }
 
 fn row<'a>(tools: &'a mut Vec<ToolRow>, name: &JValue) -> Option<&'a mut ToolRow> {
-    if !tools.iter().any(|t| same_key(&t.name, name)) {
-        tools.push(ToolRow { name: name.clone(), schema: 0.0, result: 0.0, results: 0.0 });
-    }
-    tools.iter_mut().find(|t| same_key(&t.name, name))
+    // Core's `tools.get(name) || {...}` then `tools.set(name, row)`: a name that is an object or
+    // array never finds an earlier row, but its new row still gets the tokens.
+    let at = match tools.iter().position(|t| same_key(&t.name, name)) {
+        Some(at) => at,
+        None => {
+            tools.push(ToolRow { name: name.clone(), schema: 0.0, result: 0.0, results: 0.0 });
+            tools.len() - 1
+        }
+    };
+    tools.get_mut(at)
 }
 
 /// `Array.prototype.join(' → ')`: `null`/`undefined` as empty text, the rest `String(v)`.
@@ -262,8 +268,10 @@ fn join_sequence(items: &[JValue]) -> String {
 
 /// core `report(lines)`: rounds, compactions, the median total, tools ranked by result + schema
 /// tokens, and recurring tool sequences (per round) ranked by the result tokens they produced, then
-/// by count. Lines that are not JSON are skipped (and `null`, where core throws).
-pub fn report<'a>(lines: impl IntoIterator<Item = &'a str>) -> JValue {
+/// by count. Lines that are not JSON are skipped (and `null`, where core throws). Where core throws
+/// (a `null` toolResults entry) or turns a sum into NaN or text (a missing or non-number `tokens`
+/// or schema value, a text `total`), the port skips the entry or counts the value as 0.
+pub fn report(lines: impl IntoIterator<Item = &str>) -> JValue {
     let mut tools: Vec<ToolRow> = Vec::new();
     let mut seqs: Vec<SeqRow> = Vec::new();
     let (mut rounds, mut compactions) = (0.0, 0.0);

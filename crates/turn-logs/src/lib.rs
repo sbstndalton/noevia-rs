@@ -19,7 +19,9 @@ use js_json::{wtf16, JValue};
 
 /// `bucket[String(key)] = (bucket[String(key)] || 0) + 1` on a plain JS object, skipping
 /// `undefined`/`null` keys as core's `bump` does. A `__proto__` key is dropped (in JS the
-/// assignment hits the prototype setter and is ignored), so the counts match Node's output.
+/// assignment hits the prototype setter and is ignored), so the counts match Node's output. A key
+/// that names an inherited `Object.prototype` member (`constructor`, `toString`, ...) counts as a
+/// number here; core adds 1 to the inherited function and stores text.
 pub(crate) fn bump(bucket: &mut Vec<(String, JValue)>, key: &JValue) {
     if key.is_nullish() {
         return;

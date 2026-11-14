@@ -188,7 +188,7 @@ fn or_null(v: &JValue) -> JValue {
 /// core `summarize(lines)`: counts by selection and fallback, the text-free fallback causes,
 /// margin buckets, tool-gate reasons and resend outcomes. Lines that are not JSON (or hold `null`,
 /// where core throws) are skipped.
-pub fn summarize<'a>(lines: impl IntoIterator<Item = &'a str>) -> JValue {
+pub fn summarize(lines: impl IntoIterator<Item = &str>) -> JValue {
     let mut route = Counts::default();
     let (mut low, mut mid, mut high) = (0.0, 0.0, 0.0);
     let mut supervise = Counts::default();

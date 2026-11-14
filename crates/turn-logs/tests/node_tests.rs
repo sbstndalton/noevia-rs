@@ -322,3 +322,13 @@ fn context_unknown_names_and_proto_keys() {
     let nine = parts.tool_schemas[0].1;
     assert_eq!(nine, 2 * context_fit::tokens(&t[1]));
 }
+
+#[test]
+fn context_report_object_names_still_count() {
+    let r = context::report([r#"{"toolResults":[{"name":{"a":1},"tokens":5}]}"#]);
+    assert_eq!(
+        wtf16::stringify(r.get("tools")).unwrap(),
+        r#"[{"name":{"a":1},"schemaTokens":0,"resultTokens":5,"results":1}]"#
+    );
+}
+
