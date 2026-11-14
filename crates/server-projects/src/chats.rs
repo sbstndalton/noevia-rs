@@ -173,34 +173,37 @@ pub fn get(ctx: Ctx<'_>, raw_project: &str) -> Reply {
     let Some(id) = js::decode_uri_component(raw_project) else {
         return Reply::internal();
     };
-    let dir = match store::user_dir(ctx.data_dir, ctx.user_id) {
-        Ok(d) => d,
-        Err(e) => return store_failure(&e),
-    };
-    let projects = match store::read(&dir) {
-        Ok(p) => p,
-        Err(e) => return store_failure(&e),
-    };
-    let project = match locate(&projects, &id) {
-        Err(()) => return Reply::internal(),
-        Ok(None) => return Reply::error(404, "no such project"),
-        Ok(Some(i)) => match projects.get(i) {
-            Some(p) => p,
-            None => return Reply::internal(),
-        },
+    match get_project(ctx, &id) {
+        Ok(Some(project)) => chats_reply(&project),
+        Ok(None) => Reply::error(404, "no such project"),
+        Err(reply) => reply,
+    }
+}
+
+/// core projects.cjs `getProject(id)` for a front route that reads one project: the project as Node
+/// returns it (`Ok(None)`: no such project), with its self-heal saved as Node saves it (the heal and
+/// the skills reconcile, done again on the file as it is now, under the lock). `Err` is the reply a
+/// store failure or a list Node cannot hold answers.
+pub fn get_project(ctx: Ctx<'_>, id: &str) -> Result<Option<JValue>, Reply> {
+    let dir = store::user_dir(ctx.data_dir, ctx.user_id).map_err(|e| store_failure(&e))?;
+    let projects = store::read(&dir).map_err(|e| store_failure(&e))?;
+    let project = match locate(&projects, id) {
+        Err(()) => return Err(Reply::internal()),
+        Ok(None) => return Ok(None),
+        Ok(Some(i)) => projects.get(i).ok_or_else(Reply::internal)?,
     };
     match get_project_effects(project) {
-        Err(_) => return Reply::internal(),
+        Err(_) => return Err(Reply::internal()),
         Ok(Effects {
             memory,
             saved: None,
-        }) => return chats_reply(&memory),
+        }) => return Ok(Some(memory)),
         Ok(_) => {}
     }
     // getProject saved: do it again on the file as it is now, under the lock.
-    let saved = store::update(&dir, ctx.switch, |projects| match locate(projects, &id) {
+    let saved = store::update(&dir, ctx.switch, |projects| match locate(projects, id) {
         Err(()) => (Err(Reply::internal()), false),
-        Ok(None) => (Err(Reply::error(404, "no such project")), false),
+        Ok(None) => (Ok(None), false),
         Ok(Some(i)) => match projects.get_mut(i) {
             None => (Err(Reply::internal()), false),
             Some(p) => match get_project_effects(p) {
@@ -210,15 +213,14 @@ pub fn get(ctx: Ctx<'_>, raw_project: &str) -> Reply {
                     if let Some(v) = saved {
                         *p = v;
                     }
-                    (Ok(memory), changed)
+                    (Ok(Some(memory)), changed)
                 }
             },
         },
     });
     match saved {
-        Ok(Ok(project)) => chats_reply(&project),
-        Ok(Err(reply)) => reply,
-        Err(e) => store_failure(&e),
+        Ok(result) => result,
+        Err(e) => Err(store_failure(&e)),
     }
 }
 

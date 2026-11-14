@@ -1,0 +1,1742 @@
+{
+ "generator": "crates/server-reasoning-settings/tests/record_get.cjs",
+ "user": "bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb",
+ "sources": {
+  "server/routes/reasoning-settings.cjs": "38c9ef99387bc22154f5c1bb7ef187b58439b5b7e01f00dbcfd1025bb6a36699",
+  "server/reasoning-effort.cjs": "5b877d8e4a2ce08b9ec4431546dc7fac1b55d8a474cc8acc8de2870cf9a7ba43",
+  "server/providers.cjs": "3c3e3e4f3b1288f63a1ea90887b0252ea7a774a5e2d610b19cc83cbf349cc989",
+  "server/workspace.cjs": "3234a0dced9d8929b8f86d2f3847b87d9a7b97978da93c78064c91106b5672b6",
+  "server/index.cjs": "2ed1aa62b739b3b3cb40eee246b75a25bb4ac9ad517a695b48062a6dde89e234"
+ },
+ "cases": [
+  {
+   "name": "no-row",
+   "input": {
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-low",
+   "input": {
+    "setting": "low",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-high",
+   "input": {
+    "setting": "high",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-default",
+   "input": {
+    "setting": "default",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-empty",
+   "input": {
+    "setting": "",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-bogus",
+   "input": {
+    "setting": "bogus",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"bogus\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-LOW",
+   "input": {
+    "setting": "LOW",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"LOW\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "admin",
+   "input": {
+    "role": "admin",
+    "setting": "high",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":true}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-missing",
+   "input": {
+    "query": "?projectId=nope",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"]}]}"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-empty-param",
+   "input": {
+    "query": "?projectId",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"]}]}"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-empty-value",
+   "input": {
+    "query": "?projectId=",
+    "projects": "{\"projects\":[{\"id\":\"\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"]}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-encoded",
+   "input": {
+    "query": "?projectId=proj%2Dqa+r%20x",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa r x\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"low\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-first-value",
+   "input": {
+    "query": "?projectId=proj-qa-r&projectId=other",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"high\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-bad-escape",
+   "input": {
+    "query": "?projectId=%E0%A4%A",
+    "projects": "{\"projects\":[{\"id\":\"�%A\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"low\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-no-file",
+   "input": {
+    "query": "?projectId=proj-qa-r"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "other-param-only",
+   "input": {
+    "query": "?projectid=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"high\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-effort-low",
+   "input": {
+    "setting": "low",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"low\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-effort-high",
+   "input": {
+    "setting": "low",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"high\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-effort-default",
+   "input": {
+    "setting": "low",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"default\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-effort-High",
+   "input": {
+    "setting": "low",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"High\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-effort-5",
+   "input": {
+    "setting": "low",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":5}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-effort-null",
+   "input": {
+    "setting": "low",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":null}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"low\",\"effort\":\"low\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-internal-id",
+   "input": {
+    "query": "?projectId=cowork-diary-extras",
+    "projects": "{\"projects\":[{\"id\":\"cowork-diary-extras\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"reasoningEffort\":\"high\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"default\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "default-row-no-caps",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"]}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-row-documented",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-row-model-not-listed",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-plain\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-row-model-untrimmed",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\" qa-think \"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-row-default-effort",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\",\"reasoningEffort\":\"default\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "unknown-provider-falls-back",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"nobody\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "lemonade-alias",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"lemonade\",\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "provider-number",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":7,\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":7,\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "provider-empty-string",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"\",\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-row-shared-flag",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true},\"shared\":true}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-duplicate-first-wins",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[{\"id\":\"mine-qa\",\"capabilities\":{}},{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-lemonade-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"lemonade\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[{\"id\":\"lemonade\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-default-id-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[{\"id\":\"default\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-null-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[null,{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-number-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[3,{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-array-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[[1],{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-providers-string",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":\"ab\"}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-providers-object",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":{\"a\":1}}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-doc-null",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "null"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-malformed",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":["
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-damaged-null-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}},null]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-damaged-array-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}},[]]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-damaged-not-list",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":{}}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-providers-null",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":null}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-top-array",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "[]"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-malformed",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-stale-default-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"default\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "shared-and-private-same-id",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"both-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"both-qa\",\"capabilities\":{}}]}",
+    "private": "{\"providers\":[{\"id\":\"both-qa\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-empty",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-null",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":null}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-array",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":[]}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-unknown-key",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"extra\":1}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-param-string",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":\"true\"}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-param-false",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":false}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-not-list",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":\"qa\"}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-empty-list",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-blank",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" \"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-trimmed-unicode",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"　qa﻿\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-too-long",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-200-units",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-201-units",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀q\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀😀q\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-51",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"m0\",\"m1\",\"m2\",\"m3\",\"m4\",\"m5\",\"m6\",\"m7\",\"m8\",\"m9\",\"m10\",\"m11\",\"m12\",\"m13\",\"m14\",\"m15\",\"m16\",\"m17\",\"m18\",\"m19\",\"m20\",\"m21\",\"m22\",\"m23\",\"m24\",\"m25\",\"m26\",\"m27\",\"m28\",\"m29\",\"m30\",\"m31\",\"m32\",\"m33\",\"m34\",\"m35\",\"m36\",\"m37\",\"m38\",\"m39\",\"m40\",\"m41\",\"m42\",\"m43\",\"m44\",\"m45\",\"m46\",\"m47\",\"m48\",\"m49\",\"m50\"]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-models-number-entry",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"qa\",1]}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-budget-field-bad",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"tokenBudgetField\":\"tokens\"}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-json-schema-bad",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"jsonSchemaParam\":1}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "caps-all-valid",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"caps-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"caps-qa\",\"baseUrl\":\"http://qa:1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\"qa\"],\"tokenBudgetField\":\"max_completion_tokens\",\"jsonSchemaParam\":false}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-root",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-slash",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-v1",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-v1-slash",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1/\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-v2",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v2\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-query",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1?x=1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-empty-query",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1?\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-hash",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1#a\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-empty-hash",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1#\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-user",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://qa@api.openai.com/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-port-443",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com:443/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-port-other",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com:8443/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-upper-host",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"HTTPS://API.OPENAI.COM/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-http",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"http://api.openai.com/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-other-model",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"https://api.openai.com/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-no-base",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-base-array",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":[\"https://api.openai.com\"]}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-base-number",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":5}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "preset-base-bad",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"preset-qa\",\"model\":\"gpt-5.4\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"preset-qa\",\"baseUrl\":\"not a url\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-qwen3",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-qwen3.5",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"org/Qwen3.5_qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-qwen3-no-sep",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-qwen30",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen30-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-xqwen3",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"xqwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-lemonade-kind",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "lemonade",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-kind-none",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "none",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-kind-unset-lemonade-url",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "LEMONADE_BASE_URL": "http://qa-engine:8080/v1",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-inference-unset",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "LEMONADE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-trailing-slashes",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1///"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-host-case",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\",\"provider\":\"eng-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://QA-ENGINE:8080/v1"
+    },
+    "shared": "{\"providers\":[{\"id\":\"eng-qa\",\"baseUrl\":\"http://qa-engine:8080/v1/\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-default-port",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\",\"provider\":\"eng-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:80/v1"
+    },
+    "shared": "{\"providers\":[{\"id\":\"eng-qa\",\"baseUrl\":\"http://qa-engine/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-other-row-other-url",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\",\"provider\":\"eng-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    },
+    "shared": "{\"providers\":[{\"id\":\"eng-qa\",\"baseUrl\":\"http://elsewhere-qa:1/v1\"}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-inference-invalid",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "qa engine"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-model-number",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":3}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-default-id-custom",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1",
+     "DEFAULT_PROVIDER_ID": "qa-local"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "local-default-id-empty",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qwen3-qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1",
+     "DEFAULT_PROVIDER_ID": ""
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "machine-switch-row",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mach-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"mach-qa\",\"baseUrl\":\"http://qa:1\",\"machine\":{\"thinkingSwitch\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "machine-switch-truthy",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mach-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"mach-qa\",\"baseUrl\":\"http://qa:1\",\"machine\":{\"thinkingSwitch\":1}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "llamacpp-default-caps",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":\"qa\"}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "setting-unicode",
+   "input": {
+    "setting": "hé\"\\",
+    "query": ""
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"hé\\\"\\\\\",\"effort\":\"default\",\"mode\":\"off\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-file-malformed",
+   "input": {
+    "query": "?projectId=proj-qa-r",
+    "projects": "{"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-file-projects-object",
+   "input": {
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":{}}"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-number-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":5,\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (5)"
+   }
+  },
+  {
+   "name": "apikey-number-hint",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":5,\"capabilities\":{}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-string-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":\"qa-plain-key\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-own-tostring-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":{\"toString\":1},\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-array-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":[\"qa\"],\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Array"
+   }
+  },
+  {
+   "name": "model-own-tostring-local",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":{\"toString\":1}}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "name": "model-own-tostring-not-local",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":{\"toString\":1}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "model-own-tostring-machine",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mach-qa\",\"model\":{\"toString\":1}}]}",
+    "shared": "{\"providers\":[{\"id\":\"mach-qa\",\"baseUrl\":\"http://qa:1\",\"machine\":{\"thinkingSwitch\":true}}]}"
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "name": "shared-huge-number",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"shared-qa\",\"model\":\"qa-think\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"shared-qa\",\"label\":\"QA shared\",\"baseUrl\":\"http://qa-shared:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"reasoningEffortModels\":[\" qa-think \",\"qa-other\"]}},{\"id\":\"x\",\"n\":1e999}]}"
+   },
+   "difference": "unholdable-providers",
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "private-huge-number",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mine-qa\",\"model\":\"qa\"}]}",
+    "private": "{\"providers\":[{\"id\":\"mine-qa\",\"label\":\"QA mine\",\"baseUrl\":\"http://qa-mine:1/v1\",\"capabilities\":{\"reasoningEffortParam\":true,\"n\":1e999}}]}"
+   },
+   "difference": "unholdable-providers",
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  }
+ ]
+}
