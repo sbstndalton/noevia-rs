@@ -33,9 +33,7 @@ const ICONS_JSON: &str = include_str!("../../../contracts/project-icons.json");
 /// `NOEVIA_RUST_PROJECT_CATALOGUE=1`, read once.
 pub fn native() -> bool {
     static ON: OnceLock<bool> = OnceLock::new();
-    *ON.get_or_init(|| {
-        std::env::var("NOEVIA_RUST_PROJECT_CATALOGUE").is_ok_and(|v| v == "1")
-    })
+    *ON.get_or_init(|| std::env::var("NOEVIA_RUST_PROJECT_CATALOGUE").is_ok_and(|v| v == "1"))
 }
 
 /// `Object.keys(require('../contracts/project-icons.json'))`.
@@ -175,8 +173,7 @@ mod tests {
                 .as_str()
                 .map(|e| mcp_servers::parse_toolboxes(Some(&units(e))));
             let enabled = enabled.unwrap_or(None);
-            let offered =
-                |id: &str| mcp_servers::toolbox_offered(enabled.as_deref(), &units(id));
+            let offered = |id: &str| mcp_servers::toolbox_offered(enabled.as_deref(), &units(id));
             let JValue::Arr(boxes) = case.get("mcpBoxes") else {
                 panic!("{name}: no boxes")
             };
@@ -192,9 +189,17 @@ mod tests {
             let got = of(&composed);
             let want = wtf16::parse(case.get("node").get("catalogue").as_str().unwrap()).unwrap();
             assert_eq!(want.get("version").as_num(), Some(1.0), "{name}");
-            assert_eq!(got.selectable, strings(want.get("selectable")), "{name}: selectable");
+            assert_eq!(
+                got.selectable,
+                strings(want.get("selectable")),
+                "{name}: selectable"
+            );
             assert_eq!(got.known, Some(strings(want.get("known"))), "{name}: known");
-            assert_eq!(got.defaults, strings(want.get("defaults")), "{name}: defaults");
+            assert_eq!(
+                got.defaults,
+                strings(want.get("defaults")),
+                "{name}: defaults"
+            );
             assert_eq!(got.icons, strings(want.get("icons")), "{name}: icons");
         }
     }
@@ -214,7 +219,10 @@ mod tests {
             .iter()
             .map(|b| format!("{b:02x}"))
             .collect();
-        assert_eq!(got, want, "contracts/project-icons.json is not core's recorded file");
+        assert_eq!(
+            got, want,
+            "contracts/project-icons.json is not core's recorded file"
+        );
         assert_eq!(icons(), strings(doc.get("icons")).as_slice());
         assert!(!icons().is_empty());
     }
