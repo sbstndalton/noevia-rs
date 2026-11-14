@@ -18,7 +18,8 @@
 //!   this case's run reads as the recording's fixed instant;
 //! - a number under `timeToFirstToken` or `elapsedMs` below a minute reads as 0;
 //! - the signed-in user's id reads as `qa-user`;
-//! - a uuid v4 string, bare or after `ap-`, reads as `<uuid>` (on both sides).
+//! - a uuid v4 string, bare or after `ap-` or `gate-`, reads as `<uuid>` (on both sides), and a `gate-` uuid
+//!   inside an engine request body too.
 //!
 //! Synthetic data only; local ports only; no model runs.
 #![allow(
@@ -1236,6 +1237,26 @@ fn is_uuid_v4(s: &str) -> bool {
         && s.bytes().all(|c| c == b'-' || c.is_ascii_hexdigit())
 }
 
+/// The tool gate's prefetched call id (`gate-` and a uuid v4) as `gate-<uuid>`, wherever it sits in a request
+/// body's text (the assistant's call and the tool message name it).
+fn gate_ids(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find("gate-") {
+        let (head, tail) = rest.split_at(at + 5);
+        out.push_str(head);
+        match tail.get(..36).filter(|u| is_uuid_v4(u)) {
+            Some(_) => {
+                out.push_str("<uuid>");
+                rest = tail.get(36..).unwrap_or_default();
+            }
+            None => rest = tail,
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
 /// The rewrite the module doc lists. `user` empty: the recorded side (uuids only).
 fn settle(v: &mut JValue, user: &str, window: (f64, f64)) {
     match v {
@@ -1269,6 +1290,9 @@ fn settle(v: &mut JValue, user: &str, window: (f64, f64)) {
                 *s = "<uuid>".into();
             } else if s.strip_prefix("ap-").is_some_and(is_uuid_v4) {
                 *s = "ap-<uuid>".into();
+            } else if s.strip_prefix("gate-").is_some_and(is_uuid_v4) {
+                // The tool gate's prefetched call (chat.cjs prefetchTool `gate-${randomUUID()}`, R15).
+                *s = "gate-<uuid>".into();
             }
         }
         _ => {}
@@ -1652,8 +1676,9 @@ async fn run_case(
             let tools = fixture.get("tools").get(key).clone();
             js::set(&mut want, "tools", tools);
         }
-        let want = js::stringify(&want);
-        if *sent != want {
+        let want = gate_ids(&js::stringify(&want));
+        let sent = gate_ids(sent);
+        if sent != want {
             return Err(format!(
                 "engine request {i} body:\n front: {sent}\n node:  {want}"
             ));

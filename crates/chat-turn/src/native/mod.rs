@@ -663,10 +663,14 @@ impl<H: Host> Turn<'_, H> {
                 }
             }
             if !current.saw_anything {
+                // chat.cjs's retry body names the forced tool as the round's own request does (forceChoice(round),
+                // on the final pass too, as there).
+                let forced = self.forced(&s, round);
                 self.fallback(
                     &body,
                     cap,
                     self.offers_tools(&s).then_some(s.tools.as_slice()),
+                    forced.as_deref(),
                     &mut current,
                 )
                 .await;
@@ -1017,8 +1021,9 @@ impl<H: Host> Turn<'_, H> {
         let host = self.host;
         if self.skills.revoked(host).await
             || gate.once_tools.contains(tool)
+            || gate.writes.contains(tool)
             || host.left()
-            || host.tool_policy(tool, false) != "allow"
+            || host.tool_policy(tool, gate.writes.contains(tool)) != "allow"
         {
             return false;
         }

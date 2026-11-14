@@ -257,7 +257,7 @@ impl Prepared {
         let turn = need(frame, "turn")?;
         let title = need(chat, "title")?;
         let routes = route_pairs(frame, "routes")?;
-        Ok(Prepared {
+        let prepared = Prepared {
             started_at: need(frame, "startedAt")?
                 .as_num()
                 .ok_or_else(|| Unreadable("prepared.startedAt is not a number".into()))?,
@@ -347,6 +347,14 @@ impl Prepared {
                     .ok_or_else(|| Unreadable("prepared.turn.sources is not readable".into()))?,
             },
             skills: skills(frame.get("skills"))?,
-        })
+        };
+        // chat.cjs never forces or prefetches a write (`forcedTool` is an offered read): a frame naming one, or the
+        // once-only page save, is refused rather than run without its card (R15 review).
+        if let Some(tool) = &prepared.gate_tool {
+            if prepared.writes.contains(tool) || prepared.once_tools.contains(tool) {
+                return Err(Unreadable("prepared.gate.tool is a write".into()));
+            }
+        }
+        Ok(prepared)
     }
 }
