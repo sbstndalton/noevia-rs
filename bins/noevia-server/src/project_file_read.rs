@@ -25,9 +25,28 @@ pub const NAME: &str = "read_project_file";
 const ID_CAP: usize = 200;
 const CHAT_ID_CAP: usize = 400;
 const LIST_CAP: usize = 2000;
-/// BODY_CAP is 16 MiB for the whole request (and 16 Mi UTF-16 units for `args`): this leaves room for
-/// the rest of the body, so a call near the cap goes to core.
-const ARGS_BYTES: usize = 15 * 1024 * 1024;
+/// BODY_CAP: the bridge reads at most 16 MiB of request body (http.cjs readBody) and `args` at most
+/// 16 Mi UTF-16 units; a call whose body would come near that is core's (its 400).
+const BODY_BYTES: usize = 16 * 1024 * 1024;
+/// Room for the rest of the body (keys, user, project, chat and exchange keys).
+const BODY_SLACK: usize = 64 * 1024;
+
+/// The bytes of a JSON string as the front's bridge body writes it (escapes included).
+fn json_len(v: &str) -> usize {
+    wtf16::stringify(&JValue::Str(v.to_string())).map_or(usize::MAX, |q| q.len())
+}
+
+/// Whether the execute bridge's request body for this call would stay within core's read cap.
+fn body_fits(run: &ToolRun) -> bool {
+    let mut total = BODY_SLACK.saturating_add(json_len(&run.args));
+    for a in &run.allowed {
+        total = total.saturating_add(json_len(a) + 1);
+    }
+    for (a, b) in &run.routes {
+        total = total.saturating_add(json_len(a) + json_len(b) + 3);
+    }
+    total <= BODY_BYTES && wtf16::len(&run.args) <= BODY_BYTES
+}
 
 /// `NOEVIA_RUST_READ_FILE=1`, read once.
 pub fn enabled() -> bool {
@@ -77,7 +96,7 @@ pub fn answer(
         || run.routes.iter().any(|(tool, _)| tool == NAME)
         || run.grant.is_some()
         || run.edit_target.is_some()
-        || run.args.len() > ARGS_BYTES
+        || !body_fits(run)
         || !within(&run.exchange_key, ID_CAP)
         || run
             .chat_key

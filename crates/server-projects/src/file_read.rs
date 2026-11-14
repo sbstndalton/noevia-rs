@@ -213,10 +213,10 @@ fn texts_readable(dir: &Path, project_id: &str, files: &JValue) -> bool {
     let JValue::Arr(files) = files else {
         return true;
     };
-    files.iter().all(|f| {
-        own_content(f).is_some()
-            || !f.get("textRef").truthy()
-            || content(dir, project_id, f).is_some()
+    files.iter().all(|f| match own_content(f) {
+        // core hashes `String(content || '')`; the skill checks here read a non-string as ''.
+        Some(c) => c.as_str().is_some() || !c.truthy(),
+        None => !f.get("textRef").truthy() || content(dir, project_id, f).is_some(),
     })
 }
 
