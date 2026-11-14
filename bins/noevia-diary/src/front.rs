@@ -418,9 +418,17 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         // POST /api/file reads its JSON body: taken here only when it is already buffered (it was
         // verified) or declares a bounded length; anything else goes to the child untouched.
         let reads_body = r == server::Route::ReadFile;
-        let bounded = buffered.is_some()
-            || declared_length(&parts.headers).is_some_and(|n| n <= server::MAX_BODY as u64)
-                && !parts.headers.contains_key("transfer-encoding");
+        // A tenant the child deleted (its fence) is the child's to answer (410), never native.
+        let recovered = stamp_tenant(&parts.headers).is_some_and(|uid| {
+            !app.writers.is_fenced(&uid)
+                && front.is_recovered(&uid, app.writers.native_writes(&uid).0)
+        });
+        // Only a body that can be served here is read here (JSON, bounded, a recovered tenant).
+        let bounded = recovered
+            && (buffered.is_some()
+                || json_media(&parts.headers)
+                    && declared_length(&parts.headers).is_some_and(|n| n <= server::MAX_BODY as u64)
+                    && !parts.headers.contains_key("transfer-encoding"));
         if (reads_body && bounded) || (!reads_body && !declares_body(&parts.headers)) {
             let body = if reads_body {
                 let bytes = match (buffered.take(), stream.take()) {
@@ -443,11 +451,7 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
                 None
             };
             let mut headers = parts.headers.clone();
-            // A tenant the child deleted (its fence) is the child's to answer (410), never native.
-            if stamp_tenant(&headers).is_some_and(|uid| {
-                !app.writers.is_fenced(&uid)
-                    && front.is_recovered(&uid, app.writers.native_writes(&uid).0)
-            }) {
+            if recovered {
                 headers.insert(RECOVERED_HEADER, HeaderValue::from_static("1"));
             }
             let resp =

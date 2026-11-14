@@ -1334,6 +1334,13 @@ mod tests {
     use super::*;
 
     #[test]
+    fn the_file_read_is_a_read_route() {
+        assert_eq!(route(&Method::POST, "/api/file"), Some(Route::ReadFile));
+        assert!(!Route::ReadFile.write());
+        assert_eq!(route(&Method::PUT, "/api/file"), Some(Route::PutFile));
+    }
+
+    #[test]
     fn decoded_path_matches_starlette() {
         assert_eq!(decoded_path("/api/%6Donths"), "/api/months");
         assert_eq!(decoded_path("/api/%zz"), "/api/%zz");
