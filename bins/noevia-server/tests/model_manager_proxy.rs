@@ -133,6 +133,9 @@ async fn rig(switch: bool, loader_answers: Vec<(&'static str, Answer)>, with_loa
         "[*]\nctx-size = 4096\n\n[qa-model]\nmodel = /models/qa.gguf\n\n[qa-chat]\nmodel = /models/qa-chat.gguf\n",
     )
     .unwrap();
+    let models = d.path().join("models");
+    std::fs::create_dir_all(&models).unwrap();
+    std::fs::write(models.join("qa.gguf"), b"GGUF synthetic qa weights").unwrap();
     let base = format!("http://127.0.0.1:{engine_port}/v1");
     let mut env: Vec<(String, String)> = vec![
         (
@@ -143,6 +146,7 @@ async fn rig(switch: bool, loader_answers: Vec<(&'static str, Answer)>, with_loa
         ("MODEL_MANAGER_KIND".into(), "llamacpp".into()),
         ("MODEL_MANAGER_BASE_URL".into(), base.clone()),
         ("LLAMACPP_PRESET_PATH".into(), ini.display().to_string()),
+        ("LLAMACPP_MODELS_PATH".into(), models.display().to_string()),
         (
             "INFERENCE_GATE_ADMIN_TOKEN".into(),
             "synthetic-admin-token".into(),
@@ -260,7 +264,8 @@ async fn path_role_and_configuration_checks() {
     for path in [
         "/api/model-manager/a%2Fb",
         "/api/model-manager/a%5Cb",
-        "/api/model-manager/sections/%2e",
+        "/api/model-manager/models/delete%0A",
+        "/api/model-manager/models-ini%0A",
         "/api/model-manager/%zz",
         "/api/model-manager/%ED%A0%80",
         "/api/model-manager/a~b",
@@ -338,7 +343,7 @@ async fn benchmark_start_refuses_non_chat_and_over_budget_models() {
         .collect();
     assert_eq!(refusals.len(), 2, "{refusals:?}");
     assert!(targets(&r.loader).is_empty());
-    // A null body is core's TypeError.
+    // A null body (core's TypeError, 500) is the named 400.
     let (status, _, body) = call(
         r.addr,
         "POST",
@@ -349,7 +354,10 @@ async fn benchmark_start_refuses_non_chat_and_over_budget_models() {
     .await;
     assert_eq!(
         (status, j(&body)),
-        (500, json!({"error": "Internal error"}))
+        (
+            400,
+            json!({"error": "The request body must be a JSON object."})
+        )
     );
 }
 
@@ -542,7 +550,7 @@ async fn the_forward_carries_the_token_and_the_sizing_budget() {
         seen[0].headers.get("content-type").map(String::as_str),
         Some("application/json")
     );
-    assert!(seen[0].headers.get("cookie").is_none());
+    assert!(!seen[0].headers.contains_key("cookie"));
     // A GET does not fence the reads.
     assert!(!targets(&r.node).contains(&"POST /internal/auto-roles/invalidate".to_string()));
 }
@@ -635,4 +643,45 @@ async fn a_finished_benchmark_run_becomes_throughput_evidence() {
         );
         tokio::time::sleep(Duration::from_millis(100)).await;
     }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_delete_body_is_judged_as_forwarded() {
+    let r = rig(true, vec![], true).await;
+    *r.scan.lock().unwrap() = Some(json!({"models": [
+        {"key": "k-router", "modelId": "laya-qa", "sections": []},
+        {"key": "k-chat", "modelId": "qa-chat", "sections": []}
+    ]}));
+    for (body, error) in [
+        (r#"{"models":{"k-router":0}}"#, "models must be an array."),
+        (
+            r#"{"models":["k-router"],"x":NaN}"#,
+            "The request body must be a JSON object.",
+        ),
+        ("null", "The request body must be a JSON object."),
+    ] {
+        let (status, _, text) = call(
+            r.addr,
+            "POST",
+            "/api/model-manager/models/delete",
+            Some(ADMIN),
+            body.as_bytes(),
+        )
+        .await;
+        assert_eq!((status, j(&text)), (400, json!({"error": error})), "{body}");
+    }
+    assert!(targets(&r.loader).is_empty());
+    // A duplicate key is judged as JSON.parse reads it, and forwarded that way.
+    let (status, _, text) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/models/delete",
+        Some(ADMIN),
+        br#"{ "models": ["k-router"], "models": ["k-chat"] }"#,
+    )
+    .await;
+    assert_eq!(status, 200, "{text}");
+    let seen = r.loader.lock().unwrap().clone();
+    assert_eq!(seen.len(), 1);
+    assert_eq!(seen[0].body, r#"{"models":["k-chat"]}"#);
 }

@@ -32,14 +32,14 @@
 //!   `undefined`, the body as JSON or else its text.
 //!
 //! Named differences (tests/model_manager_proxy.rs where testable):
-//! - **No reranker-settings lock.** Core runs an administrator's write under rerank-settings.cjs
-//!   `withSettings`; the front's reranker settings are a store row with no lock to hold, so a
-//!   settings change can land during a write here. The sidecar names are read once per request.
+//! - **The reranker-settings snapshot.** Core runs an administrator's write inside a
+//!   rerank-settings.cjs `withSettings` snapshot (read from this front first; a failed read is its
+//!   503 before anything else). The front reads the same effective settings from its store
+//!   (reranker_routes.rs `effective_env`) and answers the reranker question from them; core's
+//!   sidecar names (its facts) are read once per request, from core's own snapshot of that moment.
 //! - **Embedding protection.** Core's `embeddingProtectionUnknown` reads its embedding service's
 //!   freshness, which no bridge gives; the front treats protection as unknown exactly when core's
 //!   facts give no sidecar names (core's own names fail closed while its status is stale).
-//! - **The reranker name** is the deployment's (`NOEVIA_FEATURE_RAG_RERANK`, `RERANK_MODEL`), as
-//!   delete_model.rs decides it; core also counts the saved reranker settings' model.
 //! - **Fail closed** where core's step cannot fail: no sidecar names is core's 503 throw; a load
 //!   refusal core's bridge cannot give refuses (409, the budget could not be checked); a scan cache
 //!   the bridge cannot read is no cache (a delete then scans fresh); a publish is conditional on the
@@ -48,8 +48,8 @@
 //!   a role clean-up that fails is no roles cleared (as delete_model.rs), not a 500.
 //! - A preset refusal that is not a 409 (preset.rs's undecided micro batch, no budget) is answered
 //!   as core answers a throw of its status.
-//! - A body core's `JSON.parse` reads but the port cannot hold is relayed to core unchanged (and so
-//!   refused by it under the switch: 503).
+//! - The crate's own named differences (lib.rs: control characters, the judged payload forwarded,
+//!   Node's method list, a section named `rename`) apply here too.
 use crate::{identity, reply, App};
 use axum::body::Body;
 use axum::http::{Method, Request, Response, StatusCode};
@@ -204,6 +204,7 @@ pub async fn serve(
             rt,
             user,
             roles: None,
+            reranker_env: None,
             sidecars: None,
             scan_token: None,
             hold: None,
@@ -258,6 +259,8 @@ struct FrontHost {
     rt: tokio::runtime::Handle,
     user: String,
     roles: Option<HashMap<String, String>>,
+    /// The reranker settings' effective environment this request runs on (core `withSettings`).
+    reranker_env: Option<HashMap<String, String>>,
     /// Core's sidecar names, read once per request (`None` inside: core did not say).
     sidecars: Option<Option<HashSet<String>>>,
     /// The scan snapshot's token a publish is conditional on.
@@ -327,6 +330,16 @@ impl FrontHost {
 }
 
 impl Host for FrontHost {
+    fn reranker_settings(&mut self) -> Result<(), Thrown> {
+        // On the blocking pool already (the flow runs there).
+        match crate::reranker_routes::effective_env(&self.app) {
+            Ok(env) => {
+                self.reranker_env = Some(env);
+                Ok(())
+            }
+            Err(_) => Err(Thrown::new(503, "Reranker settings are unavailable.")),
+        }
+    }
     fn invalidate_model_reads(&mut self) {
         let app = Arc::clone(&self.app);
         self.rt.block_on(async move {
@@ -366,7 +379,20 @@ impl Host for FrontHost {
         }
     }
     fn is_reranker_model(&mut self, name: &str) -> Result<bool, Thrown> {
-        Ok(crate::delete_model::service_of(&self.app, name) == "reranker")
+        // rerankModelNames: the deployment's reranker, and the saved settings' one in this
+        // request's snapshot.
+        if crate::delete_model::service_of(&self.app, name) == "reranker" {
+            return Ok(true);
+        }
+        let Some(env) = self.reranker_env.as_ref() else {
+            return Ok(false);
+        };
+        let on = env
+            .get("NOEVIA_FEATURE_RAG_RERANK")
+            .map(|v| v.trim().to_ascii_lowercase())
+            .is_some_and(|v| matches!(v.as_str(), "1" | "true" | "on"));
+        let model = env.get("RERANK_MODEL").map_or("", |m| m.trim());
+        Ok(on && !model.is_empty() && model == name)
     }
     fn served_catalogue(&mut self) -> Result<JValue, Thrown> {
         let app = Arc::clone(&self.app);
