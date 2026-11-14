@@ -359,6 +359,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "boot-schema"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -377,6 +389,19 @@ checksum = "3a32acac15fe1967bc3986b2a6347dffc965602354ea6f450ad07e8bfd253583"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
+]
+
+[[package]]
+name = "browser-cdp"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "browser-task",
+ "getrandom 0.3.4",
+ "js-json",
+ "sha1",
+ "tempfile",
+ "url",
 ]
 
 [[package]]
@@ -459,6 +484,7 @@ dependencies = [
 name = "chat-prepare"
 version = "0.1.0"
 dependencies = [
+ "chat-turn",
  "chrono",
  "chrono-tz",
  "icu_properties",
@@ -494,6 +520,18 @@ dependencies = [
  "sha2",
  "stream-guard",
  "tool-exchange",
+]
+
+[[package]]
+name = "chat-upstream"
+version = "0.1.0"
+dependencies = [
+ "engine-facts",
+ "hmac",
+ "js-json",
+ "proptest",
+ "sha2",
+ "url",
 ]
 
 [[package]]
@@ -1924,6 +1962,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "kiwix-tools"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "prompt-framing",
+ "research-core",
+ "url",
+]
+
+[[package]]
 name = "lazy_static"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2199,8 +2247,11 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "futures-util",
  "http-body",
  "http-body-util",
+ "hyper-util",
+ "nix",
  "regex",
  "reqwest",
  "rusqlite",
@@ -2333,9 +2384,13 @@ dependencies = [
  "autotune-runner",
  "axum",
  "base64 0.22.1",
+ "boot-schema",
  "brotli",
+ "browser-cdp",
+ "browser-task",
  "bytes",
  "chat-mirror-sched",
+ "chat-prepare",
  "chat-turn",
  "code-acp",
  "code-harness",
@@ -2360,6 +2415,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "js-json",
+ "kiwix-tools",
  "llamacpp-autoconfig",
  "llamacpp-presets",
  "long-profile",
@@ -3758,6 +3814,7 @@ dependencies = [
  "icu_collator",
  "icu_locale",
  "indexmap",
+ "js-json",
  "proptest",
  "rustix",
  "serde",
@@ -4179,6 +4236,13 @@ name = "toml_writer"
 version = "1.1.3+spec-1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "06bdbd8cfc056b8d2e2e85f29b56a3bdbecb527cef81eb39e3e7b98af4652770"
+
+[[package]]
+name = "tool-dispatch"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+]
 
 [[package]]
 name = "tool-exchange"

@@ -24,17 +24,18 @@ const SOURCES = { calibration: sha(CALIBRATION), manager: sha(MANAGER), runner: 
   test: sha(PREFIX ? SCENARIOS : TEST) };
 const T0 = 1700000000000;
 const als = new AsyncLocalStorage();
-const real = { writeFileSync: fs.writeFileSync, randomUUID: crypto.randomUUID, randomInt: crypto.randomInt };
+const real = { writeFileSync: fs.writeFileSync, randomUUID: crypto.randomUUID, randomInt: crypto.randomInt, setTimeout: globalThis.setTimeout };
 
-function callerFile(fn) {
+function callerFrame(fn) {
   const prep = Error.prepareStackTrace, limit = Error.stackTraceLimit;
   try {
     Error.prepareStackTrace = (_, frames) => frames; Error.stackTraceLimit = 1;
     const holder = {}; Error.captureStackTrace(holder, fn);
     const frames = holder.stack;
-    return Array.isArray(frames) && frames[0] ? frames[0].getFileName() : null;
+    return Array.isArray(frames) && frames[0] ? { file: frames[0].getFileName(), name: frames[0].getFunctionName() } : null;
   } catch { return null; } finally { Error.prepareStackTrace = prep; Error.stackTraceLimit = limit; }
 }
+function callerFile(fn) { return callerFrame(fn)?.file ?? null; }
 
 // ── tests: name, ordinal and end of each node:test test ─────────────────────────────────────────
 let testOrdinal = 0, currentTest = null;
@@ -338,6 +339,27 @@ function recordingFactory(deps) {
   };
 }
 globalThis.__privateCalibratorFactory = recordingFactory;
+
+// The error-body deadline (llamacpp-calibration.cjs `errorBody`: a real ERROR_BODY_MS setTimeout that
+// cancels the read of a rejected long prompt's body). Recorded only when it FIRES, as a sync
+// `{ dep: 'tick', ms }` (it lands in the `during` of the read it cut); setting or clearing it is not
+// recorded, so a trace where it never fired is unchanged.
+globalThis.setTimeout = function setTimeout(cb, ms, ...args) {
+  const tr = typeof cb === 'function' ? recording() : null;
+  const at = tr ? callerFrame(setTimeout) : null;
+  if (!tr || !at || at.file !== CALIBRATION || at.name !== 'errorBody') return real.setTimeout.call(this, cb, ms, ...args);
+  return real.setTimeout.call(this, function (...a) { syncEvent(tr, { dep: 'tick', ms: Number(ms) }); return cb.apply(this, a); }, ms, ...args);
+};
+if (real.setTimeout[require('node:util').promisify.custom]) globalThis.setTimeout[require('node:util').promisify.custom] = real.setTimeout[require('node:util').promisify.custom];
+// Scenario hook (scenarios.test.cjs): `ms` of wall time passed while the engine produced a stream
+// chunk. Advances the latest trace's fake clock and is recorded as a sync `{ dep: 'clock', ms }` (it
+// lands in the `during` of the read in flight).
+globalThis.__privateCalibratorElapse = ms => {
+  const list = currentTest?.traces, tr = list && list.length ? list[list.length - 1] : null;
+  if (!tr || tr.closed) return;
+  tr.clock += ms;
+  syncEvent(tr, { dep: 'clock', ms });
+};
 full.createFullAutotuner = function createFullAutotuner(deps) {
   if (!deps || typeof deps.contextFactory !== 'function') return realFull.call(this, deps);
   return realFull.call(this, { ...deps, contextFactory: recordingFactory(deps) });

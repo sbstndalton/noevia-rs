@@ -2,7 +2,9 @@
 // R6 oracle recorder (preload). Loaded with `node --require` before noevia-core's
 // server/llamacpp-full-autotune.test.cjs; records every createFullAutotuner instance as one trace
 // (format: FORMAT.md beside this file). Read-only on the core checkout.
-// Env: TRACE_CORE (core checkout root), TRACE_OUT (output directory).
+// Env: TRACE_CORE (core checkout root), TRACE_OUT (output directory), TRACE_PREFIX (set for
+// scenarios.test.cjs beside this file: trace names start with it, and the scenario-only recording
+// below applies).
 const fs = require('node:fs'), path = require('node:path'), crypto = require('node:crypto'), util = require('node:util');
 const Module = require('node:module');
 const { AsyncLocalStorage } = require('node:async_hooks');
@@ -12,7 +14,8 @@ const OUT = path.resolve(process.env.TRACE_OUT || '');
 if (!process.env.TRACE_CORE || !process.env.TRACE_OUT) throw Error('trace-preload: TRACE_CORE and TRACE_OUT are required');
 const SERVER = path.join(CORE, 'server');
 const RUNNER = path.join(SERVER, 'llamacpp-full-autotune.cjs');
-const TEST = path.join(SERVER, 'llamacpp-full-autotune.test.cjs');
+const PREFIX = process.env.TRACE_PREFIX || '';
+const TEST = PREFIX ? path.join(__dirname, 'scenarios.test.cjs') : path.join(SERVER, 'llamacpp-full-autotune.test.cjs');
 const sha = file => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 const SOURCES = { runner: sha(RUNNER), test: sha(TEST) };
 const T0 = 1700000000000;
@@ -297,7 +300,10 @@ function call(tr, ev, fn, { after = null, resultOf = v => clone(v), sync = false
 }
 
 // ── the wrapper ─────────────────────────────────────────────────────────────────────────────────
-const DRIVER = ['start', 'compareAndAbort', 'prepareResume', 'compareAndResume', 'commitSettings', 'compareAndClear', 'recover', 'flushReload', 'scanFacts'];
+// Scenario traces also record `cancellationFacts` (the front's read before a cancel), so a stale
+// abort token can name the read it came from.
+const DRIVER = ['start', 'compareAndAbort', 'prepareResume', 'compareAndResume', 'commitSettings', 'compareAndClear', 'recover', 'flushReload', 'scanFacts',
+  ...(PREFIX ? ['cancellationFacts'] : [])];
 const isHash = v => typeof v === 'string' && /^[0-9a-f]{64}$/.test(v);
 const slug = name => String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 60).replace(/-+$/, '') || 'test';
 
@@ -454,8 +460,10 @@ function wrapContext(tr, factory, hooks) {
   return out;
 }
 // Driver calls: tokens are process-salted; an argument token is "<token>" when it equals the
-// actor's current one for that call, "<stale-token>" when it is another hash, else kept.
-function tokenArg(actor, method, args) {
+// actor's current one for that call, "<stale-token>" when it is another hash, else kept. A stale
+// compareAndAbort token that a recorded `cancellationFacts` read returned (scenario traces) is
+// "<facts-token:k>", k the index of the first such read in the trace.
+function tokenArg(tr, actor, method, args) {
   const pos = { compareAndAbort: 0, compareAndClear: 0, prepareResume: 0, compareAndResume: 0, commitSettings: 2 }[method];
   if (pos == null || !isHash(args[pos])) return;
   let current = null;
@@ -464,7 +472,8 @@ function tokenArg(actor, method, args) {
       : method === 'compareAndClear' ? actor.clearFacts().token
         : method === 'commitSettings' ? actor.settingsFacts(args[0]).token : actor.resumeFacts().token;
   } catch { current = null; }
-  args[pos] = args[pos] === current ? '<token>' : '<stale-token>';
+  const read = method === 'compareAndAbort' ? tr.factsTokens.indexOf(args[pos]) : -1;
+  args[pos] = args[pos] === current ? '<token>' : read >= 0 ? '<facts-token:' + read + '>' : '<stale-token>';
 }
 function wrapActor(tr, actor) {
   const out = { ...actor };
@@ -472,7 +481,7 @@ function wrapActor(tr, actor) {
     if (typeof actor[m] !== 'function') continue;
     out[m] = (...args) => {
       const shown = args.map(a => a);
-      tokenArg(actor, m, shown);
+      tokenArg(tr, actor, m, shown);
       const ev = { dep: 'driver', method: m, args: clone(shown) };
       emit(tr, ev);
       const settle = fields => Object.assign(ev, fields);
@@ -483,6 +492,7 @@ function wrapActor(tr, actor) {
       tr.driverDepth++;
       try { r = als.run(tr, () => actor[m](...args)); } catch (e) { if (launching) setRunning(tr, wasRunning); settle({ throws: errorOf(e) }); throw e; }
       finally { tr.driverDepth--; }
+      if (m === 'cancellationFacts' && typeof r?.token === 'string') tr.factsTokens.push(r.token);
       const launched = v => {
         if ((m === 'start' && v?.ok) || (m === 'compareAndResume' && v?.applied && args[1]?.kind === 'launch')) watchRun(tr, actor, m);
         else if (launching) setRunning(tr, wasRunning);
@@ -515,7 +525,7 @@ function install() {
     try { initialState = typeof deps.stateFile === 'string' ? fs.readFileSync(deps.stateFile, 'utf8') : null; } catch { initialState = null; }
     const tr = { test: info.name, ordinal: info.ordinal, instance, stateFile: deps.stateFile, presets: deps.presets,
       events: [], open: [], count: 0, late: 0, closedAt: null, uuid: 0, slept: 0, contexts: 0, timers: 0, runs: 0, running: false, vtimers: [], stopped: false, gateTimers: 0, driverDepth: 0,
-      replayable: true, why: [], derived: {}, config: {}, ini: undefined, checkingIni: false };
+      replayable: true, why: [], derived: {}, config: {}, ini: undefined, checkingIni: false, factsTokens: [] };
     tr.ini = iniText(tr);
     tr.initial = { state: initialState, ini: tr.ini ?? null };
     info.traces.push(tr); traces.push(tr);
@@ -658,7 +668,7 @@ function write() {
     const headText = JSON.stringify(head);
     const body = tr.events.map(e => JSON.stringify(e)).join(',\n');
     const text = headText.slice(0, -1) + ',"events":[\n' + body + '\n]}\n';
-    const name = String(tr.ordinal).padStart(3, '0') + '-' + slug(tr.test) + '-' + tr.instance + '.json';
+    const name = PREFIX + String(tr.ordinal).padStart(3, '0') + '-' + slug(tr.test) + '-' + tr.instance + '.json';
     real.writeFileSync(path.join(OUT, name), scrub(text));
   }
 }

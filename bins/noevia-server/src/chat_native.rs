@@ -13,6 +13,9 @@
 //! executors alike; when either drops the body (the client left, or the lease was lost), the native turn
 //! sees the client gone. [`chat_turn::after::Saving`] keeps what the turn leaves.
 //!
+//! Shadow (P7a): `NOEVIA_CHAT_PREPARE` (chat_prepare_shadow.rs) also prepares a handed-off turn natively and
+//! logs whether the messages are core's; the turn still runs from core's frame.
+//!
 //! Switch: `NOEVIA_CHAT_EXECUTOR` (config.rs): unset or `node` is today's relay; `native:<user id>,...`
 //! names accounts; `native` is everyone. The turn's cards use this front's approval registry (chat port S9,
 //! [`approvals`]); its chat-wide grants are core's to check, redeem and revoke (the tool bridges, D17).
@@ -69,6 +72,11 @@ const OBSERVE_EVENTS: usize = 256;
 /// the relay of a Node turn has it through its socket).
 const FORWARD_QUEUE: usize = 1024 * 1024;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Core's step supervisor answers within its own deadline (step-supervision.cjs: at most 2 s); later is `continue`.
+const SUPERVISE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Core's framing reasoner answers within its own deadline (framing-reasoner.cjs: the decision timeout, 6 s by
+/// default) after its budget check; later is a skip (the raw result goes on, as on any skip).
+const CONDENSE_TIMEOUT: Duration = Duration::from_secs(60);
 /// Core's grant check for a native turn's write (rust-chat-native.cjs GRANT_PATH; D17).
 const GRANT_PATH: &str = "/internal/chat/tools/grant";
 /// Core's revoke of the chat's grant (rust-chat-native.cjs REVOKE_PATH; Node's revokeChatGrant).
@@ -343,7 +351,13 @@ async fn room(tx: &mpsc::UnboundedSender<Bytes>, queued: &Queued) -> bool {
 
 /// Relays the turn with the hand-off asked for, and runs it natively from the `prepared` frame.
 /// `extra` is what chat_turn.rs sends core (token, user, the gate's lease); `relay` sends it.
-pub(crate) async fn serve<F, Fut>(app: &Arc<App>, user: String, relay: F) -> Option<Response<Body>>
+/// `shadow`: the request body, when the turn is also prepared natively in shadow (chat_prepare_shadow.rs).
+pub(crate) async fn serve<F, Fut>(
+    app: &Arc<App>,
+    user: String,
+    shadow: Option<Bytes>,
+    relay: F,
+) -> Option<Response<Body>>
 where
     F: FnOnce(HeaderValue) -> Fut,
     Fut: std::future::Future<Output = Option<Response<Body>>>,
@@ -368,6 +382,7 @@ where
         tx,
         Arc::clone(&queued),
         approvals,
+        shadow,
     ));
     Some(Response::from_parts(parts, Body::new(Wire(rx, queued))))
 }
@@ -398,6 +413,7 @@ async fn drive(
     tx: mpsc::UnboundedSender<Bytes>,
     queued: Arc<Queued>,
     approvals: Arc<dyn Approvals>,
+    shadow: Option<Bytes>,
 ) {
     use http_body_util::BodyExt;
     let mut frames = Frames::new();
@@ -469,6 +485,10 @@ async fn drive(
     let Ok(user_dir) = server_projects::store::user_dir(&data_dir, &user) else {
         return failed(&tx);
     };
+    // Track R8 P7a: the same turn prepared natively beside core's frame, compared and logged only.
+    if let Some(body) = shadow {
+        crate::chat_prepare_shadow::spawn(Arc::clone(&app), user_dir.clone(), body, frame);
+    }
     let host = Arc::new(FrontHost {
         app: Arc::clone(&app),
         user,
@@ -965,6 +985,18 @@ impl Host for FrontHost {
         );
     }
 
+    fn gate_record(&self, event: &str, tool: &str) {
+        // Track R15: the tool gate's log stays core's (tool-gate.cjs record).
+        self.core_later(
+            "/internal/chat/native/gate-record",
+            js::obj([
+                ("user", js::s(self.user.clone())),
+                ("event", js::s(event)),
+                ("tool", js::s(tool)),
+            ]),
+        );
+    }
+
     async fn engine_busy(&self) -> bool {
         // chat.cjs asks inferenceBusy(1): its turn is one count in core's gate. A native turn holds the
         // route's admission lease (S8) and, while it lasts, the model's lease: each is one count there.
@@ -977,6 +1009,94 @@ impl Host for FrontHost {
             )
             .await;
         r.is_some_and(|(s, v)| s == 200 && v.get("busy") == &JValue::Bool(true))
+    }
+
+    async fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> Option<(String, JValue)> {
+        // Track R15 (#740): core's framing reasoner through the condense op; no answer, or one not understood, is
+        // a skip (the raw framed result goes on).
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("kind", js::s(kind)),
+            ("message", js::s(message)),
+            ("tool", js::s(tool)),
+            ("resultText", js::s(result_text)),
+            ("model", js::s(model)),
+        ]);
+        match self
+            .core("/internal/chat/native/condense", &body, CONDENSE_TIMEOUT)
+            .await
+        {
+            Some((200, v)) => match (v.get("rendered").as_str(), v.get("trace")) {
+                (Some(rendered), trace @ JValue::Obj(_)) => {
+                    Some((rendered.to_string(), trace.clone()))
+                }
+                _ => None,
+            },
+            Some((status, _)) => {
+                eprintln!("chat native: the framing reasoner answered {status}; the prefetched result goes on as read");
+                None
+            }
+            None => None,
+        }
+    }
+
+    async fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+        // Track R15 (#740): the opt-in trace stays core's (the person's preference and their workspace's file),
+        // written before `done` as chat.cjs writes it; a trace never changes the reply.
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("trace", trace.clone()),
+            ("answerChars", js::n(answer_chars)),
+            ("answerMs", js::n(answer_ms)),
+        ]);
+        match self
+            .core(
+                "/internal/chat/native/reasoner-trace",
+                &body,
+                BRIDGE_TIMEOUT,
+            )
+            .await
+        {
+            Some((204, _)) | None => {}
+            Some((status, _)) => {
+                eprintln!(
+                    "chat native: core answered {status} to the reasoning trace; it is not kept"
+                );
+            }
+        }
+    }
+
+    async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {
+        // Track R15: core's step supervisor (chat.cjs superviseNextStep) through the supervise op; no answer, or one
+        // not understood, is `continue` (the supervisor's own fallback).
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("round", js::n(f64::from(round))),
+            ("goal", js::s(goal)),
+            ("outputs", JValue::Arr(outputs.to_vec())),
+            ("wrote", JValue::Bool(wrote)),
+        ]);
+        let r = self
+            .core("/internal/chat/native/supervise", &body, SUPERVISE_TIMEOUT)
+            .await;
+        match r {
+            Some((200, v)) => match v.get("action").as_str() {
+                Some(a @ ("verify" | "escalate")) => a.to_string(),
+                _ => "continue".to_string(),
+            },
+            Some((status, _)) => {
+                eprintln!("chat native: the step supervisor answered {status}; the turn continues unsupervised for this round");
+                "continue".to_string()
+            }
+            None => "continue".to_string(),
+        }
     }
 
     async fn title_auto_named(&self, list: Option<&str>, chat: &str, first_message: &str) -> bool {

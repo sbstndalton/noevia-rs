@@ -1,7 +1,9 @@
 //! One tool call of a native turn, from the model's request to the result the model and the client
-//! get: chat.cjs's tool loop (lines ~2250-2600) for the turns core hands off. Those carry no
-//! coworker-page tool, no provenance policy and only the local default provider
-//! (rust-chat-native.cjs `refusal`), so the parts of the loop for those are not here. A loaded
+//! get: chat.cjs's tool loop (lines ~2250-2600) for the turns core hands off. Those carry only the
+//! local default provider (rust-chat-native.cjs `refusal`), so the parts of the loop for the others
+//! are not here. With the provenance policy on (#769, [`crate::taint`]) a write whose sensitive
+//! arguments hold untrusted text (or that could not be checked) is audited `tool.provenance` and asked
+//! about on its own card, even under "Allow for this chat", the card naming the sources. A loaded
 //! instruction skill revoked meanwhile ([`crate::skills`], #272) refuses the call before it starts,
 //! after the card's answer and before the run.
 //!
@@ -44,6 +46,7 @@ use js_json::JValue;
 use crate::host::{EditTarget, GrantRun, Host, Ran, Target, ToolRun};
 use crate::js;
 use crate::skills::Skills;
+use crate::taint::{self, Taint};
 
 pub const CHECK_FAULT: &str = "ERROR: the tool call could not be checked; tool was not run.";
 pub const ERROR_FAULT: &str = "ERROR: the tool failed and its error could not be read.";
@@ -221,6 +224,8 @@ pub struct Tools<'a> {
     pub once_tools: HashSet<String>,
     /// The turn's instruction skills (#272), when it has a project.
     pub skills: Option<&'a Skills>,
+    /// #769: the turn's taint store, when the provenance policy is on (the rounds feed it).
+    pub provenance: Option<Taint>,
     pub routes: Vec<(String, String)>,
     pub chat_id: Option<String>,
     pub chat_key: Option<String>,
@@ -312,6 +317,7 @@ impl<'a> Tools<'a> {
             edit_tools: HashSet::new(),
             once_tools: HashSet::new(),
             skills: None,
+            provenance: None,
             routes,
             chat_id,
             chat_key,
@@ -570,6 +576,52 @@ impl<'a> Tools<'a> {
         }
     }
 
+    /// The tool gate's prefetch (chat.cjs `prefetchTool`'s `runTool`): the read through the exchange checks and
+    /// the turn's result cache, then core's execute bridge; no permission gate (core prefetches only a read the
+    /// account allows, checked by the caller). The result and whether the tool said it failed.
+    pub async fn prefetch<H: Host>(&mut self, host: &H, call: &Call) -> (String, bool) {
+        let name_units = js::to_units(&call.name);
+        let args_units = (!call.args.is_empty()).then(|| js::to_units(&call.args));
+        let checked = tool_exchange::check(
+            host.left(),
+            self.allowed.contains(&call.name),
+            &name_units,
+            args_units.as_deref(),
+        );
+        let key = match checked {
+            Err(_) => return (CHECK_FAULT.to_string(), false),
+            Ok(tool_exchange::Check::Answer(a)) => return (js::from_units(&a), false),
+            Ok(tool_exchange::Check::Run(key)) => key,
+        };
+        if let Some((r, _)) = self.cache.get(&key) {
+            return (r.clone(), false);
+        }
+        let run = ToolRun {
+            project_id: self.project_id.clone(),
+            name: call.name.clone(),
+            args: call.args.clone(),
+            allowed: self.allowed_order.clone(),
+            routes: self.routes.clone(),
+            chat_key: self.chat_key.clone(),
+            exchange_key: self.exchange_key.clone(),
+            edit_target: None,
+            grant: None,
+        };
+        let (text, failed) = match host.execute_tool(&run).await {
+            Ran::Done { text, failed, .. } => (text, failed),
+            Ran::Threw(message) => (
+                tool_exchange::call_error(&name_units, &js::to_units(&message))
+                    .map_or_else(|_| ERROR_FAULT.to_string(), |t| js::from_units(&t)),
+                false,
+            ),
+            Ran::Aborted => (CANCELLED.to_string(), false),
+            // Only a grant's redeem answers these; a prefetch carries none.
+            Ran::Refused | Ran::Unavailable => (CHECK_FAULT.to_string(), false),
+        };
+        self.cache.insert(key, (text.clone(), false));
+        (text, failed)
+    }
+
     /// chat.cjs `revokedSkills()` in the gate: `Some(result)` refusing the call when a loaded skill was revoked.
     /// A skills bridge that gave no answer refuses it unchecked (skills.rs).
     async fn skill_refusal<H: Host>(&self, host: &H, name: &str) -> Option<String> {
@@ -667,6 +719,15 @@ impl<'a> Tools<'a> {
             }
         }
         *write_print = write.then(|| fingerprint(name, card_target.as_deref(), &call.args));
+        // #769: a write whose sensitive arguments hold untrusted text (or that could not be checked) is asked
+        // about per call even under "Allow for this chat". Only ever adds a card.
+        let hits = match &self.provenance {
+            Some(t) if write => t.check(&call.args),
+            _ => Vec::new(),
+        };
+        if !hits.is_empty() {
+            host.audit("tool.provenance", &taint::audit_details(name, &hits));
+        }
         let mut shown = None;
         if permission == "ask" {
             let user = host.user_id();
@@ -699,7 +760,9 @@ impl<'a> Tools<'a> {
                 )
                 .await
             };
-            let asked = used_grant.is_none() || self.automatic_only_writes.contains(name);
+            let asked = used_grant.is_none()
+                || !hits.is_empty()
+                || self.automatic_only_writes.contains(name);
             if asked {
                 let id = format!("ap-{}", host.uuid());
                 let now = host.now_ms();
@@ -742,6 +805,12 @@ impl<'a> Tools<'a> {
                 }
                 if once {
                     pending.push(("once", JValue::Bool(true)));
+                }
+                if !hits.is_empty() {
+                    pending.push((
+                        "provenance",
+                        JValue::Arr(hits.iter().map(taint::Hit::json).collect()),
+                    ));
                 }
                 host.emit(&js::obj(pending));
                 let decision = host.await_approval(&question).await;
