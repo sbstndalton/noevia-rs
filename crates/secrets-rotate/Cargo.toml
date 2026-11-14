@@ -1,0 +1,19 @@
+[package]
+name = "secrets-rotate"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+secret-envelope = { path = "../secret-envelope" }
+zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
+
+[dev-dependencies]
+serde_json = "1"
+google-token-seal = { path = "../google-token-seal" }

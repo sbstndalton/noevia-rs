@@ -30,8 +30,8 @@ use crate::source_reply as reply;
 use crate::source_storage::{BinaryRead, Entry, SourceStorage, Storage, StorageError};
 use crate::uploads_ingest::{self as uploads, Env as IngestEnv, Fail, Options};
 use crate::{
-    document_ingest, document_pages, extract_queue, folder_import, outbox, project_documents,
-    source_limits, staging, storage_latch, store, Ctx, Reply,
+    document_ingest, extract_queue, folder_import, outbox, project_documents, source_limits,
+    staging, storage_latch, store, Ctx, Reply,
 };
 use js_json::{wtf16, JValue};
 use std::collections::BTreeSet;
@@ -158,13 +158,13 @@ fn is_docx(name: &str) -> bool {
     name.to_lowercase().ends_with(".docx")
 }
 
+/// document-sources.cjs `problem(file)` and `problemNotes(file)` (crates/document-read).
 fn problem_fields(file: &JValue) -> (String, Vec<(String, JValue)>) {
-    let d = file.get("document");
-    let text = document_pages::problem(d).unwrap_or_default();
-    let notes = document_pages::notes_json(d).unwrap_or_default();
+    let text = document_read::problem(file, true).unwrap_or_default();
+    let notes = document_read::notes(file).unwrap_or_default();
     let mut extra = Vec::new();
     if !notes.is_empty() {
-        let base = document_pages::problem_with(d, false).unwrap_or_default();
+        let base = document_read::problem(file, false).unwrap_or_default();
         extra.push(("reasonBase".to_owned(), JValue::Str(base)));
         extra.push(("notes".to_owned(), JValue::Arr(notes)));
     }

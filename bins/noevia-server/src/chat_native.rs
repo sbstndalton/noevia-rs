@@ -1077,6 +1077,15 @@ impl Host for FrontHost {
     }
 
     async fn edit_target(&self, project_id: Option<&str>, name: &str, args: &str) -> EditTarget {
+        // Track R14: the front's own lookup when NOEVIA_RUST_EDIT_TARGET=1 (None: core's bridge).
+        if crate::edit_target_native::enabled() {
+            if let Some(found) =
+                crate::edit_target_native::lookup(&self.app, &self.user, project_id, name, args)
+                    .await
+            {
+                return found;
+            }
+        }
         let body = js::obj([
             ("user", js::s(self.user.clone())),
             ("projectId", project_id.map_or(JValue::Null, js::s)),
@@ -1327,6 +1336,39 @@ impl Host for FrontHost {
     }
 
     async fn execute_tool(&self, run: &ToolRun) -> Ran {
+        // Track R13: read_project_file answered here when NOEVIA_RUST_READ_FILE is on and the call is one
+        // the port answers as core would (project_file_read.rs); core still counts it.
+        if crate::project_file_read::enabled() && run.name == crate::project_file_read::NAME {
+            let (data, user, call) = (self.data_dir.clone(), self.user.clone(), run.clone());
+            let native = tokio::task::spawn_blocking(move || {
+                crate::project_file_read::answer(&data, &user, &call, |u| {
+                    crate::project_file_read::account_active(&data, u)
+                })
+            });
+            if let Ok(Some((text, failed))) = native.await {
+                // Core counts it (recordToolUse) before the answer goes on, as its bridge counts a call it runs.
+                let counted = self
+                    .core_full(
+                        "/internal/chat/native/tool-used",
+                        &js::obj([
+                            ("user", js::s(self.user.clone())),
+                            ("name", js::s(run.name.clone())),
+                        ]),
+                        BRIDGE_TIMEOUT,
+                    )
+                    .await;
+                if !matches!(counted, Some((204, _))) {
+                    eprintln!(
+                        "chat native: a read_project_file the front answered was not counted"
+                    );
+                }
+                return Ran::Done {
+                    text,
+                    failed,
+                    not_run: false,
+                };
+            }
+        }
         let mut body = vec![
             ("user", js::s(self.user.clone())),
             (
