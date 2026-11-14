@@ -9,12 +9,22 @@ use crate::target::{check_served, COERCE_ERROR};
 use crate::Host;
 use chat_turn::js;
 use embedding_admin::{aggregate_status, read_request, served_probes, Action};
-use js_json::{to_js_string, wtf16, JValue};
+use js_json::{to_js_string, wtf16, CoerceError, JValue};
 
 /// `fetchJson`'s deadline for the Diary.
 pub const DIARY_TIMEOUT_MS: u64 = 15_000;
 /// `waitTimeoutMs`: how long `service-switch` waits for the model to load.
 pub const WAIT_TIMEOUT_MS: u64 = 180_000;
+
+/// The body text of index.cjs's answer to an error the route throws (`errorResponse` of an error
+/// without a status: 500 `{ error: 'Internal error' }`).
+pub const INTERNAL_ERROR: &str = "Internal error";
+
+/// What the request answers when Node's route throws a TypeError (an unexpected value it cannot
+/// read): nothing after the throw runs, and index.cjs's catch sends 500 `{ error: 'Internal error' }`.
+pub fn internal_error() -> Answer {
+    answer(500, [("error", INTERNAL_ERROR.into())])
+}
 
 /// An answer: the status and the JSON body (sent with `Cache-Control: no-store`).
 #[derive(Debug, Clone, PartialEq)]
@@ -305,8 +315,10 @@ impl Embedding {
                 action,
                 Action::Finish | Action::ClearNext | Action::Rollback | Action::Switch
             )
+            && self.sync_service(host).is_err()
         {
-            self.sync_service(host);
+            // `servedSet` threw: `apply` rejects after the change and the audit record.
+            return internal_error();
         }
         let status = aggregate_status(
             ran(&projects).map(to_serde).as_ref(),
@@ -335,38 +347,55 @@ impl Embedding {
 
     /// `servedSet(c, d, { diaryDefaults })` (#1668, #1683): the `{ model, file }` the embedding
     /// service must serve for the projects' status `c` and the Diary's `d`; `None` when the models
-    /// in use do not fit in two.
+    /// in use do not fit in two, and also when Node's `servedSet` throws (see
+    /// [`Embedding::try_served_set`]): either way the caller must not shrink what is served.
     pub fn served_set<H: Host>(
         host: &mut H,
         c: &JValue,
         d: &JValue,
         diary_defaults: bool,
     ) -> Option<Vec<JValue>> {
+        Embedding::try_served_set(host, c, d, diary_defaults).unwrap_or(None)
+    }
+
+    /// [`Embedding::served_set`], with `Err` where Node's throws: a Diary target's address that
+    /// `String()` cannot convert (an object with its own `toString`), read when that target is not
+    /// at the service and might use the Diary's default server. The host calls up to the throw are
+    /// made.
+    pub fn try_served_set<H: Host>(
+        host: &mut H,
+        c: &JValue,
+        d: &JValue,
+        diary_defaults: bool,
+    ) -> Result<Option<Vec<JValue>>, CoerceError> {
         fn add<H: Host>(
             host: &mut H,
             out: &mut Vec<(JValue, String)>,
             t: &JValue,
             on_default: bool,
-        ) -> bool {
+        ) -> Result<bool, CoerceError> {
             let model = t.get("model");
             if !t.truthy() || !model.truthy() {
-                return true;
+                return Ok(true);
             }
             let address = match t.get("baseUrl") {
                 JValue::Undefined => t.get("base_url"),
                 given => given,
             };
             // #1683: a Diary target with no address uses the Diary's own default server.
-            let diary_default = || address.is_nullish() || js::trim(&string_of(address)).is_empty();
-            let on_service = host.service_is_at(address) || (on_default && diary_default());
+            // `String(address ?? '')` throws for an object with its own `toString`.
+            let diary_default = || -> Result<bool, CoerceError> {
+                Ok(address.is_nullish() || js::trim(&to_js_string(address)?).is_empty())
+            };
+            let on_service = host.service_is_at(address) || (on_default && diary_default()?);
             if !on_service || out.iter().any(|(m, _)| strict_eq(m, model)) {
-                return true;
+                return Ok(true);
             }
             let Some(file) = host.service_file_of(model).filter(|f| !f.is_empty()) else {
-                return true;
+                return Ok(true);
             };
             out.push((model.clone(), file));
-            out.len() <= 2
+            Ok(out.len() <= 2)
         }
         let mut out: Vec<(JValue, String)> = Vec::new();
         for (key, from_diary) in [
@@ -376,36 +405,38 @@ impl Embedding {
             ("next", true),
         ] {
             let t = if from_diary { d.get(key) } else { c.get(key) };
-            if !add(host, &mut out, t, diary_defaults && from_diary) {
-                return None;
+            if !add(host, &mut out, t, diary_defaults && from_diary)? {
+                return Ok(None);
             }
         }
         for (t, from_diary) in [(c.get("previous"), false), (d.get("previous"), true)] {
             if out.len() < 2 {
-                add(host, &mut out, t, diary_defaults && from_diary);
+                add(host, &mut out, t, diary_defaults && from_diary)?;
             }
         }
-        Some(
+        Ok(Some(
             out.into_iter()
                 .map(|(model, file)| JValue::obj([("model", model), ("file", file.into())]))
                 .collect(),
-        )
+        ))
     }
 
-    /// `syncService()`: after a change, the service serves only what is still configured.
-    fn sync_service<H: Host>(&mut self, host: &mut H) {
+    /// `syncService()`: after a change, the service serves only what is still configured. `Err`
+    /// when `servedSet` threw: nothing is served then.
+    fn sync_service<H: Host>(&mut self, host: &mut H) -> Result<(), CoerceError> {
         if !host.service_managed() || host.service_enabled() != Some(true) {
-            return;
+            return Ok(());
         }
         let Some(d) = self.diary_targets(host) else {
-            return; // the Diary may still use a model: keep serving what is served
+            return Ok(()); // the Diary may still use a model: keep serving what is served
         };
         let c = self.migration.status(host);
-        if let Some(want) = Embedding::served_set(host, &c, &d, true) {
+        if let Some(want) = Embedding::try_served_set(host, &c, &d, true)? {
             if !want.is_empty() {
                 let _ = host.service_serve(&want);
             }
         }
+        Ok(())
     }
 
     /// `serviceActionHeld(action, body, authn)`.
@@ -501,8 +532,13 @@ impl Embedding {
             let Some(d) = self.diary_targets(host) else {
                 return refuse(409, "diaryUnknown", format!("{unknown} the switch could drop a model it still uses. Try again when the Diary answers."));
             };
-            let all = Embedding::served_set(host, &c, &d, true);
-            let known = Embedding::served_set(host, &c, &d, false);
+            // A throw here (an unreadable Diary address) ends the request before anything is served.
+            let Ok(all) = Embedding::try_served_set(host, &c, &d, true) else {
+                return internal_error();
+            };
+            let Ok(known) = Embedding::try_served_set(host, &c, &d, false) else {
+                return internal_error();
+            };
             let overflows = |set: &Option<Vec<JValue>>| {
                 set.as_ref()
                     .is_none_or(|s| s.len() + usize::from(!has(s)) > 2)
@@ -546,7 +582,11 @@ impl Embedding {
                         ])
                     })
                     .collect(),
-                _ => Vec::new(),
+                // `(status?.models || []).filter`: absent or falsy is nothing served.
+                models if !models.truthy() => Vec::new(),
+                // Anything else has no `filter`: Node throws a TypeError before serving, so the
+                // rollback below could never serve a made-up empty list over models in use.
+                _ => return internal_error(),
             }
         };
         let mut serve = keep;

@@ -12,7 +12,8 @@ use embedding_migration::config::{write_atomic, NOT_JSON};
 use embedding_migration::routes::{diary_url, DIARY_TIMEOUT_MS};
 use embedding_migration::target::{normalize_target, seed_from_env, served_verdict};
 use embedding_migration::{
-    Config, Coverage, Embedding, Host, HttpReply, Migration, Pacing, ServeError, Target, User,
+    Config, Coverage, Embedding, Host, HttpReply, Migration, Pacing, Seeded, ServeError, Target,
+    User,
 };
 use js_json::{to_js_string, wtf16, JValue};
 use std::path::PathBuf;
@@ -86,6 +87,10 @@ impl Host for Stub {
     }
     fn kick(&mut self) {
         self.log("kick", vec![]);
+        // Not in the recording: a host that fails inside the config lock's hold.
+        if self.w("panicKick").truthy() {
+            panic!("qa host panicked inside the hold");
+        }
     }
     fn snapshot(&mut self) -> Option<JValue> {
         self.log("snapshot", vec![]);
@@ -232,6 +237,20 @@ impl Host for Stub {
     }
 }
 
+/// The recorder's `stateOf(config)`: `config.get()` without its change counter, and `damaged`.
+fn state_of(c: &Config) -> JValue {
+    JValue::obj([
+        ("active", c.active().to_json()),
+        ("next", c.next().map_or(JValue::Null, Target::to_json)),
+        (
+            "previous",
+            c.previous().map_or(JValue::Null, Target::to_json),
+        ),
+        ("source", c.source().as_str().into()),
+        ("damaged", c.damaged().map_or(JValue::Null, JValue::from)),
+    ])
+}
+
 fn env_of(env: &JValue) -> impl Fn(&str) -> Option<String> + '_ {
     move |key| env.get(key).as_str().map(String::from)
 }
@@ -301,9 +320,29 @@ fn replay(sc: &JValue) -> usize {
         } else if step.get("refuse").is_object() {
             let reason = |k: &str| step.get("refuse").get(k).as_str().map(String::from);
             let (active, next) = (reason("active"), reason("next"));
-            api.migration
-                .config
-                .refuse_seeded(active.as_deref(), next.as_deref());
+            let config = &mut api.migration.config;
+            if step.get("transient").truthy() {
+                config.refuse_seeded_as(active.as_deref(), next.as_deref(), true);
+            } else {
+                config.refuse_seeded(active.as_deref(), next.as_deref());
+            }
+            assert_eq!(
+                show(&state_of(config)),
+                show(rec.get("state")),
+                "{at} state"
+            );
+        } else if let JValue::Str(which) = step.get("release") {
+            let config = &mut api.migration.config;
+            match which.as_str() {
+                "active" => config.release_seeded(Seeded::Active),
+                "next" => config.release_seeded(Seeded::Next),
+                _ => {} // `held[which]` is never set for another name
+            }
+            assert_eq!(
+                show(&state_of(config)),
+                show(rec.get("state")),
+                "{at} state"
+            );
         } else {
             let method = match step.get("method").as_str() {
                 Some(m) => m,
@@ -521,4 +560,243 @@ fn a_switch_to_another_next_is_refused() {
         config.previous().map(|p| p.model.as_str()),
         Some("qa-embed-a")
     );
+}
+
+fn qa_target(model: &str, base_url: Option<&str>) -> Target {
+    Target {
+        base_url: base_url.map(String::from),
+        model: model.into(),
+        profile: "nomic-v1".into(),
+    }
+}
+
+const QA_SVC: &str = "http://qa-embed.invalid:8080";
+const QA_ADMIN: Option<User<'static>> = Some(User {
+    id: "qa-admin-1",
+    admin: true,
+});
+
+/// An in-memory configuration (no lock) with `active` and `next`, and a stub over `world`.
+fn in_memory(active: Target, next: Option<Target>, diary: bool, world: &str) -> (Embedding, Stub) {
+    let state = embedding_migration::State {
+        active,
+        next,
+        previous: None,
+    };
+    let config = Config::new(state, None, false);
+    let diary = diary.then(|| "http://qa-diary.invalid:8090/api/internal/embedding".to_string());
+    let api = Embedding::new(Migration::new(config, Pacing::from_env(&|_| None)), diary);
+    let host = Stub {
+        world: wtf16::parse(world).unwrap(),
+        calls: Vec::new(),
+    };
+    (api, host)
+}
+
+/// The names of the host calls made, in order.
+fn call_names(host: &Stub) -> Vec<String> {
+    host.calls
+        .iter()
+        .map(|c| match c {
+            JValue::Arr(items) => text(&items[0]),
+            _ => panic!("call"),
+        })
+        .collect()
+}
+
+fn called(host: &Stub, name: &str) -> usize {
+    call_names(host).iter().filter(|n| *n == name).count()
+}
+
+/// Finding: a Host panic inside the config lock's hold must still end the hold and unlock once.
+#[test]
+fn a_host_panic_inside_the_hold_unlocks_once_and_ends_the_hold() {
+    let dir = std::env::temp_dir().join(format!("qa-embed-panic-{}", std::process::id()));
+    std::fs::create_dir_all(&dir).unwrap();
+    let env = |k: &str| match k {
+        "EMBEDDING_MODEL" => Some("qa-embed-a".to_string()),
+        "EMBEDDING_NEXT_MODEL" => Some("qa-embed-b".to_string()),
+        _ => None,
+    };
+    let (config, _) = Config::load(dir.join("embedding-config.json"), &env);
+    assert!(config.holds_lock());
+    let mut migration = Migration::new(config, Pacing::from_env(&env));
+    let world = r#"{"indexes":[],"snapshot":null,"dropFails":[],"panicKick":true}"#;
+    let mut host = Stub {
+        world: wtf16::parse(world).unwrap(),
+        calls: Vec::new(),
+    };
+    let caught = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        migration.clear_next(&mut host)
+    }));
+    assert!(caught.is_err(), "the host's panic goes on to the caller");
+    assert_eq!(call_names(&host), ["lock", "kick", "unlock"]);
+    // The hold ended: a change outside a lock is refused again.
+    let outside = migration.config.clear_next().unwrap_err();
+    assert_eq!(
+        outside.message,
+        "Embedding configuration requires the publication lock"
+    );
+    // The change written before the panic stays, and the next request locks afresh.
+    assert!(migration.config.next().is_none());
+    host.merge(&wtf16::parse(r#"{"panicKick":false}"#).unwrap());
+    host.calls.clear();
+    migration.clear_next(&mut host).unwrap();
+    let names = call_names(&host);
+    assert_eq!(
+        (names.first(), names.last()),
+        (Some(&"lock".into()), Some(&"unlock".into()))
+    );
+    assert_eq!(called(&host, "unlock"), 1);
+    std::fs::remove_dir_all(&dir).unwrap();
+}
+
+/// Named difference: Node's parity check passes vacuously when an endpoint gives fewer vectors
+/// than sample texts (`sims.every(Number.isFinite)` of an empty list, `Math.min()` = Infinity);
+/// the port fails it closed.
+#[test]
+fn parity_fails_closed_without_one_vector_per_sample_text() {
+    for (vectors, shown) in [
+        ("[]", JValue::Null),
+        ("[[1,0,0],[0,1,0]]", JValue::Num(1.0)),
+    ] {
+        let world = format!(
+            r#"{{"indexes":[],"snapshot":null,"served":{{"{QA_SVC}":["qa-embed-a"]}},
+                "vectors":{{"":{vectors},"{QA_SVC}":{vectors}}},"service":{{"managed":false}}}}"#
+        );
+        let (mut api, mut host) = in_memory(
+            qa_target("qa-embed-a", None),
+            Some(qa_target("qa-embed-a", Some(QA_SVC))),
+            false,
+            &world,
+        );
+        let refused = api.migration.switch_to_next(&mut host, false).unwrap_err();
+        assert_eq!(refused.code, Some("parityFailed"), "{vectors}");
+        let parity = JValue::obj([("ok", JValue::Bool(false)), ("minCosine", shown)]);
+        assert_eq!(
+            refused.detail.as_deref(),
+            Some(&embedding_migration::Detail::Parity(parity)),
+            "{vectors}"
+        );
+        // A forced switch still goes through (as Node's does on a failed check).
+        api.migration.switch_to_next(&mut host, true).unwrap();
+        assert_eq!(
+            api.migration.config.active().base_url.as_deref(),
+            Some(QA_SVC)
+        );
+    }
+}
+
+/// Finding: a truthy `status.models` that is not an array makes Node's service-switch throw
+/// before it serves anything; the port answers 500 and never serves (no rollback to `[]`).
+#[test]
+fn service_switch_with_unreadable_models_serves_nothing() {
+    for models in ["{}", r#""x""#, "7", "true"] {
+        let world = format!(
+            r#"{{"indexes":[],"snapshot":null,"service":{{"managed":true,"enabled":true,
+                "baseUrl":"{QA_SVC}","at":["{QA_SVC}"],"known":{{"qa-embed-a":"qa/a.gguf"}},
+                "installed":{{"qa-embed-b":"qa/b.gguf"}},"status":{{"models":{models}}},
+                "serveFail":[],"loaded":[false]}}}}"#
+        );
+        let (mut api, mut host) =
+            in_memory(qa_target("qa-embed-a", Some(QA_SVC)), None, false, &world);
+        let body = wtf16::parse(r#"{"action":"service-switch","model":"qa-embed-b"}"#).unwrap();
+        let answer = api.handle(&mut host, "POST", QA_ADMIN, Ok(&body));
+        assert_eq!(answer.status, 500, "{models}");
+        assert_eq!(show(&answer.body), r#"{"error":"Internal error"}"#);
+        assert_eq!(called(&host, "serviceServe"), 0, "{models}");
+        assert_eq!(called(&host, "serviceWaitLoaded"), 0, "{models}");
+        assert_eq!(called(&host, "audit"), 0, "{models}");
+    }
+}
+
+/// Finding: a Diary address `String()` cannot convert makes Node's `servedSet` throw: the sync
+/// after a change serves nothing (the change and its audit record stay) and a service-switch
+/// fails before serving; both answer 500.
+#[test]
+fn an_unreadable_diary_address_stops_the_served_set() {
+    let world = format!(
+        r#"{{"indexes":[],"snapshot":null,"dropFails":[],"diaryQueue":[],
+            "diary":{{"GET":{{"ok":true,"status":200,"body":{{"active":{{"model":"qa-embed-b",
+            "profile":"nomic-v1","base_url":{{"toString":1}}}},"next":null,"previous":null}}}}}},
+            "service":{{"managed":true,"enabled":true,"baseUrl":"{QA_SVC}","at":["{QA_SVC}"],
+            "known":{{"qa-embed-a":"qa/a.gguf","qa-embed-b":"qa/b.gguf","qa-embed-c":"qa/c.gguf"}},
+            "installed":{{"qa-embed-c":"qa/c.gguf"}},"status":{{"models":[]}},"serveFail":[],"loaded":[]}}}}"#
+    );
+    let (mut api, mut host) = in_memory(
+        qa_target("qa-embed-a", Some(QA_SVC)),
+        Some(qa_target("qa-embed-c", Some(QA_SVC))),
+        true,
+        &world,
+    );
+    let clear = wtf16::parse(r#"{"action":"clear-next","scope":"projects"}"#).unwrap();
+    let answer = api.handle(&mut host, "POST", QA_ADMIN, Ok(&clear));
+    assert_eq!(
+        (answer.status, show(&answer.body)),
+        (500, r#"{"error":"Internal error"}"#.into())
+    );
+    assert!(
+        api.migration.config.next().is_none(),
+        "the change itself stays"
+    );
+    assert_eq!(called(&host, "audit"), 1);
+    assert_eq!(called(&host, "serviceServe"), 0, "the sync serves nothing");
+    host.calls.clear();
+    let switch = wtf16::parse(r#"{"action":"service-switch","model":"qa-embed-c"}"#).unwrap();
+    let answer = api.handle(&mut host, "POST", QA_ADMIN, Ok(&switch));
+    assert_eq!(
+        (answer.status, show(&answer.body)),
+        (500, r#"{"error":"Internal error"}"#.into())
+    );
+    assert_eq!(
+        called(&host, "serviceServe"),
+        0,
+        "nothing served before the throw"
+    );
+    // The plain `served_set` keeps its signature: a throw is "do not shrink" (None).
+    let c = api.migration.status(&mut host);
+    let d = host.w("diary").get("GET").get("body").clone();
+    assert_eq!(Embedding::served_set(&mut host, &c, &d, true), None);
+    assert!(Embedding::try_served_set(&mut host, &c, &d, true).is_err());
+    assert_eq!(
+        Embedding::try_served_set(&mut host, &c, &d, false).map(|s| s.map(|s| s.len())),
+        Ok(Some(1))
+    );
+}
+
+/// Finding: `releaseSeeded` takes back only a transient start-up refusal (also replayed from the
+/// recording); a next an administrator set since is never replaced.
+#[test]
+fn release_seeded_takes_back_only_a_transient_refusal() {
+    let active = qa_target("qa-embed-a", Some(QA_SVC));
+    let next = qa_target("qa-embed-b", Some("http://qa-other.invalid:9090"));
+    let state = embedding_migration::State {
+        active: active.clone(),
+        next: Some(next.clone()),
+        previous: None,
+    };
+    let mut config = Config::new(state.clone(), None, false);
+    config.refuse_seeded_as(Some("qa: not yet"), Some("qa: next not yet"), true);
+    assert_eq!(config.active().profile, "unavailable");
+    assert!(config.next().is_none());
+    assert_eq!(config.damaged(), Some("qa: not yet"));
+    config.release_seeded(Seeded::Next);
+    assert_eq!(config.next(), Some(&next));
+    config.release_seeded(Seeded::Active);
+    assert_eq!((config.active(), config.damaged()), (&active, None));
+    config.clear_next().unwrap(); // unlocked again
+    let mut fixed = Config::new(state.clone(), None, false);
+    fixed.refuse_seeded(Some("qa: refused"), Some("qa: next refused"));
+    fixed.release_seeded(Seeded::Active);
+    fixed.release_seeded(Seeded::Next);
+    assert_eq!(
+        (fixed.active().profile.as_str(), fixed.next()),
+        ("unavailable", None)
+    );
+    let mut changed = Config::new(state, None, false);
+    changed.refuse_seeded_as(None, Some("qa: next not yet"), true);
+    let own = qa_target("qa-embed-c", None);
+    changed.set_next(own.clone()).unwrap();
+    changed.release_seeded(Seeded::Next);
+    assert_eq!(changed.next(), Some(&own));
 }

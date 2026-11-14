@@ -172,7 +172,8 @@ impl Migration {
     }
 
     /// `config.withLock(action)`: the action runs holding the config lock (when changes are
-    /// saved); the lock is released whatever the action did.
+    /// saved); the lock is released whatever the action did, also when a [`Host`] call inside the
+    /// hold panics (the hold ends, [`Host::unlock`] runs once, then the panic goes on).
     fn locked<H: Host>(
         &mut self,
         host: &mut H,
@@ -183,10 +184,17 @@ impl Migration {
         }
         host.lock().map_err(Failure::plain)?;
         self.config.in_hold = true;
-        let result = action(self, host);
+        // The configuration is consistent at every host call (a change is written, then taken),
+        // so it is safe to use again after a panic there.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            action(&mut *self, &mut *host)
+        }));
         self.config.in_hold = false;
         host.unlock();
-        result
+        match result {
+            Ok(result) => result,
+            Err(panic) => std::panic::resume_unwind(panic),
+        }
     }
 
     fn drop_everywhere<H: Host>(host: &mut H, target: &Target) {
@@ -324,6 +332,7 @@ impl Migration {
 }
 
 /// `endpointsAgree(a, b)`: `{ ok, minCosine }`, or `{ ok: false, error }` when an embed failed.
+/// Unlike Node, `ok` is false unless both sides give one vector per [`PARITY_SAMPLE`] text.
 fn endpoints_agree<H: Host>(host: &mut H, a: &Target, b: &Target) -> JValue {
     let failed = |message: String| {
         let message = if message.is_empty() {
@@ -355,7 +364,11 @@ fn endpoints_agree<H: Host>(host: &mut H, a: &Target, b: &Target) -> JValue {
         }
     });
     let min = min.unwrap_or(f64::NAN);
-    let ok = sims.iter().all(|s| s.is_finite()) && min >= PARITY_MIN_COSINE;
+    // Fail closed where Node passes vacuously: with fewer vectors than sample texts on the first
+    // side, `sims.every(Number.isFinite)` holds for what is left (for none at all, and
+    // `Math.min()` is Infinity). Both sides must give one vector per sample text.
+    let complete = va.len() == PARITY_SAMPLE.len() && vb.len() == PARITY_SAMPLE.len();
+    let ok = complete && sims.iter().all(|s| s.is_finite()) && min >= PARITY_MIN_COSINE;
     let shown = if min.is_finite() {
         JValue::Num(js_round(min * 1e5) / 1e5)
     } else {

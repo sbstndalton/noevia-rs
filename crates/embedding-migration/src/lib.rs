@@ -26,7 +26,7 @@ pub mod migration;
 pub mod routes;
 pub mod target;
 
-pub use config::{Config, Source, State};
+pub use config::{Config, Seeded, Source, State};
 pub use migration::{Coverage, Migration, Pacing};
 pub use routes::{Answer, Embedding, HttpReply, ServeError, User};
 pub use target::Target;
@@ -139,7 +139,10 @@ pub trait Host {
     fn drop_slot(&mut self, index: &Self::Index, target: &Target) -> Result<(), String>;
     /// `rag.servedModels({ baseUrl, model })`: the ids `/v1/models` lists, `None` when it threw.
     fn served_models(&mut self, base_url: Option<&str>, model: &str) -> Option<Vec<String>>;
-    /// `rag.embed(texts, { kind: 'document', target })`; `Err` is the thrown message.
+    /// `rag.embed(texts, { kind: 'document', target })`; `Err` is the thrown message. Must give one
+    /// vector per text of `texts`, in order: the endpoint parity check compares them pairwise, and
+    /// Node's check passes vacuously on fewer (none at all included). This port fails it closed
+    /// instead: parity is `ok: false` unless both sides give one vector per sample text.
     fn embed(&mut self, texts: &[&str], target: &Target) -> Result<Vec<Vec<f64>>, String>;
     /// `embedding-address.cjs` `checkEmbeddingAddress(url)`: `Err(reason)` when refused.
     fn check_address(&mut self, url: &str) -> Result<(), String>;
