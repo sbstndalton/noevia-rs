@@ -12,6 +12,12 @@ fn try_start(
     app: &Arc<App>,
     get: impl Fn(&str) -> Option<String>,
 ) -> Result<Option<Background>, String> {
+    // A front started without Node (config.rs `front_only`): the owner handshake is with Node and
+    // carries the per-start store secret, so nothing is sent to the reserved port; the worker idles
+    // (CONTINUE: a native owner once Node is gone).
+    if app.config.front_only {
+        return Err("no Node beside this front (NOEVIA_FRONT_ONLY=1)".into());
+    }
     let loader = get("MODEL_LOADER_URL")
         .filter(|s| !s.is_empty())
         .unwrap_or_default();

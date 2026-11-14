@@ -670,6 +670,39 @@ async fn a_front_alone_is_ready_on_its_own_and_never_reaches_node() {
     assert!(res.headers().get("x-upstream").is_some());
 }
 
+/// Review finding: the embedding background's owner handshake is with Node and carries the store
+/// secret; a front alone never starts it, so nothing reaches the reserved port.
+#[tokio::test]
+async fn a_front_alone_never_starts_the_embedding_background() {
+    let (up, up_addr) = start_upstream().await;
+    let dist = dist_dir("alone-embed");
+    let data = dist.join(".synthetic-ui-data");
+    std::fs::create_dir_all(&data).unwrap();
+    let mut env = HashMap::new();
+    env.insert("NOEVIA_LEGACY_UPSTREAM", format!("http://{up_addr}"));
+    env.insert("UI_PORT", "1".to_string());
+    env.insert("NOEVIA_WEB_DIST", dist.display().to_string());
+    env.insert("UI_DATA_DIR", data.display().to_string());
+    env.insert("NOEVIA_FRONT_ONLY", "1".to_string());
+    env.insert("NOEVIA_PROJECT_STORE_PORT", "1".to_string());
+    env.insert("NOEVIA_PROJECT_STORE_TOKEN", "q".repeat(64));
+    env.insert(
+        "NOEVIA_START_ID",
+        "0123456789abcdef0123456789abcdef".to_string(),
+    );
+    env.insert("MODEL_LOADER_URL", format!("http://{up_addr}"));
+    let config = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
+    let app = noevia_server::App::new(config);
+    let worker = noevia_server::embedding_background::start(&app, |k| env.get(k).cloned()).unwrap();
+    assert!(worker.is_none());
+    tokio::time::sleep(Duration::from_millis(100)).await;
+    assert!(
+        up.hits.lock().unwrap().is_empty(),
+        "{:?}",
+        up.hits.lock().unwrap()
+    );
+}
+
 #[tokio::test]
 async fn ready_reports_node_readiness_and_the_served_version() {
     let (_up, up_addr) = start_upstream().await;
