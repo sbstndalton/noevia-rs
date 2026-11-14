@@ -3563,7 +3563,8 @@ mod tests {
                         if silent {
                             return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent { polled: silent_poll })).unwrap();
                         }
-                        if let Some(rx) = long_body.and_then(|b| b.lock().unwrap().take()) {
+                        let taken = long_body.as_ref().and_then(|b| b.lock().unwrap().take());
+                        if let Some(rx) = taken {
                             return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Channel(rx))).unwrap();
                         }
                         let events = if ctx_of() <= 8192.0 {
@@ -5447,7 +5448,7 @@ mod tests {
         ended: Arc<AtomicBool>,
         release: Option<Arc<TestGate>>,
     ) -> (u16, Arc<RequestLog>) {
-        lease_stub_options(hard, ended, release, None).await
+        lease_stub_options(hard, ended, release, None, 180_000).await
     }
 
     /// Hold a load decision independently of the lease-release gate.
@@ -5456,14 +5457,16 @@ mod tests {
         ended: Arc<AtomicBool>,
         decision: Option<Arc<(Notify, Notify)>>,
     ) -> (u16, Arc<RequestLog>) {
-        lease_stub_options(hard, ended, None, decision).await
+        lease_stub_options(hard, ended, None, decision, 180_000).await
     }
 
+    /// `ttl`: the lease's `ttlMs` (how long each renewal confirms it).
     async fn lease_stub_options(
         hard: Option<u64>,
         ended: Arc<AtomicBool>,
         release: Option<Arc<TestGate>>,
         decision: Option<Arc<(Notify, Notify)>>,
+        ttl: u64,
     ) -> (u16, Arc<RequestLog>) {
         use axum::body::Body;
         use axum::http::{Request, Response};
@@ -5501,7 +5504,7 @@ mod tests {
                     ),
                     ("POST", "/internal/model-maintenance/lease") => (
                         201,
-                        json!({"lease": "fedcba9876543210fedcba9876543210", "ttlMs": 180000, "renewMs": 20,
+                        json!({"lease": "fedcba9876543210fedcba9876543210", "ttlMs": ttl, "renewMs": 20,
                                "hardMs": hard.or(asked).unwrap_or(3_600_000)}),
                     ),
                     ("POST", p) if p.ends_with("/renew") => {
@@ -6565,8 +6568,9 @@ mod tests {
         hold.release().await;
     }
 
-    /// #2608: a run whose lease cannot cover a profile write and its re-read (its lease ends within
-    /// 60 s, under Node's 150 s `PRESET_STEP_MS`) writes nothing and ends as a lost lease does
+    /// #2608: a run whose lease cannot cover a profile write and its re-read (each renewal confirms
+    /// it for 160 s: it keeps excluding everyone, but 150 s of Node's `PRESET_STEP_MS` and the
+    /// 15 s margin do not fit) writes nothing and ends as a lost lease does
     /// (llamacpp-calibration.cjs: the coverage error is `e.coverageLost`, so the step fails, the run
     /// restores nothing on that lease, and a recovery is owed only once a write has happened; this
     /// was the run's first write, so none is).
@@ -6577,7 +6581,8 @@ mod tests {
         std::fs::write(&ini, INI).unwrap();
         std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
         let (port, engine) = synthetic_engine(ini.clone(), false).await;
-        let (lease, _) = lease_stub(Some(60_000), Arc::new(AtomicBool::new(false))).await;
+        let (lease, _) =
+            lease_stub_options(None, Arc::new(AtomicBool::new(false)), None, None, 160_000).await;
         let w = worker_with(d.path(), port, Some(lease));
         w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
         let job = settled_or_recovering(&w).await;
@@ -6586,7 +6591,10 @@ mod tests {
         assert_eq!(job.get("error").as_str(), Some(LEASE_LOST), "{job:?}");
         assert!(!job.get("lastRevision").truthy(), "{job:?}");
         assert_eq!(job.get("restored"), &JValue::Undefined, "{job:?}");
-        assert_eq!(job.get("pendingRestore"), &JValue::Undefined, "{job:?}");
+        assert!(
+            !w.recovery.load(Ordering::Acquire),
+            "no recovery owed: nothing was written"
+        );
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI, "nothing written");
         let engine = engine.lock().unwrap();
         assert!(
