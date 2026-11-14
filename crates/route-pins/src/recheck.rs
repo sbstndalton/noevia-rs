@@ -8,9 +8,11 @@
 //! [`crate::classify`] and [`crate::delete_list`] can be recomputed at the train's core SHA.
 //!
 //! `behind` (core lines outside the stubs that still name a refused route: the "delete with handler" facts) is
-//! re-read too, with the recorder's piece matcher. `behind_methods` (the methods a hit line tests) is kept only for a
-//! stub whose hits did not move; otherwise it is dropped, so every hit line counts for every method (the safe side,
-//! as [`crate::handlers_behind`] documents).
+//! re-read too, with the recorder's piece matcher, and so is `behind_methods` (the methods each hit line compares the
+//! request method with) through [`crate::methods_near`], the recorder's `methodsNear` hand-ported (council p12; until
+//! p10 the facts were dropped whenever a hit moved, which counted every hit for every method). A recomputed method
+//! fact is not drift: the recording at the train's SHA would hold the same, and the recomputed verdicts show its
+//! effect.
 //!
 //! What it cannot recheck stays as recorded and is named in [`Rechecked::kept_as_recorded`]: the probed refusals
 //! (they need Node), `pairing` (noevia's supervisor and assembler lines) and `owned_routes`. A changed refusal still needs a re-record; this check only
@@ -377,10 +379,20 @@ pub fn behind(
     out
 }
 
-/// `behind` as sets of hits per pattern (the recorder lists them in directory order; the verdicts read them as a set).
-fn hit_sets(b: &BTreeMap<String, Vec<String>>) -> BTreeMap<&str, BTreeSet<&str>> {
-    b.iter()
-        .map(|(p, h)| (p.as_str(), h.iter().map(String::as_str).collect()))
+/// The recorder's `behindMethods(behind)`: for every distinct hit line, the methods [`crate::methods_near`] reads on
+/// it; lines naming none are left out. `handlers` is [`handler_lines`] (the `\/`-unescaped text the hits index).
+pub fn behind_methods(
+    handlers: &BTreeMap<&str, Vec<String>>,
+    behind: &BTreeMap<String, Vec<String>>,
+) -> BTreeMap<String, Vec<String>> {
+    let hits: BTreeSet<&String> = behind.values().flatten().collect();
+    hits.into_iter()
+        .filter_map(|hit| {
+            let (file, line) = hit.rsplit_once(':')?;
+            let i = line.parse::<usize>().ok()?.checked_sub(1)?;
+            let text = handlers.get(file)?.get(i)?;
+            Some((hit.clone(), crate::methods_near::methods_near(text)?))
+        })
         .collect()
 }
 
@@ -418,6 +430,8 @@ pub fn recheck(rec: &Recording, tree: &Tree) -> Result<Rechecked, String> {
     let mut drift = Vec::new();
     out.stubs.clear();
     let stub_files: BTreeSet<&str> = rec.stubs.iter().map(|s| s.file.as_str()).collect();
+    let handlers: BTreeMap<&str, Vec<String>> =
+        handler_lines(tree, &stub_files).into_iter().collect();
     for s in &rec.stubs {
         let Some(text) = tree.get(&s.file) else {
             drift.push(Drift::Gone {
@@ -454,10 +468,7 @@ pub fn recheck(rec: &Recording, tree: &Tree) -> Result<Rechecked, String> {
             .collect();
         let patterns: Vec<String> = patterns.into_iter().collect();
         n.behind = behind(tree, &stub_files, &patterns);
-        if hit_sets(&n.behind) != hit_sets(&s.behind) {
-            // A hit line's method facts belong to its old line number: without them every hit counts (safe side).
-            n.behind_methods.clear();
-        }
+        n.behind_methods = behind_methods(&handlers, &n.behind);
         let (was_behind, now_behind) = (behind_files(&s.behind), behind_files(&n.behind));
         for (field, was, now) in [
             ("importers", &s.importers, &n.importers),

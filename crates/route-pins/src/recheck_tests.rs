@@ -394,7 +394,7 @@ fn a_new_handler_on_core_main_turns_a_file_delete_into_delete_with_handler() {
 }
 
 #[test]
-fn moved_hit_lines_drop_their_method_facts_but_are_not_drift() {
+fn moved_hit_lines_get_their_method_facts_re_read_and_are_not_drift() {
     let mut v = stub(
         "server/rust-a.cjs",
         2,
@@ -416,8 +416,12 @@ fn moved_hit_lines_drop_their_method_facts_but_are_not_drift() {
     ]);
     let r = recheck(&rec, &same).unwrap();
     assert!(r.drift.is_empty(), "{:?}", r.drift);
-    assert_eq!(r.recording.stubs[0].behind_methods.len(), 1);
-    // One line lower: same file, so no drift, but the method fact no longer names that line.
+    assert_eq!(
+        r.recording.stubs[0].behind_methods,
+        BTreeMap::from([("server/routes/a.cjs:1".to_string(), vec!["PUT".to_string()])])
+    );
+    // One line lower: same file, so no drift, and the method fact follows the line (council p12: re-read with
+    // methods_near, no longer dropped).
     let moved = tree(&[
         ("server/index.cjs", index),
         ("server/rust-a.cjs", "x\n"),
@@ -428,7 +432,10 @@ fn moved_hit_lines_drop_their_method_facts_but_are_not_drift() {
     ]);
     let r = recheck(&rec, &moved).unwrap();
     assert!(r.drift.is_empty(), "{:?}", r.drift);
-    assert!(r.recording.stubs[0].behind_methods.is_empty());
+    assert_eq!(
+        r.recording.stubs[0].behind_methods,
+        BTreeMap::from([("server/routes/a.cjs:2".to_string(), vec!["PUT".to_string()])])
+    );
     assert_eq!(
         r.recording.stubs[0].behind["/api/rust-a"],
         ["server/routes/a.cjs:2"]
@@ -513,5 +520,98 @@ fn a_stub_that_gains_a_switch_on_core_main_is_kept() {
     assert_eq!(
         classify(&r.recording, &front)[0].verdict,
         Verdict::SwitchGated
+    );
+}
+
+/// The stub `server/rust-a.cjs` (refusing `GET /api/rust-a`) rechecked against a tree whose only other core line
+/// naming the route is `line` in server/routes/a.cjs.
+fn recheck_with_handler_line(line: &str) -> Rechecked {
+    let rec = recording(vec![stub(
+        "server/rust-a.cjs",
+        2,
+        &["server/index.cjs"],
+        &["refuseOwned"],
+    )]);
+    let t = tree(&[
+        (
+            "server/index.cjs",
+            "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').refuseOwned(req, res, p, json);",
+        ),
+        ("server/rust-a.cjs", "x\n"),
+        ("server/routes/a.cjs", line),
+    ]);
+    recheck(&rec, &t).unwrap()
+}
+
+#[test]
+fn a_new_handler_for_another_method_is_read_as_such_and_does_not_guard_the_stub() {
+    // A PUT handler behind a GET refusal (idle-unload's shape): the recorder's methodsNear names PUT, so the stub
+    // is still a plain file delete at the new core.
+    let r = recheck_with_handler_line(
+        "if (req.method === 'PUT' && p === '/api/rust-a') return put(req, res);",
+    );
+    assert_eq!(
+        r.recording.stubs[0].behind_methods,
+        BTreeMap::from([("server/routes/a.cjs:1".to_string(), vec!["PUT".to_string()])])
+    );
+    let front = |_: &str, _: &str| true;
+    assert_eq!(
+        classify(&r.recording, &front)[0].verdict,
+        Verdict::DeleteFile
+    );
+}
+
+#[test]
+fn a_new_handler_for_the_refused_method_or_a_negated_test_still_guards_the_stub() {
+    let front = |_: &str, _: &str| true;
+    for line in [
+        // Same method.
+        "if (req.method === 'GET' && p === '/api/rust-a') return get(req, res);",
+        // GET in a list with another method.
+        "if (['GET', 'HEAD'].includes(req.method) && p === '/api/rust-a') return get(req, res);",
+        // A negation names nothing: the line counts for every method (the safe side).
+        "if (req.method !== 'PUT' && p === '/api/rust-a') return other(req, res);",
+        // No method test at all.
+        "if (p === '/api/rust-a') return any(req, res);",
+    ] {
+        let r = recheck_with_handler_line(line);
+        assert_eq!(
+            classify(&r.recording, &front)[0].verdict,
+            Verdict::GuardsHandler {
+                handlers: vec!["server/routes/a.cjs:1".into()]
+            },
+            "{line}"
+        );
+    }
+}
+
+#[test]
+fn behind_methods_reads_only_the_hit_lines_of_the_unescaped_handler_text() {
+    let handlers: BTreeMap<&str, Vec<String>> = BTreeMap::from([(
+        "server/routes/a.cjs",
+        vec![
+            "if (req.method === 'POST') x();".to_string(),
+            "if (/^\\/api\\/a$/.test(p) && req.method === 'DELETE') y();".replace("\\/", "/"),
+            "z();".to_string(),
+        ],
+    )]);
+    let behind = BTreeMap::from([(
+        "/api/a".to_string(),
+        vec![
+            "server/routes/a.cjs:2".to_string(),
+            "server/routes/a.cjs:3".to_string(),
+            // A hit outside the file, a line past its end and a malformed hit name nothing.
+            "server/routes/b.cjs:1".to_string(),
+            "server/routes/a.cjs:9".to_string(),
+            "server/routes/a.cjs:0".to_string(),
+            "server/routes/a.cjs".to_string(),
+        ],
+    )]);
+    assert_eq!(
+        behind_methods(&handlers, &behind),
+        BTreeMap::from([(
+            "server/routes/a.cjs:2".to_string(),
+            vec!["DELETE".to_string()]
+        )])
     );
 }
