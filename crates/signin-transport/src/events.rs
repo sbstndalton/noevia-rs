@@ -20,7 +20,11 @@ fn blank_line(s: &str) -> Option<(usize, usize)> {
     let mut i = 0;
     while let Some(off) = b.get(i..)?.iter().position(|&c| c == b'\n') {
         let nl = i + off;
-        let start = if nl > 0 && b.get(nl - 1) == Some(&b'\r') { nl - 1 } else { nl };
+        let start = if nl > 0 && b.get(nl - 1) == Some(&b'\r') {
+            nl - 1
+        } else {
+            nl
+        };
         let mut j = nl + 1;
         if b.get(j) == Some(&b'\r') {
             j += 1;
@@ -66,7 +70,8 @@ impl SseDecoder {
                 }
                 Err(e) => {
                     let (good, bad) = rest.split_at(e.valid_up_to());
-                    self.buffer.push_str(std::str::from_utf8(good).unwrap_or(""));
+                    self.buffer
+                        .push_str(std::str::from_utf8(good).unwrap_or(""));
                     match e.error_len() {
                         Some(n) => {
                             self.buffer.push('\u{FFFD}');
@@ -122,7 +127,10 @@ pub enum Part {
     /// A `/chat/completions` delta: `{ content }`, `{ reasoning_content }` or `{ tool_calls }`.
     Delta(JValue),
     /// The reply ended with an error; `status` only for the errors that carry one.
-    Error { message: String, status: Option<u16> },
+    Error {
+        message: String,
+        status: Option<u16>,
+    },
     /// The reply finished: `stop`, `length`, `content_filter` or `tool_calls`; usage when sent.
     Finish { finish: String, usage: JValue },
 }
@@ -149,7 +157,10 @@ fn tool_open(index: usize, id: JValue, name: JValue, arguments: JValue) -> Part 
             ("index", JValue::Num(index as f64)),
             ("id", id),
             ("type", JValue::from("function")),
-            ("function", JValue::obj([("name", name), ("arguments", arguments)])),
+            (
+                "function",
+                JValue::obj([("name", name), ("arguments", arguments)]),
+            ),
         ])]),
     )]))
 }
@@ -159,7 +170,10 @@ fn tool_args(index: usize, arguments: &str) -> Part {
         "tool_calls",
         JValue::Arr(vec![JValue::obj([
             ("index", JValue::Num(index as f64)),
-            ("function", JValue::obj([("arguments", JValue::from(arguments))])),
+            (
+                "function",
+                JValue::obj([("arguments", JValue::from(arguments))]),
+            ),
         ])]),
     )]))
 }
@@ -178,7 +192,9 @@ fn message_text(item: &JValue) -> String {
     match item.get("content") {
         JValue::Arr(parts) => parts
             .iter()
-            .filter(|c| c.is_object() && matches!(c.get("type").as_str(), Some("output_text" | "text")))
+            .filter(|c| {
+                c.is_object() && matches!(c.get("type").as_str(), Some("output_text" | "text"))
+            })
             .filter_map(|c| c.get("text").as_str())
             .collect(),
         _ => String::new(),
@@ -190,9 +206,18 @@ pub fn usage_of(u: &JValue) -> JValue {
     if !u.is_object() {
         return JValue::Null;
     }
-    let or_null = |v: &JValue| if v.is_nullish() { JValue::Null } else { v.clone() };
+    let or_null = |v: &JValue| {
+        if v.is_nullish() {
+            JValue::Null
+        } else {
+            v.clone()
+        }
+    };
     let total = if u.get("total_tokens").is_nullish() {
-        match (u.get("input_tokens").as_num(), u.get("output_tokens").as_num()) {
+        match (
+            u.get("input_tokens").as_num(),
+            u.get("output_tokens").as_num(),
+        ) {
             (Some(a), Some(b)) if a.is_finite() && b.is_finite() => JValue::Num(a + b),
             _ => JValue::Null,
         }
@@ -245,7 +270,10 @@ impl ChatParts {
 
     fn index_of(&mut self, id: &JValue) -> Option<usize> {
         let k = self.key(id);
-        self.tool_index.iter().find(|(key, _)| *key == k).map(|(_, i)| *i)
+        self.tool_index
+            .iter()
+            .find(|(key, _)| *key == k)
+            .map(|(_, i)| *i)
     }
 
     /// `index = toolIndex.size; toolIndex.set(id, index)`: a key already present (two calls
@@ -301,7 +329,11 @@ impl ChatParts {
         if self.ended {
             return out;
         }
-        let item = if evt.get("item").is_object() { Some(evt.get("item")) } else { None };
+        let item = if evt.get("item").is_object() {
+            Some(evt.get("item"))
+        } else {
+            None
+        };
         match evt.get("type").as_str().unwrap_or("") {
             "response.output_text.delta" => {
                 if let Some(delta) = evt.get("delta").as_str().filter(|d| !d.is_empty()) {
@@ -320,7 +352,10 @@ impl ChatParts {
             }
             "response.reasoning_summary_text.delta" | "response.reasoning_text.delta" => {
                 if let Some(delta) = evt.get("delta").as_str().filter(|d| !d.is_empty()) {
-                    out.push(Part::Delta(JValue::obj([("reasoning_content", JValue::from(delta))])));
+                    out.push(Part::Delta(JValue::obj([(
+                        "reasoning_content",
+                        JValue::from(delta),
+                    )])));
                 }
             }
             "response.output_item.added" => {
@@ -328,13 +363,20 @@ impl ChatParts {
                     if item.get("type").as_str() == Some("function_call") {
                         if let Some(name) = item.get("name").as_str() {
                             let index = self.open_index(item.get("id"));
-                            out.push(tool_open(index, call_id(item), JValue::from(name), JValue::from("")));
+                            out.push(tool_open(
+                                index,
+                                call_id(item),
+                                JValue::from(name),
+                                JValue::from(""),
+                            ));
                         }
                     }
                 }
             }
             "response.function_call_arguments.delta" => {
-                if let (Some(index), Some(delta)) = (self.index_of(evt.get("item_id")), evt.get("delta").as_str()) {
+                if let (Some(index), Some(delta)) =
+                    (self.index_of(evt.get("item_id")), evt.get("delta").as_str())
+                {
                     let k = self.key(evt.get("item_id"));
                     self.args_sent.push(k);
                     out.push(tool_args(index, delta));
@@ -351,13 +393,22 @@ impl ChatParts {
                             None => {
                                 let i = self.open_index(item.get("id"));
                                 let name = crate::js::or_str(item.get("name"), "");
-                                out.push(tool_open(i, call_id(item), JValue::from(name), JValue::from("")));
+                                out.push(tool_open(
+                                    i,
+                                    call_id(item),
+                                    JValue::from(name),
+                                    JValue::from(""),
+                                ));
                                 i
                             }
                         };
                         let k = self.key(item.get("id"));
                         let sent = self.args_sent.contains(&k);
-                        if let Some(args) = item.get("arguments").as_str().filter(|a| !sent && !a.is_empty()) {
+                        if let Some(args) = item
+                            .get("arguments")
+                            .as_str()
+                            .filter(|a| !sent && !a.is_empty())
+                        {
                             self.args_sent.push(k);
                             out.push(tool_args(index, args));
                         }
@@ -370,11 +421,18 @@ impl ChatParts {
                     for o in outputs.iter().filter(|o| o.is_object()) {
                         if o.get("type").as_str() == Some("message") {
                             self.message_done(o, &mut out);
-                        } else if o.get("type").as_str() == Some("function_call") && self.index_of(o.get("id")).is_none() {
+                        } else if o.get("type").as_str() == Some("function_call")
+                            && self.index_of(o.get("id")).is_none()
+                        {
                             if let Some(name) = o.get("name").as_str() {
                                 let index = self.open_index(o.get("id"));
                                 let args = o.get("arguments").as_str().unwrap_or("");
-                                out.push(tool_open(index, call_id(o), JValue::from(name), JValue::from(args)));
+                                out.push(tool_open(
+                                    index,
+                                    call_id(o),
+                                    JValue::from(name),
+                                    JValue::from(args),
+                                ));
                             }
                         }
                     }
@@ -391,22 +449,37 @@ impl ChatParts {
                     _ if self.saw_tool => "tool_calls",
                     _ => "stop",
                 };
-                out.push(Part::Finish { finish: finish.to_string(), usage });
+                out.push(Part::Finish {
+                    finish: finish.to_string(),
+                    usage,
+                });
                 self.ended = true;
             }
             "response.failed" => {
                 let response = evt.get("response");
-                let target = if response.get("error").truthy() { response.get("error") } else { response };
+                let target = if response.get("error").truthy() {
+                    response.get("error")
+                } else {
+                    response
+                };
                 let fallback = self.texts.could_not_finish();
                 let message = self.texts.error_text(target, &fallback, self.now_ms);
-                out.push(Part::Error { message, status: Some(502) });
+                out.push(Part::Error {
+                    message,
+                    status: Some(502),
+                });
                 self.ended = true;
             }
             "error" => {
                 let fallback = self.texts.returned_error();
                 let message = self.texts.error_text(evt, &fallback, self.now_ms);
-                let known = crate::texts::error_object(evt).and_then(|e| self.texts.known_error(&e, self.now_ms)).is_some();
-                out.push(Part::Error { message, status: Some(if known { 429 } else { 502 }) });
+                let known = crate::texts::error_object(evt)
+                    .and_then(|e| self.texts.known_error(&e, self.now_ms))
+                    .is_some();
+                out.push(Part::Error {
+                    message,
+                    status: Some(if known { 429 } else { 502 }),
+                });
                 self.ended = true;
             }
             _ => {}
@@ -420,7 +493,10 @@ impl ChatParts {
             return Vec::new();
         }
         self.ended = true;
-        vec![Part::Error { message: self.texts.ended_early(), status: None }]
+        vec![Part::Error {
+            message: self.texts.ended_early(),
+            status: None,
+        }]
     }
 }
 

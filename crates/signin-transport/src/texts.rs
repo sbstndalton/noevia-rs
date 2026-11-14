@@ -24,7 +24,10 @@ pub struct Texts {
 
 impl Texts {
     pub fn only_chat(&self) -> String {
-        format!("Only chat completions are available through {}.", self.label)
+        format!(
+            "Only chat completions are available through {}.",
+            self.label
+        )
     }
     pub fn not_json(&self) -> String {
         "The chat request was not valid JSON.".to_string()
@@ -33,7 +36,10 @@ impl Texts {
         format!("Choose a {} model in the model popup.", self.label)
     }
     pub fn not_on_account(&self, model80: &str, first8: &str) -> String {
-        format!("{model80} is not available on your {} account. Choose one of: {first8}.", self.label)
+        format!(
+            "{model80} is not available on your {} account. Choose one of: {first8}.",
+            self.label
+        )
     }
     pub fn effort_not_offered(&self, shown: &str, model80: &str, offered: &str) -> String {
         format!("{} does not offer \"{shown}\" reasoning for {model80}. It offers {offered}, or Default.", self.label)
@@ -73,7 +79,11 @@ impl Texts {
         }
         let empty = JValue::Str(String::new());
         let kind = js::to_string(first_truthy(&[e.get("type"), e.get("code")]).unwrap_or(&empty));
-        let message = e.get("message").as_str().or_else(|| e.get("detail").as_str()).unwrap_or("");
+        let message = e
+            .get("message")
+            .as_str()
+            .or_else(|| e.get("detail").as_str())
+            .unwrap_or("");
         if kind == "usage_limit_reached" || contains_ci(message, "usage limit") {
             let resets_at = js::to_number(e.get("resets_at"));
             let resets_in = js::to_number(e.get("resets_in_seconds"));
@@ -87,10 +97,16 @@ impl Texts {
             let plan = e
                 .get("plan_type")
                 .as_str()
-                .filter(|p| (1..=20).contains(&p.len()) && p.bytes().all(|b| b.is_ascii_alphabetic() || b == b'_'))
+                .filter(|p| {
+                    (1..=20).contains(&p.len())
+                        && p.bytes().all(|b| b.is_ascii_alphabetic() || b == b'_')
+                })
                 .map(|p| {
                     let mut c = p.chars();
-                    let head = c.next().map(|h| h.to_ascii_uppercase().to_string()).unwrap_or_default();
+                    let head = c
+                        .next()
+                        .map(|h| h.to_ascii_uppercase().to_string())
+                        .unwrap_or_default();
                     format!(" on your {head}{} plan", c.as_str())
                 })
                 .unwrap_or_default();
@@ -99,14 +115,25 @@ impl Texts {
             // the crate's report).
             let when = at
                 .and_then(js::iso_string)
-                .map(|iso| format!(" It resets at {} UTC.", js_slice(&iso, 16).replacen('T', " ", 1)))
+                .map(|iso| {
+                    format!(
+                        " It resets at {} UTC.",
+                        js_slice(&iso, 16).replacen('T', " ", 1)
+                    )
+                })
                 .unwrap_or_default();
             return Some(self.usage_limit(&plan, &when));
         }
         if kind == "usage_not_included" {
             return Some(self.not_included.clone());
         }
-        if ["insufficient_quota", "credit_balance_exhausted", "organization_usage_limit_exceeded"].contains(&kind.as_str()) {
+        if [
+            "insufficient_quota",
+            "credit_balance_exhausted",
+            "organization_usage_limit_exceeded",
+        ]
+        .contains(&kind.as_str())
+        {
             return Some(self.no_quota());
         }
         None
@@ -117,7 +144,10 @@ impl Texts {
         let e = error_object(value);
         let text = match e.as_ref().and_then(|e| self.known_error(e, now_ms)) {
             Some(known) => known,
-            None => match e.as_ref().map(|e| first_truthy(&[e.get("message"), e.get("detail")])) {
+            None => match e
+                .as_ref()
+                .map(|e| first_truthy(&[e.get("message"), e.get("detail")]))
+            {
                 Some(Some(v)) => js::to_string(v),
                 _ => fallback.to_string(),
             },
@@ -131,9 +161,10 @@ impl Texts {
         let e = error_object(&parsed);
         let known = match &e {
             Some(e) => self.known_error(e, now_ms),
-            None if contains_ci(text, "usage limit") => {
-                self.known_error(&JValue::obj([("type", JValue::from("usage_limit_reached"))]), now_ms)
-            }
+            None if contains_ci(text, "usage limit") => self.known_error(
+                &JValue::obj([("type", JValue::from("usage_limit_reached"))]),
+                now_ms,
+            ),
             None => None,
         };
         if let Some(known) = known {
@@ -141,15 +172,24 @@ impl Texts {
         }
         let detail = e
             .as_ref()
-            .map(|e| match (e.get("detail").as_str(), e.get("message").as_str()) {
-                (Some(d), _) => d.to_string(),
-                (None, Some(m)) => m.to_string(),
-                _ => String::new(),
-            })
+            .map(
+                |e| match (e.get("detail").as_str(), e.get("message").as_str()) {
+                    (Some(d), _) => d.to_string(),
+                    (None, Some(m)) => m.to_string(),
+                    _ => String::new(),
+                },
+            )
             .unwrap_or_default();
-        let detail = if detail.is_empty() { String::new() } else { format!(": {detail}") };
+        let detail = if detail.is_empty() {
+            String::new()
+        } else {
+            format!(": {detail}")
+        };
         let line = if status == 429 {
-            format!("{} is rate-limiting this account{detail}. Try again shortly.", self.label)
+            format!(
+                "{} is rate-limiting this account{detail}. Try again shortly.",
+                self.label
+            )
         } else {
             format!("{} returned {status}{detail}", self.label)
         };
@@ -208,16 +248,22 @@ mod tests {
 
     #[test]
     fn usage_limit_line() {
-        let e = js_json::parse(r#"{"type":"usage_limit_reached","plan_type":"plus","resets_at":1800000000}"#).unwrap_or(JValue::Null);
+        let e = js_json::parse(
+            r#"{"type":"usage_limit_reached","plan_type":"plus","resets_at":1800000000}"#,
+        )
+        .unwrap_or(JValue::Null);
         assert_eq!(
             texts().known_error(&e, 0.0).as_deref(),
             Some("Service usage limit reached on your Plus plan. It resets at 2027-01-15 08:00 UTC. Pick another provider in the model popup until then.")
         );
         // Past the JS date range: Node throws, the port leaves the time out.
-        let far = js_json::parse(r#"{"type":"usage_limit_reached","resets_at":1e300}"#).unwrap_or(JValue::Null);
+        let far = js_json::parse(r#"{"type":"usage_limit_reached","resets_at":1e300}"#)
+            .unwrap_or(JValue::Null);
         assert_eq!(
             texts().known_error(&far, 0.0).as_deref(),
-            Some("Service usage limit reached. Pick another provider in the model popup until then.")
+            Some(
+                "Service usage limit reached. Pick another provider in the model popup until then."
+            )
         );
     }
 }

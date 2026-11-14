@@ -189,7 +189,7 @@ function coreTexts() {
   const s = src.match(/source: '([a-z]+)'/);
   if (!m || !n || !s) throw new Error('core source shape changed: MESSAGES / usage_not_included / source');
   const messages = new Function(`return ${m[1]}`)();
-  return { label: 'ChatGPT', disconnected: messages.disconnected, reconnect: messages.reconnect, transient: messages.transient, notIncluded: n[1], source: s[1] };
+  return { label: 'Service', disconnected: messages.disconnected, reconnect: messages.reconnect, transient: messages.transient, notIncluded: n[1], source: s[1] };
 }
 
 (async () => {

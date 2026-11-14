@@ -1,7 +1,7 @@
 [package]
 name = "signin-transport"
 version = "0.1.0"
-description = "Chat transport of the account sign-in provider: chat-completions bodies to the Responses wire shape and its event stream back, the session cache and the refresh-once rule (port of core chatgpt-oauth.cjs's transport half; unused leaf)"
+description = "Chat transport of the account sign-in provider: chat-completions bodies to the Responses wire shape and its event stream back, the session cache and the refresh-once rule (port of core's sign-in provider transport; unused leaf)"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true

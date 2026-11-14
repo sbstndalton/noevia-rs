@@ -147,7 +147,7 @@ pub enum Step {
     AskBroker { rejected_token: Option<String> },
     /// Send the request with this session.
     Send(Session),
-    /// Tell the broker this sign-in failed (`chatgptReject(user, generation)`), then answer `Refuse`.
+    /// Tell the broker this sign-in failed (the broker's reject op with this generation), then answer `Refuse`.
     Reject {
         generation: js_json::JValue,
         then: Refusal,
