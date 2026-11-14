@@ -2396,6 +2396,211 @@
       }
     },
     {
+      "name": "create-two-projects",
+      "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-alpha\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {},\n      \"projectFolder\": \"noevia projects/QA Alpha\",\n      \"sourceFolders\": [\n        \"noevia projects/QA Alpha\"\n      ],\n      \"files\": [\n        {\n          \"name\": \"noevia projects/QA Alpha/Text/notes.md\",\n          \"source\": \"noevia projects/QA Alpha\",\n          \"textRef\": \"c7aac83faffdfbf3c7b75ee5588b9034eb2fed9dcff6ff4e1afab8472aab8b52\",\n          \"chars\": 21,\n          \"attachment\": {\n            \"id\": \"c7aac83faffdfbf3c7b75ee5588b9034eb2fed9dcff6ff4e1afab8472aab8b52\",\n            \"bytes\": 21,\n            \"group\": \"Text\",\n            \"state\": \"ready\"\n          }\n        },\n        {\n          \"name\": \"plain.txt\",\n          \"textRef\": \"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\n          \"chars\": 20\n        },\n        {\n          \"name\": \"noevia projects/QA Alpha/Text/partial.md\",\n          \"source\": \"noevia projects/QA Alpha\",\n          \"textRef\": \"170ed5ee288ebeb471851f38fe21f86b4e6e92e71dc129b494e18a9f4293252b\",\n          \"chars\": 10,\n          \"attachment\": {\n            \"id\": \"170ed5ee288ebeb471851f38fe21f86b4e6e92e71dc129b494e18a9f4293252b\",\n            \"bytes\": 10,\n            \"group\": \"Text\",\n            \"state\": \"partial\"\n          }\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-bare\",\n      \"name\": \"QA Bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {},\n      \"files\": [\n        {\n          \"name\": \"plain.txt\",\n          \"textRef\": \"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\n          \"chars\": 20\n        }\n      ]\n    }\n  ]\n}",
+      "connection": {
+        "kind": "webdav",
+        "baseUrl": "https://qa-dav.invalid/remote.php/dav/files/qa",
+        "bucket": "",
+        "region": "us-east-1",
+        "username": "qa-dav"
+      },
+      "storage": {
+        "files": {
+          "noevia projects/QA Alpha/Text/notes.md": {
+            "text": "QA note: stored text.",
+            "etag": "\"qa-etag-a\""
+          }
+        },
+        "dirs": [
+          "noevia projects",
+          "noevia projects/QA Alpha",
+          "noevia projects/QA Alpha/Text"
+        ],
+        "fail": {}
+      },
+      "call": {
+        "project": "qa-bare",
+        "name": "new.md",
+        "text": "QA",
+        "options": {}
+      },
+      "accounts": {
+        "{\"kind\":\"webdav\",\"baseUrl\":\"https://qa-dav.invalid/remote.php/dav/files/qa\",\"bucket\":\"\",\"region\":\"us-east-1\",\"username\":\"qa-dav\"}": "0664b333f8a15467afd4d43beea483e5efd061800e3b6c2ef5d2ca9c069908c6"
+      },
+      "node": {
+        "file": "{\"name\":\"noevia projects/qa-bare/Text/new.md\",\"source\":\"noevia projects/qa-bare\",\"attachment\":{\"id\":\"48947c06d09a212ca1dcfbdf5a63d18dde8c964dbc66eea033a363eee856de21\",\"bytes\":2,\"group\":\"Text\",\"state\":\"ready\"},\"content\":\"QA\"}",
+        "calls": [
+          [
+            "mkdir",
+            "noevia projects"
+          ],
+          [
+            "mkdir",
+            "noevia projects/qa-bare"
+          ],
+          [
+            "mkdir",
+            "noevia projects/qa-bare/Text"
+          ],
+          [
+            "write",
+            "noevia projects/qa-bare/Text/new.md",
+            ""
+          ]
+        ],
+        "project": "{\"id\":\"qa-bare\",\"name\":\"QA Bare\",\"modes\":[\"chat\"],\"chats\":[],\"instructionSkills\":{},\"files\":[{\"name\":\"plain.txt\",\"textRef\":\"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\"chars\":20},{\"name\":\"noevia projects/qa-bare/Text/new.md\",\"attachment\":{\"id\":\"48947c06d09a212ca1dcfbdf5a63d18dde8c964dbc66eea033a363eee856de21\",\"bytes\":2,\"group\":\"Text\",\"state\":\"ready\"},\"source\":\"noevia projects/qa-bare\",\"textRef\":\"48947c06d09a212ca1dcfbdf5a63d18dde8c964dbc66eea033a363eee856de21\",\"chars\":2}],\"projectFolder\":\"noevia projects/qa-bare\",\"assets\":[],\"sourceFolders\":[\"noevia projects/qa-bare\"],\"updatedAt\":1700000000000}",
+        "index": [
+          [
+            "index",
+            "noevia projects/qa-bare/Text/new.md"
+          ]
+        ],
+        "loadWrites": 0
+      }
+    },
+    {
+      "name": "create-no-folder-write-fails",
+      "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-bare\",\n      \"name\": \"QA Bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {},\n      \"files\": [\n        {\n          \"name\": \"plain.txt\",\n          \"textRef\": \"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\n          \"chars\": 20\n        }\n      ]\n    }\n  ]\n}",
+      "connection": {
+        "kind": "webdav",
+        "baseUrl": "https://qa-dav.invalid/remote.php/dav/files/qa",
+        "bucket": "",
+        "region": "us-east-1",
+        "username": "qa-dav"
+      },
+      "storage": {
+        "files": {},
+        "dirs": [],
+        "fail": {
+          "write": {
+            "noevia projects/qa-bare/Text/new.md": {
+              "status": 502,
+              "message": "storage returned 500",
+              "upstream": 500
+            }
+          }
+        }
+      },
+      "call": {
+        "project": "qa-bare",
+        "name": "new.md",
+        "text": "QA",
+        "options": {}
+      },
+      "accounts": {
+        "{\"kind\":\"webdav\",\"baseUrl\":\"https://qa-dav.invalid/remote.php/dav/files/qa\",\"bucket\":\"\",\"region\":\"us-east-1\",\"username\":\"qa-dav\"}": "0664b333f8a15467afd4d43beea483e5efd061800e3b6c2ef5d2ca9c069908c6"
+      },
+      "node": {
+        "error": "storage returned 500",
+        "calls": [
+          [
+            "mkdir",
+            "noevia projects"
+          ],
+          [
+            "mkdir",
+            "noevia projects/qa-bare"
+          ],
+          [
+            "mkdir",
+            "noevia projects/qa-bare/Text"
+          ],
+          [
+            "write",
+            "noevia projects/qa-bare/Text/new.md",
+            ""
+          ]
+        ],
+        "project": null,
+        "index": [],
+        "loadWrites": 0
+      }
+    },
+    {
+      "name": "adopt-makes-folder-then-exists",
+      "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-bare\",\n      \"name\": \"QA Bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {},\n      \"files\": [\n        {\n          \"name\": \"plain.txt\",\n          \"textRef\": \"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\n          \"chars\": 20\n        }\n      ]\n    }\n  ]\n}",
+      "connection": {
+        "kind": "webdav",
+        "baseUrl": "https://qa-dav.invalid/remote.php/dav/files/qa",
+        "bucket": "",
+        "region": "us-east-1",
+        "username": "qa-dav"
+      },
+      "storage": {
+        "files": {
+          "noevia projects/qa-bare/Text/plain.txt": {
+            "text": "QA there",
+            "etag": "\"qa-etag-p\""
+          }
+        },
+        "dirs": [],
+        "fail": {}
+      },
+      "call": {
+        "project": "qa-bare",
+        "name": "plain.txt",
+        "text": "QA plain local text. more",
+        "options": {
+          "expectName": "plain.txt",
+          "expectContent": "QA plain local text.",
+          "expectAttachment": null,
+          "adoptTo": "noevia projects/qa-bare/Text/plain.txt",
+          "adoptAccount": "0664b333f8a15467afd4d43beea483e5efd061800e3b6c2ef5d2ca9c069908c6"
+        }
+      },
+      "accounts": {
+        "{\"kind\":\"webdav\",\"baseUrl\":\"https://qa-dav.invalid/remote.php/dav/files/qa\",\"bucket\":\"\",\"region\":\"us-east-1\",\"username\":\"qa-dav\"}": "0664b333f8a15467afd4d43beea483e5efd061800e3b6c2ef5d2ca9c069908c6"
+      },
+      "node": {
+        "error": "\"noevia projects/qa-bare/Text/plain.txt\" already exists in storage and noevia has not read it, so it was not overwritten. Nothing was saved. Sync this project's Sources, then edit that file.",
+        "calls": [
+          [
+            "mkdir",
+            "noevia projects"
+          ],
+          [
+            "mkdir",
+            "noevia projects/qa-bare"
+          ],
+          [
+            "version",
+            "noevia projects/qa-bare/Text/plain.txt"
+          ]
+        ],
+        "project": "{\"id\":\"qa-bare\",\"name\":\"QA Bare\",\"modes\":[\"chat\"],\"chats\":[],\"instructionSkills\":{},\"files\":[{\"name\":\"plain.txt\",\"textRef\":\"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\"chars\":20}],\"projectFolder\":\"noevia projects/qa-bare\",\"sourceFolders\":[\"noevia projects/qa-bare\"]}",
+        "index": [],
+        "loadWrites": 0
+      }
+    },
+    {
+      "name": "create-lone-surrogate-name",
+      "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-bare\",\n      \"name\": \"QA Bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {},\n      \"files\": [\n        {\n          \"name\": \"plain.txt\",\n          \"textRef\": \"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\n          \"chars\": 20\n        }\n      ]\n    }\n  ]\n}",
+      "connection": null,
+      "storage": null,
+      "call": {
+        "project": "qa-bare",
+        "name": "qa\ud800.md",
+        "text": "QA",
+        "options": {}
+      },
+      "accounts": {
+        "null": null
+      },
+      "node": {
+        "file": "{\"name\":\"qa\\ud800.md\",\"attachment\":{\"id\":\"48947c06d09a212ca1dcfbdf5a63d18dde8c964dbc66eea033a363eee856de21\",\"bytes\":2,\"group\":\"Text\",\"state\":\"ready\"},\"content\":\"QA\"}",
+        "calls": [],
+        "project": "{\"id\":\"qa-bare\",\"name\":\"QA Bare\",\"modes\":[\"chat\"],\"chats\":[],\"instructionSkills\":{},\"files\":[{\"name\":\"plain.txt\",\"textRef\":\"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\"chars\":20},{\"name\":\"qa\\ud800.md\",\"attachment\":{\"id\":\"48947c06d09a212ca1dcfbdf5a63d18dde8c964dbc66eea033a363eee856de21\",\"bytes\":2,\"group\":\"Text\",\"state\":\"ready\"},\"textRef\":\"48947c06d09a212ca1dcfbdf5a63d18dde8c964dbc66eea033a363eee856de21\",\"chars\":2}],\"assets\":[],\"updatedAt\":1700000000000}",
+        "index": [
+          [
+            "index",
+            "qa\ud800.md"
+          ]
+        ],
+        "loadWrites": 0
+      }
+    },
+    {
       "name": "edit-stored-read-403",
       "projects": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-alpha\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"instructionSkills\": {},\n      \"projectFolder\": \"noevia projects/QA Alpha\",\n      \"sourceFolders\": [\n        \"noevia projects/QA Alpha\"\n      ],\n      \"files\": [\n        {\n          \"name\": \"noevia projects/QA Alpha/Text/notes.md\",\n          \"source\": \"noevia projects/QA Alpha\",\n          \"textRef\": \"c7aac83faffdfbf3c7b75ee5588b9034eb2fed9dcff6ff4e1afab8472aab8b52\",\n          \"chars\": 21,\n          \"attachment\": {\n            \"id\": \"c7aac83faffdfbf3c7b75ee5588b9034eb2fed9dcff6ff4e1afab8472aab8b52\",\n            \"bytes\": 21,\n            \"group\": \"Text\",\n            \"state\": \"ready\"\n          }\n        },\n        {\n          \"name\": \"plain.txt\",\n          \"textRef\": \"9ccc38e50514229b9e6a73d1f8959ab9f108c5df001deefcb4649874bf74f0d2\",\n          \"chars\": 20\n        },\n        {\n          \"name\": \"noevia projects/QA Alpha/Text/partial.md\",\n          \"source\": \"noevia projects/QA Alpha\",\n          \"textRef\": \"170ed5ee288ebeb471851f38fe21f86b4e6e92e71dc129b494e18a9f4293252b\",\n          \"chars\": 10,\n          \"attachment\": {\n            \"id\": \"170ed5ee288ebeb471851f38fe21f86b4e6e92e71dc129b494e18a9f4293252b\",\n            \"bytes\": 10,\n            \"group\": \"Text\",\n            \"state\": \"partial\"\n          }\n        }\n      ]\n    }\n  ]\n}",
       "connection": {
