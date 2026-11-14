@@ -1094,7 +1094,16 @@ async fn the_planner_plans_runs_verifies_reviews_and_is_accepted_or_cancelled() 
                 server_projects::task_store::Options { kinds: Some(vec!["code".into()]), ..Default::default() },
             );
             let authority = store.claim_lifecycle_authority().unwrap();
-            let expected = js_json::JValue::Arr(code_pipeline::EXPECTED_ARTIFACTS.iter().map(|a| js_json::JValue::Str((*a).to_owned())).collect());
+            // noevia#2598 item 2: the list Node's code-pipeline.cjs gives the gate, as its recorder
+            // exported it (crates/code-pipeline/tests/fixtures.rs pins the crate's constant to the same
+            // recording), not the constant both sides share.
+            let recorded = node_expected_artifacts();
+            assert_eq!(
+                recorded,
+                code_pipeline::EXPECTED_ARTIFACTS.iter().map(|a| (*a).to_owned()).collect::<Vec<_>>(),
+                "the front's gate list is code-pipeline.cjs's"
+            );
+            let expected = js_json::JValue::Arr(recorded.into_iter().map(js_json::JValue::Str).collect());
             let at = &ours_rows[mine]["data"];
             let request = js_json::JValue::obj([
                 ("from", js_json::JValue::Str(at["from"].as_str().unwrap().to_owned())),
@@ -1819,4 +1828,19 @@ async fn a_planner_task_on_a_machine_plans_runs_reviews_and_completes_there() {
         r.quiet().await;
     })
     .await;
+}
+
+/// Node's `EXPECTED_ARTIFACTS` (code-pipeline.cjs) as crates/code-pipeline/tools/gen-fixtures.cjs
+/// recorded it into code-pipeline.v1.json (`constants.EXPECTED_ARTIFACTS`; noevia#2598 item 2).
+fn node_expected_artifacts() -> Vec<String> {
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../crates/code-pipeline/tests/fixtures/code-pipeline.v1.json");
+    let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let fixture: Value = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    fixture["constants"]["EXPECTED_ARTIFACTS"]
+        .as_array()
+        .unwrap_or_else(|| panic!("{}: no constants.EXPECTED_ARTIFACTS", path.display()))
+        .iter()
+        .map(|a| a.as_str().unwrap().to_owned())
+        .collect()
 }
