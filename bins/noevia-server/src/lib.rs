@@ -97,6 +97,7 @@ pub mod offsite_mirror;
 pub mod offsite_routes;
 pub mod offsite_settings;
 pub mod offsite_store;
+pub mod owned_routes;
 pub mod plugin_directory_routes;
 pub mod preset_read_routes;
 pub mod project_config_routes;

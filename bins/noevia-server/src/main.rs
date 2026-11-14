@@ -18,6 +18,18 @@ fn write_features(writer: &mut impl Write) -> io::Result<()> {
     writer.flush()
 }
 
+/// `--owned-routes`: takes no further argument.
+fn owned_routes_cli(mut args: impl Iterator<Item = OsString>, writer: &mut impl Write) -> ExitCode {
+    if args.next().is_some() {
+        eprintln!("noevia-server: --owned-routes takes no argument");
+        return ExitCode::from(2);
+    }
+    match noevia_server::owned_routes::write(writer) {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(_) => ExitCode::FAILURE,
+    }
+}
+
 fn feature_probe(writer: &mut impl Write) -> ExitCode {
     match write_features(writer) {
         Ok(()) => ExitCode::SUCCESS,
@@ -229,6 +241,11 @@ fn main() -> ExitCode {
     // startup. Its caller owns/revalidates the database transaction; this process never opens DB.
     if command.as_deref() == Some(OsStr::new("--claim-legacy-root")) {
         return legacy_claim_cli(args);
+    }
+    // Council p5 (sbstndalton/noevia#2700): the routes this binary answers natively, for the release assembler once
+    // core's Node refusal stubs are gone. Before the runtime and any listener; reads no configuration.
+    if command.as_deref() == Some(OsStr::new("--owned-routes")) {
+        return owned_routes_cli(args, &mut io::stdout().lock());
     }
     // Before the runtime and any listener: no network surface (sbstndalton/noevia#2582).
     if command.as_deref() == Some(OsStr::new("--operator-invitation")) {
@@ -666,6 +683,22 @@ mod tests {
             &mut out,
         );
         (code, String::from_utf8(out).unwrap())
+    }
+
+    #[test]
+    fn owned_routes_cli_prints_the_manifest_and_refuses_arguments() {
+        let mut out = Vec::new();
+        assert_eq!(owned_routes_cli(std::iter::empty(), &mut out), ExitCode::SUCCESS);
+        let mut want = Vec::new();
+        noevia_server::owned_routes::write(&mut want).unwrap();
+        assert_eq!(out, want);
+        assert!(String::from_utf8(out).unwrap().contains("DELETE /api/admin/users/{id}\n"));
+        let mut none = Vec::new();
+        assert_eq!(
+            owned_routes_cli([OsString::from("x")].into_iter(), &mut none),
+            ExitCode::from(2)
+        );
+        assert!(none.is_empty());
     }
 
     #[test]
