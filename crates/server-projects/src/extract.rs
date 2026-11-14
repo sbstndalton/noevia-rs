@@ -705,8 +705,10 @@ pub fn extract_document_text(
     Ok(complete_unheld(name, bytes, out, engine, limits, fig_bytes))
 }
 
-/// documents.cjs `completeDocument(name, bytes, out)` for a record this side wrote (no reopen of a
-/// size-refused or shared-memory failure: those only come from core's own reader).
+/// documents.cjs `completeDocument(name, bytes, out)`: the completion pass for a record without the
+/// marker, and (#1867) the one reopen of a completed record whose OCR was refused for the file's size
+/// alone ([`reopenable`]), once the OCR worker takes the file. Not ported: the reopen of core's own
+/// reader's shared-memory upload failure (`reopenSabFailure`, #1885), which this side never writes.
 pub fn complete_document(
     name: &str,
     bytes: &[u8],
@@ -731,7 +733,7 @@ fn complete_unheld(
     limits: &Limits,
     fig_bytes: &mut FigureBytes,
 ) -> JValue {
-    if out.get("completion").as_str() == Some(COMPLETION)
+    if (out.get("completion").as_str() == Some(COMPLETION) && !reopenable(&out))
         || out.get("retryable").truthy()
         || pages_of(&out).is_empty()
     {
@@ -826,6 +828,20 @@ fn complete_unlocked(
         }
         caps.clone().flatten()
     };
+    // documents.cjs `ocrLimit()`: the worker's own limit for a file over the default one.
+    let ocr_limit = |caps: &mut dyn FnMut() -> Option<OcrCaps>| {
+        if bytes.len() > OCR_MAX_BYTES {
+            max_bytes_of(caps().as_ref())
+        } else {
+            OCR_MAX_BYTES
+        }
+    };
+    // #1867: a completed record (only a reopenable one gets here) is reopened only when the worker now
+    // takes the file; then only its OCR is redone (its ranges were read) and it is marked again.
+    let reopened = out.get("completion").as_str() == Some(COMPLETION);
+    if reopened && (!ocr_enabled || bytes.len() > ocr_limit(&mut caps_now)) {
+        return out;
+    }
     let mut page_texts = pages_of(&out);
     page_texts.sort_by(|a, b| {
         n(a, "number")
@@ -863,7 +879,11 @@ fn complete_unlocked(
         k += 1.0;
     }
     let total = or_num(n(&out, "pages"), page_texts.len() as f64);
-    let mut stopped_at: Option<JValue> = None;
+    let mut stopped_at: Option<JValue> = if reopened && out.get("stoppedAt").truthy() {
+        Some(out.get("stoppedAt").clone())
+    } else {
+        None
+    };
     let mut found_figures: Option<Vec<JValue>> = match out.get("figures") {
         JValue::Arr(a) => Some(a.clone()),
         _ => None,
@@ -894,7 +914,7 @@ fn complete_unlocked(
             tries < RETRY_ATTEMPTS,
         )
     };
-    while next <= last {
+    while !reopened && next <= last {
         if used >= limits.text {
             stopped_at = Some(obj(vec![
                 ("page", JValue::Num(next - 1.0)),
@@ -1012,6 +1032,12 @@ fn complete_unlocked(
     }
 
     let assembled = assemble(page_texts, total, false, None, false, stopped_at);
+    // An error that said "no text at all" is no longer true once a retry found some; one that said the
+    // file was too large for OCR is not true once the worker took it (#1867).
+    let error_id = out.get("errorId").as_str().unwrap_or("");
+    let stale_error = (assembled.get("state").as_str() != Some("failed")
+        && matches!(error_id, "noOcrText" | "noNativeText"))
+        || (error_id == "ocrTooLarge" && ocr_enabled && bytes.len() <= ocr_limit(&mut caps_now));
     let mut rest = out.clone();
     remove(&mut rest, "ocrPagesSent");
     remove(&mut rest, "stoppedAt");
@@ -1020,10 +1046,14 @@ fn complete_unlocked(
             wtf16::set(items, &k, v);
         }
     }
-    // documents.cjs: `error: ocrError || out.error` (no OCR error on this path), errorId kept.
-    let error = out.get("error").clone();
+    // documents.cjs: `error: ocrError || (staleNoText ? undefined : out.error)` (no OCR error on this
+    // path), and the errorId with it.
+    let (error, error_id) = if stale_error {
+        (JValue::Undefined, JValue::Undefined)
+    } else {
+        (out.get("error").clone(), out.get("errorId").clone())
+    };
     set(&mut rest, "error", error);
-    let error_id = out.get("errorId").clone();
     set(
         &mut rest,
         "errorId",
@@ -1062,6 +1092,19 @@ const RETRY_TOO_LARGE: &str = "the PDF is larger than the OCR service accepts";
 fn size_blocked(p: &JValue) -> bool {
     p.get("retry").get("outcome").as_str() == Some("failed")
         && js_string(p.get("retry").get("error")).starts_with(RETRY_TOO_LARGE)
+}
+
+/// documents.cjs `reopenable(out)` (#1867): a completed record a worker accepting larger bodies could
+/// still finish, its OCR refused for the file's size alone (`errorId: 'ocrTooLarge'`, written by core's
+/// own reader, or a page whose retry failed for size). core's shared-memory case is not ported.
+pub fn reopenable(out: &JValue) -> bool {
+    out.get("completion").as_str() == Some(COMPLETION)
+        && match out.get("pageTexts") {
+            JValue::Arr(pages) => {
+                out.get("errorId").as_str() == Some("ocrTooLarge") || pages.iter().any(size_blocked)
+            }
+            _ => false,
+        }
 }
 
 fn max_bytes_of(caps: Option<&OcrCaps>) -> usize {

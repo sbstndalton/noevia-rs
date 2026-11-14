@@ -28,7 +28,7 @@ use std::time::Duration;
 const FIXTURE: &str = include_str!("fixtures/node-extraction.v1.json");
 const PROJECT: &str = "qa-proj-r13-extraction";
 
-/// Scenarios whose replay differs from core, and why. Not fixed here (this test only records).
+/// Scenarios whose replay differs from core, and why (named differences; see noevia issues filed for them).
 const KNOWN: &[(&str, &str)] = &[
     (
         "ocr-reply-number-as-text",
@@ -41,12 +41,6 @@ const KNOWN: &[(&str, &str)] = &[
         "two figures of one reply with the same index: core writes the first one's bytes to \
          <version>.fig<i> and gives each figure its own hash; extract.rs FigureBytes is keyed \
          by index, so the last bytes win the file and both hashes",
-    ),
-    (
-        "ingest-size-blocked-reopened",
-        "core reopens a completed record whose OCR retry was refused only for the file's size \
-         once the worker takes the file (document-sources.cjs ingest `|| reopenable(out)`, \
-         documents.cjs #1867); document_ingest.rs uses any completed record as it is",
     ),
 ];
 
