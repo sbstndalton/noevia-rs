@@ -2,6 +2,7 @@
 //! finish step against the shell's own excerpt. Each test skips with a note when its tool is missing.
 #![cfg(unix)]
 
+mod common;
 use release_assemble::plan::Resolved;
 use release_assemble::tar::{self, Writer};
 use release_assemble::tree;
@@ -62,7 +63,9 @@ fn sample(root: &Path) {
         .collect();
     write(&root.join("core/server/blob.bin"), &big, false);
     std::os::unix::fs::symlink("../server/blob.bin", root.join("core/server/link")).ok();
-    let long_target = format!("../{}", "t".repeat(140));
+    // Inside its own directory: links that climb out of the tree are refused (noevia#2726 item 3,
+    // tests/limits.rs), and the strip-3 comparison below extracts this one at the root.
+    let long_target = format!("./{}", "t".repeat(140));
     std::os::unix::fs::symlink(long_target, root.join("core/long-link")).ok();
     fs::create_dir_all(root.join("rs")).ok();
 }
@@ -145,7 +148,7 @@ fn unreachable_tmp() -> tempfile::TempDir {
 #[test]
 fn rust_tarball_extracts_with_gnu_tar() {
     if !have("tar") {
-        eprintln!("gnu_tar: tar not installed, skipped");
+        common::skip("gnu_tar: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -177,6 +180,7 @@ fn rust_tarball_extracts_with_gnu_tar() {
 #[test]
 fn gnu_tar_formats_read_like_an_extraction() {
     if !have("tar") {
+        common::skip("gnu_tar: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -228,7 +232,7 @@ fn git(dir: &Path, args: &[&str]) -> bool {
 #[test]
 fn git_archive_strip_matches_gnu_tar() {
     if !have("tar") || !have("git") {
-        eprintln!("gnu_tar: git or tar not installed, skipped");
+        common::skip("gnu_tar: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -357,7 +361,7 @@ fn shell_finish(tree_dir: &Path, out_dir: &Path, sha: &str, r: &Resolved) -> Res
 #[test]
 fn finish_matches_the_shell() {
     if !have("tar") || !have("bash") || !have("cp") {
-        eprintln!("gnu_tar: bash/tar/cp missing, skipped");
+        common::skip("gnu_tar: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -396,6 +400,7 @@ fn finish_matches_the_shell() {
 #[test]
 fn missing_entry_refusal_matches_the_shell() {
     if !have("bash") || !have("cp") {
+        common::skip("gnu_tar: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -488,6 +493,7 @@ fn hostile_archives_are_refused() {
 #[test]
 fn gnu_hardlinks_are_refused() {
     if !have("tar") {
+        common::skip("gnu_tar: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();

@@ -3,6 +3,7 @@
 //! must make the same calls, in the same order, and stop with the same refusal. Skipped (with a note)
 //! when bash is not installed.
 
+mod common;
 use release_assemble::lock::Lock;
 use release_assemble::plan::{assemble_components, Source};
 use std::path::{Path, PathBuf};
@@ -287,7 +288,7 @@ fn compare(lock: &[u8], sha: &str, full: &str, dir: &Path) -> String {
 #[test]
 fn recorded_locks_match_the_shell() {
     if bash().is_none() {
-        eprintln!("shell_oracle: bash not installed, skipped");
+        common::skip("shell_oracle: a tool this comparison runs is not installed");
         return;
     }
     let dir = tempfile::tempdir().ok();
@@ -324,7 +325,7 @@ fn recorded_locks_match_the_shell() {
 #[test]
 fn generated_locks_match_the_shell() {
     if bash().is_none() {
-        eprintln!("shell_oracle: bash not installed, skipped");
+        common::skip("shell_oracle: a tool this comparison runs is not installed");
         return;
     }
     let Some(dir) = tempfile::tempdir().ok() else {
@@ -362,6 +363,7 @@ fn generated_locks_match_the_shell() {
 #[test]
 fn lock_value_matches_sed() {
     if bash().is_none() {
+        common::skip("shell_oracle: a tool this comparison runs is not installed");
         return;
     }
     let Some(dir) = tempfile::tempdir().ok() else {
@@ -418,7 +420,7 @@ fn lock_value_matches_sed() {
 #[test]
 fn excerpt_is_verbatim() {
     let Ok(path) = std::env::var("ASSEMBLE_RELEASE_SH") else {
-        eprintln!("excerpt_is_verbatim: ASSEMBLE_RELEASE_SH not set, skipped");
+        common::skip("excerpt_is_verbatim: ASSEMBLE_RELEASE_SH not set");
         return;
     };
     let real = std::fs::read_to_string(path).unwrap_or_default();
