@@ -190,13 +190,8 @@ enum Put {
 type Slot = Arc<Mutex<Option<std::path::PathBuf>>>;
 
 /// A model manager: the embedding service it runs (`loads`: whether a newly served model ever
-/// reports loaded) and its installed models.
-async fn loader(loads: bool) -> (String, Seen) {
-    loader_with(loads, Put::Serve, Slot::default(), Seen::default()).await
-}
-
-/// [`loader`] answering the PUT as `put`; during each PUT it keeps the service intent file as it
-/// is on disk in `intents` (`missing` when there is none).
+/// reports loaded) and its installed models, answering the PUT as `put`; during each PUT it keeps
+/// the service intent file as it is on disk in `intents` (`missing` when there is none).
 async fn loader_with(loads: bool, put: Put, root: Slot, intents: Seen) -> (String, Seen) {
     let served = Arc::new(Mutex::new(vec!["qa-embed-a".to_string()]));
     let loaded = Arc::new(Mutex::new(vec!["qa-embed-a".to_string()]));
@@ -957,7 +952,8 @@ async fn service_off_stops_the_service_and_refuses_what_core_refuses() {
 }
 
 fn intent(w: &World) -> Value {
-    serde_json::from_slice(&std::fs::read(w.path("embedding-service-intent.json")).unwrap()).unwrap()
+    serde_json::from_slice(&std::fs::read(w.path("embedding-service-intent.json")).unwrap())
+        .unwrap()
 }
 
 /// The intent files the model manager saw during its PUTs, parsed.
@@ -1224,7 +1220,10 @@ async fn the_inference_key_never_reaches_an_explicit_embeddings_address() {
     let (two, two_seen) = embeddings(vector).await;
     let w = world(
         true,
-        &[("INFERENCE_BASE_URL", inference), ("INFERENCE_API_KEY", KEY.into())],
+        &[
+            ("INFERENCE_BASE_URL", inference),
+            ("INFERENCE_API_KEY", KEY.into()),
+        ],
     )
     .await;
     let at = |base: &str| json!({"baseUrl": base, "model": "qa-embed-a", "profile": "nomic-v1"});
@@ -1237,7 +1236,9 @@ async fn the_inference_key_never_reaches_an_explicit_embeddings_address() {
         .iter()
         .flat_map(|s| s.lock().unwrap().clone())
         .collect();
-    assert!(explicit.iter().any(|r| r.starts_with("POST /v1/embeddings ")));
+    assert!(explicit
+        .iter()
+        .any(|r| r.starts_with("POST /v1/embeddings ")));
     assert!(explicit.iter().any(|r| r.starts_with("GET /v1/models ")));
     for r in &explicit {
         let lower = r.to_ascii_lowercase();

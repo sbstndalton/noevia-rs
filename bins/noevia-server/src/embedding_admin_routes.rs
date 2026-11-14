@@ -260,11 +260,11 @@ impl Deferred {
     /// config lock before the drops.
     fn run(
         &mut self,
-        mut drop: impl FnMut(&Index, &embedding_worker::Target) -> Result<(), String>,
+        mut drop_slot: impl FnMut(&Index, &embedding_worker::Target) -> Result<(), String>,
         kick: impl FnOnce(),
     ) {
         for (index, target) in std::mem::take(&mut self.drops) {
-            if drop(&index, &target).is_err() && drop(&index, &target).is_err() {
+            if drop_slot(&index, &target).is_err() && drop_slot(&index, &target).is_err() {
                 eprintln!("[embedding] a vector slot could not be dropped");
             }
         }
@@ -586,9 +586,10 @@ impl Host for Front {
         }
         let mut deferred = std::mem::take(&mut self.deferred);
         let store = &self.store;
-        deferred.run(|index, target| store.drop_slot(index, target), || {
-            self.send_kick()
-        });
+        deferred.run(
+            |index, target| store.drop_slot(index, target),
+            || self.send_kick(),
+        );
     }
 
     /// `nativeOwner.kick()`; inside a hold it is sent once the hold's drops have run.
@@ -1106,7 +1107,8 @@ mod tests {
         let tries = RefCell::new(HashMap::<String, u32>::new());
         d.run(
             |i, t| {
-                log.borrow_mut().push(format!("drop {} {}", i.project, t.model));
+                log.borrow_mut()
+                    .push(format!("drop {} {}", i.project, t.model));
                 let mut tries = tries.borrow_mut();
                 let n = tries.entry(i.project.clone()).or_default();
                 *n += 1;

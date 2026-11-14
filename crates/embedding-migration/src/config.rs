@@ -431,10 +431,8 @@ mod tests {
     use super::*;
 
     fn scratch(name: &str) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!(
-            "qa-embedding-config-{}-{name}",
-            std::process::id()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("qa-embedding-config-{}-{name}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         dir
@@ -458,7 +456,10 @@ mod tests {
         assert_eq!(config.source(), Source::Environment);
         assert_eq!(warnings.len(), 1);
         let mut config = config;
-        let refused = config.clear_next().err().map(|f| (f.status, f.code, f.message));
+        let refused = config
+            .clear_next()
+            .err()
+            .map(|f| (f.status, f.code, f.message));
         assert_eq!(refused, Some((Some(409), Some("badState"), why.clone())));
         let (lenient, _) = Config::load(file.clone(), &none);
         assert_eq!(lenient.damaged(), None);
