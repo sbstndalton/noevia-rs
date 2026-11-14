@@ -26,10 +26,10 @@
 //! written, no event sent. Recorded turns abort while the sensitivity check or the routing
 //! question runs (the response's `close`).
 //!
-//! Later parts (not here): the wire changes once the route is known (the off-box zone of the time
-//! part and the brain block dropped (#815) — both keyed on [`off_box_turn`] —, the history filter,
-//! the hybrid route's read-file hint and private-tools move, the route notes), tool results held
-//! from the cloud (`holdForCloud`), the egress and ChatGPT checks.
+//! The wire changes once the route is known (the off-box zone of the time part, the brain block
+//! dropped (#815), the history filter, the hybrid route's private-tools move and read-file hints)
+//! are [`crate::offbox`]. Later parts (not here): the route notes, tool results held from the
+//! cloud (`holdForCloud`), the egress and ChatGPT checks.
 //!
 //! Recorded in `tests/fixtures/node-modes.v1.json`, written by `tests/record_modes.cjs` (whole
 //! turns through `createChatHandler` with the routingModes seams stubbed); no named differences.

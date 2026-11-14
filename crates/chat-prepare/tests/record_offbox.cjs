@@ -235,6 +235,9 @@ const PRIV = { turnToolboxes: ['qa-notes'] };
   await addTurn('move_private_smart', { ...free({}, PRIV), classification: { role: 'smart' }, modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
   await addTurn('move_private_code_role', { ...free({}, PRIV), classification: { role: 'code' }, modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
   await addTurn('move_private_only_code', { ...free({}, PRIV), roles: { code: CODE }, modes: { enabled: true, settings: S('hybrid', { cloud: { ...CLOUD, code: 'qa-cloud-code' } }), verdict: CLEAR } });
+  // No local chat model to move to: the turn stays on the cloud route and the private box is taken out.
+  await addTurn('strip_no_local_model', { ...free({}, { history: HIST, ...PRIV }), roles: { vision: FAST }, modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
+  await addTurn('strip_no_local_model_code', { ...free({}, PRIV), roles: { vision: SMART, creative: CODE }, classification: { role: 'code' }, modes: { enabled: true, settings: S('hybrid', { cloud: { ...CLOUD, code: 'qa-cloud-code' } }), verdict: CLEAR } });
   await addTurn('move_log_throws', { ...free({}, PRIV), modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR, logThrows: true } });
   await addTurn('hybrid_no_cloud_private', { ...free({}, PRIV), modes: { enabled: true, settings: S('hybrid', { cloud: NO_CLOUD }), verdict: CLEAR } });
   await addTurn('hybrid_local_choice_private', { ...free({}, { history: HIST, ...PRIV }), brain: BRAIN, modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'local' } } });

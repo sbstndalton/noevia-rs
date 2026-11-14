@@ -39,8 +39,11 @@
 //! brain block and the zone (the route was cloud when they ran) while its history is the on-box
 //! replay. [`Prepared::parts`] is left as built (Node's `sysParts` keeps the brain block too).
 //!
+//! 6. [`Settled::round_note`]: the note each model round of such a turn carries (chat.cjs ~2047),
+//!    added with [`with_system_note`] to the round's messages.
+//!
 //! Later parts (not here): `holdForCloud` (a round-time rule), the egress and ChatGPT checks, the
-//! private-tool refusal (`egressToolRefusal`) and the per-round system note, the route notes.
+//! private-tool refusal (`egressToolRefusal`) and the `blocked` reader, the route notes.
 //!
 //! Recorded in `tests/fixtures/node-offbox.v1.json`, written by `tests/record_offbox.cjs`; no
 //! named differences.
@@ -59,6 +62,27 @@ pub const SKILL_INDEX_LEAD_NO_READER: &str =
 /// rag.cjs READ_FILE_HINT.
 pub const RAG_READ_FILE_HINT: &str =
     " Use read_project_file with PDF startPage/endPage and offset for pages beyond the summary.";
+
+/// The note every model round of a still-ungranted cloud route that lost a private-data box carries
+/// (chat.cjs ~2047, [`Settled::round_note`]).
+pub const PRIVATE_STRIPPED_NOTE: &str = "Tools that read the person's own files, Nextcloud or Google Drive are not available in this reply. If the task needs them, say so and suggest switching this chat to a local model. Do not guess at file contents.";
+
+/// chat.cjs `withSystemNote(messages, note)`: the note after the first system message with text,
+/// or a system message of its own in front.
+pub fn with_system_note(messages: &[JValue], note: &str) -> Vec<JValue> {
+    let mut out = messages.to_vec();
+    let at = out
+        .iter_mut()
+        .find(|m| m.get("role").as_str() == Some("system") && m.get("content").as_str().is_some());
+    match at.and_then(content_mut) {
+        Some(c) => {
+            c.push_str("\n\n");
+            c.push_str(note);
+        }
+        None => out.insert(0, js::message("system", note.to_string())),
+    }
+    out
+}
 
 /// What the off-box rules read of the turn.
 #[derive(Clone, Copy)]
@@ -111,7 +135,10 @@ pub enum Reply {
     Start,
     Wanted(bool),
     Roles(JValue),
-    Provider { row: JValue, external: bool },
+    Provider {
+        row: JValue,
+        external: bool,
+    },
     Done,
     Boxes(Vec<String>),
 }
@@ -134,10 +161,21 @@ pub struct Settled {
     pub private_stripped: bool,
 }
 
+impl Settled {
+    /// The note each model round adds (`withSystemNote`), when the route is still an ungranted
+    /// cloud one and a private-data box was taken out.
+    pub fn round_note(&self) -> Option<&'static str> {
+        (cloud_ungranted(self.target.as_ref()) && self.private_stripped)
+            .then_some(PRIVATE_STRIPPED_NOTE)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Step {
     Ask(Seam),
     Done(Box<Settled>),
+    /// The reply did not answer the seam asked (or came after [`Step::Done`]).
+    OutOfOrder,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -284,9 +322,11 @@ impl<'a> OffBox<'a> {
         ]
         .into_iter()
         .find(JValue::truthy);
-        let (true, Some(local), Some(target)) =
-            (self.t.wants_auto && roles.truthy(), local, self.out.target.as_ref())
-        else {
+        let (true, Some(local), Some(target)) = (
+            self.t.wants_auto && roles.truthy(),
+            local,
+            self.out.target.as_ref(),
+        ) else {
             return self.ask(At::Settled, Seam::Settled);
         };
         self.out.target = Some(RouteTarget {
@@ -339,7 +379,8 @@ impl<'a> OffBox<'a> {
                 self.at = At::Finished;
                 Step::Done(Box::new(self.out.clone()))
             }
-            (at, reply) => panic!("offbox: {reply:?} does not answer the step at {at:?}"),
+            // A reply that does not answer the step asked: the caller's bug, nothing is settled.
+            _ => Step::OutOfOrder,
         }
     }
 
@@ -380,15 +421,17 @@ impl<'a> OffBox<'a> {
     }
 }
 
-/// Drives [`OffBox`] to the end with the caller's answers (for a caller with synchronous seams).
+/// Drives [`OffBox`] to the end with the caller's answers (for a caller with synchronous seams);
+/// `None` when an answer did not fit the seam asked.
 pub fn settle(
     mut machine: OffBox<'_>,
     mut answer: impl FnMut(&Seam) -> Reply,
-) -> Box<Settled> {
+) -> Option<Box<Settled>> {
     let mut step = machine.step(Reply::Start);
     loop {
         match step {
-            Step::Done(settled) => return settled,
+            Step::OutOfOrder => return None,
+            Step::Done(settled) => return Some(settled),
             Step::Ask(seam) => {
                 let reply = answer(&seam);
                 step = machine.step(reply);
