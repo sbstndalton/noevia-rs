@@ -1,0 +1,19 @@
+[package]
+name = "rs-capability"
+version = "0.1.0"
+description = "Release-assembly capability detector: strict Rust marker reader and shipped-build feature proof (port of noevia deploy/tools/lib/rs-capability.cjs and dockerfile-rs-features.cjs)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "rs-capability"
+path = "src/main.rs"
+
+[dependencies]
+regex = "1"
+serde_json = "1"

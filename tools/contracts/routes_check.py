@@ -7,7 +7,9 @@ Usage:
 
 Scans src/**/*.{ts,tsx} (tests excluded) for string and template literals that start with
 /api/. A template expression becomes a {name} segment ({id} for encodeURIComponent(id), {*}
-otherwise); query strings are dropped. Exit 1 if a client path is missing from routes.toml.
+otherwise); query strings are dropped. Exit 1 if a client path is missing from routes.toml, or if
+two rows name the same path (parameter names erased) for an overlapping set of methods (a row
+without `methods` takes every method), so an auto-merged second row cannot hide.
 Paths in routes.toml the client no longer names are reported as a warning, not a failure (the
 server may still serve them to other callers).
 """
@@ -119,6 +121,22 @@ def shape(path):
     return ROUTE_PARAM.sub("{}", path)
 
 
+def overlapping_rows(routes):
+    """Pairs of rows that name the same path shape and share a method (no `methods` = all)."""
+    by_shape = {}
+    for r in routes:
+        if isinstance(r.get("path"), str):
+            by_shape.setdefault(shape(r["path"]), []).append(r)
+    found = []
+    for rows in by_shape.values():
+        for i, a in enumerate(rows):
+            for b in rows[i + 1:]:
+                ma, mb = a.get("methods"), b.get("methods")
+                if ma is None or mb is None or set(ma) & set(mb):
+                    found.append((a, b))
+    return found
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--web", required=True)
@@ -138,6 +156,10 @@ def main():
             print(f"routes_check: bad entry {r!r} (needs path and owner = node|rust)", file=sys.stderr)
             return 1
         listed[shape(r["path"])] = r
+    clashes = overlapping_rows(doc.get("route", []))
+    for a, b in clashes:
+        print(f"::error::routes.toml names {a['path']} twice for overlapping methods "
+              f"({a.get('methods', 'all')} as {a['owner']}; {b.get('methods', 'all')} as {b['owner']})")
     missing = sorted(p for p in found if shape(p) not in listed)
     stale = sorted(r["path"] for k, r in listed.items() if k not in {shape(p) for p in found} and r.get("client", True))
     for p in missing:
@@ -152,7 +174,7 @@ def main():
     ported = sum(1 for r in doc.get("route", []) if r.get("owner") == "rust" and r.get("executor") != "node")
     print(f"routes_check: {len(found)} client paths, {len(listed)} listed, {len(missing)} missing; "
           f"{ported} ported, {len(relays)} transitional (Node executor: {', '.join(relays) or 'none'})")
-    return 1 if missing else 0
+    return 1 if missing or clashes else 0
 
 
 if __name__ == "__main__":
