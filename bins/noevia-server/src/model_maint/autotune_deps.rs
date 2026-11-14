@@ -537,7 +537,11 @@ impl super::autotune_context::Body for FrontBody {
         if self.abort.aborted() {
             return Err(fetch_failed(Some(&self.abort)));
         }
-        if self.hold.as_ref().is_some_and(|h| !h.covers(Duration::ZERO)) {
+        if self
+            .hold
+            .as_ref()
+            .is_some_and(|h| !h.covers(Duration::ZERO))
+        {
             return Err(coverage_error());
         }
         tokio::select! {
@@ -933,7 +937,9 @@ impl Deps for FrontDeps {
     }
 
     fn coverage_lost(&self) -> bool {
-        self.current.get().is_some_and(|h| !h.covers(Duration::ZERO))
+        self.current
+            .get()
+            .is_some_and(|h| !h.covers(Duration::ZERO))
     }
 
     fn recoverable(&self) -> bool {
