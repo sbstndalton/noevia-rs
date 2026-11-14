@@ -466,13 +466,11 @@ fn whole_turns_are_nodes() {
             asked.push(format!("assets/{id} {}", bytes.is_some()));
             bytes
         });
-        if difference != Some("asset_path") {
-            d.check(
-                &format!("{n} reads"),
-                &node_reads(case).join("\n"),
-                &asked.join("\n"),
-            );
-        }
+        d.check(
+            &format!("{n} reads"),
+            &node_reads(case).join("\n"),
+            &asked.join("\n"),
+        );
         let Ok(images) = got else {
             thrown += 1;
             assert_eq!(case.get("throws").as_str(), Some("TypeError"), "{n}");
@@ -482,15 +480,6 @@ fn whole_turns_are_nodes() {
             );
             continue;
         };
-        if difference == Some("asset_path")
-            && list(&f, "differences")
-                .iter()
-                .any(|x| name(x) == n && !list(x, "nodeRead").is_empty())
-        {
-            // Node read the image through another path; the port has it missing (tested below).
-            assert!(!images.missing_names.is_empty(), "{n}");
-            continue;
-        }
 
         // The wire the pass starts from (prepare(); a turn off the box states the zoneless day).
         let r = route(&project, spec);
@@ -677,7 +666,7 @@ fn strict(a: &JValue, b: &JValue) -> bool {
 }
 
 #[test]
-fn the_named_differences_are_the_asset_paths_and_one_line() {
+fn the_named_differences_are_two_lines() {
     let f = fixture();
     let all = list(&f, "differences");
     let mut kinds: HashMap<&str, usize> = HashMap::new();
@@ -687,25 +676,6 @@ fn the_named_differences_are_the_asset_paths_and_one_line() {
         let case = list(&f, "turns").iter().find(|t| name(t) == n).unwrap();
         let spec = case.get("spec");
         match diff.get("kind").as_str().unwrap() {
-            "asset_path" => {
-                // The port never asks for an id that is not a plain file name.
-                let mut asked = Vec::new();
-                let images = vision::images(spec.get("project"), case.get("body"), &mut |id| {
-                    asked.push(id.to_string());
-                    None
-                })
-                .unwrap();
-                assert!(asked.iter().all(|id| vision::plain_asset_name(id)), "{n}");
-                if !list(diff, "nodeRead").is_empty() {
-                    // Node attached the file it found through that path; the port has it missing.
-                    assert!(
-                        stringify(case.get("frame")).contains("data:image/png;base64,"),
-                        "{n}"
-                    );
-                    assert_eq!(images.attached, Vec::<JValue>::new(), "{n}");
-                    assert_eq!(images.missing_names.len(), 1, "{n}");
-                }
-            }
             "parse_message" => {
                 let node = stringify(diff.get("nodeLines"));
                 assert!(node.contains("is not valid JSON"), "{n}: {node}");
@@ -732,12 +702,9 @@ fn the_named_differences_are_the_asset_paths_and_one_line() {
     }
     assert_eq!(kinds.get("parse_message"), Some(&1));
     assert_eq!(kinds.get("unreadable_json"), Some(&2));
-    assert!(kinds.get("asset_path").copied().unwrap_or(0) >= 9);
-    let attached_elsewhere = all
-        .iter()
-        .filter(|d| d.get("kind").as_str() == Some("asset_path") && !list(d, "nodeRead").is_empty())
-        .count();
-    assert_eq!(attached_elsewhere, 3);
+    // An asset id that is not a plain file name is a missing image in core too since noevia#2595: no
+    // longer a difference (the recorder refuses any read through such an id).
+    assert_eq!(kinds.len(), 2, "{kinds:?}");
 }
 
 #[test]
