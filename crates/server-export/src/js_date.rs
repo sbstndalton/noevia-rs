@@ -964,11 +964,13 @@ mod tests {
         }
     }
 
+    #[allow(clippy::unwrap_used)]
     fn wall(text: &str) -> i64 {
         // A zone-less wall time spelled with Z: its fields as UTC milliseconds.
         parse(&format!("{text}Z")).unwrap() as i64
     }
 
+    #[allow(clippy::unwrap_used)]
     fn at(text: &str) -> String {
         iso(parse(text).unwrap())
     }
