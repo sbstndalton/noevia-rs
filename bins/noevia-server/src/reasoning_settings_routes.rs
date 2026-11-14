@@ -1,4 +1,9 @@
 //! M6 native reasoning default PUT only; identity and CSRF precede method/body policy.
+//!
+//! Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the dispatch (lib.rs) also hands GET here, answered as
+//! core routes/reasoning-settings.cjs does (server-reasoning-settings `read`): the account default
+//! (the settings row, `|| 'default'`), the project's resolved effort (`?projectId`, 404 for none) and
+//! the provider mode. Unset, the GET is proxied to Node as before.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -29,6 +34,8 @@ async fn read_body(body: Body, deadline: Duration) -> Result<Vec<u8>, ()> {
         .await
         .map_err(|_| ())?
 }
+pub const ROUTE: &str = "/api/reasoning-settings";
+
 pub async fn serve(
     app: &Arc<App>,
     conn: crate::serve::Conn,
@@ -57,6 +64,9 @@ pub async fn serve(
         Ok(Err(r)) => return r.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    if parts.method == axum::http::Method::GET && app.config.settings_routes {
+        return get(app, &parts, id, now, permit).await;
+    }
     if id.user.role != server_auth::Role::Admin {
         return error(StatusCode::FORBIDDEN, "Administrator required");
     }
@@ -111,6 +121,113 @@ pub async fn serve(
             "Reasoning settings unavailable",
         ),
     }
+}
+
+fn unavailable() -> Response<Body> {
+    error(
+        StatusCode::SERVICE_UNAVAILABLE,
+        "Reasoning settings unavailable",
+    )
+}
+
+/// A provider file for [`server_reasoning_settings::read::provider`].
+fn provider_file(path: &std::path::Path) -> server_reasoning_settings::read::File {
+    use server_reasoning_settings::read::File;
+    match std::fs::read(path) {
+        Ok(bytes) => File::Bytes(bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => File::Missing,
+        Err(_) => File::Unreadable,
+    }
+}
+
+/// `GET /api/reasoning-settings` (NOEVIA_RUST_SETTINGS_ROUTES=1).
+async fn get(
+    app: &Arc<App>,
+    parts: &axum::http::request::Parts,
+    id: server_auth::Identity,
+    now: i64,
+    permit: tokio::sync::OwnedSemaphorePermit,
+) -> Response<Body> {
+    use server_reasoning_settings::read;
+    let project_id = read::project_param(parts.uri.query());
+    let Some(data_dir) = app.config.data_dir.clone() else {
+        return unavailable();
+    };
+    let app = Arc::clone(app);
+    let result = tokio::task::spawn_blocking(move || -> Response<Body> {
+        let _permit = permit;
+        let Ok(store) = app.identity.store_blocking() else {
+            return unavailable();
+        };
+        // `db.prepare("SELECT value FROM settings WHERE key='reasoning_effort_default'").get()?.value || 'default'`;
+        // only the native PUT writes the row, always as text.
+        let Ok(stored) = store.read(|r| {
+            r.row(
+                "SELECT CASE WHEN typeof(value)='text' THEN value ELSE NULL END FROM settings WHERE key=?1",
+                [server_reasoning_settings::KEY],
+                |row| row.get::<_, Option<String>>(0),
+            )
+        }) else {
+            return unavailable();
+        };
+        let global = stored.flatten().filter(|v| !v.is_empty()).unwrap_or_else(|| "default".into());
+        let project = match project_id {
+            None => None,
+            Some(pid) => {
+                let ctx = server_projects::Ctx {
+                    data_dir: &data_dir,
+                    user_id: &id.user.id,
+                    switch: app.config.rust_projects,
+                    now_ms: now,
+                };
+                match server_projects::chats::get_project(ctx, &pid) {
+                    Ok(Some(p)) => Some(p),
+                    Ok(None) => return error(StatusCode::NOT_FOUND, "no such project"),
+                    // A list Node's load reads as empty (not JSON, `projects` not a list): no project.
+                    Err(_)
+                        if server_projects::store::user_dir(&data_dir, &id.user.id)
+                            .is_ok_and(|d| crate::routing_default_routes::unreadable(&d)) =>
+                    {
+                        return error(StatusCode::NOT_FOUND, "no such project")
+                    }
+                    Err(reply) => return crate::project_routes::respond(reply),
+                }
+            }
+        };
+        let defaults = &app.config.reasoning_defaults;
+        let wanted = project
+            .as_ref()
+            .map(|p| p.get("provider"))
+            .filter(|v| v.truthy())
+            .cloned()
+            .unwrap_or_else(|| js_json::JValue::Str(defaults.id.clone()));
+        let Ok(user_dir) = server_projects::store::user_dir(&data_dir, &id.user.id) else {
+            return unavailable();
+        };
+        let shared = provider_file(&data_dir.join(server_store::ROOT_PROVIDER_FILE));
+        let private = provider_file(&user_dir.join(server_projects::provider_rows::FILE));
+        let Ok(provider) = read::provider(defaults, &shared, &private, &wanted) else {
+            return unavailable();
+        };
+        let effort = read::resolve_effort(project.as_ref(), &global);
+        let model = project
+            .as_ref()
+            .map(|p| p.get("model"))
+            .filter(|v| v.truthy())
+            .cloned()
+            .unwrap_or_else(|| js_json::JValue::Str(String::new()));
+        let Ok(mode) = read::mode_for(provider.as_ref(), &model, &effort, defaults) else {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error");
+        };
+        let admin = id.user.role == server_auth::Role::Admin;
+        reply::json_text(
+            StatusCode::OK,
+            read::answer(&global, &effort, mode, admin),
+            true,
+        )
+    })
+    .await;
+    result.unwrap_or_else(|_| unavailable())
 }
 
 #[cfg(all(test, feature = "rust-reasoning-settings"))]

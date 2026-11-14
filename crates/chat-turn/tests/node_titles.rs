@@ -309,6 +309,11 @@ fn the_attempt_counter_is_node_s() {
     assert!(!counter.allowed("first"));
     counter.record("other2000");
     assert!(counter.allowed("first"));
+    // try_record (noevia#2591): allowed and record as one step, the third the last that passes.
+    let mut counter = AttemptCounter::default();
+    assert!((0..3).all(|_| counter.try_record("qa-chat")));
+    assert!(!counter.try_record("qa-chat"));
+    assert!(!counter.allowed("qa-chat"));
 }
 
 #[test]
