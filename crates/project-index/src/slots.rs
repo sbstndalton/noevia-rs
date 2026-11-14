@@ -118,8 +118,11 @@ pub fn find_slot(db: &Connection, t: &Target) -> Res<Option<Slot>> {
     Ok(meta(db, &format!("slot:{id}"))?.and_then(|raw| safe(&id, &raw)))
 }
 
-fn record(s: &Slot) -> String {
-    json!({ "model": s.model, "profile": s.profile, "dim": s.dim, "table": s.table, "map": s.map }).to_string()
+/// JSON.stringify of a slot record, in Node's key order (`model, profile, dim, table, map`).
+fn record(model: &str, profile: &str, dim: &Value, table: &str, map: Option<&str>) -> String {
+    let s = |v: &str| Value::from(v).to_string();
+    let map = map.map_or_else(|| "null".to_string(), s);
+    format!("{{\"model\":{},\"profile\":{},\"dim\":{dim},\"table\":{},\"map\":{map}}}", s(model), s(profile), s(table))
 }
 
 /// `adoptLegacy`: records the pre-slot table as the active model's slot when that model uses the
@@ -139,8 +142,7 @@ pub fn adopt_legacy(db: &Connection, active: &Target) -> Res<()> {
     }
     // JSON.stringify of Number(dim): an integer prints without a fraction.
     let dim_json = if dim.fract() == 0.0 && dim.abs() < 9.0e15 { json!(dim as i64) } else { json!(dim) };
-    let rec = json!({ "model": active.model, "profile": active.profile, "dim": dim_json, "table": LEGACY_TABLE, "map": Value::Null });
-    set_meta(db, &format!("slot:{id}"), &rec.to_string())
+    set_meta(db, &format!("slot:{id}"), &record(&active.model, &active.profile, &dim_json, LEGACY_TABLE, None))
 }
 
 /// `Number(text)` for the plain decimal forms a width is written in (empty is 0, as in JavaScript).
@@ -178,7 +180,7 @@ pub fn ensure_slot(db: &Connection, t: &Target, dim: usize) -> Res<Slot> {
             .map_err(err)?;
         Slot { id: id.clone(), model: t.model.clone(), profile: t.profile.clone(), dim, table, map: Some(map) }
     };
-    set_meta(db, &format!("slot:{id}"), &record(&slot))?;
+    set_meta(db, &format!("slot:{id}"), &record(&slot.model, &slot.profile, &json!(dim), &slot.table, slot.map.as_deref()))?;
     Ok(slot)
 }
 

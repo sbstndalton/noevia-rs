@@ -11,6 +11,7 @@
 //!   file, with the embedding call behind the [`index::Embed`] trait.
 //! - [`state`]: the in-process per-file state (`fileGenerations`, `fileVersions`, `pruneFileState`)
 //!   that decides which runs are superseded and which versions a search must filter by.
+//! - [`indexer`]: the process-level facade with the per-file queue, over a [`indexer::Host`].
 //! - [`embed`]: the batch rules of `embedFramed` (order by `index`, fall back to one text per call).
 //!
 //! Nothing here is reachable from a server yet: it ships unused, and the wiring goes behind
@@ -19,5 +20,6 @@
 pub mod chunk;
 pub mod embed;
 pub mod index;
+pub mod indexer;
 pub mod slots;
 pub mod state;

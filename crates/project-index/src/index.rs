@@ -529,7 +529,8 @@ pub fn append_tail_now(
             if present.contains_key(&w.hash) {
                 continue;
             }
-            let meta = json!({ "tail": 1, "page": w.page }).to_string();
+            // JSON.stringify({ tail: 1, page }): key order matters, TAIL_ROW matches the text's start.
+            let meta = format!("{{\"tail\":1,\"page\":{}}}", w.page);
             tx.execute(
                 "INSERT INTO chunks (file, chunk_no, body, content_hash, version, direct, meta) VALUES (?, ?, ?, ?, ?, 0, ?)",
                 params![file, next, w.body, w.hash, version, meta],
