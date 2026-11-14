@@ -49,7 +49,9 @@ impl Settings {
     pub fn from_lookup(get: &impl Fn(&str) -> Option<String>) -> Settings {
         Settings {
             executor: get(SWITCH).as_deref() == Some("1"),
-            engine: get(ENGINE).map(|e| e.trim().to_string()).filter(|e| !e.is_empty()),
+            engine: get(ENGINE)
+                .map(|e| e.trim().to_string())
+                .filter(|e| !e.is_empty()),
         }
     }
 }
@@ -77,10 +79,14 @@ impl Egress for FrontEgress {
         })
     }
     fn revoke(&self, grant: &JValue) -> Result<JValue, Fail> {
-        code_harness::executor::Egress::revoke(self, grant).map_err(|e| Fail::plain(e.status, &e.message))
+        code_harness::executor::Egress::revoke(self, grant)
+            .map_err(|e| Fail::plain(e.status, &e.message))
     }
     fn forget(&self, grant: &JValue, snapshot_id: &str) -> Option<Result<JValue, Fail>> {
-        Some(code_harness::executor::Egress::forget(self, grant, snapshot_id).map_err(|e| Fail::plain(e.status, &e.message)))
+        Some(
+            code_harness::executor::Egress::forget(self, grant, snapshot_id)
+                .map_err(|e| Fail::plain(e.status, &e.message)),
+        )
     }
 }
 
@@ -89,7 +95,10 @@ struct NoEngine;
 
 impl browser_task::engine::Launch for NoEngine {
     fn launch(&self) -> Result<Arc<dyn browser_task::engine::Browser>, Fail> {
-        Err(Fail::public(503, "Browser mode needs a browser engine on this server."))
+        Err(Fail::public(
+            503,
+            "Browser mode needs a browser engine on this server.",
+        ))
     }
 }
 
@@ -101,13 +110,21 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
     app.browser_service
         .get_or_init(|| {
             let egress = crate::code_routes::front_egress(app).map(|e| e as Arc<dyn Egress>);
-            Service::new(Options::new(Arc::new(NoEngine), egress, Arc::new(|e| log_browser(&e))))
+            Service::new(Options::new(
+                Arc::new(NoEngine),
+                egress,
+                Arc::new(|e| log_browser(&e)),
+            ))
         })
         .clone()
 }
 
 fn failed() -> Response<Body> {
-    reply::error(StatusCode::INTERNAL_SERVER_ERROR, "Browser request failed", true)
+    reply::error(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Browser request failed",
+        true,
+    )
 }
 
 /// The body as core's `readJson` reads it, parsed only when the route reads it.
@@ -173,7 +190,12 @@ pub async fn serve(
         let caller = Caller { admin };
         let lookup = |_: &str| project.clone();
         let mut body = || parsed(&read);
-        let req = browser::Request { method: &method, path: &path, caller: Some(&caller), enabled };
+        let req = browser::Request {
+            method: &method,
+            path: &path,
+            caller: Some(&caller),
+            enabled,
+        };
         browser::handle(&service, &req, &lookup, &dir, &mut body)
     })
     .await;
@@ -208,9 +230,15 @@ mod tests {
     fn the_actions_are_cores_pattern_less_the_reads() {
         assert!(owns("POST", "/api/projects/qa/browser"));
         assert!(owns("POST", &format!("/api/projects/qa/browser/{T}/act")));
-        assert!(owns("POST", &format!("/api/projects/qa/browser/{T}/cancel")));
+        assert!(owns(
+            "POST",
+            &format!("/api/projects/qa/browser/{T}/cancel")
+        ));
         assert!(owns("PUT", "/api/projects/qa/browser"));
-        assert!(owns("GET", &format!("/api/projects/qa/browser/{T}/act")), "core answers it 405");
+        assert!(
+            owns("GET", &format!("/api/projects/qa/browser/{T}/act")),
+            "core answers it 405"
+        );
         assert!(!owns("GET", "/api/projects/qa/browser"));
         assert!(!owns("GET", &format!("/api/projects/qa/browser/{T}")));
         assert!(!owns("POST", "/api/projects/qa/browserx"));
@@ -231,6 +259,11 @@ mod tests {
         assert!(!s(Some(" 1"), None).executor);
         assert!(s(Some("1"), None).executor);
         assert_eq!(s(Some("1"), Some("  ")).engine, None);
-        assert_eq!(s(Some("1"), Some(" ws://qa-chromium.invalid:9222 ")).engine.as_deref(), Some("ws://qa-chromium.invalid:9222"));
+        assert_eq!(
+            s(Some("1"), Some(" ws://qa-chromium.invalid:9222 "))
+                .engine
+                .as_deref(),
+            Some("ws://qa-chromium.invalid:9222")
+        );
     }
 }

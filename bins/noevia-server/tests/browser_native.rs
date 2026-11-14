@@ -31,7 +31,10 @@ const PROJECT: &str = "qa-project";
 const UNKNOWN: &str = "0000000f-0000-4000-8000-00000000ffff";
 
 fn hex(s: &str) -> String {
-    Sha256::digest(s.as_bytes()).iter().map(|b| format!("{b:02x}")).collect()
+    Sha256::digest(s.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
 }
 
 /// What the synthetic core answers on the facts bridge, and every request it was sent.
@@ -56,7 +59,11 @@ async fn read_request(c: &mut TcpStream) -> Option<(String, String, Vec<u8>)> {
         let head = String::from_utf8_lossy(&buf[..end]).to_string();
         let want = head
             .lines()
-            .find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap()))
+            .find_map(|l| {
+                l.to_ascii_lowercase()
+                    .strip_prefix("content-length:")
+                    .map(|v| v.trim().parse::<usize>().unwrap())
+            })
             .unwrap_or(0);
         if buf.len() >= end + 4 + want {
             let mut first = head.lines().next()?.split(' ');
@@ -73,14 +80,20 @@ async fn core(core: Core) -> SocketAddr {
         while let Ok((mut c, _)) = listener.accept().await {
             let core = core.clone();
             tokio::spawn(async move {
-                let Some((method, path, body)) = read_request(&mut c).await else { return };
+                let Some((method, path, body)) = read_request(&mut c).await else {
+                    return;
+                };
                 let body: Value = serde_json::from_slice(&body).unwrap_or(Value::Null);
                 let text = if path == "/internal/tasks/facts" {
                     core.facts.lock().unwrap().to_string()
                 } else {
                     json!({"error": "QA core answered this", "path": path}).to_string()
                 };
-                let status = if path == "/internal/tasks/facts" { 200 } else { 418 };
+                let status = if path == "/internal/tasks/facts" {
+                    200
+                } else {
+                    418
+                };
                 core.seen.lock().unwrap().push((method, path, body));
                 let out = format!("HTTP/1.1 {status} X\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{text}", text.len());
                 let _ = c.write_all(out.as_bytes()).await;
@@ -94,7 +107,10 @@ fn seed(data: &Path) {
     let db = Connection::open(server_store::db_path(data)).unwrap();
     db.execute_batch(SCHEMA).unwrap();
     let now = noevia_server::identity::now_ms();
-    for (uid, name, role) in [(OWNER, "QA Owner", "admin"), (MEMBER, "QA Member", "member")] {
+    for (uid, name, role) in [
+        (OWNER, "QA Owner", "admin"),
+        (MEMBER, "QA Member", "member"),
+    ] {
         db.execute(
             "INSERT INTO users(id,username,username_norm,display_name,role,password_hash,webauthn_user_id,created_at,updated_at) VALUES(?1,?2,lower(?2),?2,?3,'x',?1,1,1)",
             (uid, name, role),
@@ -102,7 +118,13 @@ fn seed(data: &Path) {
         .unwrap();
         db.execute(
             "INSERT INTO sessions VALUES(?1,?2,?3,?4,?4,?5,'ua','127.0.0.1')",
-            (hex(&format!("qa-token-{uid}")), uid, hex("qa-csrf"), now, now + 86_400_000),
+            (
+                hex(&format!("qa-token-{uid}")),
+                uid,
+                hex("qa-csrf"),
+                now,
+                now + 86_400_000,
+            ),
         )
         .unwrap();
         let home = data.join("users").join(uid);
@@ -128,7 +150,10 @@ async fn rig(switch: bool, facts: Value) -> Rig {
     let data = base.join("data");
     std::fs::create_dir_all(&data).unwrap();
     seed(&data);
-    let c = Core { facts: Arc::new(Mutex::new(facts)), seen: Arc::default() };
+    let c = Core {
+        facts: Arc::new(Mutex::new(facts)),
+        seen: Arc::default(),
+    };
     let core_addr = core(c.clone()).await;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -147,8 +172,18 @@ async fn rig(switch: bool, facts: Value) -> Rig {
         env.insert("NOEVIA_RUST_BROWSER", "1".into());
     }
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
-    tokio::spawn(serve(listener, app, Limits::default(), std::future::pending()));
-    Rig { _dir: dir, data, addr, core: c }
+    tokio::spawn(serve(
+        listener,
+        app,
+        Limits::default(),
+        std::future::pending(),
+    ));
+    Rig {
+        _dir: dir,
+        data,
+        addr,
+        core: c,
+    }
 }
 
 impl Rig {
@@ -166,7 +201,10 @@ impl Rig {
         let end = out.windows(4).position(|w| w == b"\r\n\r\n").unwrap();
         let head = String::from_utf8_lossy(&out[..end]).to_ascii_lowercase();
         let status = head[9..12].parse().unwrap();
-        (status, serde_json::from_slice(&out[end + 4..]).unwrap_or(Value::Null))
+        (
+            status,
+            serde_json::from_slice(&out[end + 4..]).unwrap_or(Value::Null),
+        )
     }
 
     fn browser(tail: &str) -> String {
@@ -194,13 +232,31 @@ impl Rig {
 async fn unset_every_browser_action_stays_with_core() {
     let rig = rig(false, json!({"enabled": true, "owner": "front"})).await;
     let start = r#"{"domains":["shop.example.test"]}"#;
-    assert_eq!(rig.call(OWNER, "POST", &Rig::browser(""), Some(start)).await.0, 418);
-    assert_eq!(rig.call(OWNER, "POST", &Rig::browser(&format!("/{UNKNOWN}/cancel")), None).await.0, 418);
+    assert_eq!(
+        rig.call(OWNER, "POST", &Rig::browser(""), Some(start))
+            .await
+            .0,
+        418
+    );
+    assert_eq!(
+        rig.call(
+            OWNER,
+            "POST",
+            &Rig::browser(&format!("/{UNKNOWN}/cancel")),
+            None
+        )
+        .await
+        .0,
+        418
+    );
     assert_eq!(
         rig.forwarded(),
         vec![
             ("POST".to_string(), Rig::browser("")),
-            ("POST".to_string(), Rig::browser(&format!("/{UNKNOWN}/cancel"))),
+            (
+                "POST".to_string(),
+                Rig::browser(&format!("/{UNKNOWN}/cancel"))
+            ),
         ]
     );
     assert_eq!(rig.journals(), 0);
@@ -213,17 +269,23 @@ async fn set_the_front_answers_in_cores_order() {
     // The member: the flag is on, the role is not (the bridge answers a member `{enabled: true}`).
     *rig.core.facts.lock().unwrap() = json!({"enabled": true});
     assert_eq!(
-        rig.call(MEMBER, "POST", &Rig::browser(""), Some(start)).await,
+        rig.call(MEMBER, "POST", &Rig::browser(""), Some(start))
+            .await,
         (403, json!({"error": "Administrator required"}))
     );
     *rig.core.facts.lock().unwrap() = json!({"enabled": false});
     assert_eq!(
-        rig.call(OWNER, "POST", &Rig::browser(""), Some(start)).await,
-        (404, json!({"error": "Browser mode is not enabled on this server."}))
+        rig.call(OWNER, "POST", &Rig::browser(""), Some(start))
+            .await,
+        (
+            404,
+            json!({"error": "Browser mode is not enabled on this server."})
+        )
     );
     *rig.core.facts.lock().unwrap() = json!({"enabled": true, "owner": "front"});
     assert_eq!(
-        rig.call(OWNER, "POST", "/api/projects/nope/browser", Some(start)).await,
+        rig.call(OWNER, "POST", "/api/projects/nope/browser", Some(start))
+            .await,
         (404, json!({"error": "project not found"}))
     );
     assert_eq!(
@@ -231,21 +293,36 @@ async fn set_the_front_answers_in_cores_order() {
         (405, json!({"error": "method not allowed"}))
     );
     assert_eq!(
-        rig.call(OWNER, "POST", &Rig::browser(""), Some("{bad")).await,
+        rig.call(OWNER, "POST", &Rig::browser(""), Some("{bad"))
+            .await,
         (400, json!({"error": "invalid JSON"}))
     );
     assert_eq!(
-        rig.call(OWNER, "POST", &Rig::browser(""), Some(r#"{"domains":[]}"#)).await,
-        (400, json!({"error": "A browser task needs at least one domain it may reach."}))
+        rig.call(OWNER, "POST", &Rig::browser(""), Some(r#"{"domains":[]}"#))
+            .await,
+        (
+            400,
+            json!({"error": "A browser task needs at least one domain it may reach."})
+        )
     );
     // No egress proxy on this deployment: refused before any job is made, as core does.
     assert_eq!(
-        rig.call(OWNER, "POST", &Rig::browser(""), Some(start)).await,
-        (503, json!({"error": "Browser tasks need the egress proxy (D15) configured on this server."}))
+        rig.call(OWNER, "POST", &Rig::browser(""), Some(start))
+            .await,
+        (
+            503,
+            json!({"error": "Browser tasks need the egress proxy (D15) configured on this server."})
+        )
     );
     for action in ["act", "approve", "finish", "cancel"] {
         assert_eq!(
-            rig.call(OWNER, "POST", &Rig::browser(&format!("/{UNKNOWN}/{action}")), Some("{}")).await,
+            rig.call(
+                OWNER,
+                "POST",
+                &Rig::browser(&format!("/{UNKNOWN}/{action}")),
+                Some("{}")
+            )
+            .await,
             (404, json!({"error": "Task not found"})),
             "{action}"
         );
@@ -253,7 +330,11 @@ async fn set_the_front_answers_in_cores_order() {
     // The reads stay task_routes.rs's, with the front's own facts.
     let (status, state) = rig.call(OWNER, "GET", &Rig::browser(""), None).await;
     assert_eq!(status, 200, "{state}");
-    assert_eq!(rig.forwarded(), Vec::<(String, String)>::new(), "nothing reached core but the facts bridge");
+    assert_eq!(
+        rig.forwarded(),
+        Vec::<(String, String)>::new(),
+        "nothing reached core but the facts bridge"
+    );
     assert_eq!(rig.journals(), 0);
 }
 
@@ -261,8 +342,17 @@ async fn set_the_front_answers_in_cores_order() {
 async fn set_beside_a_core_that_still_runs_browser_tasks_it_writes_nothing() {
     let rig = rig(true, json!({"enabled": true, "facts": {"approvals": {}}})).await;
     assert_eq!(
-        rig.call(OWNER, "POST", &Rig::browser(""), Some(r#"{"domains":["shop.example.test"]}"#)).await,
-        (503, json!({"error": "Browser tasks are unavailable right now. Try again shortly."}))
+        rig.call(
+            OWNER,
+            "POST",
+            &Rig::browser(""),
+            Some(r#"{"domains":["shop.example.test"]}"#)
+        )
+        .await,
+        (
+            503,
+            json!({"error": "Browser tasks are unavailable right now. Try again shortly."})
+        )
     );
     assert_eq!(rig.forwarded(), Vec::<(String, String)>::new());
     assert_eq!(rig.journals(), 0);

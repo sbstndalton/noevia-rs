@@ -491,18 +491,20 @@ pub async fn serve(
             .find(|(k, _)| k == "background")
             .is_some_and(|(_, v)| v == "1")
     });
-    let route = route(parts.method.as_str(), &path).or_else(|| {
-        app.config
-            .code
-            .executor
-            .then(|| crate::code_routes::parse(parts.method.as_str(), &path))
-            .flatten()
-            .map(Route::Code)
-    })
-    .or_else(|| {
-        (app.config.browser.executor && crate::browser_routes::owns(parts.method.as_str(), &path))
+    let route = route(parts.method.as_str(), &path)
+        .or_else(|| {
+            app.config
+                .code
+                .executor
+                .then(|| crate::code_routes::parse(parts.method.as_str(), &path))
+                .flatten()
+                .map(Route::Code)
+        })
+        .or_else(|| {
+            (app.config.browser.executor
+                && crate::browser_routes::owns(parts.method.as_str(), &path))
             .then_some(Route::Browser)
-    });
+        });
     let Some(route) = route else {
         return app
             .proxy
