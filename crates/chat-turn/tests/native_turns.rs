@@ -1279,8 +1279,8 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    // R15's 157, and track R16's four: a deleted chat, two Diary turns, a Diary extras preparation.
-    assert_eq!(ran.len(), 161, "{ran:?}");
+    // R15's 157, and track R16's five: a deleted chat, two Diary turns, two Diary extras preparations.
+    assert_eq!(ran.len(), 162, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
