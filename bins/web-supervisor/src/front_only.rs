@@ -67,6 +67,11 @@ pub fn plan(
             )));
         }
     }
+    // The one pairing rule that is about the front alone (pairing.rs): a configured code network
+    // needs the front's guard, with or without Core.
+    if !env.get("COWORK_CODE_NET_ADDR").is_empty() && !features.has("code-net-guard") {
+        return Err(Refusal("web-supervisor: COWORK_CODE_NET_ADDR is set but this noevia-server has no code-net-guard; update the image".to_owned()));
+    }
     let (raw, port) = ui_port(env)?;
     let legacy = port + 1000;
     let store_port = port + 2000;
@@ -266,6 +271,28 @@ mod tests {
         assert!(msg.contains("no room for the project store port"), "{msg}");
         assert!(refuse(Env::default(), &[0; 31], &[0; 16]).contains("project store secret"));
         assert!(refuse(Env::default(), &[0; 32], &[0; 15]).contains("start id"));
+    }
+
+    #[test]
+    fn a_code_network_needs_the_guard_without_core_too() {
+        let env = Env::from_pairs([("COWORK_CODE_NET_ADDR", "10.0.0.0/8")]);
+        let err = plan(&env, "/f", &both(), Path::new("/d"), &[0; 32], &[0; 16])
+            .err()
+            .map(|r| r.0)
+            .unwrap_or_default();
+        assert!(err.contains("has no code-net-guard"), "{err}");
+        let guarded = Features::parse("front-only-v1\nboot-ensure-v1\ncode-net-guard\n");
+        assert!(plan(&env, "/f", &guarded, Path::new("/d"), &[0; 32], &[0; 16]).is_ok());
+        // Unset: no guard needed.
+        assert!(plan(
+            &Env::default(),
+            "/f",
+            &both(),
+            Path::new("/d"),
+            &[0; 32],
+            &[0; 16]
+        )
+        .is_ok());
     }
 
     #[test]

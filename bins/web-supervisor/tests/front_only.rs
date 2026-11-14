@@ -23,8 +23,8 @@ fn work() -> tempfile::TempDir {
 if [ -n "${{STUB_LOCK_PROBE:-}}" ]; then if ! command -v flock >/dev/null; then echo "probe noflock" >> "{log}"; elif flock -n "${{UI_DATA_DIR:-}}/embedding-pair.lock" true 2>/dev/null; then echo "probe ${{1:-serve}} lock free" >> "{log}"; else echo "probe ${{1:-serve}} lock held" >> "{log}"; fi; fi
 case "${{1:-}}" in --ensure-*) echo "front ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; exit 0;; esac
 if [ "${{1:-}}" = --features ]; then printf '%s\n' ${{STUB_FEATURES-rust-auth front-only-v1 boot-ensure-v1}}; exit 0; fi
-echo "front serve DATA=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} CLAIM=${{NOEVIA_LEGACY_CLAIM_BIN-unset}}" >> "{log}"
 trap 'echo "front TERM" >> "{log}"; exit 0' TERM
+echo "front serve DATA=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} CLAIM=${{NOEVIA_LEGACY_CLAIM_BIN-unset}}" >> "{log}"
 for _ in $(seq 1 400); do [ -f "{die}" ] && exit 3; [ -f "{die0}" ] && exit 0; sleep 0.05; done
 "#,
         log = d.join("log").display(),
