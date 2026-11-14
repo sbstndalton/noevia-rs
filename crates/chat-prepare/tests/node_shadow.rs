@@ -276,3 +276,44 @@ fn a_difference_is_located_without_its_text() {
     }
     assert!(!check(&frame).line().contains(&content));
 }
+
+/// What the recording cannot show: an Automatic turn routed to the Code role (chat.cjs adds its route
+/// note to the system message) and a free list that could not be read with chat framing on are
+/// skipped, not compared.
+#[test]
+fn a_code_route_and_an_unreadable_free_list_are_skipped() {
+    let f = fixture();
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("prepared").is_object())
+        .unwrap();
+    let input = t.get("input");
+    let empty = JValue::Arr(Vec::new());
+    let check = |frame: &JValue, free: Option<&JValue>, framing: Option<bool>| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame,
+            instructions: None,
+            memory: None,
+            free_chats: free,
+            time_zone: "UTC",
+            chat_framing: framing,
+            brain_context: Some(false),
+            history_cap: 1000,
+            catalogue: None,
+        })
+    };
+    let JValue::Obj(mut items) = t.get("prepared").clone() else {
+        panic!()
+    };
+    wtf16::set(&mut items, "role", JValue::from("code"));
+    let code = JValue::Obj(items);
+    assert_eq!(
+        check(&code, Some(&empty), Some(false)),
+        Verdict::Skip("code-route")
+    );
+    let frame = t.get("prepared");
+    assert_eq!(check(frame, None, Some(true)), Verdict::Skip("free-list"));
+    assert_eq!(check(frame, None, None), Verdict::Skip("free-list"));
+    assert_ne!(check(frame, None, Some(false)), Verdict::Skip("free-list"));
+}
