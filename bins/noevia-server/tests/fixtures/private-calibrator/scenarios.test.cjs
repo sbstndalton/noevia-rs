@@ -618,3 +618,50 @@ test('wall clock: a long prompt at exactly 1.5x without engine timings is over t
   const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
   assert.equal(r.passed, false); assert.equal(r.cause, 'time');
 });
+
+// ── 9. R6 shift 3: a save in the middle of a chunk (#2619) ─────────────────────────────────────
+// streamLong saves inside its read loop (`now() - lastSave > 1500`), so when one engine chunk carries
+// several progress events the save holds the step as it was at the event it fell due on; the rest of
+// the chunk (or the stop it ends in) comes after it. Two saves cannot fall due in one chunk under the
+// recorder's clock: it moves only between reads (a `clock` event or a settled sleep), so every event of
+// a chunk reads the same `now()` and the first save sets `lastSave` to it.
+const progressAt = (processed, timeMs) => sse({ prompt_progress: { total: 100000, processed, cache: 0, time_ms: timeMs } });
+// The context stage's first long prompt reads `chunks`; later ones get the synthetic engine's answer.
+// Returns the `[progress, etaSeconds]` of the running long step at every save that had a progress.
+async function midChunkStage(t, chunks, elapse, { marker = false } = {}) {
+  const wall = wallClock();
+  let first = true;
+  const f = fixture(t, { calibration: wall.calibration, engine: { stream: b => {
+    if (!first) return undefined;
+    first = false;
+    const text = b.messages[0].content;
+    const tail = marker ? [sse({ choices: [{ delta: { content: markerOf(text) } }], timings: { prompt_n: Math.floor(text.length / 5), prompt_ms: 100, prompt_per_second: 100000 } }) + 'data: [DONE]\n\n'] : [];
+    return new Response(pacedBody([...chunks, ...tail], { end: true, elapse, wall }));
+  } } });
+  await f.hold();
+  const saved = [];
+  const onUpdate = j => {
+    const s = j?.steps?.findLast(r => r.kind === 'long');
+    if (s?.status === 'running' && s.progress !== undefined) saved.push([s.progress, s.etaSeconds]);
+  };
+  const { job } = await stage(f, f.contextHooks({ onUpdate }));
+  return { saved, job };
+}
+
+test('mid chunk: a save that falls due on a non-final progress event of a chunk keeps that event\'s progress and forecast', async t => {
+  // Chunk 1: the first save falls due on the first of three events. Chunk 2 (1501 ms later): on the
+  // middle event, after a text event. Chunk 3 (100 ms later): no save is due.
+  const { saved, job } = await midChunkStage(t, [
+    progressAt(1000, 1000) + progressAt(2000, 1000) + progressAt(3000, 1000),
+    sse({ choices: [{ delta: { content: 'x' } }] }) + progressAt(4000, 1000) + progressAt(5000, 1000),
+    progressAt(6000, 1000) + progressAt(7000, 1000),
+  ], [0, 1501, 100], { marker: true });
+  assert.deepEqual(saved, [[1, 99], [4, 24]]);
+  assert.ok(job.steps.some(s => s.kind === 'long' && s.status === 'passed'), JSON.stringify(job.steps));
+});
+
+test('mid chunk: a save that falls due before a forecast stop in the same chunk keeps the step from before the stop', async t => {
+  const { saved, job } = await midChunkStage(t, [progressAt(1000, 1000) + progressAt(2000, 100000)], []);
+  assert.deepEqual(saved, [[1, 99]]);
+  assert.ok(job.steps.some(s => s.kind === 'long' && /would take about 4900 s/.test(s.reason || '')), JSON.stringify(job.steps));
+});

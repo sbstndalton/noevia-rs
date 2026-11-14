@@ -490,6 +490,8 @@ impl Host for Script {
         model: &str,
     ) -> Option<(String, JValue)> {
         // The recorder answers core's framing reasoner (framing-reasoner.cjs condense) with the case's packet.
+        // `reasoner.leave`: the client goes away as it is asked; the front's call then loses to the leaving.
+        let leave = self.case.get("input").get("reasoner").get("leave") == &JValue::Bool(true);
         let answer = self.answer(
             "condense",
             &[
@@ -500,6 +502,10 @@ impl Host for Script {
                 ("model", js::s(model)),
             ],
         );
+        if leave {
+            self.leave();
+            return None;
+        }
         let rendered = answer.get("rendered").as_str()?.to_string();
         Some((rendered, answer.get("trace").clone()))
     }
@@ -1279,8 +1285,8 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    // R15's 157, and track R16's four: a deleted chat, two Diary turns, a Diary extras preparation.
-    assert_eq!(ran.len(), 161, "{ran:?}");
+    // R15's 158, and track R16's four: a deleted chat, two Diary turns, a Diary extras preparation.
+    assert_eq!(ran.len(), 162, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

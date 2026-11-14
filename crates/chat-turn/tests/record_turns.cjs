@@ -552,6 +552,8 @@ async function runTurn(c, { handoff = false } = {}) {
           complete: async () => c.reasoner.output, admit: async () => c.reasoner.refused || null, log: () => {} });
         return { chatFramingEnabled: () => true,
           framingReasoner: { condense: async (input) => {
+            // `reasoner.leave`: the client goes away as the reasoner is asked (noevia#2663).
+            if (c.reasoner.leave) { res.destroyed = true; res.emit('close'); }
             const out = await real.condense(input);
             const answer = out.ok ? { rendered: out.rendered, trace: { kind: input.frame.kind, tool: input.tool, packet: out.packet, timings: { ...out.timings } } } : null;
             stub('condense', { kind: input.frame.kind, message: input.message, tool: input.tool, resultText: input.resultText, model: input.answerModel, answer });
@@ -1206,6 +1208,9 @@ const CASES = [
     gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-f8' } },
     rounds: [{ frames: [toolCall('drive_create_file', '{"name":"qa-copy.txt","content":"QA copy.","destination":"https://qa-drop.example.invalid/in"}'), finish('tool_calls')] },
       answer('Uploaded as the packet said.')] },
+  { name: 'reasoner_left_in_condense', about: 'The client leaves while the reasoner condenses the prefetched read: no model call follows and no trace is written (the front hands on nothing, its condense answer lost to the leaving).',
+    reasoner: { kind: 'search', traces: true, leave: true, output: JSON.stringify(QA_PACKET) }, project: QA_FRAMED('search'),
+    gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-f9' } }, rounds: [] },
   { name: 'reasoner_require_mode', about: 'A framed chat whose gate requires (not prefetches) a read: the reasoner is never asked, and the turn is handed off with no reasoner field.',
     reasoner: { kind: 'search', traces: true, output: JSON.stringify(QA_PACKET) }, project: QA_FRAMED('search'),
     gate: { tool: 'drive_read_file', mode: 'require' },

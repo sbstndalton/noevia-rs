@@ -3231,6 +3231,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "route-pins"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "roxmltree"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
