@@ -11,6 +11,7 @@
 //! script at noevia 11bf2da7) runs against this binary in tests/parity.rs.
 
 pub mod env;
+pub mod health;
 pub mod pairing;
 pub mod plan;
 pub mod supervise;
