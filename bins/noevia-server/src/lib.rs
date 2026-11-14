@@ -597,6 +597,10 @@ pub const FEATURES: &[&str] = &[
     "rust-providers",
     #[cfg(feature = "rust-storage-reads")]
     "rust-providers-reseal",
+    // Council p12-3: provider-row turns (chat_provider.rs `PROVIDERS_FEATURE`), still behind
+    // NOEVIA_RUST_CHAT_PROVIDERS; release-assemble pairs it with core's `providers` cap.
+    #[cfg(feature = "rust-storage-reads")]
+    "chat-providers-v1",
     #[cfg(feature = "rust-storage-reads")]
     "rust-mcp-credentials",
     #[cfg(feature = "rust-storage-reads")]

@@ -80,6 +80,15 @@ pub const SIGNIN_SWITCH: &str = "NOEVIA_RUST_CHAT_SIGNIN";
 /// whatever the switches say. Turning it true is its own reviewed change, with that check's tests.
 pub const EXTERNAL_EGRESS_CLEARED: bool = false;
 
+/// The FEATURES entry of a build that runs provider-row turns ([`CAPS_TOKEN`]; the provider store,
+/// `rust-storage-reads`). The release assembly pairs it with core's half (release-assemble `chat_rows`): core must
+/// name the `providers` cap and its `plainProviderRow`, else the front's [`SWITCH`] would change nothing.
+pub const PROVIDERS_FEATURE: &str = "chat-providers-v1";
+/// The FEATURES entry of a build that runs sign-in row turns ([`SIGNIN_CAPS_TOKEN`]). It is listed only once
+/// [`EXTERNAL_EGRESS_CLEARED`] is true (tests::features): a front that can never name the token does not claim it,
+/// so the release assembly pairs nothing for it before then. The change that clears the rules adds it.
+pub const SIGNIN_FEATURE: &str = "chat-signin-v1";
+
 /// Whether this front names [`SIGNIN_CAPS_TOKEN`]: never without the sign-in transport (`rust-chatgpt-status`),
 /// [`offered`] and [`EXTERNAL_EGRESS_CLEARED`].
 pub fn signin_offered() -> bool {
@@ -1654,5 +1663,66 @@ mod http_tests {
             .unwrap();
         assert_eq!(ok.status().as_u16(), 200);
         assert_eq!(ok.text().await.unwrap(), "ok");
+    }
+}
+
+/// What this build claims in FEATURES (council p12-3): the release assembly reads exactly these entries.
+#[cfg(test)]
+mod features {
+    use super::*;
+
+    fn listed(name: &str) -> usize {
+        crate::FEATURES.iter().filter(|f| **f == name).count()
+    }
+
+    #[test]
+    fn provider_rows_are_claimed_by_a_build_with_the_provider_store() {
+        let want = usize::from(cfg!(feature = "rust-storage-reads"));
+        assert_eq!(listed(PROVIDERS_FEATURE), want);
+        // The literal the release assembly greps for in lib.rs is this constant.
+        assert_eq!(PROVIDERS_FEATURE, "chat-providers-v1");
+    }
+
+    #[test]
+    fn signin_rows_are_claimed_only_once_the_external_rules_are_cleared() {
+        let can_name = EXTERNAL_EGRESS_CLEARED
+            && cfg!(feature = "rust-storage-reads")
+            && cfg!(feature = "rust-chatgpt-status");
+        assert_eq!(listed(SIGNIN_FEATURE), usize::from(can_name));
+        assert_eq!(SIGNIN_FEATURE, "chat-signin-v1");
+    }
+
+    #[test]
+    fn a_build_that_lists_signin_rows_lists_provider_rows_too() {
+        // Core lifts the sign-in row only for a front naming both caps (front_caps).
+        assert!(listed(SIGNIN_FEATURE) == 0 || listed(PROVIDERS_FEATURE) == 1);
+    }
+
+    #[test]
+    fn the_feature_entries_are_not_the_caps_tokens() {
+        // FEATURES says what the build can do; the caps say what this start offers core per turn.
+        for f in [PROVIDERS_FEATURE, SIGNIN_FEATURE] {
+            assert!(!front_caps(true, true).split(',').any(|t| t == f), "{f}");
+        }
+        assert_ne!(PROVIDERS_FEATURE, CAPS_TOKEN);
+        assert_ne!(SIGNIN_FEATURE, SIGNIN_CAPS_TOKEN);
+    }
+
+    #[test]
+    fn no_build_offers_the_signin_token_while_the_rules_are_held() {
+        // The constant is the lock; the switch alone never names the token. (The change that clears the
+        // rules replaces this test with the cleared case.)
+        if EXTERNAL_EGRESS_CLEARED {
+            return;
+        }
+        for value in [None, Some("1"), Some(" 1 "), Some("0"), Some("true")] {
+            assert!(!signin_offered_by(true, EXTERNAL_EGRESS_CLEARED, value));
+        }
+        assert!(!front_caps(
+            true,
+            signin_offered_by(true, EXTERNAL_EGRESS_CLEARED, Some("1"))
+        )
+        .split(',')
+        .any(|t| t == SIGNIN_CAPS_TOKEN));
     }
 }
