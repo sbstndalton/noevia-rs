@@ -263,6 +263,7 @@ fn the_router_reads_what_node_s_router_input_gives_it() {
 #[test]
 fn chunk_chars_for_is_node_s() {
     let f = fixture();
+    assert!(items(&f, "chunkCharsFor").len() >= 10);
     for c in items(&f, "chunkCharsFor") {
         let limit = match c.get("limit") {
             JValue::Num(n) => Some(*n),
