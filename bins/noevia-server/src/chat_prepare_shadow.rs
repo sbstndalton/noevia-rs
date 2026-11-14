@@ -1,0 +1,227 @@
+//! The native chat preparation in shadow (track R8, slice P7a). For an account the switch names,
+//! a turn core handed to the native executor (chat_native.rs) is prepared a second time here, from
+//! the same request and the account's own files, with `chat_prepare::shadow`; the native messages
+//! are compared with core's `prepared` frame and one line says whether they are the same. Nothing
+//! uses them: the turn runs from core's frame as before, and the shadow never delays it (it runs on
+//! a blocking thread after the turn has started, at most [`MAX_RUNNING`] at a time, the rest skipped).
+//!
+//! The line holds no text of the turn: `chat prepare shadow: match`, `skip <reason>`,
+//! `failed <reason>` or `diff message=<i> unit=<u> ours=<n> core=<n>` (see `chat_prepare::shadow`).
+//!
+//! Switch: `NOEVIA_CHAT_PREPARE` (config.rs): unset, empty or `node` is off (the default);
+//! `shadow` every account the executor runs; `shadow:<account id>,...` those. It only matters for
+//! turns `NOEVIA_CHAT_EXECUTOR` sends to the native executor. A bad value refuses startup.
+
+use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
+
+use bytes::Bytes;
+use chat_prepare::shadow::{compare, ShadowTurn, Verdict};
+use js_json::{wtf16, JValue};
+
+use crate::App;
+
+/// index.cjs HISTORY_CAP.
+const HISTORY_CAP: usize = 1000;
+/// Shadows running at once; one more is skipped (`skip busy`).
+pub const MAX_RUNNING: usize = 2;
+static RUNNING: AtomicUsize = AtomicUsize::new(0);
+
+/// Which accounts' turns are prepared in shadow.
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum Switch {
+    /// Off (the default).
+    #[default]
+    Node,
+    Accounts(Vec<String>),
+    All,
+}
+
+impl Switch {
+    /// `NOEVIA_CHAT_PREPARE`: unset, empty or `node`; `shadow`; `shadow:<id>,<id>`.
+    pub fn parse(value: Option<&str>) -> Result<Switch, String> {
+        let v = value.map(str::trim).unwrap_or("");
+        match v {
+            "" | "node" => Ok(Switch::Node),
+            "shadow" => Ok(Switch::All),
+            _ => match v.strip_prefix("shadow:") {
+                Some(list) => {
+                    let ids: Vec<String> = list
+                        .split(',')
+                        .map(str::trim)
+                        .filter(|s| !s.is_empty())
+                        .map(str::to_string)
+                        .collect();
+                    if ids.is_empty()
+                        || ids.iter().any(|id| {
+                            id.len() > 64
+                                || !id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
+                        })
+                    {
+                        Err("NOEVIA_CHAT_PREPARE: shadow:<account id>,... needs account ids".into())
+                    } else {
+                        Ok(Switch::Accounts(ids))
+                    }
+                }
+                None => Err(
+                    "NOEVIA_CHAT_PREPARE must be node, shadow or shadow:<account id>,...".into(),
+                ),
+            },
+        }
+    }
+
+    pub fn names(&self, user: &str) -> bool {
+        match self {
+            Switch::Node => false,
+            Switch::All => true,
+            Switch::Accounts(ids) => ids.iter().any(|id| id == user),
+        }
+    }
+}
+
+/// Whether this account's handed-off turns are prepared in shadow.
+pub(crate) fn wanted(app: &Arc<App>, user: &str) -> bool {
+    app.config.chat_prepare.names(user)
+}
+
+/// Prepares the turn in shadow and logs the verdict, on a blocking thread; returns at once.
+/// `body` is the request body core was sent, `frame` core's `prepared` frame.
+pub(crate) fn spawn(user_dir: PathBuf, body: Bytes, frame: JValue) {
+    /// One running shadow, counted until it is dropped (also when the blocking task never runs).
+    struct Slot;
+    impl Drop for Slot {
+        fn drop(&mut self) {
+            RUNNING.fetch_sub(1, Ordering::AcqRel);
+        }
+    }
+    let slot = Slot;
+    if RUNNING.fetch_add(1, Ordering::AcqRel) >= MAX_RUNNING {
+        drop(slot);
+        eprintln!("chat prepare shadow: skip busy");
+        return;
+    }
+    drop(tokio::task::spawn_blocking(move || {
+        let verdict = run(&user_dir, &body, &frame, &server_time_zone());
+        drop(slot);
+        eprintln!("chat prepare shadow: {}", verdict.line());
+    }));
+}
+
+/// One shadow preparation: the account's files read as core reads them.
+pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str) -> Verdict {
+    let Some(body) = std::str::from_utf8(body)
+        .ok()
+        .and_then(|t| wtf16::parse(t).ok())
+    else {
+        return Verdict::Skip("body");
+    };
+    let read = |name: &str| std::fs::read(user_dir.join(name)).ok();
+    let instructions = read("account-instructions.json");
+    let memory = read("account-memory.json");
+    // freeChats(): the list as stored; no file is the empty list, an unreadable one no frame (fail open).
+    let free_chats = match std::fs::read(user_dir.join(server_projects::chats::FREE_CHATS_FILE)) {
+        Ok(bytes) => std::str::from_utf8(&bytes)
+            .ok()
+            .and_then(|t| wtf16::parse(t).ok()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(JValue::Arr(Vec::new())),
+        Err(_) => None,
+    };
+    compare(&ShadowTurn {
+        body: &body,
+        frame,
+        instructions: instructions.as_deref(),
+        memory: memory.as_deref(),
+        free_chats: free_chats.as_ref(),
+        time_zone,
+        history_cap: HISTORY_CAP,
+        catalogue: None,
+    })
+}
+
+/// `serverTimeZone()`: what Node's ICU resolves for the process: `TZ` (an IANA name, or a path
+/// under a `zoneinfo` directory), else the `/etc/localtime` link's target, else `/etc/timezone`,
+/// else `UTC`.
+pub fn server_time_zone() -> String {
+    zone_from(
+        std::env::var("TZ").ok().as_deref(),
+        std::fs::read_link("/etc/localtime")
+            .ok()
+            .and_then(|p| p.to_str().map(str::to_string))
+            .as_deref(),
+        std::fs::read_to_string("/etc/timezone").ok().as_deref(),
+    )
+}
+
+fn zone_from(tz: Option<&str>, localtime: Option<&str>, timezone: Option<&str>) -> String {
+    let named = |s: &str| {
+        let s = s.trim().trim_start_matches(':');
+        let s = s.rsplit_once("zoneinfo/").map_or(s, |(_, z)| z);
+        (!s.is_empty()).then(|| s.to_string())
+    };
+    tz.and_then(named)
+        .or_else(|| localtime.and_then(|l| l.split_once("zoneinfo/").map(|(_, z)| z.to_string())))
+        .or_else(|| timezone.and_then(named))
+        .unwrap_or_else(|| "UTC".into())
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_switch_reads_off_shadow_and_accounts() {
+        assert_eq!(Switch::parse(None), Ok(Switch::Node));
+        assert_eq!(Switch::parse(Some(" node ")), Ok(Switch::Node));
+        assert_eq!(Switch::parse(Some("shadow")), Ok(Switch::All));
+        assert_eq!(
+            Switch::parse(Some("shadow:qa-1, qa-2")),
+            Ok(Switch::Accounts(vec!["qa-1".into(), "qa-2".into()]))
+        );
+        for bad in ["native", "shadow:", "shadow:qa 1", "shadow:qa/1", "on"] {
+            assert!(Switch::parse(Some(bad)).is_err(), "{bad}");
+        }
+        let s = Switch::parse(Some("shadow:qa-1")).unwrap();
+        assert!(s.names("qa-1") && !s.names("qa-2"));
+        assert!(!Switch::Node.names("qa-1"));
+    }
+
+    #[test]
+    fn the_zone_is_read_as_icu_reads_it() {
+        assert_eq!(
+            zone_from(Some("Europe/Berlin"), None, None),
+            "Europe/Berlin"
+        );
+        assert_eq!(zone_from(Some(":Asia/Tokyo"), None, None), "Asia/Tokyo");
+        assert_eq!(
+            zone_from(Some("/usr/share/zoneinfo/America/New_York"), None, None),
+            "America/New_York"
+        );
+        assert_eq!(
+            zone_from(None, Some("/usr/share/zoneinfo/Etc/UTC"), None),
+            "Etc/UTC"
+        );
+        assert_eq!(
+            zone_from(Some(""), Some("../usr/share/zoneinfo/Europe/Paris"), None),
+            "Europe/Paris"
+        );
+        assert_eq!(
+            zone_from(None, None, Some("Australia/Adelaide\n")),
+            "Australia/Adelaide"
+        );
+        assert_eq!(zone_from(None, Some("/etc/elsewhere"), None), "UTC");
+        assert_eq!(zone_from(None, None, None), "UTC");
+    }
+
+    #[test]
+    fn an_unreadable_body_is_skipped() {
+        let dir = std::env::temp_dir();
+        let frame = JValue::Null;
+        assert_eq!(
+            run(&dir, b"{not json", &frame, "UTC"),
+            Verdict::Skip("body")
+        );
+        assert_eq!(run(&dir, b"{}", &frame, "UTC"), Verdict::Skip("frame"));
+    }
+}

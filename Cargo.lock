@@ -2283,6 +2283,7 @@ dependencies = [
  "brotli",
  "bytes",
  "chat-mirror-sched",
+ "chat-prepare",
  "chat-turn",
  "code-acp",
  "code-harness",
