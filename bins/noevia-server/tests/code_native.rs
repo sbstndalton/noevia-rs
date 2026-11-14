@@ -1631,3 +1631,70 @@ async fn the_relay_switch_off_binds_nothing_even_with_a_relay_port() {
     })
     .await;
 }
+
+/// Council p6 (the role engine's machine pin): a Planner pipeline start whose Code role is on an
+/// inference machine plans on that machine with the machine's model, as core's `codeRoleEndpoint`
+/// sends it there; this server's role engine endpoint is never called. Cancelled on its plan card,
+/// it ends as Node's does.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_planner_start_on_a_machine_plans_on_that_machine() {
+    within(async {
+        let answers = fixture(PIPELINE)["standins"]["answers"].clone();
+        let seen: Seen = Arc::default();
+        let handler: Handler = Arc::new(move |_method, path, body| match path.split('?').next() {
+            Some("/health") => (200, "application/json", "{}".into()),
+            Some("/v1/models") => (
+                200,
+                "application/json",
+                r#"{"data":[{"id":"qa-code"}]}"#.into(),
+            ),
+            Some("/props") => (
+                200,
+                "application/json",
+                r#"{"default_generation_settings":{"n_ctx":16384}}"#.into(),
+            ),
+            Some("/v1/chat/completions")
+                if body.to_string().contains("Write a bounded execution plan") =>
+            {
+                (200, "text/event-stream", sse(&answers["planner"]))
+            }
+            _ => (404, "application/json", "{}".into()),
+        });
+        let machine = stub(Arc::clone(&seen), handler).await;
+        let r = rig(Opts {
+            executor: true,
+            pipeline: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let (status, started) = r
+            .start(json!({"repository": "qa-repo", "prompt": GREET, "promptPreparation": "planner", "approvePlan": true}))
+            .await;
+        assert_eq!(status, 202, "{started}");
+        let task = started["taskId"].as_str().unwrap().to_string();
+        let card = r.card(&task, "approve_plan").await;
+        assert!(card["id"].is_string(), "{card}");
+        // The plan was asked of the machine, with its model and the stream on.
+        let calls: Vec<Value> = seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(_, p, _)| p == "/v1/chat/completions")
+            .map(|(_, _, b)| b.clone())
+            .collect();
+        assert_eq!(calls.len(), 1, "one Planner call on the machine");
+        assert_eq!(calls[0]["model"], json!("qa-code"));
+        assert_eq!(calls[0]["stream"], json!(true));
+        // This server's role engine endpoint (core's `role` fact) was never called.
+        assert!(r.roles.lock().unwrap().is_empty());
+        let (status, _) = r
+            .call(OWNER, "POST", &r.code(&format!("/{task}/cancel")), None)
+            .await;
+        assert_eq!(status, 200);
+        assert_eq!(r.ended(&task).await["status"], "cancelled");
+        assert_eq!(r.sandbox.lock().unwrap().prompts, 0, "the cancelled plan never ran the agent");
+    })
+    .await;
+}
