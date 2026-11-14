@@ -1,0 +1,17 @@
+[package]
+name = "current-time"
+version = "0.1.0"
+description = "noevia-core's built-in get_current_time chat tool (toolboxes.cjs) and current-time-part.cjs calendarFacts/factsLine in Rust (track R5), replayed byte for byte on recorded Node output. Nothing calls it yet."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# The IANA zones' offsets (Intl.DateTimeFormat's timeZone). MIT OR Apache-2.0; already in Cargo.lock.
+chrono = { version = "=0.4.45", default-features = false, features = ["std"] }
+chrono-tz = "=0.10.4"

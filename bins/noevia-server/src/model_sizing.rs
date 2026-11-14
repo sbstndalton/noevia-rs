@@ -436,7 +436,12 @@ pub fn read_presets(file: &Path) -> Result<Presets, Thrown> {
         });
     }
     let bytes = std::fs::read(file).map_err(|e| Thrown::plain(e.to_string()))?;
-    let text = String::from_utf8_lossy(&bytes).into_owned();
+    parse_presets(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+/// llamacpp-presets.cjs `parse(text)` (with the revision `read()` adds): a text that is not on
+/// disk, such as a prepared candidate.
+pub fn parse_presets(text: String) -> Result<Presets, Thrown> {
     if text.len() > 1024 * 1024 {
         return Err(Thrown {
             status: Some(413),
@@ -1182,6 +1187,28 @@ impl Sizing {
         );
         port(3, &args)
     }
+}
+
+impl Sizing {
+    /// `presetRefusal`'s `readModel(model)` (llamacpp-manager.cjs): the leading members of the
+    /// estimate's arguments, `"meta":…,"modelBytes":…,"mmprojBytes":…`, or `None` where the read
+    /// answers an error or throws (the JS's `.catch(() => ({ error }))`; no estimate then).
+    pub(crate) fn read_facts(&self, model: &str, listing: &Read) -> Option<String> {
+        let file = self.presets.as_deref()?;
+        let read = self.read_model(file, model, listing).ok()?;
+        Some(format!(
+            r#""meta":{},"modelBytes":{},"mmprojBytes":{}"#,
+            meta_json(&read.summary),
+            num(read.model_bytes as f64),
+            num(read.mmproj_bytes as f64),
+        ))
+    }
+}
+
+/// One strict operation of crates/llamacpp-autoconfig (see [`port`]): the answer text, or `None`
+/// where the port refused (the JS's `AutoconfigImplError`).
+pub(crate) fn strict(op: u8, args: &str) -> Option<String> {
+    port(op, args)
 }
 
 /// `url.searchParams.get('model')` of the request target.

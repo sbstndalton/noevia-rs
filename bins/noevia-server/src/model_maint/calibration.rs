@@ -527,11 +527,11 @@ pub enum Applied {
     Uncovered,
 }
 
-const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
-const RELOAD_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
-const RELOAD_STUCK: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
-const RELOAD_UNCONFIRMED: &str = "Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying.";
-const RELOAD_RESTORED: &str = "Reload failed or timed out. Previous preset file restored; check router health before retrying.";
+pub(super) const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
+pub(super) const RELOAD_UNCERTAIN: &str = "Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.";
+pub(super) const RELOAD_STUCK: &str = "Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.";
+pub(super) const RELOAD_UNCONFIRMED: &str = "Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying.";
+pub(super) const RELOAD_RESTORED: &str = "Reload failed or timed out. Previous preset file restored; check router health before retrying.";
 
 impl Maint {
     /// `applyUnlocked({ model, baseRevision, options }, { backup })`, under the caller's hold: the
@@ -656,9 +656,10 @@ impl Maint {
         };
         // Row J review P1 (#2608): the write and its re-read are one step; it starts only while the
         // hold can still cover it, or nothing is written (Node throws its 503 coverage error here).
-        // Stricter than Node's assertCovered (the last confirmation must cover the whole step)
-        // until the front marks a hold lost at the margin as Node does (sbstndalton/noevia#2641).
-        if !holding.may_start(PRESET_STEP) {
+        // Node's rule for the step (no lapse within the margin, the step inside the hard cap; not
+        // marking a loss here, #2641), and the re-read's own rule, which narrows the chance that a
+        // write that starts is refused its re-read (the commit takes time).
+        if !holding.fits(PRESET_STEP) || !holding.may_start(super::reload::RELOAD_LIMIT) {
             return (Applied::Uncovered, 503);
         }
         if let Err(e) = ini.commit(&candidate, backup).await {

@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 use diary_backup_format::sha256;
-use std::{fs, process::Command, time::Instant};
+use std::{fs, path::Path, process::Command, time::Instant};
 #[test]
 fn config_diagnostic_has_no_values() {
     let dir = tempfile::tempdir().unwrap();
@@ -46,7 +46,15 @@ fn config_diagnostic_does_not_echo_invalid_unicode() {
 
 #[test]
 fn restore_large_namespace_is_bounded() {
-    let dir = tempfile::tempdir().unwrap();
+    // noevia#2497: the bound is on the restore's own work (no file x directory cross-product),
+    // not on the disk. Every restored file is fsynced, and 5000 fsyncs alone take 25 s on a
+    // slow disk and more than 5 s on a busy shared runner, so the namespace lives on tmpfs when
+    // there is one (fsync is nearly free there).
+    // About 21 MiB there (a 4 KiB page per file); a /dev/shm that is missing or not writable
+    // falls back to the ordinary temp directory.
+    let dir = tempfile::tempdir_in(Path::new("/dev/shm"))
+        .or_else(|_| tempfile::tempdir())
+        .unwrap();
     let tenant = "00000000-0000-4000-8000-000000000123";
     let object = format!("noevia-backups/{tenant}/objects/synthetic/payload");
     let source = dir.path().join(&object);

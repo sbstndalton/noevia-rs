@@ -467,11 +467,77 @@ impl Host for Script {
         );
     }
 
+    fn gate_record(&self, event: &str, tool: &str) {
+        self.store(
+            "toolGate.record",
+            vec![("event", js::s(event)), ("tool", js::s(tool))],
+        );
+    }
+
     async fn engine_busy(&self) -> bool {
         if self.busy_yields {
             YieldOnce(false).await;
         }
         self.answer("inferenceBusy", &[("n", js::n(1.0))]) == JValue::Bool(true)
+    }
+
+    async fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> Option<(String, JValue)> {
+        // The recorder answers core's framing reasoner (framing-reasoner.cjs condense) with the case's packet.
+        // `reasoner.leave`: the client goes away as it is asked; the front's call then loses to the leaving.
+        let leave = self.case.get("input").get("reasoner").get("leave") == &JValue::Bool(true);
+        let answer = self.answer(
+            "condense",
+            &[
+                ("kind", js::s(kind)),
+                ("message", js::s(message)),
+                ("tool", js::s(tool)),
+                ("resultText", js::s(result_text)),
+                ("model", js::s(model)),
+            ],
+        );
+        if leave {
+            self.leave();
+            return None;
+        }
+        let rendered = answer.get("rendered").as_str()?.to_string();
+        Some((rendered, answer.get("trace").clone()))
+    }
+
+    async fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+        // Core's reasoner-trace op: appended only when the person opted in (the case's `reasoner.traces`), as
+        // chat.cjs builds the entry ({...trace, answerChars, timings: {...timings, answerMs}}).
+        if self.case.get("input").get("reasoner").get("traces") != &JValue::Bool(true) {
+            return;
+        }
+        let mut timings = trace.get("timings").clone();
+        js::set(&mut timings, "answerMs", js::n(answer_ms));
+        let mut entry = trace.clone();
+        js::set(&mut entry, "answerChars", js::n(answer_chars));
+        js::set(&mut entry, "timings", timings);
+        self.store("reasoningTraces.append", vec![("entry", entry)]);
+    }
+
+    async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {
+        // The recorder answers core's supervisor (step-supervision.cjs decide) with the case's verdicts.
+        self.answer(
+            "supervise",
+            &[
+                ("round", js::n(f64::from(round))),
+                ("goal", js::s(goal)),
+                ("wrote", JValue::Bool(wrote)),
+                ("outputs", JValue::Arr(outputs.to_vec())),
+            ],
+        )
+        .as_str()
+        .unwrap_or("continue")
+        .to_string()
     }
 
     async fn title_auto_named(&self, list: Option<&str>, chat: &str, first: &str) -> bool {
@@ -1064,6 +1130,7 @@ fn every_prepared_turn_reads() {
     }
     assert!(read >= 30);
     // The coworker page save (#2446) is handed off too now (the `once` capability): no recorded turn stays in Node.
+    // Every recorded turn is handed off now (the tool gate's prefetch too).
     assert_eq!(refused, Vec::<String>::new());
 }
 
@@ -1197,7 +1264,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 103, "{ran:?}");
+    assert_eq!(ran.len(), 158, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -1659,4 +1726,32 @@ fn the_provenance_flag_is_true_or_absent() {
             .unwrap()
             .provenance
     );
+}
+
+/// A frame whose gate names a write (chat.cjs never forces or prefetches one) is refused, not run without its card
+/// (R15 review): the recorded `gate_require_called` frame with its tool swapped for one of the frame's writes.
+#[test]
+fn a_gate_naming_a_write_refuses_the_frame() {
+    let fixture = wtf16::parse(common::FIXTURE).unwrap();
+    let JValue::Arr(cases) = fixture.get("cases") else {
+        panic!()
+    };
+    let frame = cases
+        .iter()
+        .find(|c| c.get("name").as_str() == Some("gate_require_called"))
+        .unwrap()
+        .get("handoff")
+        .get("prepared")
+        .clone();
+    assert_eq!(
+        Prepared::read(&frame).unwrap().gate_tool.as_deref(),
+        Some("drive_read_file")
+    );
+    let JValue::Arr(writes) = frame.get("writes") else {
+        panic!()
+    };
+    let write = writes.first().unwrap().clone();
+    let mut f = frame.clone();
+    js::set(&mut f, "gate", js::obj([("tool", write)]));
+    assert!(Prepared::read(&f).is_err());
 }

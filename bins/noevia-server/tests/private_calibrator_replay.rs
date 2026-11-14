@@ -789,7 +789,7 @@ fn every_recorded_private_calibrator_replays() {
         "the trace set is missing"
     );
     assert!(
-        scenarios >= 50 || only.is_some(),
+        scenarios >= 52 || only.is_some(),
         "the scenario (S*) traces are missing"
     );
     assert!(

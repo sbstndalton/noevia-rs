@@ -131,6 +131,9 @@ code-harness = { path = "../../crates/code-harness" }
 engine-facts = { path = "../../crates/engine-facts" }
 # Track R11: the inference budget and idle unload PUTs (model_writes_routes.rs).
 model-writes = { path = "../../crates/model-writes" }
+model-pull = { path = "../../crates/model-pull" }
+# Track R11 (S9b): the /api/model-manager/* proxy (model_manager_routes.rs).
+model-manager-proxy = { path = "../../crates/model-manager-proxy" }
 code-pipeline = { path = "../../crates/code-pipeline" }
 code-verify = { path = "../../crates/code-verify" }
 role-engine = { path = "../../crates/role-engine" }
