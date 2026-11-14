@@ -1,0 +1,18 @@
+[package]
+name = "edit-target-lookup"
+version = "0.1.0"
+description = "noevia-core's project-edit-target.cjs resolveEditTarget and targetDigest over a project as JSON: the stored path a project edit tool call would change, or the model-readable reason it may not"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+project-edit-target = { path = "../project-edit-target" }
+project-file-names = { path = "../project-file-names" }
+prompt-framing = { path = "../prompt-framing" }
+js-json = { path = "../js-json" }
+sha2 = "0.10"

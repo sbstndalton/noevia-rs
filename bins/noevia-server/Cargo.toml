@@ -59,6 +59,7 @@ chat-mirror-sched = { path = "../../crates/chat-mirror-sched" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }
 chat-turn = { path = "../../crates/chat-turn" }
+edit-target-lookup = { path = "../../crates/edit-target-lookup" }
 engine-admission = { path = "../../crates/engine-admission" }
 model-stream = { path = "../../crates/model-stream" }
 research-core = { path = "../../crates/research-core" }
