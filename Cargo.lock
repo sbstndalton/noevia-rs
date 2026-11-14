@@ -2399,6 +2399,7 @@ dependencies = [
  "chat-prepare",
  "chat-turn",
  "code-acp",
+ "code-engine-relay",
  "code-harness",
  "code-net-guard",
  "code-pipeline",

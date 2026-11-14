@@ -236,7 +236,7 @@ pub fn ready_of(t: &machines::Target, health: &Health, models: Option<&[String]>
     let detail = match health {
         Health::Up => {
             return match models {
-                Some(served) if !served.iter().any(|m| *m == t.model) => Ready {
+                Some(served) if !served.contains(&t.model) => Ready {
                     ok: false,
                     code: Some("machineWrongModel".into()),
                     error: Some(wrong_model_text(t, served)),
@@ -752,12 +752,11 @@ pub async fn start(
     let Some(port) = env.port else {
         return Some(state);
     };
-    let host = env.host.clone();
     let looked = match &env.bind {
         code_engine_relay::bind::Bind::Lookup(h) => Some(lookup(h).await),
         code_engine_relay::bind::Bind::Explicit(_) => None,
     };
-    let (address, fallback) = env.bind.address(|_| looked.unwrap_or_else(|| Err(host)));
+    let (address, fallback) = env.bind.address(|h| looked.unwrap_or(Err(format!("getaddrinfo ENOTFOUND {h}"))));
     if let Some(entry) = fallback {
         log_relay(&entry);
     }
@@ -792,4 +791,238 @@ pub async fn start(
         std::future::pending::<()>(),
     ));
     Some(state)
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    const ROW: &str = r#"{"version":1,"machines":[{"id":"qa-m1","name":"QA Box","address":"http://10.9.0.7"}],"assignments":{"chatSmart":{"machine":"qa-m1","port":8081,"model":"qa-smart"},"chatCode":{"machine":"qa-m1","port":8080,"model":"qa-code"}}}"#;
+    const SMART_ONLY: &str = r#"{"version":1,"machines":[{"id":"qa-m1","name":"QA Box","address":"http://10.9.0.7"}],"assignments":{"chatSmart":{"machine":"qa-m1","port":8081,"model":"qa-smart"}}}"#;
+
+    fn roles(text: &str) -> JValue {
+        wtf16::parse(text).unwrap()
+    }
+
+    #[test]
+    fn the_switch_is_exactly_1() {
+        for (v, on) in [
+            (Some("1"), true),
+            (Some("true"), false),
+            (Some(" 1"), false),
+            (Some(""), false),
+            (None, false),
+        ] {
+            let get = |k: &str| (k == SWITCH).then(|| v.map(str::to_string)).flatten();
+            assert_eq!(enabled(&get), on, "{v:?}");
+        }
+    }
+
+    #[test]
+    fn code_target_is_code_then_smart_unless_a_local_code_model_is_named() {
+        let t = code_target(Some(ROW), &JValue::Null).unwrap();
+        assert_eq!(
+            (t.machine.role.as_str(), t.machine.model.as_str()),
+            ("code", "qa-code")
+        );
+        assert_eq!(t.machine.base_url, "http://10.9.0.7:8080");
+        // The Code role on a machine wins over a local Code model (code-machine.cjs: `code` first).
+        let t = code_target(Some(ROW), &roles(r#"{"code":"qa-local"}"#)).unwrap();
+        assert_eq!(t.machine.model, "qa-code");
+        // Only Smart on a machine: it is the fallback...
+        let t = code_target(Some(SMART_ONLY), &roles(r#"{"smart":"x"}"#)).unwrap();
+        assert_eq!(
+            (t.machine.role.as_str(), t.machine.model.as_str()),
+            ("smart", "qa-smart")
+        );
+        assert!(code_target(Some(SMART_ONLY), &JValue::Null).is_some());
+        // ...unless the account names a local Code model (any truthy value).
+        assert!(code_target(Some(SMART_ONLY), &roles(r#"{"code":"qa-local"}"#)).is_none());
+        assert!(code_target(Some(SMART_ONLY), &roles(r#"{"code":""}"#)).is_some());
+        // Nothing assigned, no row, a damaged row: this machine.
+        assert!(code_target(None, &JValue::Null).is_none());
+        assert!(code_target(Some("not json"), &JValue::Null).is_none());
+        let relay = code_target(Some(ROW), &JValue::Null).unwrap().relay();
+        assert_eq!(
+            code_engine_relay::target_key(Some(&relay)).unwrap(),
+            "qa-m1|http://10.9.0.7:8080|qa-code"
+        );
+        assert_eq!(relay.machine_name, "QA Box");
+    }
+
+    fn target(role: &str) -> machines::Target {
+        machines::Target {
+            role: role.into(),
+            machine_id: "qa-m1".into(),
+            machine_name: "Synthetic Pi".into(),
+            port: 8080,
+            model: "synthetic-remote-fast".into(),
+            base_url: "http://10.9.0.7:8080".into(),
+        }
+    }
+
+    #[test]
+    fn ready_answers_with_node_s_codes_and_texts() {
+        let t = target("fast");
+        let up = ready_of(&t, &Health::Up, None);
+        assert_eq!(up, Ready::ok());
+        let served = vec!["synthetic-remote-fast".to_string()];
+        assert_eq!(ready_of(&t, &Health::Up, Some(&served)), Ready::ok());
+        // chat-machines-1840.test.cjs line 345: the wrong model.
+        let wrong = ready_of(&t, &Health::Up, Some(&["synthetic-other-gguf".to_string()]));
+        assert_eq!(wrong.code.as_deref(), Some("machineWrongModel"));
+        assert_eq!(
+            wrong.error.as_deref().unwrap(),
+            "The Fast machine (Synthetic Pi) serves synthetic-other-gguf, not synthetic-remote-fast. Start synthetic-remote-fast on port 8080, or choose the model it serves for the Fast role in Settings \u{2192} Inference machines."
+        );
+        let four: Vec<String> = ["a", "b", "c", "d"].iter().map(|s| s.to_string()).collect();
+        assert!(ready_of(&t, &Health::Up, Some(&four))
+            .error
+            .unwrap()
+            .starts_with("The Fast machine (Synthetic Pi) serves a, b, c and more, not "));
+        assert!(ready_of(&t, &Health::Up, Some(&[]))
+            .error
+            .unwrap()
+            .contains("serves no model, not "));
+        let base = "Fast model\u{2019}s machine (Synthetic Pi) is unreachable";
+        let tail = ". Check that it is on and serving synthetic-remote-fast on port 8080, or move the Fast role back to this machine in Settings \u{2192} Inference machines.";
+        for (h, detail) in [
+            (
+                Health::Unreachable("not-on-this-network"),
+                ": its address is not on this network",
+            ),
+            (Health::Down(503), ": it answered HTTP 503"),
+            (Health::Unreachable("timeout"), ": no answer in time"),
+            (Health::Unreachable("refused"), ""),
+            (Health::Unreachable("network"), ""),
+            (Health::Unknown, ""),
+        ] {
+            let r = ready_of(&t, &h, Some(&served));
+            assert!(!r.ok);
+            assert_eq!(r.code.as_deref(), Some("machineUnreachable"), "{h:?}");
+            assert_eq!(r.error.unwrap(), format!("{base}{detail}{tail}"), "{h:?}");
+        }
+        // The Code role's label.
+        assert!(ready_of(&target("code"), &Health::Unknown, None)
+            .error
+            .unwrap()
+            .starts_with("Code model\u{2019}s machine"));
+    }
+
+    #[test]
+    fn the_probe_status_rule_is_machine_health_s() {
+        for s in [200, 204, 299, 401, 403] {
+            assert_eq!(health_of_status(s), Health::Up, "{s}");
+        }
+        for s in [301, 404, 500, 503] {
+            assert_eq!(health_of_status(s), Health::Down(s), "{s}");
+        }
+    }
+
+    #[test]
+    fn health_url_is_health_at_the_origin() {
+        assert_eq!(
+            health_url("http://10.9.0.7:8080", "/health").as_deref(),
+            Some("http://10.9.0.7:8080/health")
+        );
+        assert_eq!(
+            health_url("  https://box.lan/v1/x?y ", "/health").as_deref(),
+            Some("https://box.lan/health")
+        );
+        assert_eq!(
+            health_url("http://[fd7a::1]:81", "/health").as_deref(),
+            Some("http://[fd7a::1]:81/health")
+        );
+        // The default port is not written (Node's `u.host` leaves it out).
+        assert_eq!(
+            health_url("http://box.lan:80", "/health").as_deref(),
+            Some("http://box.lan/health")
+        );
+        for bad in ["", "ftp://x", "box.lan:8080", "not a url"] {
+            assert_eq!(health_url(bad, "/health"), None, "{bad}");
+        }
+    }
+
+    #[test]
+    fn model_ids_reads_data_then_models() {
+        let ids = |t: &str| model_ids(&wtf16::parse(t).unwrap());
+        assert_eq!(
+            ids(r#"{"data":[{"id":"a"},{"id":"a"},{"model":"b"},{"name":"c"},"d",{"id":" "},{"id":5},{"id":"x\u0001"},null]}"#),
+            ["a", "b", "c", "d"]
+        );
+        assert_eq!(ids(r#"{"models":[{"name":"m"}]}"#), ["m"]);
+        // `data` wins when it is an array, even empty.
+        assert!(ids(r#"{"data":[],"models":[{"name":"m"}]}"#).is_empty());
+        assert_eq!(ids(r#"{"data":{},"models":[{"name":"m"}]}"#), ["m"]);
+        // `id ?? model ?? name`: a null id falls through, a non-string id does not.
+        assert_eq!(ids(r#"{"data":[{"id":null,"model":"b"}]}"#), ["b"]);
+        assert!(ids(r#"{"data":[{"id":7,"model":"b"}]}"#).is_empty());
+        let long = "x".repeat(201);
+        assert!(ids(&format!(r#"{{"data":["{long}"]}}"#)).is_empty());
+        let many: Vec<String> = (0..250).map(|i| format!("\"m{i}\"")).collect();
+        assert_eq!(
+            ids(&format!(r#"{{"data":[{}]}}"#, many.join(","))).len(),
+            200
+        );
+        assert!(ids("null").is_empty());
+    }
+
+    #[test]
+    fn props_context_is_a_whole_n_ctx_in_range() {
+        let ctx = |t: &str| props_context(&wtf16::parse(t).unwrap());
+        assert_eq!(
+            ctx(r#"{"default_generation_settings":{"n_ctx":32768}}"#),
+            Some(32768.0)
+        );
+        assert_eq!(
+            ctx(r#"{"default_generation_settings":{"n_ctx":"4096"}}"#),
+            Some(4096.0)
+        );
+        for bad in [
+            r#"{"default_generation_settings":{"n_ctx":2047}}"#,
+            r#"{"default_generation_settings":{"n_ctx":2000001}}"#,
+            r#"{"default_generation_settings":{"n_ctx":4096.5}}"#,
+            r#"{"default_generation_settings":{"n_ctx":"x"}}"#,
+            r#"{"default_generation_settings":{}}"#,
+            r#"{}"#,
+        ] {
+            assert_eq!(ctx(bad), None, "{bad}");
+        }
+        assert_eq!(
+            ctx(r#"{"default_generation_settings":{"n_ctx":2048}}"#),
+            Some(2048.0)
+        );
+    }
+
+    #[test]
+    fn encode_uri_component_is_js_s() {
+        assert_eq!(encode_uri_component("qa-model_1.gguf"), "qa-model_1.gguf");
+        assert_eq!(encode_uri_component("a b/c?d&é"), "a%20b%2Fc%3Fd%26%C3%A9");
+        assert_eq!(encode_uri_component("!~*'()"), "!~*'()");
+    }
+
+    #[test]
+    fn interface_listings_are_read() {
+        let trie = "Main:\n  +-- 0.0.0.0/0 3 0 5\n     |-- 0.0.0.0\n        /0 universe UNICAST\n     +-- 127.0.0.0/8 2 0 2\n        |-- 127.0.0.1\n           /32 host LOCAL\n     |-- 172.18.0.5\n        /32 host LOCAL\n     |-- 172.18.255.255\n        /32 link BROADCAST\nLocal:\n     |-- 172.18.0.5\n        /32 host LOCAL\n";
+        assert_eq!(local_v4(trie), ["127.0.0.1", "172.18.0.5"]);
+        let v6 = "00000000000000000000000000000001 01 80 10 80       lo\nfe800000000000000042acfffe120005 1f 40 20 80     eth0\nbad\n";
+        assert_eq!(local_v6(v6), ["::1", "fe80::42:acff:fe12:5"]);
+    }
+
+    #[test]
+    fn the_cache_keeps_32_entries_and_expires() {
+        let mut c: Cache<u8> = Cache::new();
+        let t0 = Instant::now();
+        for i in 0..40u8 {
+            c.put(format!("k{i}"), t0, i);
+        }
+        assert_eq!(c.entries.len(), CACHE_ENTRIES);
+        assert_eq!(c.get("k0", t0), None);
+        assert_eq!(c.get("k39", t0), Some(39));
+        assert_eq!(c.get("k39", t0 + HEALTH_TTL), None);
+        c.put("k39".into(), t0, 1);
+        assert_eq!(c.get("k39", t0), Some(1));
+        assert_eq!(c.entries.len(), CACHE_ENTRIES);
+    }
 }
