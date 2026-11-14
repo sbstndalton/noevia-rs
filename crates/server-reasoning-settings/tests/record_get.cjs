@@ -15,9 +15,10 @@
 //     asserted to appear verbatim in server/index.cjs);
 //   - `getProject(id)` is `PROJECTS.find((p) => p.id === id) || null` over the store's list (projects.cjs; its
 //     self-heal saves do not change what this route reads, and are server-projects' tested `get_project`);
-//   - `secrets` is a stand-in whose decrypt returns the stored string: production's key values never reach this
-//     reply, but a store WITH secrets assigns each row's key (openProviderKey), which throws for a row that is not
-//     an object, and that decides which rows load;
+//   - `secrets` is a stand-in whose decrypt is production's answer for a value that is not an envelope
+//     (secret-envelope.cjs `open`: `value || ''`); the rows here hold no envelopes. A store WITH secrets assigns
+//     each row's key (openProviderKey), which throws for a row that is not an object, and that decides which rows
+//     load; a truthy non-string key reaches capabilityKey as it is;
 //   - the settings row is a stand-in `db` answering `SELECT value FROM settings WHERE key='reasoning_effort_default'`.
 // Inputs are synthetic and QA-named. Each source file's sha256 is recorded. stdout is the fixture.
 
@@ -178,6 +179,18 @@ withProvider('machine-switch-truthy', { provider: 'mach-qa', model: 'qa' }, { sh
 withProvider('llamacpp-default-caps', { model: 'qa' }, { env: { MODEL_MANAGER_KIND: 'llamacpp' } });
 // Values with lone surrogates and escapes travel unchanged.
 add('setting-unicode', { setting: 'hé"\\' });
+// A projects.json Node's load reads as empty: getProject finds nothing.
+add('project-file-malformed', { query: '?projectId=proj-qa-r', projects: '{' });
+add('project-file-projects-object', { query: '?projectId=proj-qa-r', projects: '{"projects":{}}' });
+// Node's throws on hand-edited rows and projects (its handler answers 500).
+withProvider('apikey-number-real', { provider: 'key-qa', model: 'qa' }, { shared: rowsOf(JSON.stringify({ id: 'key-qa', baseUrl: 'http://qa:1', apiKey: 5, capabilities: { reasoningEffortParam: true } })) });
+withProvider('apikey-number-hint', { provider: 'key-qa', model: 'qa' }, { shared: rowsOf(JSON.stringify({ id: 'key-qa', baseUrl: 'http://qa:1', apiKey: 5, capabilities: {} })) });
+withProvider('apikey-string-real', { provider: 'key-qa', model: 'qa' }, { shared: rowsOf(JSON.stringify({ id: 'key-qa', baseUrl: 'http://qa:1', apiKey: 'qa-plain-key', capabilities: { reasoningEffortParam: true } })) });
+withProvider('apikey-own-tostring-real', { provider: 'key-qa', model: 'qa' }, { shared: rowsOf(JSON.stringify({ id: 'key-qa', baseUrl: 'http://qa:1', apiKey: { toString: 1 }, capabilities: { reasoningEffortParam: true } })) });
+withProvider('apikey-array-real', { provider: 'key-qa', model: 'qa' }, { shared: rowsOf(JSON.stringify({ id: 'key-qa', baseUrl: 'http://qa:1', apiKey: ['qa'], capabilities: { reasoningEffortParam: true } })) });
+withProvider('model-own-tostring-local', { model: { toString: 1 } }, { env: LOCAL });
+withProvider('model-own-tostring-not-local', { model: { toString: 1 } });
+withProvider('model-own-tostring-machine', { provider: 'mach-qa', model: { toString: 1 } }, { shared: rowsOf(JSON.stringify({ id: 'mach-qa', baseUrl: 'http://qa:1', machine: { thinkingSwitch: true } })) });
 // Fail-closed cases (put in the fixture as `difference`): files this port cannot hold.
 withProvider('shared-huge-number', { provider: 'shared-qa', model: 'qa-think' }, { shared: rowsOf(SHARED_CAPS, '{"id":"x","n":1e999}'), difference: 'unholdable-providers' });
 withProvider('private-huge-number', { provider: 'mine-qa', model: 'qa' }, { private: rowsOf(PRIVATE_DOC.replace('}', ',"n":1e999}')), difference: 'unholdable-providers' });
@@ -198,7 +211,9 @@ async function record(c) {
   if (c.projects !== undefined) fs.writeFileSync(path.join(dir, 'projects.json'), c.projects);
   if (c.private !== undefined) fs.writeFileSync(path.join(dir, 'providers.json'), c.private);
   if (c.shared !== undefined) fs.writeFileSync(path.join(data, 'shared-providers.json'), c.shared);
-  const secrets = { decrypt: (v) => (typeof v === 'string' ? v : '') };
+  // secret-envelope.cjs `open` for a value that is not an envelope: `String(value || '')` first (it throws for an own
+  // toString), then `value || ''`.
+  const secrets = { decrypt: (v) => { String(v || ''); return v || ''; } };
   const projectStore = { async read() { throw new Error('unused'); }, async write() { throw new Error('unused'); } };
   const store = createWorkspaceStore(data, { id: DEFAULT_PROVIDER_ID, label: DEFAULT_PROVIDER_LABEL, baseUrl: INFERENCE_BASE, apiKey: INFERENCE_KEY, shared: true,
     ...(DEFAULT_PROVIDER_CAPABILITIES ? { capabilities: DEFAULT_PROVIDER_CAPABILITIES } : {}) }, secrets, { projectStore });

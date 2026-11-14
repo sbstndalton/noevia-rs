@@ -44,7 +44,6 @@ fn recorded_node_get_matrix() {
         let name = case["name"].as_str().unwrap();
         let input = &case["input"];
         let expected = &case["expected"];
-        assert!(expected["threw"].is_null(), "{name}: Node threw");
         let env = input["env"].clone();
         let defaults = Defaults::from_lookup(|k| env[k].as_str().map(str::to_owned));
         let global = input["setting"]
@@ -94,6 +93,16 @@ fn recorded_node_get_matrix() {
             .cloned()
             .unwrap_or_else(|| JValue::Str(String::new()));
         let mode = read::mode_for(provider.as_ref(), &model, &effort, &defaults);
+        if !expected["threw"].is_null() {
+            assert_eq!(
+                mode,
+                Err(read::Thrown),
+                "{name}: Node threw {}",
+                expected["threw"]
+            );
+            continue;
+        }
+        let mode = mode.unwrap();
         let admin = input["role"] == "admin";
         assert_eq!(expected["status"], 200, "{name}");
         assert_eq!(

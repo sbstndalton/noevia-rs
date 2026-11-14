@@ -39,7 +39,12 @@ fn hex(s: &str) -> String {
         .collect()
 }
 
-async fn call(addr: std::net::SocketAddr, method: &str, target: &str, cookie: &str) -> (u16, String) {
+async fn call(
+    addr: std::net::SocketAddr,
+    method: &str,
+    target: &str,
+    cookie: &str,
+) -> (u16, String) {
     let mut s = TcpStream::connect(addr).await.unwrap();
     s.write_all(
         format!(
@@ -152,7 +157,10 @@ async fn recorded_node_cases_through_the_front() {
             skipped.push(name.to_string());
             continue;
         };
-        let target = format!("/api/reasoning-settings{}", input["query"].as_str().unwrap());
+        let target = format!(
+            "/api/reasoning-settings{}",
+            input["query"].as_str().unwrap()
+        );
         let (status, reply) = call(addr, "GET", &target, COOKIE).await;
         let _ = stop.send(());
         ran += 1;
@@ -161,15 +169,33 @@ async fn recorded_node_cases_through_the_front() {
             continue;
         }
         let expected = &case["expected"];
-        assert_eq!(u64::from(status), expected["status"].as_u64().unwrap(), "{name}: {reply}");
+        if !expected["threw"].is_null() {
+            // Node's request handler answers a thrown TypeError with this 500.
+            assert_eq!(
+                (status, reply.as_str()),
+                (500, r#"{"error":"Internal error"}"#),
+                "{name}"
+            );
+            continue;
+        }
+        assert_eq!(
+            u64::from(status),
+            expected["status"].as_u64().unwrap(),
+            "{name}: {reply}"
+        );
         assert_eq!(reply, expected["reply"].as_str().unwrap(), "{name}");
     }
     // Only environments the front refuses at startup are skipped (in production it never runs with them).
     assert!(ran >= 100, "ran {ran}, skipped {skipped:?}");
     for name in &skipped {
         assert!(
-            ["local-lemonade-kind", "local-kind-unset-lemonade-url", "local-inference-unset", "local-inference-invalid"]
-                .contains(&name.as_str()),
+            [
+                "local-lemonade-kind",
+                "local-kind-unset-lemonade-url",
+                "local-inference-unset",
+                "local-inference-invalid"
+            ]
+            .contains(&name.as_str()),
             "{name} was skipped"
         );
     }
@@ -182,17 +208,34 @@ async fn switch_unset_leaves_the_get_to_node_and_the_gate_comes_first() {
     seed_database(d.path(), user, "member", Some("high"));
     for extra in [&[][..], &[("NOEVIA_RUST_SETTINGS_ROUTES", "yes")][..]] {
         let (addr, stop) = start(d.path(), extra).await.unwrap();
-        assert_eq!(call(addr, "GET", "/api/reasoning-settings", COOKIE).await.0, 502);
+        assert_eq!(
+            call(addr, "GET", "/api/reasoning-settings", COOKIE).await.0,
+            502
+        );
         let _ = stop.send(());
     }
     let (addr, stop) = start(d.path(), &[SWITCH]).await.unwrap();
-    assert_eq!(call(addr, "GET", "/api/reasoning-settings", "").await.0, 401);
+    assert_eq!(
+        call(addr, "GET", "/api/reasoning-settings", "").await.0,
+        401
+    );
     assert_eq!(
         call(addr, "GET", "/api/reasoning-settings", COOKIE).await,
-        (200, r#"{"default":"high","effort":"high","mode":"hint","admin":false}"#.to_string())
+        (
+            200,
+            r#"{"default":"high","effort":"high","mode":"hint","admin":false}"#.to_string()
+        )
     );
     // Other methods stay where they were: POST to Node (502), PUT the native admin route (403 for a member).
-    assert_eq!(call(addr, "POST", "/api/reasoning-settings", COOKIE).await.0, 502);
-    assert_eq!(call(addr, "PUT", "/api/reasoning-settings", COOKIE).await.0, 403);
+    assert_eq!(
+        call(addr, "POST", "/api/reasoning-settings", COOKIE)
+            .await
+            .0,
+        502
+    );
+    assert_eq!(
+        call(addr, "PUT", "/api/reasoning-settings", COOKIE).await.0,
+        403
+    );
     let _ = stop.send(());
 }

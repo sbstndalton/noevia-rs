@@ -26,9 +26,11 @@
 //! - A projects save that fails answers 503. Node answers 200 before its unawaited save fails.
 //! - The body must arrive within 10 s (the front's deadline); a slower one is the same 400
 //!   `invalid JSON` a body that fails to arrive is in Node.
-//! - A projects list with an entry that is not an object: Node's workspace load throws on it for
-//!   every request; here `applyToExisting` answers 500 with nothing written, and a PUT without it
-//!   writes the preferences (it never reads the list).
+//! - A projects list with an entry that is not an object (hand-edited): Node's workspace load throws
+//!   on a `null` entry for every request; with a number, string or boolean entry Node writes the
+//!   preferences and then throws (a 500); an array entry is counted and saved. Here `applyToExisting`
+//!   answers 500 with nothing written for all of them, and a PUT without it writes the preferences (it
+//!   never reads the list).
 //! - With `applyToExisting`, the preferences are written under the projects.json lock, so two PUTs of
 //!   one account never leave the preferences of one and the projects of the other.
 
