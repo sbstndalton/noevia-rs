@@ -15,6 +15,10 @@ use std::sync::Arc;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 const START: &str = "start-qa";
+/// The two embedding profile ids core accepts (inherited wire values of `embedding-profile.cjs`):
+/// one frames nothing, the other prefixes a query.
+const PLAIN: &str = "nomic-v1";
+const PREFIXED: &str = "embeddinggemma-2";
 const NOW: i64 = 1_800_000_000_000;
 
 fn target(profile: &str, model: &str, base: Option<&str>) -> Target {
@@ -179,7 +183,7 @@ fn knobs_follow_rag_cjs_defaults_and_clamps() {
 
 #[test]
 fn router_path_lists_models_with_the_inference_bearer() {
-    let r = request_for(&target("nomic-v1", "probe-model", None), &router());
+    let r = request_for(&target(PLAIN, "probe-model", None), &router());
     assert_eq!(
         r,
         Some(Request::Router {
@@ -190,7 +194,7 @@ fn router_path_lists_models_with_the_inference_bearer() {
     );
     // An empty address is the shared engine too (`if (target.baseUrl)`).
     assert!(matches!(
-        request_for(&target("nomic-v1", "probe-model", Some("")), &router()),
+        request_for(&target(PLAIN, "probe-model", Some("")), &router()),
         Some(Request::Router { .. })
     ));
 }
@@ -198,7 +202,7 @@ fn router_path_lists_models_with_the_inference_bearer() {
 #[test]
 fn sidecar_path_posts_the_fixed_synthetic_text_and_the_model() {
     let r = request_for(
-        &target("nomic-v1", "probe-model", Some("http://sidecar.invalid")),
+        &target(PLAIN, "probe-model", Some("http://sidecar.invalid")),
         &router(),
     );
     assert_eq!(
@@ -211,7 +215,7 @@ fn sidecar_path_posts_the_fixed_synthetic_text_and_the_model() {
     // Trailing slashes, then one `/v1`, go before the path; the query framing is the profile's.
     let r = request_for(
         &target(
-            "embeddinggemma-2",
+            PREFIXED,
             "probe-model",
             Some("http://sidecar.invalid/v1//"),
         ),
@@ -225,7 +229,7 @@ fn sidecar_path_posts_the_fixed_synthetic_text_and_the_model() {
         })
     );
     let r = request_for(
-        &target("nomic-v1", "probe-model", Some("http://sidecar.invalid/v1/v1")),
+        &target(PLAIN, "probe-model", Some("http://sidecar.invalid/v1/v1")),
         &router(),
     );
     assert!(
@@ -292,7 +296,7 @@ fn answers_are_read_as_core_reads_them() {
 #[tokio::test]
 async fn router_path_embed_model_listed_reads_available_and_never_posts() {
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     let s = status(45000);
     assert_eq!(
         w.read(&s, &seed, false, Found::Up).await,
@@ -308,7 +312,7 @@ async fn router_path_embed_model_listed_reads_available_and_never_posts() {
 #[tokio::test]
 async fn router_path_embed_model_missing_reads_degraded_not_unavailable() {
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     assert_eq!(
         w.read(&status(45000), &seed, false, Found::Down).await,
         (true, Word::Degraded),
@@ -319,7 +323,7 @@ async fn router_path_embed_model_missing_reads_degraded_not_unavailable() {
 #[tokio::test]
 async fn router_path_the_result_is_cached_for_the_ttl_and_shared_by_concurrent_callers() {
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     let s = status(200);
     // Two callers at once: the second waits for the first's probe and reads what it found.
     let slow = |w: &World| {
@@ -374,23 +378,23 @@ async fn router_path_the_result_is_cached_for_the_ttl_and_shared_by_concurrent_c
 async fn a_reconfiguration_invalidates_whatever_the_last_probe_found() {
     let w = World::new();
     let s = status(45000);
-    let first = config(target("nomic-v1", "probe-model", None));
+    let first = config(target(PLAIN, "probe-model", None));
     assert_eq!(
         w.read(&s, &first, false, Found::Up).await,
         (true, Word::Available)
     );
     assert_eq!(w.calls(), 1);
     // A new model, then a new address: each probes again (Node: a fresh `init()`).
-    let model = config(target("nomic-v1", "probe-model-2", None));
+    let model = config(target(PLAIN, "probe-model-2", None));
     w.read(&s, &model, false, Found::Up).await;
     assert_eq!(w.calls(), 2);
-    let address = config(target("nomic-v1", "probe-model-2", Some("http://sidecar2.invalid")));
+    let address = config(target(PLAIN, "probe-model-2", Some("http://sidecar2.invalid")));
     w.read(&s, &address, false, Found::Up).await;
     assert_eq!(w.calls(), 3);
     // The saved configuration wins over the environment's seed, as for the native search.
     std::fs::write(
         w.dir.path().join("embedding-config.json"),
-        json!({"version": 1, "active": {"model": "saved-model", "profile": "nomic-v1"}}).to_string(),
+        json!({"version": 1, "active": {"model": "saved-model", "profile": PLAIN}}).to_string(),
     )
     .unwrap();
     w.read(&s, &address, false, Found::Down).await;
@@ -406,7 +410,7 @@ async fn a_reconfiguration_invalidates_whatever_the_last_probe_found() {
 #[tokio::test]
 async fn router_path_a_held_gate_reports_the_last_cached_status_not_degraded() {
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     let s = status(200);
     assert_eq!(
         w.read(&s, &seed, false, Found::Up).await,
@@ -443,7 +447,7 @@ async fn router_path_a_held_gate_reports_the_last_cached_status_not_degraded() {
 #[tokio::test]
 async fn router_path_a_held_gate_with_nothing_cached_yet_reads_available() {
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     let s = status(45000);
     assert_eq!(
         w.read(&s, &seed, true, Found::Down).await,
@@ -466,7 +470,7 @@ async fn router_path_a_held_gate_with_nothing_cached_yet_reads_available() {
 async fn sidecar_path_a_healthy_answer_reads_available_and_carries_only_the_probe_text() {
     let w = World::new();
     let seed = config(target(
-        "nomic-v1",
+        PLAIN,
         "probe-model",
         Some("http://sidecar.invalid"),
     ));
@@ -489,7 +493,7 @@ async fn sidecar_path_a_healthy_answer_reads_available_and_carries_only_the_prob
 async fn sidecar_path_an_unreachable_or_malformed_answer_reads_degraded() {
     let w = World::new();
     let seed = config(target(
-        "nomic-v1",
+        PLAIN,
         "probe-model",
         Some("http://sidecar.invalid"),
     ));
@@ -503,7 +507,7 @@ async fn sidecar_path_an_unreachable_or_malformed_answer_reads_degraded() {
 async fn sidecar_path_never_goes_through_the_maintenance_gate() {
     let w = World::new();
     let seed = config(target(
-        "nomic-v1",
+        PLAIN,
         "probe-model",
         Some("http://sidecar.invalid"),
     ));
@@ -520,7 +524,7 @@ async fn sidecar_path_never_goes_through_the_maintenance_gate() {
 #[tokio::test]
 async fn missing_native_sqlite_modules_read_unavailable_and_never_probe() {
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     assert_eq!(
         w.read_with(&status(45000), &seed, false, true, false, Found::Up)
             .await,
@@ -533,7 +537,7 @@ async fn missing_native_sqlite_modules_read_unavailable_and_never_probe() {
 async fn an_owner_that_is_not_ready_publishes_unavailable() {
     // `build: () => ownerReady() ? ragState(rag) : { ragAvailable: false, retrieval: 'unavailable' }`.
     let w = World::new();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     assert_eq!(
         w.read_with(&status(45000), &seed, false, false, true, Found::Up)
             .await,
@@ -557,14 +561,14 @@ async fn the_embedding_service_turned_off_reads_off_without_a_probe() {
     };
     status_file(false, NOW);
     // The shared engine: off whenever the managed service is off.
-    let shared = config(target("nomic-v1", "probe-model", None));
+    let shared = config(target(PLAIN, "probe-model", None));
     assert_eq!(
         w.read(&s, &shared, false, Found::Up).await,
         (true, Word::Off)
     );
     // A target on that service: off; on another address: probed.
     let on_service = config(target(
-        "nomic-v1",
+        PLAIN,
         "probe-model",
         Some("http://embed-service:8080/v1"),
     ));
@@ -574,7 +578,7 @@ async fn the_embedding_service_turned_off_reads_off_without_a_probe() {
     );
     assert_eq!(w.calls(), 0);
     let elsewhere = config(target(
-        "nomic-v1",
+        PLAIN,
         "probe-model",
         Some("http://sidecar.invalid"),
     ));
@@ -597,7 +601,7 @@ async fn the_embedding_service_turned_off_reads_off_without_a_probe() {
 async fn an_unreadable_saved_configuration_reads_degraded_without_a_probe() {
     let w = World::new();
     std::fs::write(w.dir.path().join("embedding-config.json"), b"{not json").unwrap();
-    let seed = config(target("nomic-v1", "probe-model", None));
+    let seed = config(target(PLAIN, "probe-model", None));
     assert_eq!(
         w.read(&status(45000), &seed, false, Found::Up).await,
         (true, Word::Degraded)
