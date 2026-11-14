@@ -20,9 +20,9 @@
 //!
 //! The `kiwix` flag is a construction flag (it needs a restart): core reads `selected().value` once at
 //! its start. This process takes that very value from core's feature registration (boot facts), so a
-//! setting changed since core's start shows nowhere until core restarts; between two registrations it
-//! keeps the last value read, and with no registration ever read (no core) it reads the setting's
-//! selected value at each build. Named difference: a `KIWIX_URL` core cannot parse stops core's start;
+//! setting changed since core's start shows nowhere until core restarts; while no registration can be
+//! read it keeps the last value read (none yet: not ready), and with no feature context at all (no
+//! core registers here) it reads the setting's selected value at each build. Named difference: a `KIWIX_URL` core cannot parse stops core's start;
 //! here it only means no Offline Wikipedia box.
 //! `KIWIX_URL` and `CODE_REPOS` are this process's environment and filesystem, the same container as
 //! core's.
@@ -145,10 +145,12 @@ fn selected_value(app: &App, feature: server_features::Feature) -> Option<bool> 
 }
 
 /// core's own `kiwix` construction value, as core registered it at its start (the feature context's
-/// boot facts, `restart[1]`; crates/server-account features.rs reads it the same way). `None` while no
-/// registration can be read.
-fn registered_kiwix(app: &App) -> Option<bool> {
-    let controller = app.feature_context.as_ref()?.controller();
+/// boot facts, `restart[1]`; crates/server-account features.rs reads it the same way), with the
+/// controller it was read from. `None` while no registration can be read.
+fn registered_kiwix(
+    app: &App,
+    controller: &Arc<server_account::feature_context::Controller>,
+) -> Option<bool> {
     let view = app
         .writes
         .writer()
@@ -159,25 +161,35 @@ fn registered_kiwix(app: &App) -> Option<bool> {
 }
 
 /// Whether the Offline Wikipedia box exists here: the `kiwix` construction value and a `KIWIX_URL`
-/// createKiwixTools accepts. The value is core's registered one; between two registrations (a lease
-/// renewal) the last one read; with none read yet, the setting's selected value. `None`: nothing could
-/// be read.
+/// createKiwixTools accepts.
+/// - With a feature context (core registers with this process): core's registered value; while no
+///   registration can be read (before core's first one, a lease that expired or was released, a
+///   settings edit before core's next renewal) the last value read from this controller; with none
+///   read yet, not ready (`None`), so a setting changed since core's start never shows early.
+/// - Without one (no core registers here): the setting's selected value.
 fn kiwix_box(app: &App) -> Option<bool> {
-    static LAST: std::sync::Mutex<Option<bool>> = std::sync::Mutex::new(None);
+    // The last registered value, per controller (one per App).
+    static LAST: std::sync::Mutex<Option<(usize, bool)>> = std::sync::Mutex::new(None);
     let url = std::env::var("KIWIX_URL").unwrap_or_default();
     if url.is_empty() || !kiwix_url_ok(&url) {
         return Some(false);
     }
-    if let Some(v) = registered_kiwix(app) {
+    let Some(layer) = app.feature_context.as_ref() else {
+        return selected_value(app, server_features::Feature::Kiwix);
+    };
+    let controller = layer.controller();
+    let key = Arc::as_ptr(&controller) as usize;
+    if let Some(v) = registered_kiwix(app, &controller) {
         if let Ok(mut last) = LAST.lock() {
-            *last = Some(v);
+            *last = Some((key, v));
         }
         return Some(v);
     }
-    if let Some(v) = LAST.lock().ok().and_then(|l| *l) {
-        return Some(v);
-    }
-    selected_value(app, server_features::Feature::Kiwix)
+    LAST.lock()
+        .ok()
+        .and_then(|l| *l)
+        .filter(|(k, _)| *k == key)
+        .map(|(_, v)| v)
 }
 
 /// The facts for this deployment now. `None` while MCP discovery is not configured here (the caller
