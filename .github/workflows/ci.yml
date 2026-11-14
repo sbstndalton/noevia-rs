@@ -2345,6 +2345,13 @@ jobs:
           CODE_SANDBOX_SUPERVISOR_ORACLE: ${{ github.workspace }}/core/code-sandbox/supervisor.cjs
           CODE_SANDBOX_SUPERVISOR_ORACLE_REQUIRED: '1'
         run: cargo test --locked -p code-sandbox-supervisor --test node_parity -- --nocapture
+      # The native harness bridge (bins/code-harness-bridge) and core's code-sandbox/pi-acp-bridge.cjs
+      # at the same core ref run the same scripted-harness scenarios; every transcript must be equal.
+      - name: Differential transcripts (node pi-acp-bridge.cjs vs code-harness-bridge)
+        env:
+          CODE_HARNESS_BRIDGE_ORACLE: ${{ github.workspace }}/core/code-sandbox/pi-acp-bridge.cjs
+          CODE_HARNESS_BRIDGE_ORACLE_REQUIRED: '1'
+        run: cargo test --locked -p code-harness-bridge -- --nocapture
       # The OCR front gate's fixture script (core tools/ocr-front/fixtures.py at the same core ref)
       # loads the services generator; synthetic-pdfs ocr-front must write what it writes.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
