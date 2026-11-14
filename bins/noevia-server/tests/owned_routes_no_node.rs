@@ -32,6 +32,13 @@ const SWEEP_WITHIN: Duration = Duration::from_secs(900);
 /// The pairs that end the owner's session on purpose. They run last, so the rest of the sweep stays signed in.
 const SESSION_ENDERS: &[(&str, &str)] = &[("POST", "/api/auth/logout")];
 const PASSWORD: &str = "synthetic approval password";
+/// Pattern prefixes left out of the sweep while their owner holds them: every Diary route (the cloud move holds all
+/// Diary work, and the deletion train deletes no Diary stub until it ends). Remove the hold with the move.
+const HELD: &[&str] = &["/api/diary", "/api/profile/diary-connectors"];
+
+fn held(pattern: &str) -> bool {
+    HELD.iter().any(|h| pattern.starts_with(h))
+}
 /// The harness trusts the proxy: the sweep and the re-sign-in come from different documentation addresses, so the
 /// sweep's own failed sign-ins (empty bodies on the login routes) never rate-limit the re-sign-in.
 const SWEEP_FROM: &str = "192.0.2.10";
@@ -151,6 +158,9 @@ fn sweep() -> Vec<(&'static str, String)> {
     let mut first = Vec::new();
     let mut last = Vec::new();
     for &(method, pattern) in &pairs {
+        if held(pattern) {
+            continue;
+        }
         let mut paths: Vec<String> = FILLS.iter().map(|id| fill(pattern, id)).collect();
         paths.dedup();
         for path in paths {
@@ -169,8 +179,14 @@ fn sweep() -> Vec<(&'static str, String)> {
 fn the_sweep_lists_every_pair_once_per_distinct_filling_and_ends_with_the_session_enders() {
     let s = sweep();
     let pairs = manifest();
-    assert!(s.len() >= pairs.len());
-    assert!(s.len() <= pairs.len() * FILLS.len());
+    let swept = pairs.iter().filter(|(_, p)| !held(p)).count();
+    assert!(swept < pairs.len(), "the Diary hold leaves pairs out");
+    assert!(s.len() >= swept);
+    assert!(s.len() <= swept * FILLS.len());
+    assert!(
+        s.iter().all(|(_, path)| !path.contains("diary")),
+        "a held pair is swept"
+    );
     let distinct: BTreeSet<&(&str, String)> = s.iter().collect();
     assert_eq!(distinct.len(), s.len(), "a request is sent twice");
     for &(method, pattern) in SESSION_ENDERS {
