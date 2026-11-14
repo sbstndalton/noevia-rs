@@ -843,7 +843,7 @@ mod tests {
     use js_json::wtf16;
     // noevia#2349, a named difference (contracts/http/README.md, the Diary local exchange, (7)):
     // core's Number() threw on these (500 unstreamed, the interrupted event streamed); here they
-    // are no wait, and the refusal stays the throttled one.
+    // are no wait, and the refusal stays the one named.
     #[test]
     fn a_retry_after_object_with_its_own_to_string_is_no_wait() {
         for wait in [
@@ -876,6 +876,24 @@ mod tests {
                 ),
                 "{wait}"
             );
+            // Streamed, core read it for every refusal (the interrupted event); here only a
+            // throttled one reads it, so the other named refusals stay as they are.
+            for (status, code, want) in [
+                (401, "storageLoginRejected", "storageLoginRejected"),
+                (424, "", "storageLoginRejected"),
+                (503, "", "diaryUnavailable"),
+            ] {
+                let detail = wtf16::parse(&format!(
+                    r#"{{"detail":"refused","code":"{code}","retryAfter":{wait}}}"#
+                ))
+                .unwrap();
+                let event = http_stream_failure(status, &detail, None).unwrap();
+                assert_eq!(event.get("code").as_str(), Some(want), "{status} {wait}");
+                assert!(
+                    matches!(event.get("retryAfter"), JValue::Undefined),
+                    "{status} {wait}"
+                );
+            }
         }
     }
     fn fixtures() -> JValue {

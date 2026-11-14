@@ -179,11 +179,12 @@ mod tests {
                 ("GATE_MAX_BODY_BYTES", "1000"),
                 ("GATE_MAX_BUFFERED_BYTES", "10"),
             ],
-            // Room for one full body, but not in the waiting half (noevia#2133 item 5).
+            // Room for one full body, but not in the waiting half, counted in the gate's KiB
+            // (noevia#2133 item 5): 3 KiB of permits hold 1 KiB waiting, the body needs 2.
             vec![
                 ("GATE_UPSTREAM", "http://router:8080"),
-                ("GATE_MAX_BODY_BYTES", "1000"),
-                ("GATE_MAX_BUFFERED_BYTES", "1500"),
+                ("GATE_MAX_BODY_BYTES", "2048"),
+                ("GATE_MAX_BUFFERED_BYTES", "3072"),
             ],
             vec![
                 ("GATE_UPSTREAM", "http://router:8080"),
@@ -216,5 +217,13 @@ mod tests {
         .unwrap();
         assert_eq!(ok.admission.exempt.len(), 2);
         assert!(!format!("{:?}", ok.admin_token.as_ref().map(|_| "set")).contains(secret));
+        // The boundary that does fit: 10 KiB of permits hold 5 KiB waiting, a 4097-byte body is 5.
+        let ok = from_env(env(&[
+            ("GATE_UPSTREAM", "http://router:8080"),
+            ("GATE_MAX_BODY_BYTES", "4097"),
+            ("GATE_MAX_BUFFERED_BYTES", "10240"),
+        ]))
+        .unwrap();
+        assert_eq!((ok.max_body_bytes, ok.max_buffered_bytes), (4097, 10240));
     }
 }

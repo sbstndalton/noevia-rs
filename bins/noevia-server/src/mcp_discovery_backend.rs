@@ -361,13 +361,15 @@ impl Backend for AppBackend {
                     .ok()
                     .flatten()
             });
-            // The value core read at its start, as its registration reported it.
-            let boot = app.feature_context.as_ref().and_then(|context| {
+            // The value core read at its start, as its registration reported it. A front paired
+            // with core (a feature context) whose registration cannot be read now answers off,
+            // as features.rs does: core's own value is unknown, and the selected one may be newer.
+            let boot = app.feature_context.as_ref().map(|context| {
                 let controller = context.controller();
                 writer
                     .as_ref()
                     .and_then(|w| w.read(|r| controller.view(r)).ok())
-                    .map(|view| view.facts.restart[0])
+                    .is_some_and(|view| view.facts.restart[0])
             });
             diary_write_construction_value(env, stored, boot)
         })
@@ -555,9 +557,9 @@ impl Backend for AppBackend {
 
 /// core's `features.diaryMcpWrite` construction value: `selected('diaryMcpWrite').value` read at
 /// core's start. diaryMcpWrite is a restart flag, so its answer is the boot value core registered
-/// (`facts.restart[0]`); with no readable registration, the selected value (env, else the admin
-/// setting, else the default) stands in for it. Never `evaluate` without a boot value: a restart
-/// flag's answer is then always off.
+/// (`facts.restart[0]`, false while a registration cannot be read); with no feature context at
+/// all (`boot` None), the selected value (env, else the admin setting, else the default) stands in
+/// for it. Never `evaluate` without a boot value: a restart flag's answer is then always off.
 fn diary_write_construction_value(
     env: Option<bool>,
     stored: Option<bool>,
@@ -602,6 +604,14 @@ mod tests {
         assert!(!value(None, Some(true), Some(false)));
         assert!(value(None, Some(false), Some(true)));
         assert!(value(Some(true), None, Some(true)));
+    }
+
+    #[test]
+    fn diary_mcp_write_is_off_while_a_paired_registration_cannot_be_read() {
+        // The backend passes Some(false) then: the switch turned on since core started is not
+        // core's value yet.
+        assert!(!value(None, Some(true), Some(false)));
+        assert!(!value(Some(true), None, Some(false)));
     }
 
     #[test]
