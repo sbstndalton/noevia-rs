@@ -78,9 +78,15 @@ fn refuse(status: u16, code: &str, message: impl Into<String>) -> Answer {
     )
 }
 
-/// `String(v)`; an object with an own `toString` (Node throws) reads as `[object Object]`.
-fn string_of(v: &JValue) -> String {
-    to_js_string(v).unwrap_or_else(|_| "[object Object]".into())
+/// `service.isAt(address)`, `Err` where production's throws: `!!baseUrl && sameAddress(address,
+/// baseUrl)` converts the address with `String(address ?? '')` once the service has an address. The
+/// host call is made first, as Node's is before it throws inside it.
+fn is_at<H: Host>(host: &mut H, address: &JValue) -> Result<bool, CoerceError> {
+    let at = host.service_is_at(address);
+    if !address.is_nullish() && host.service_base_url().is_some_and(|b| !b.is_empty()) {
+        to_js_string(address)?;
+    }
+    Ok(at)
 }
 
 /// `===` between JSON values (objects are never the same one here).
@@ -232,7 +238,11 @@ impl Embedding {
                 let text = if address.is_nullish() {
                     String::new()
                 } else {
-                    string_of(address)
+                    // `String(address)` throws for an object with its own `toString`.
+                    let Ok(text) = to_js_string(address) else {
+                        return internal_error();
+                    };
+                    text
                 };
                 let address = js::trim(&text);
                 if address.is_empty() {
@@ -241,6 +251,11 @@ impl Embedding {
                 if let Err(reason) = host.check_address(address) {
                     return refuse(400, "publicEndpoint", format!("The embeddings server must be on this network: it receives the text of every project and the Diary ({reason})."));
                 }
+            }
+            // `String(body.target.model || '').trim()` throws after the address checks.
+            let model = target.get("model");
+            if model.truthy() && to_js_string(model).is_err() {
+                return internal_error();
             }
             let probes = match served_probes(&request) {
                 Ok(probes) => probes,
@@ -359,9 +374,9 @@ impl Embedding {
     }
 
     /// [`Embedding::served_set`], with `Err` where Node's throws: a Diary target's address that
-    /// `String()` cannot convert (an object with its own `toString`), read when that target is not
-    /// at the service and might use the Diary's default server. The host calls up to the throw are
-    /// made.
+    /// `String()` cannot convert (an object with its own `toString`), read by `service.isAt` when
+    /// the service has an address, and when that target is not at the service and might use the
+    /// Diary's default server. The host calls up to the throw are made.
     pub fn try_served_set<H: Host>(
         host: &mut H,
         c: &JValue,
@@ -387,7 +402,7 @@ impl Embedding {
             let diary_default = || -> Result<bool, CoerceError> {
                 Ok(address.is_nullish() || js::trim(&to_js_string(address)?).is_empty())
             };
-            let on_service = host.service_is_at(address) || (on_default && diary_default()?);
+            let on_service = is_at(host, address)? || (on_default && diary_default()?);
             if !on_service || out.iter().any(|(m, _)| strict_eq(m, model)) {
                 return Ok(true);
             }
@@ -484,13 +499,17 @@ impl Embedding {
             host.audit("embedding.service-off", user, &JValue::Obj(Vec::new()));
             return answer(200, [("service", host.service_status())]);
         }
+        // `String(body.model || '').trim()`: throws for an object with its own `toString`.
         let named = body.get("model");
-        let model = js::trim(&if named.truthy() {
-            string_of(named)
+        let named = if named.truthy() {
+            match to_js_string(named) {
+                Ok(text) => text,
+                Err(_) => return internal_error(),
+            }
         } else {
             String::new()
-        })
-        .to_string();
+        };
+        let model = js::trim(&named).to_string();
         if model.is_empty() {
             return answer(400, [("error", "service-switch needs a model".into())]);
         }
@@ -559,13 +578,17 @@ impl Embedding {
             );
         }
         if keep.len() + 1 > 2 {
-            let names: Vec<String> = keep
+            // `keep.map((e) => e.model).join(' and ')` converts each model.
+            let names: Result<Vec<String>, CoerceError> = keep
                 .iter()
                 .map(|e| match e.get("model") {
-                    m if m.is_nullish() => String::new(),
-                    m => string_of(m),
+                    m if m.is_nullish() => Ok(String::new()),
+                    m => to_js_string(m),
                 })
                 .collect();
+            let Ok(names) = names else {
+                return internal_error();
+            };
             return refuse(409, "tooManyModels", format!("Projects and the Diary use {}; the embedding service serves at most two models. Finish or roll back the other switch first.", names.join(" and ")));
         }
         let before: Vec<JValue> = if from_off {
@@ -615,13 +638,23 @@ impl Embedding {
                 active.get("profile")
             };
             let address_of = |v: &JValue| if v.truthy() { v.clone() } else { JValue::Null };
-            // sameTarget: `${profile}\0${model}` and the address (empty is the engine).
+            // sameTarget: `${profile}\0${model}` and the address (empty is the engine). The
+            // template literal throws for a profile with its own `toString`: after the service
+            // was told to serve and the model loaded, before anything is set or audited.
             let identity = |profile: &JValue, model: &JValue| {
-                format!("{}\0{}", string_of(profile), string_of(model))
+                Ok::<_, CoerceError>(format!(
+                    "{}\0{}",
+                    to_js_string(profile)?,
+                    to_js_string(model)?
+                ))
             };
-            let same = identity(active.get("profile"), active.get("model"))
-                == identity(chosen, &wanted)
-                && strict_eq(&address_of(active_url), &address_of(&address));
+            let (Ok(was), Ok(now)) = (
+                identity(active.get("profile"), active.get("model")),
+                identity(chosen, &wanted),
+            ) else {
+                return internal_error();
+            };
+            let same = was == now && strict_eq(&address_of(active_url), &address_of(&address));
             if same {
                 let service = host.service_status();
                 return answer(

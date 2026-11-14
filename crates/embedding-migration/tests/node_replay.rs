@@ -15,7 +15,7 @@ use embedding_migration::{
     Config, Coverage, Embedding, Host, HttpReply, Migration, Pacing, Seeded, ServeError, Target,
     User,
 };
-use js_json::{to_js_string, wtf16, JValue};
+use js_json::{wtf16, JValue};
 use std::path::PathBuf;
 
 fn show(v: &JValue) -> String {
@@ -198,6 +198,9 @@ impl Host for Stub {
     }
     fn service_is_at(&mut self, address: &JValue) -> bool {
         self.log("serviceIsAt", vec![address.clone()]);
+        if !self.svc("baseUrl").truthy() {
+            return false; // `!!baseUrl && ...`
+        }
         match self.svc("at") {
             JValue::Arr(at) => at.iter().any(|a| strict_eq(a, address)),
             _ => false,
@@ -205,8 +208,9 @@ impl Host for Stub {
     }
     fn service_file_of(&mut self, model: &JValue) -> Option<String> {
         self.log("serviceFileOf", vec![model.clone()]);
-        let key = to_js_string(model).unwrap();
-        self.svc("known").get(&key).as_str().map(String::from)
+        // `===`: only a string names an entry.
+        let key = model.as_str()?;
+        self.svc("known").get(key).as_str().map(String::from)
     }
     fn service_serve(&mut self, models: &[JValue]) -> Result<(), ServeError> {
         self.log("serviceServe", vec![arr(models.iter().cloned())]);
@@ -758,10 +762,49 @@ fn an_unreadable_diary_address_stops_the_served_set() {
     let d = host.w("diary").get("GET").get("body").clone();
     assert_eq!(Embedding::served_set(&mut host, &c, &d, true), None);
     assert!(Embedding::try_served_set(&mut host, &c, &d, true).is_err());
-    assert_eq!(
-        Embedding::try_served_set(&mut host, &c, &d, false).map(|s| s.map(|s| s.len())),
-        Ok(Some(1))
-    );
+    // #2665: with the service at an address, `isAt` converts the Diary address too, so the set
+    // with no Diary defaults throws as well (without an address it does not: the test below).
+    assert!(Embedding::try_served_set(&mut host, &c, &d, false).is_err());
+}
+
+/// #2665: production's `service.isAt` converts a Diary address only once the service has an
+/// address (`!!baseUrl && sameAddress(...)`). Without one, the set with no Diary defaults reads an
+/// unconvertible address without throwing; the full set still throws in `diaryDefault`.
+#[test]
+fn is_at_converts_a_diary_address_only_when_the_service_has_an_address() {
+    let world = |base: &str| {
+        format!(
+            r#"{{"indexes":[],"snapshot":null,"service":{{"managed":true,"enabled":true,
+                "baseUrl":{base},"at":["{QA_SVC}"],"known":{{"qa-embed-a":"qa/a.gguf"}}}}}}"#
+        )
+    };
+    let d = wtf16::parse(
+        r#"{"active":{"model":"qa-embed-b","profile":"nomic-v1","base_url":{"toString":1}},
+            "next":null,"previous":null}"#,
+    )
+    .unwrap();
+    let service = format!(r#""{QA_SVC}""#);
+    for (base, known_ok) in [("null", true), (r#""""#, true), (service.as_str(), false)] {
+        let (api, mut host) = in_memory(
+            qa_target("qa-embed-a", Some(QA_SVC)),
+            None,
+            false,
+            &world(base),
+        );
+        let c = api.migration.status(&mut host);
+        host.calls.clear();
+        let known = Embedding::try_served_set(&mut host, &c, &d, false);
+        assert_eq!(known.is_ok(), known_ok, "baseUrl {base}");
+        assert_eq!(
+            called(&host, "serviceIsAt"),
+            2,
+            "baseUrl {base}: the call is made"
+        );
+        assert!(
+            Embedding::try_served_set(&mut host, &c, &d, true).is_err(),
+            "{base}"
+        );
+    }
 }
 
 /// Finding: `releaseSeeded` takes back only a transient start-up refusal (also replayed from the

@@ -11,8 +11,10 @@
 //!
 //! Nothing here reads the migration, the Diary or the embedding service, and nothing calls it yet.
 //! The Node code's JavaScript truthiness and `String()` coercions are reproduced where a request
-//! body can reach them ([`js_truthy`], [`js_string`]). A non-scalar address is kept as the string
-//! JS would build (`[object Object]`), so it is refused downstream, never read as "the engine".
+//! body can reach them ([`js_truthy`], [`js_string`]; [`try_js_string`] where `String()` throws,
+//! which [`read_request`] answers for the action and scope). A non-scalar address is kept as the
+//! string JS would build (`[object Object]`), so it is refused downstream, never read as "the
+//! engine".
 
 #![forbid(unsafe_code)]
 
@@ -181,6 +183,25 @@ pub fn js_string(value: Option<&Value>) -> String {
     }
 }
 
+/// [`js_string`], or `None` where JavaScript's `String()` throws a TypeError: an object with an own
+/// `toString` (a JSON value is never callable, so ToPrimitive finds no primitive), also as an
+/// element of an array (`Array.prototype.join` converts each element).
+pub fn try_js_string(value: Option<&Value>) -> Option<String> {
+    match value {
+        Some(Value::Object(fields)) if fields.contains_key("toString") => None,
+        Some(Value::Array(items)) => items
+            .iter()
+            .map(|item| try_js_string(Some(item)))
+            .collect::<Option<Vec<_>>>()
+            .map(|parts| parts.join(",")),
+        other => Some(js_string(other)),
+    }
+}
+
+/// The body of index.cjs's answer to an error the route throws (`errorResponse()` of an error
+/// without a status: 500 `{ error: 'Internal error' }`).
+pub const INTERNAL_ERROR: &str = "Internal error";
+
 /// ECMAScript `Number::toString(10)` of a finite double: the shortest round-trip digits, plain
 /// for decimal exponents from -7 to 20 and in exponent form (`1e+21`, `1e-7`) outside them.
 fn js_number_string(n: f64) -> String {
@@ -258,21 +279,34 @@ fn address(text: &str) -> Option<String> {
 
 /// Reads the body of `POST /api/embedding` as `handle()` and `apply()` do, up to the first state
 /// read. `body` is the parsed JSON (an unparsable body is the caller's 400 `invalid JSON`).
+///
+/// Where Node throws (a truthy `action` or `scope` that `String()` cannot convert: `handle()`
+/// converts the action, then `apply()` the scope, before it looks at the service actions), the
+/// refusal is index.cjs's 500 [`INTERNAL_ERROR`]. A target's model and addresses are read as JS
+/// would build them; Node converts those later, between the caller's address checks, so the caller
+/// answers their throw at that point.
 pub fn read_request(body: &Value) -> Result<Request, Reply> {
     let Value::Object(fields) = body else {
         return Err(Reply::new(400, "A JSON object is required"));
     };
-    let action_text = if js_truthy(fields.get("action")) {
-        js_string(fields.get("action"))
-    } else {
-        String::new()
+    let thrown = || Reply::new(500, INTERNAL_ERROR);
+    // `String(body.x || '')`: a falsy value is never converted.
+    let text_of = |key: &str| {
+        let value = fields.get(key);
+        if js_truthy(value) {
+            try_js_string(value)
+        } else {
+            Some(String::new())
+        }
     };
+    let action_text = text_of("action").ok_or_else(thrown)?;
     let Some(action) = Action::parse(&action_text) else {
         return Err(Reply::new(
             400,
             format!("action must be one of {}", ACTIONS.join(", ")),
         ));
     };
+    let scope_text = text_of("scope").ok_or_else(thrown)?;
     let force = fields.get("force") == Some(&Value::Bool(true));
     if action.is_service() {
         return Ok(Request {
@@ -282,8 +316,9 @@ pub fn read_request(body: &Value) -> Result<Request, Reply> {
             target: None,
         });
     }
+    // `String(body.scope || 'all')`: a truthy scope that converts to '' (`[]`) is refused.
     let scope = if js_truthy(fields.get("scope")) {
-        Scope::parse(&js_string(fields.get("scope")))
+        Scope::parse(&scope_text)
             .ok_or_else(|| Reply::new(400, "scope must be all, projects or diary"))?
     } else {
         Scope::All

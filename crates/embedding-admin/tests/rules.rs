@@ -3,7 +3,8 @@
 #![allow(clippy::unwrap_used, clippy::indexing_slicing)]
 
 use embedding_admin::{
-    aggregate_status, js_string, js_truthy, read_request, served_probes, Action, Reply, Scope,
+    aggregate_status, js_string, js_truthy, read_request, served_probes, try_js_string, Action,
+    Reply, Scope, INTERNAL_ERROR,
 };
 use serde_json::json;
 
@@ -84,6 +85,48 @@ fn a_bad_scope_is_refused_but_a_falsy_one_is_all() {
             .scope,
         Scope::Diary
     );
+}
+
+#[test]
+fn an_action_or_scope_string_cannot_convert_is_the_500_node_throws() {
+    // `String({ toString: 1 })` throws a TypeError: handle() converts the action, apply() the
+    // scope before it looks at the service actions; index.cjs answers 500 'Internal error'.
+    let thrown = Err(refusal(500, INTERNAL_ERROR));
+    for body in [
+        json!({"action": {"toString": 1}}),
+        json!({"action": [{"toString": 1}]}),
+        json!({"action": "finish", "scope": {"toString": 1}}),
+        json!({"action": "set-next", "scope": ["all", {"toString": 1}]}),
+        json!({"action": "service-off", "scope": {"toString": 1}}),
+        json!({"action": "service-switch", "model": "m", "scope": {"toString": 1}}),
+    ] {
+        assert_eq!(read_request(&body), thrown, "{body}");
+    }
+    // An unknown action is refused before the scope is read; an own valueOf alone converts.
+    assert_eq!(
+        read_request(&json!({"action": "qa", "scope": {"toString": 1}})),
+        Err(refusal(400, ACTION_LIST))
+    );
+    assert_eq!(
+        read_request(&json!({"action": {"valueOf": 1}})),
+        Err(refusal(400, ACTION_LIST))
+    );
+    // A falsy value is never converted; a truthy one that converts to '' is not a scope.
+    let falsy = read_request(&json!({"action": "finish", "scope": 0})).unwrap();
+    assert_eq!(falsy.scope, Scope::All);
+    assert_eq!(
+        read_request(&json!({"action": "finish", "scope": []})),
+        Err(refusal(400, "scope must be all, projects or diary"))
+    );
+    assert_eq!(
+        try_js_string(Some(&json!({"valueOf": 1}))).as_deref(),
+        Some("[object Object]")
+    );
+    assert_eq!(
+        try_js_string(Some(&json!([1, null, "a"]))).as_deref(),
+        Some("1,,a")
+    );
+    assert_eq!(try_js_string(Some(&json!([[{"toString": 1}]]))), None);
 }
 
 #[test]

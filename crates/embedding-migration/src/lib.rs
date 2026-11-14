@@ -158,7 +158,11 @@ pub trait Host {
     fn service_enabled(&mut self) -> Option<bool>;
     fn service_status(&mut self) -> JValue;
     fn service_base_url(&self) -> Option<String>;
+    /// `isAt(address)`: `!!baseUrl && sameAddress(address, baseUrl)`. Production's throws when
+    /// `String(address ?? '')` cannot convert the address and [`Host::service_base_url`] is set;
+    /// this one cannot, so the port answers that throw itself after the call.
     fn service_is_at(&mut self, address: &JValue) -> bool;
+    /// `fileOf(model)`: compares with `===` (nothing is converted).
     fn service_file_of(&mut self, model: &JValue) -> Option<String>;
     /// `service.serve(models)`, each `{ model, file }`.
     fn service_serve(&mut self, models: &[JValue]) -> Result<(), ServeError>;

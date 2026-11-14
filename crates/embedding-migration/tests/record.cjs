@@ -4,7 +4,8 @@
 // embedding-config.cjs (loadEmbeddingConfig, normalizeTarget, seedFromEnv), embedding-migration.cjs
 // (createEmbeddingMigration with a nativeOwner, as production runs it), embedding-served.cjs
 // (checkServed) and routes/embedding.cjs (createEmbeddingRoutes); http.cjs's errorResponse answers an
-// error the route throws, as index.cjs's request handler does.
+// error the route throws, as index.cjs's request handler does; embedding-service.cjs's sameAddress
+// converts the address the service stub's isAt is asked about, as production's does.
 //
 //   NOEVIA_CORE_CHECKOUT=<noevia-core checkout> \
 //     node crates/embedding-migration/tests/record.cjs > crates/embedding-migration/tests/fixtures/node-embedding-migration.v1.json
@@ -34,6 +35,7 @@ const SOURCES = {
   'server/embedding-served.cjs': '9ab1c0d06c60d53beef408a887c5ca4f090451e91457ae50f89ff7c029054f3b',
   'server/routes/embedding.cjs': 'ae34b6be30f2b8880a5c6c0c141ed9d1e709e87ef92202bb3cc0e79465db9854',
   'server/http.cjs': 'd9bc3d67258f4adcbd10bfaaf9e6674086110fbba079fe8f6678340d3a0080e0',
+  'server/embedding-service.cjs': '1266640492aea8841d73d25ec22dba1fe2daa962c04dd415df81c7dfed4468dd',
 };
 for (const [rel, want] of Object.entries(SOURCES)) {
   const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, rel))).digest('hex');
@@ -47,6 +49,7 @@ const { createEmbeddingMigration } = req('embedding-migration.cjs');
 const { checkServed } = req('embedding-served.cjs');
 const { createEmbeddingRoutes } = req('routes/embedding.cjs');
 const { errorResponse } = req('http.cjs');
+const { sameAddress } = req('embedding-service.cjs');
 
 const clone = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 let calls = [];
@@ -92,8 +95,11 @@ const service = {
   managed() { log('serviceManaged'); return !!svc().managed; },
   enabled() { log('serviceEnabled'); return svc().enabled; },
   status() { log('serviceStatus'); return clone(svc().status); },
-  isAt(address) { log('serviceIsAt', address); return svc().at.some((a) => a === address); },
-  fileOf(model) { log('serviceFileOf', model); return svc().known[model] ?? null; },
+  // Production's `!!baseUrl && sameAddress(address, baseUrl)` converts the address as it does (and
+  // throws where String() does); which addresses count as the service is the world's `at` list.
+  isAt(address) { log('serviceIsAt', address); const base = svc().baseUrl; return !!base && (sameAddress(address, base), svc().at.some((a) => a === address)); },
+  // Production finds the model with `===`: only a string can name an entry, nothing is converted.
+  fileOf(model) { log('serviceFileOf', model); const known = svc().known; return typeof model === 'string' && Object.hasOwn(known, model) ? known[model] : null; },
   async serve(models) {
     log('serviceServe', models);
     const f = svc().serveFail.length ? svc().serveFail.shift() : null;
@@ -323,6 +329,40 @@ add('service-sync-full', {
   env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC }, world: { service: managed({ at: [SVC, DIARY_EMBED, null] }), diary: { GET: diaryStatus(dt(B), dt(C), dt(A)) } },
   steps: [act('service-switch', { model: C }), act('finish', P), { world: { diary: { GET: diaryStatus(dt(A), dt(A, DIARY_EMBED, GEMMA), { model: 5, base_url: SVC }) } } }, act('finish', P),
     { world: { diary: { GET: diaryStatus(dt(B), null, dt(C)) } } }, act('service-switch', { model: B }), act('service-switch', { model: C })],
+});
+
+// #2665: request and Diary values String() (or a template literal) cannot convert make Node's route
+// throw (500 'Internal error') at the point it converts them; a value with an own valueOf alone
+// converts to '[object Object]' and goes on.
+const coercible = { valueOf: 1 };
+// (a) service.isAt converts a Diary address: in the set with no Diary defaults ('known'), the
+// previous target the full set has no room for is still read.
+add('service-switch-known-throws', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC }, world: { service: managed(), diary: { GET: diaryStatus(dt(B, ''), null, dt(C, unreadable)) } },
+  steps: [act('service-switch', { model: C }), diaryGets(dt(B, ''), null, dt(C, coercible)), act('service-switch', { model: C }), diaryGets(dt(B, ''), null, dt(C, [unreadable])), act('service-switch', { model: C }),
+    diaryGets({ model: unreadable, profile: 'nomic-v1', base_url: SVC }), act('service-switch', { model: C }), GET],
+});
+// (b) a service-switch profile: from off, sameTarget's template literal throws after serve and
+// waitLoaded (nothing set, nothing audited); with the service on, set-next's projects half refuses it.
+add('service-switch-coerce-profile', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC }, world: { service: managed({ enabled: false }) },
+  steps: [act('service-switch', { model: A, profile: unreadable }), act('service-switch', { model: B, profile: unreadable }), act('service-switch', { model: A, profile: [GEMMA, unreadable] }),
+    act('service-switch', { model: A, profile: coercible }), act('clear-next', P), { world: { service: managed({ enabled: false, loaded: [false] }) } }, act('service-switch', { model: A, profile: unreadable }),
+    { world: { service: managed() } }, act('service-switch', { model: B, profile: unreadable }), GET],
+});
+// (c) a service-switch model, and (#2665 note) the action and scope handle() and apply() convert.
+add('service-switch-coerce-model', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC }, world: { service: managed({ installed: { [A]: 'qa/a.gguf', [B]: 'qa/b.gguf', '[object Object]': 'qa/o.gguf' } }) },
+  steps: [act('service-switch', { model: unreadable }), act('service-switch', { model: [unreadable] }), act('service-switch', { model: coercible, profile: GEMMA }), act('clear-next', P),
+    act('service-off', { model: unreadable }), act('service-switch', { model: B, scope: unreadable }), act('service-off', { scope: unreadable }), post({ action: unreadable }),
+    post({ action: [unreadable] }), post({ action: coercible }), act('qa', { scope: unreadable }), act('finish', { scope: unreadable }), act('finish', { scope: [] }), GET],
+});
+// (d) apply()'s address checks and the served-model check's model.
+add('route-coerce-target', {
+  env: { EMBEDDING_MODEL: A },
+  steps: [setNext({ model: B, baseUrl: unreadable }), setNext({ model: B, baseUrl: SVC, diaryBaseUrl: unreadable }), setNext({ model: B, baseUrl: [SVC, unreadable] }),
+    setNext({ model: B, diaryBaseUrl: unreadable }, { scope: 'diary' }), setNext({ model: unreadable, baseUrl: SVC }), setNext({ model: [unreadable], baseUrl: SVC, diaryBaseUrl: '' }),
+    setNext({ model: unreadable }, { scope: 'diary' }), setNext({ model: B, baseUrl: coercible }), setNext({ model: coercible, baseUrl: SVC }, P), setNext({ model: B, baseUrl: SVC, profile: unreadable }), GET],
 });
 
 // Seeded random sequences over everything above.

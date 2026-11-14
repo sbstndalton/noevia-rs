@@ -22,13 +22,26 @@ On MS02 run it on the builder:
 
 ## Where Node throws, and where the port differs
 
-- A TypeError Node's route throws (a truthy non-array `models` in the embedding service's status
-  during `service-switch`; a Diary target address `String()` cannot convert, read by `servedSet()`)
-  ends the request where it is thrown, and index.cjs's handler answers `errorResponse()`'s
-  500 `{ "error": "Internal error" }`. The port answers the same at the same point
-  (`routes::internal_error()`): a `service-switch` serves nothing, and the sync after a change
-  serves nothing (the change and its audit record stay). The recorder answers a thrown error with
-  http.cjs's own `errorResponse`.
+- A TypeError Node's route throws ends the request where it is thrown, and index.cjs's handler
+  answers `errorResponse()`'s 500 `{ "error": "Internal error" }`. The port answers the same
+  (`routes::internal_error()`) after the same host calls for the throws that are recorded:
+  - a request value `String()` or a template literal cannot convert (an object with its own
+    `toString`, also inside an array): the action and scope (read by `embedding-admin`), a
+    `set-next` target's `baseUrl` / `diaryBaseUrl` (before that address is checked) and model
+    (after the address checks, before any served-model probe), a `service-switch` model (before
+    `resolveFile`) and profile (from off: after `serve` and `waitLoaded`, with no change, Diary call
+    or audit record);
+  - a Diary target address that cannot be converted, read by `service.isAt` (production's
+    `sameAddress`, once the service has an address) or by `servedSet()`'s Diary-default check: a
+    `service-switch` serves nothing, and the sync after a change serves nothing (the change and its
+    audit record stay);
+  - a truthy non-array `models` in the embedding service's status during `service-switch`.
+
+  The `Host` methods cannot throw: `service_is_at`'s throw is answered by the port from
+  `service_base_url`, and the recorder's stubs convert values as production's do
+  (`sameAddress` for `isAt`, `===` for `fileOf`). A throw inside a real host's own I/O is not
+  covered. A value that converts (an own `valueOf` alone gives `[object Object]`) goes on as in
+  Node. The recorder answers a thrown error with http.cjs's own `errorResponse`.
 - The endpoint parity check fails closed: unless both endpoints give one vector per sample text,
   parity is `ok: false`. Node's passes vacuously on fewer vectors from the active endpoint
   (`sims.every(Number.isFinite)` of an empty list is true, `Math.min()` is Infinity).
