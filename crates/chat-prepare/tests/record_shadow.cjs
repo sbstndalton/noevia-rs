@@ -33,6 +33,8 @@
 //   chatFraming  what chatFramingEnabled() answers (index.cjs: features.enabled('chatFraming'))
 //   toolboxes    the toolbox catalogue allToolboxes() answers, as [{id, tools: [function names]}] (the history
 //                replay's carryOrphanTool and knownTool read it: tools-mode.cjs isPublicToolName, PRIVATE_CORE_TOOLS)
+//   settings     (left out: no settings database) the settings table's rows chat.cjs reads, key -> value (a missing
+//                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
 //   body         the POST /api/chat body (no projectId, skill, turnToolboxes or compactOnly)
 // HISTORY_CAP is 1000 (index.cjs). What a case records: `prepared` the whole frame or null, `refused` the logged
 // refusal reason or null, `threw` the message of what handleChat threw or null.
@@ -144,7 +146,19 @@ function handlerFor(dir) {
       acquireLease: async (model) => ({ model, headers: () => ({}), release: async () => {}, fetch: (base) => base }),
       props: async () => ({ ok: false }), inferenceBusy: () => false, load: async () => ({ ok: true }) },
     templateToolsGate: { allowsTools: async () => true, markUnsupported() {} }, toolGate: null, routingModes: { enabled: () => false },
-    reasoningEffort: serverRequire('reasoning-effort.cjs'), authService: { audit() {}, diaryEnabled: () => false }, crypto: qaCrypto, path, fs, fetch,
+    reasoningEffort: serverRequire('reasoning-effort.cjs'), crypto: qaCrypto, path, fs, fetch,
+    // The settings table chat.cjs reads (`authService?.db?.prepare(...).get()?.value`): the case's rows, or no
+    // database at all when the case names none (`settings` left out).
+    authService: { audit() {}, diaryEnabled: () => false,
+      get db() {
+        const rows = S().settings;
+        if (rows === undefined) return undefined;
+        return { prepare: (sql) => ({ get: () => {
+          const key = /WHERE key='([a-z_]+)'/.exec(sql)?.[1];
+          if (!key) throw new Error(`QA: unexpected settings query ${sql}`);
+          return Object.prototype.hasOwnProperty.call(rows, key) ? { value: rows[key] } : undefined;
+        } }) };
+      } },
     HISTORY_CAP, DEFAULT_PROVIDER_ID: 'default', createToolExchange: () => async () => 'unused',
     currentWorkspace: () => ({ userId: 'qa-user', dir, assetDir: () => path.join(dir, 'qa-assets') }),
     getProject: () => null, skillsIndexFor: () => [],
@@ -207,7 +221,8 @@ async function addTurn(name, raw) {
   const { handleChat } = handlerFor(dir);
   const body = viaJson(spec.body);
   const input = { tz: spec.tz, nowMs: spec.nowMs, instructions: spec.instructions, memory: spec.memory,
-    freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES, body: viaJson(spec.body) };
+    freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES,
+    ...(spec.settings === undefined ? {} : { settings: spec.settings }), body: viaJson(spec.body) };
   const from = logged.length;
   let threw = null;
   const random = Math.random;
@@ -409,6 +424,17 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   await addTurn('history_cap_after_filter', { body: req({ history: longHistory(1150, (i) => (i % 7 === 3 ? user('') : i % 11 === 5 ? failed(`QA f${i}`) : i % 2 ? assistant(`QA a${i}`) : user(`QA u${i}`))) }) });
   await addTurn('history_cap_cut_on_tool', { body: req({ history: longHistory(HISTORY_CAP + 3, (i) => (i < 4 ? user(`QA u${i}`) : i % 3 === 1 ? toolResult('web_search', `QA w${i}`) : i % 3 === 2 ? assistant(`QA a${i}`) : user(`QA u${i}`))) }) });
 
+  // ── The settings rows the effort and the sampling presets read (P7b) ──────────────────────────
+  const SETTINGS = [{}, { reasoning_effort_default: 'low' }, { reasoning_effort_default: 'high' }, { reasoning_effort_default: 'default' },
+    { reasoning_effort_default: 'QA bogus' }, { reasoning_effort_default: null }, { auto_sampling_presets_enabled: 'false' },
+    { auto_sampling_presets_enabled: 'true' }, { auto_sampling_presets_enabled: null }, { auto_sampling_presets_enabled: 'FALSE' },
+    { reasoning_effort_default: 'high', auto_sampling_presets_enabled: 'false' }];
+  for (const [k, settings] of SETTINGS.entries()) {
+    for (const [j, message] of ['QA hello', 'Write a QA poem about the sea', 'Fix this QA function: def f(x): return x +', 'What is 17 * 23?'].entries()) {
+      await addTurn(`settings_${k}_${j}`, { settings, body: req({ message }) });
+    }
+  }
+
   // ── Seeded random turns ──────────────────────────────────────────────────────────────────────
   for (let n = 0; n < 160; n += 1) {
     const tz = pick(ZONES);
@@ -423,8 +449,11 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
       ...(chatId ? [{ id: chatId, title: 'QA chat', ...(chance(0.7) ? { frame: pick(FRAMES) } : {}) }] : []),
     ] : null;
     const b = { message: pick(MESSAGES), ...(chance(0.85) ? { spaceId: 'free' } : {}), ...(chatId ? { chatId } : {}), ...(histLen || chance(0.5) ? { history } : {}) };
-    await addTurn(`random_${n}`, { tz, nowMs, instructions: pick(INSTRUCTIONS), memory: pick(MEMORIES), freeChats: freeChats && freeChats.length ? freeChats : null,
-      chatFraming: chance(0.6), body: b });
+    const fields = { tz, nowMs, instructions: pick(INSTRUCTIONS), memory: pick(MEMORIES), freeChats: freeChats && freeChats.length ? freeChats : null,
+      chatFraming: chance(0.6), body: b };
+    // Drawn after everything above, so the earlier picks of each turn are unchanged.
+    if (chance(0.5)) fields.settings = pick(SETTINGS);
+    await addTurn(`random_${n}`, fields);
   }
 
   const lines = (list) => list.map((x) => JSON.stringify(x)).join(',\n');

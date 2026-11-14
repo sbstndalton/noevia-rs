@@ -12,7 +12,7 @@
     clippy::indexing_slicing
 )]
 
-use chat_prepare::shadow::{compare, Catalogue, ShadowTurn, Verdict};
+use chat_prepare::shadow::{compare, Catalogue, Settings, ShadowTurn, Verdict};
 use chat_prepare::toolboxes::Toolbox;
 use chat_prepare::tools_mode::{is_public_tool_name, PRIVATE_CORE_TOOLS};
 use js_json::{wtf16, JValue};
@@ -109,6 +109,11 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 history_cap: cap,
                 titles: true,
                 workspace: true,
+                // No settings database is the same as no rows: both read `undefined`.
+                settings: Some(Settings {
+                    effort_default: input.get("settings").get("reasoning_effort_default"),
+                    sampling_presets: input.get("settings").get("auto_sampling_presets_enabled"),
+                }),
                 catalogue,
             })
         };
@@ -236,6 +241,7 @@ fn a_difference_is_located_without_its_text() {
             history_cap: f.get("historyCap").as_num().unwrap() as usize,
             titles: true,
             workspace: true,
+            settings: None,
             catalogue: None,
         })
     };
@@ -321,6 +327,7 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             history_cap: 1000,
             titles: true,
             workspace: true,
+            settings: None,
             catalogue: None,
         })
     };
@@ -337,4 +344,58 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
     assert_eq!(check(frame, None, Some(true)), Verdict::Skip("free-list"));
     assert_eq!(check(frame, None, None), Verdict::Skip("free-list"));
     assert_ne!(check(frame, None, Some(false)), Verdict::Skip("free-list"));
+}
+
+/// The effort, Fast thinking switch and sampling presets of the recorded frames (settings rows varied)
+/// are the native ones, and one that is not is named by its field.
+#[test]
+fn the_effort_and_sampling_follow_the_settings_rows() {
+    let f = fixture();
+    let frames: Vec<&JValue> = items(&f, "turns")
+        .iter()
+        .map(|t| t.get("prepared"))
+        .filter(|p| p.is_object())
+        .collect();
+    assert!(frames.iter().any(|p| p.get("effort").as_str() == Some("high")));
+    assert!(frames.iter().any(|p| p.get("effort").as_str() == Some("low")));
+    assert!(frames
+        .iter()
+        .any(|p| matches!(p.get("sampling"), JValue::Obj(items) if !items.is_empty())));
+    assert!(frames
+        .iter()
+        .any(|p| matches!(p.get("sampling"), JValue::Obj(items) if items.is_empty())));
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("prepared").is_object() && t.get("input").get("settings").is_object())
+        .unwrap();
+    let input = t.get("input");
+    let empty = JValue::Arr(Vec::new());
+    let check = |frame: &JValue| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame,
+            instructions: None,
+            memory: None,
+            free_chats: Some(&empty),
+            time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
+            history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: Some(Settings {
+                effort_default: input.get("settings").get("reasoning_effort_default"),
+                sampling_presets: input.get("settings").get("auto_sampling_presets_enabled"),
+            }),
+            catalogue: None,
+        })
+    };
+    let JValue::Obj(mut items) = t.get("prepared").clone() else {
+        panic!()
+    };
+    wtf16::set(&mut items, "effort", JValue::from("qa-other"));
+    match check(&JValue::Obj(items)) {
+        Verdict::Diff(d) => assert_eq!(d.field, "effort"),
+        other => panic!("{other:?}"),
+    }
 }

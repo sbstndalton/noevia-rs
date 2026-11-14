@@ -55,6 +55,17 @@ pub struct ShadowTurn<'a> {
     /// account's workspace): both true on a server.
     pub titles: bool,
     pub workspace: bool,
+    /// The settings rows chat.cjs reads for the effort and the sampling presets, when the caller
+    /// could read them; without them those three fields are not compared.
+    pub settings: Option<Settings<'a>>,
+}
+
+/// The settings table's `reasoning_effort_default` and `auto_sampling_presets_enabled` values
+/// (`undefined`: no row; `null`: SQL NULL), see [`crate::route::RouteTurn`].
+#[derive(Debug, Clone, Copy)]
+pub struct Settings<'a> {
+    pub effort_default: &'a JValue,
+    pub sampling_presets: &'a JValue,
     /// The history replay's `knownTool` and `carryOrphanTool` over the server's toolboxes, when the
     /// caller has them; without them a history that asks either is skipped.
     pub catalogue: Option<Catalogue<'a>>,
@@ -72,7 +83,7 @@ pub struct Catalogue<'a> {
 /// Where the native frame first differs from core's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Diff {
-    /// The frame field: `messages`, `chat` or `turn`.
+    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff` or `sampling`.
     pub field: &'static str,
     /// The message index (`messages.len()` of the shorter list when one is a prefix of the other;
     /// 0 for `chat` and `turn`).
@@ -241,7 +252,11 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
     }
     if ours.len() == core.len() {
         let (chat, turn) = chat_and_turn(t);
-        for (field, ours) in [("chat", chat), ("turn", turn)] {
+        let mut fields = vec![("chat", chat), ("turn", turn)];
+        if let Some(settings) = t.settings {
+            fields.extend(route_fields(t, settings));
+        }
+        for (field, ours) in fields {
             let (a, b) = (text(&ours), text(t.frame.get(field)));
             if a != b {
                 return Verdict::Diff(Diff {
@@ -363,3 +378,32 @@ fn chat_and_turn(t: &ShadowTurn<'_>) -> (JValue, JValue) {
 
 /// chat.cjs `createChatHandler`'s `streamIdleMs` default (index.cjs passes none).
 const STREAM_IDLE_MS: f64 = 120_000.0;
+
+/// chat.cjs's effort, Fast thinking switch and sampling presets (~1405-1430, [`crate::route`]) of a
+/// covered turn: the account default effort, lowered on an Automatic Fast route; thinking off on an
+/// Automatic Fast route at the account default effort on the local engine; the presets from the
+/// role and the message (no project, so no explicit sampling). Which role answers (`role`, `auto`)
+/// is core's: the classification is a decision call; what follows from it is compared. The local
+/// engine verdict is core's too (`provider.localEngine`: a handed-off turn is on the default
+/// provider).
+fn route_fields(t: &ShadowTurn<'_>, settings: Settings<'_>) -> Vec<(&'static str, JValue)> {
+    use crate::{effort, route, sampling};
+    let frame = t.frame;
+    let auto = frame.get("auto") == &JValue::Bool(true);
+    let role = frame.get("role").as_str();
+    let resolved = effort::resolve_effort(&JValue::Null, settings.effort_default);
+    let chosen = effort::effort_for_route(resolved, role.filter(|_| auto));
+    let thinking_off = effort::fast_route_thinking_off(auto, role, &JValue::Undefined)
+        && frame.get("provider").get("localEngine") == &JValue::Bool(true);
+    let presets = sampling::select(
+        role,
+        t.body.get("message").as_str().unwrap_or_default(),
+        &JValue::Undefined,
+        route::sampling_auto_enabled(settings.sampling_presets),
+    );
+    vec![
+        ("effort", JValue::from(chosen.as_str())),
+        ("thinkingOff", JValue::Bool(thinking_off)),
+        ("sampling", presets.params_value()),
+    ]
+}

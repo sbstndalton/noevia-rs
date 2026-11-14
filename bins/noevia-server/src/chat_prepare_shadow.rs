@@ -17,7 +17,7 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use chat_prepare::shadow::{compare, Catalogue, ShadowTurn, Verdict};
+use chat_prepare::shadow::{compare, Catalogue, Settings, ShadowTurn, Verdict};
 use chat_prepare::toolboxes::Toolbox;
 use chat_prepare::tools_mode::{is_public_tool_name, PRIVATE_CORE_TOOLS};
 use js_json::{wtf16, JValue};
@@ -117,6 +117,7 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
                 ),
             };
             let boxes = catalogue.map(|c| toolboxes(&c.boxes));
+            let settings = settings_rows(&app);
             let verdict = run(
                 &user_dir,
                 &body,
@@ -124,12 +125,42 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
                 &server_time_zone(),
                 flags,
                 boxes.as_deref(),
+                settings.as_ref(),
             );
             drop(slot);
             eprintln!("chat prepare shadow: {}", verdict.line());
         })
         .await;
     }));
+}
+
+/// chat.cjs's two settings reads (`SELECT value FROM settings WHERE key=...`, then `?.value`):
+/// `reasoning_effort_default` and `auto_sampling_presets_enabled`, each `undefined` without a row,
+/// `null` for SQL NULL. `None` when either cannot be read (the shadow then leaves those fields out).
+fn settings_rows(app: &App) -> Option<(JValue, JValue)> {
+    let read = |key: &str| -> Option<JValue> {
+        let row = app
+            .writes
+            .writer()
+            .ok()?
+            .read(|r| {
+                r.row(
+                    "SELECT value FROM settings WHERE key=?1",
+                    [key],
+                    |row| row.get::<_, Option<String>>(0),
+                )
+            })
+            .ok()?;
+        Some(match row {
+            None => JValue::Undefined,
+            Some(None) => JValue::Null,
+            Some(Some(text)) => JValue::from(text),
+        })
+    };
+    Some((
+        read("reasoning_effort_default")?,
+        read("auto_sampling_presets_enabled")?,
+    ))
 }
 
 /// The catalogue's boxes as the replay's tool questions read them: each box's id and its tools
@@ -178,6 +209,7 @@ pub fn run(
     time_zone: &str,
     flags: Flags,
     boxes: Option<&[Toolbox]>,
+    settings: Option<&(JValue, JValue)>,
 ) -> Verdict {
     let Some(body) = std::str::from_utf8(body)
         .ok()
@@ -214,6 +246,10 @@ pub fn run(
         history_cap: HISTORY_CAP,
         titles: true,
         workspace: true,
+        settings: settings.map(|(effort_default, sampling_presets)| Settings {
+            effort_default,
+            sampling_presets,
+        }),
         catalogue: boxes.map(|_| Catalogue {
             known_tool: &known,
             carry_orphan_tool: &carry,
@@ -382,11 +418,11 @@ mod tests {
         let frame = JValue::Null;
         let flags = Flags::default();
         assert_eq!(
-            run(&dir, b"{not json", &frame, "UTC", flags, None),
+            run(&dir, b"{not json", &frame, "UTC", flags, None, None),
             Verdict::Skip("body")
         );
         assert_eq!(
-            run(&dir, b"{}", &frame, "UTC", flags, None),
+            run(&dir, b"{}", &frame, "UTC", flags, None, None),
             Verdict::Skip("frame")
         );
     }
@@ -472,7 +508,11 @@ mod tests {
                 _ => Vec::new(),
             };
             let tz = input.get("tz").as_str().unwrap();
-            let verdict = run(&dir, body.as_bytes(), frame, tz, flags, Some(&boxes));
+            let rows = (
+                input.get("settings").get("reasoning_effort_default").clone(),
+                input.get("settings").get("auto_sampling_presets_enabled").clone(),
+            );
+            let verdict = run(&dir, body.as_bytes(), frame, tz, flags, Some(&boxes), Some(&rows));
             assert_eq!(
                 verdict,
                 Verdict::Match,
@@ -480,7 +520,7 @@ mod tests {
                 t.get("name").as_str().unwrap_or_default()
             );
             // Without the catalogue (not ready yet): a history that needs it is skipped.
-            let without = run(&dir, body.as_bytes(), frame, tz, flags, None);
+            let without = run(&dir, body.as_bytes(), frame, tz, flags, None, None);
             assert!(
                 matches!(without, Verdict::Match | Verdict::Skip("tool-history")),
                 "{}: {}",
