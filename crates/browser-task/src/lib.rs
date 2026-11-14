@@ -21,6 +21,7 @@
 pub mod engine;
 pub mod executor;
 pub mod policy;
+pub mod routes;
 pub mod service;
 pub mod signal;
 
