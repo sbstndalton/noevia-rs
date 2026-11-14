@@ -112,6 +112,14 @@ fn engine(t: &Target, now: Arc<Mutex<Option<Target>>>) -> RoleEngine<FrontRoles>
     }))
 }
 
+/// A pin that must be refused (a `Session` is not `Debug`, so no `unwrap_err`).
+async fn refused(e: &RoleEngine<FrontRoles>, req: PinRequest) -> role_engine::Failure {
+    match e.pin_model(req).await {
+        Ok(_) => panic!("the pin was not refused"),
+        Err(f) => f,
+    }
+}
+
 fn pin(task: &str, model: Option<&str>) -> PinRequest {
     PinRequest {
         task_id: task.into(),
@@ -191,10 +199,7 @@ async fn pin_refusals_are_node_s() {
     let t = target(port, "qa-m1");
     let e = engine(&t, Arc::new(Mutex::new(Some(t.clone()))));
     // A task naming another model (role-engine.cjs pinOnMachine).
-    let f = e
-        .pin_model(pin("qa-task-3", Some("qa-other")))
-        .await
-        .unwrap_err();
+    let f = refused(&e, pin("qa-task-3", Some("qa-other"))).await;
     assert_eq!(f.code, "model_mismatch");
     assert_eq!(
         f.reason,
@@ -202,7 +207,7 @@ async fn pin_refusals_are_node_s() {
     );
     // The machine serves another model (#1851).
     *m.served.lock().unwrap() = vec!["qa-elsewhere"];
-    let f = e.pin_model(pin("qa-task-4", None)).await.unwrap_err();
+    let f = refused(&e, pin("qa-task-4", None)).await;
     assert_eq!(f.code, "machineWrongModel");
     assert!(f.reason.contains("qa-coder"), "{}", f.reason);
     // The machine's health answers 503 (#1840).
@@ -210,7 +215,7 @@ async fn pin_refusals_are_node_s() {
     *down.health.lock().unwrap() = 503;
     let td = target(dport, "qa-m3");
     let e = engine(&td, Arc::new(Mutex::new(Some(td.clone()))));
-    let f = e.pin_model(pin("qa-task-5", None)).await.unwrap_err();
+    let f = refused(&e, pin("qa-task-5", None)).await;
     assert_eq!(f.code, "machineUnreachable");
     assert!(f.reason.contains("it answered HTTP 503"), "{}", f.reason);
 }
@@ -224,7 +229,7 @@ async fn a_machine_that_stops_answering_mid_task_is_unreachable_with_the_1840_te
     };
     let t = target(port, "qa-m4");
     let e = engine(&t, Arc::new(Mutex::new(Some(t.clone()))));
-    let f = e.pin_model(pin("qa-task-6", None)).await.unwrap_err();
+    let f = refused(&e, pin("qa-task-6", None)).await;
     assert_eq!(f.code, "machineUnreachable");
     assert!(f.reason.contains("QA Box"), "{}", f.reason);
 }
