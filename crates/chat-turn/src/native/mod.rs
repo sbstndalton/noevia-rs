@@ -679,14 +679,17 @@ impl<H: Host> Turn<'_, H> {
                 break;
             }
             if p.supervise {
-                // A skill revoked in this round's tools: no supervisor call (the close reports it).
-                if self.skills.is_revoked() {
+                // A skill revoked in this round's tools: no supervisor call (the close reports it). A client gone:
+                // chat.cjs's supervisor answers at once without asking (its signal is aborted), and the loop ends.
+                if self.skills.is_revoked() || host.left() {
                     break;
                 }
-                // chat.cjs superviseNextStep after the round's tools: a check note, or the reply paused.
+                // chat.cjs superviseNextStep after the round's tools: a check note, or the reply paused. The flag is
+                // the cut's (named difference: supervision turned on while the turn runs starts with the next turn).
                 let outputs = supervisor_outputs(&s.messages);
+                let goal = js::slice(&p.message, 1500);
                 match host
-                    .supervise(round, &outputs, &p.message, s.round_wrote)
+                    .supervise(round, &outputs, &goal, s.round_wrote)
                     .await
                     .as_str()
                 {

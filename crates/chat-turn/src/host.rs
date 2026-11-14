@@ -302,14 +302,13 @@ pub trait Host: Sync {
 
     /// Step supervision after a tool round (chat.cjs `superviseNextStep`, asked of core's supervisor):
     /// `continue`, `verify` or `escalate`. `outputs` are the round's last tool and assistant messages as the
-    /// supervisor reads them. No answer (or a host without the bridge) is `continue`, as the supervisor falls back.
+    /// supervisor reads them; `goal` the turn's message as it reads it (its first 1500 UTF-16 units). No answer is
+    /// `continue`, as the supervisor falls back.
     fn supervise(
         &self,
-        _round: i32,
-        _outputs: &[JValue],
-        _goal: &str,
-        _wrote: bool,
-    ) -> impl Future<Output = String> + Send {
-        async { "continue".to_string() }
-    }
+        round: i32,
+        outputs: &[JValue],
+        goal: &str,
+        wrote: bool,
+    ) -> impl Future<Output = String> + Send;
 }

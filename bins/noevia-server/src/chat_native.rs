@@ -999,7 +999,11 @@ impl Host for FrontHost {
                 Some(a @ ("verify" | "escalate")) => a.to_string(),
                 _ => "continue".to_string(),
             },
-            _ => "continue".to_string(),
+            Some((status, _)) => {
+                eprintln!("chat native: the step supervisor answered {status}; the turn continues unsupervised for this round");
+                "continue".to_string()
+            }
+            None => "continue".to_string(),
         }
     }
 

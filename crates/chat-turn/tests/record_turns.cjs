@@ -583,13 +583,20 @@ async function runTurn(c, { handoff = false } = {}) {
       // op sees it: its round, goal, write flag and the outputs the supervisor reads, and the action it answered.
       ...(c.supervise !== undefined ? { stepSupervision: (() => {
         let k = 0;
+        // `outputs` and `goal` as the front sends them (the supervisor's view); checked against what the real
+        // supervisor hands its decision service whenever it asks one, so the recording follows step-supervision.cjs.
+        let outputs = null, goal = null;
         const real = require(path.join(server, 'step-supervision.cjs')).createStepSupervision({ enabled: () => true, log: () => {},
-          provider: { decide: async () => c.supervise[Math.min(k++, c.supervise.length - 1)] } });
+          provider: { decide: async (asked) => {
+            if (JSON.stringify(asked.outputs) !== JSON.stringify(outputs) || asked.goal !== goal) throw new Error(`${c.name}: the supervisor read other outputs than the recording names`);
+            return c.supervise[Math.min(k++, c.supervise.length - 1)];
+          } } });
         return { decide: async (input) => {
-          const decision = await real.decide(input);
-          const outputs = input.messages.filter((m) => m.role === 'tool' || m.role === 'assistant').slice(-8)
+          outputs = input.messages.filter((m) => m.role === 'tool' || m.role === 'assistant').slice(-8)
             .map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 1500) : '' }));
-          stub('supervise', { round: input.round, goal: input.goal, wrote: input.wrote, outputs, answer: decision.action });
+          goal = typeof input.goal === 'string' ? input.goal.slice(0, 1500) : '';
+          const decision = await real.decide(input);
+          stub('supervise', { round: input.round, goal, wrote: input.wrote, outputs, answer: decision.action });
           return decision;
         } };
       })() } : {}),
@@ -1051,6 +1058,20 @@ const CASES = [
     rounds: [{ frames: [toolCall('drive_create_file', '{"name":"qa-s3.txt","content":"QA."}'), finish('tool_calls')] }] },
   { name: 'supervise_weak_escalate', about: 'A read-only round with a weak stop verdict carries on (#1456).', supervise: [{ action: 'escalate', scores: { continue: 0.3, verify: 0.2, escalate: 0.5 } }],
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s4"}'), finish('tool_calls')] }, answer('Carried on.')] },
+  { name: 'supervise_confident_escalate', about: 'A read-only round and a confident stop verdict: the reply pauses, nothing was changed.', supervise: [{ action: 'escalate', scores: { continue: 0.1, verify: 0.1, escalate: 0.8 } }],
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s6"}'), finish('tool_calls')] }] },
+  { name: 'supervise_two_writes_escalate', about: 'Two approved writes in the round, then a stop verdict: two changes were saved.', supervise: [{ action: 'escalate', scores: { continue: 0.1, verify: 0.1, escalate: 0.8 } }], decision: 'approve',
+    rounds: [{ frames: [toolCall('drive_create_file', '{"name":"qa-s7a.txt","content":"QA."}', 'qa-call-1', 0), toolCall('drive_create_file', '{"name":"qa-s7b.txt","content":"QA."}', 'qa-call-2', 1), finish('tool_calls')] }] },
+  { name: 'supervise_declined', about: 'A declined write ends the reply before the supervisor is asked.', supervise: [{ action: 'verify' }], decision: 'deny',
+    rounds: [{ frames: [toolCall('drive_create_file', '{"name":"qa-s8.txt","content":"QA."}'), finish('tool_calls')] }] },
+  { name: 'supervise_history_long_result', about: 'A chat with history, an earlier answer of emoji past the 1500-unit cut and a long tool result: the supervisor reads the last eight tool and assistant messages, each cut in UTF-16 units.', supervise: [{ action: 'continue' }],
+    // The earlier answer: 16 units, then emoji pairs, so the cut at 1500 falls between two pairs (counted in UTF-16
+    // units; a split pair would leave a lone surrogate, which the serde_json fixture readers refuse).
+    toolResults: { drive_read_file: `${'QA long line. '.repeat(120)}QA tail.` },
+    body: { history: [{ role: 'user', content: 'QA earlier question.' }, { role: 'assistant', content: 'QA earlier answer.' }, { role: 'user', content: 'QA second question.' }, { role: 'assistant', content: `QA long answer: ${'\u{1F600}'.repeat(800)}` }] },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s9"}'), finish('tool_calls')] }, answer('Read the long one.')] },
+  { name: 'supervise_error_result', about: 'A failed call: its result reaches the supervisor framed, so its ERROR guard does not see it (noevia#2656); a confident stop pauses the reply.', supervise: [{ action: 'escalate', scores: { continue: 0.1, verify: 0.1, escalate: 0.8 } }],
+    rounds: [{ frames: [toolCall('qa_missing_tool', '{}'), finish('tool_calls')] }] },
   { name: 'supervise_two_rounds', about: 'Two tool rounds: the supervisor is asked after each (round 0 and 1), not after the last.', supervise: [{ action: 'continue' }, { action: 'verify' }],
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s5"}'), finish('tool_calls')] },
       { frames: [toolCall('drive_search_files', '{"query":"QA"}', 'qa-call-2'), finish('tool_calls')] },
