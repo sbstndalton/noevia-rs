@@ -1302,3 +1302,100 @@ async fn the_client_leaving_before_the_answer_ends_the_request() {
     assert_eq!(r.err().as_deref(), Some(crate::signin_turn::ABORTED));
     drop(stub);
 }
+
+// ── the sign-in row's host (src/signin_host.rs) over real HTTP ───────────────────────────────
+
+fn qa_host_binding() -> crate::signin_host::SigninBinding {
+    crate::signin_host::SigninBinding {
+        url: "http://x/v1/chat/completions".into(),
+        model: "m-large".into(),
+        expires_ms: f64::INFINITY,
+    }
+}
+
+#[tokio::test]
+async fn a_turn_request_through_the_signin_host_streams_to_the_end() {
+    use chat_turn::host::{Host, Read as TurnRead};
+    let f = fixture();
+    let (base, stub) = stub(StubState {
+        default: Some(Scripted::of(&JValue::obj([
+            ("status", JValue::Num(200.0)),
+            ("chunks", f.get("streams").get("text").get("chunks").clone()),
+        ]))),
+        ..StubState::default()
+    })
+    .await;
+    let inner = crate::signin_host::tests::FakeInner::new(1_000.0);
+    let host = crate::signin_host::SigninHost::new(
+        &inner,
+        qa_engine(&base, Arc::new(qa_accounts(1))),
+        qa_host_binding(),
+        || Ok(()),
+    );
+    let a = tokio::time::timeout(DEADLINE, host.request(&qa_request(None)))
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(a.status, 200);
+    let mut body = a.body;
+    let mut bytes = Vec::new();
+    tokio::time::timeout(DEADLINE, async {
+        loop {
+            // The idle limit the loop passes is not applied to this row.
+            match host.read(&mut body, Some(1)).await {
+                TurnRead::Chunk(c) => bytes.extend_from_slice(&c),
+                TurnRead::End => return,
+                other => panic!("{other:?}"),
+            }
+        }
+    })
+    .await
+    .unwrap();
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    assert!(text.ends_with("data: [DONE]\n\n"), "{text}");
+    assert_eq!(stub.lock().unwrap().received.len(), 1);
+    // The inner host's engine, lease and manager were not used.
+    let calls = inner.calls();
+    for c in ["request", "lease", "health", "load", "read", "text"] {
+        assert!(!calls.iter().any(|x| x == c), "{c} reached the inner host");
+    }
+}
+
+#[tokio::test]
+async fn the_client_leaving_mid_read_aborts_through_the_signin_host() {
+    use chat_turn::host::{Host, Read as TurnRead};
+    use std::sync::atomic::Ordering;
+    let (base, stub) = held_stream().await;
+    let inner = crate::signin_host::tests::FakeInner::new(1_000.0);
+    let host = crate::signin_host::SigninHost::new(
+        &inner,
+        qa_engine(&base, Arc::new(qa_accounts(1))),
+        qa_host_binding(),
+        || Ok(()),
+    );
+    let a = tokio::time::timeout(DEADLINE, host.request(&qa_request(None)))
+        .await
+        .unwrap()
+        .unwrap();
+    let mut body = a.body;
+    let reading = async {
+        loop {
+            match host.read(&mut body, None).await {
+                TurnRead::Chunk(_) => continue,
+                other => return other,
+            }
+        }
+    };
+    let leave = async {
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        inner.left.store(true, Ordering::SeqCst);
+    };
+    let (last, ()) = tokio::time::timeout(DEADLINE, async { tokio::join!(reading, leave) })
+        .await
+        .unwrap();
+    assert_eq!(last, TurnRead::Aborted);
+    assert!(
+        wait_gone(&stub).await,
+        "the backend never saw the client go away"
+    );
+}
