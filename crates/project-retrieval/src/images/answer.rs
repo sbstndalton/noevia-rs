@@ -12,6 +12,8 @@
 //! are quoted with [`crate::names::quote_name`] (quoted-name.cjs, #1588), where `answerImages`
 //! uses a bare `JSON.stringify` that leaves U+2028/U+2029 and the bidirectional marks raw in the
 //! system text (noevia#2802 item 2).
+//! An image's own text cut at [`MAX_TEXT_UNITS`] drops a surrogate pair split by the cut, where
+//! Node's `slice` keeps the lone high surrogate (`js_json::js_slice`).
 
 use std::collections::HashMap;
 use std::future::Future;

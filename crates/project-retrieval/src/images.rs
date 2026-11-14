@@ -16,9 +16,12 @@
 //!   the asset directory (noevia#2802 item 1).
 //! - asset ids are compared by value; Node's `Set` compares objects and arrays by reference (ids
 //!   are strings everywhere the server writes them).
-//! - a `null` entry in the project's assets is skipped by the question-name rule, where chat.cjs
-//!   reads `null.id` and the turn fails; a non-array `assets` or `files` is empty here, where
+//! - a `null` (or non-object) entry in the project's assets is read as having no id and no name
+//!   by the question-name rule, the ride-along filter and the unattached names, where chat.cjs
+//!   reads `null.id` and the turn fails (noevia#2802 item 3); a non-array `assets` or `files` is empty here, where
 //!   Node's `.filter`/`.find` throws.
+//! - a non-string `figureFile` or asset id that Node's `path.join` would throw on: the figure is
+//!   not resolved (`None`), the asset resolves with its bytes refused; Node fails the turn.
 //! - a name or a template part that `String()` refuses (an object with an own `toString`, never
 //!   written by the server) is `[object Object]` here; Node throws.
 

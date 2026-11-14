@@ -388,7 +388,7 @@ fn a_nameless_or_null_asset_never_matches_the_question() {
         dirs(),
     );
     assert!(s.retrieved.is_empty());
-    // The null entry is named as Node's String(undefined) writes it.
+    // The null entry (Node throws on it, noevia#2802 item 3) reads as nameless: String(undefined).
     assert_eq!(s.unattached_names, ["undefined", "undefined"]);
 }
 

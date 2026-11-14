@@ -85,7 +85,7 @@ const big = (n) => n;
 const answerCases = [
   { name: 'no images', images: [], external: false, sees: true },
   { name: 'off box: names only', images: [{ name: 'a.png', mime: 'image/png', text: 'secret', bytes: 1 }, { name: 'b.png', mime: 'image/png', text: '', bytes: 1 }], external: true, providerLabel: 'Cloud Co', sees: true },
-  { name: 'off box, quoting', images: [{ name: 'b "q".png', mime: 'image/png', text: '', bytes: 1 }], external: true, sees: true, knownDifference: 'quoteName' },
+  { name: 'off box, quoting', images: [{ name: 'b\u2028"q".png', mime: 'image/png', text: '', bytes: 1 }], external: true, sees: true, knownDifference: 'quoteName' },
   { name: 'sees: caps at three', images: ['1', '2', '3', '4'].map((n) => ({ name: `${n}.png`, mime: 'image/png', text: '', bytes: 3 })), external: false, sees: true, hasVisionRole: true },
   { name: 'sees: byte budget, mime, unreadable', images: [
     { name: 'big.png', mime: 'image/png', text: '', bytes: 10 }, { name: 'next.png', mime: 'image/png', text: 'next text', bytes: 10 },
