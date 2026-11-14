@@ -2869,6 +2869,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "provider-key-seal"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+]
+
+[[package]]
 name = "quick-error"
 version = "1.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
