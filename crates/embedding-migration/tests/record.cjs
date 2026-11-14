@@ -3,7 +3,8 @@
 // Recorded answers for crates/embedding-migration (track R11), from noevia-core's own modules:
 // embedding-config.cjs (loadEmbeddingConfig, normalizeTarget, seedFromEnv), embedding-migration.cjs
 // (createEmbeddingMigration with a nativeOwner, as production runs it), embedding-served.cjs
-// (checkServed) and routes/embedding.cjs (createEmbeddingRoutes).
+// (checkServed) and routes/embedding.cjs (createEmbeddingRoutes); http.cjs's errorResponse answers an
+// error the route throws, as index.cjs's request handler does.
 //
 //   NOEVIA_CORE_CHECKOUT=<noevia-core checkout> \
 //     node crates/embedding-migration/tests/record.cjs > crates/embedding-migration/tests/fixtures/node-embedding-migration.v1.json
@@ -32,6 +33,7 @@ const SOURCES = {
   'server/embedding-migration.cjs': 'b97076fc242eaf337f1e16813942fe5edc342e7c6594787c00aa4af752c24bdd',
   'server/embedding-served.cjs': '9ab1c0d06c60d53beef408a887c5ca4f090451e91457ae50f89ff7c029054f3b',
   'server/routes/embedding.cjs': 'ae34b6be30f2b8880a5c6c0c141ed9d1e709e87ef92202bb3cc0e79465db9854',
+  'server/http.cjs': 'd9bc3d67258f4adcbd10bfaaf9e6674086110fbba079fe8f6678340d3a0080e0',
 };
 for (const [rel, want] of Object.entries(SOURCES)) {
   const got = crypto.createHash('sha256').update(fs.readFileSync(path.join(root, rel))).digest('hex');
@@ -44,6 +46,7 @@ const { loadEmbeddingConfig, normalizeTarget, seedFromEnv } = req('embedding-con
 const { createEmbeddingMigration } = req('embedding-migration.cjs');
 const { checkServed } = req('embedding-served.cjs');
 const { createEmbeddingRoutes } = req('routes/embedding.cjs');
+const { errorResponse } = req('http.cjs');
 
 const clone = (v) => (v === undefined ? null : JSON.parse(JSON.stringify(v)));
 let calls = [];
@@ -197,6 +200,30 @@ add('no-snapshot', { env: { EMBEDDING_MODEL: A, EMBEDDING_NEXT_MODEL: B }, world
 add('refuse-active', { env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: PUBLIC, EMBEDDING_NEXT_MODEL: B }, steps: [{ refuse: { active: 'qa: the address is public' } }, GET, setNext({ model: C }, P), setNext({ model: A }, P), act('clear-next', P), act('switch', P), act('rollback', P), act('finish', P), { refuse: { active: 'qa: again', next: 'qa next' } }, GET] });
 add('refuse-next', { env: { EMBEDDING_MODEL: A, EMBEDDING_NEXT_MODEL: B, EMBEDDING_NEXT_BASE_URL: PUBLIC }, steps: [{ refuse: { next: 'qa: next refused' } }, GET, act('switch', P), setNext({ model: B }, P)] });
 add('refuse-after-save', { env: { EMBEDDING_MODEL: A }, steps: [act('clear-next', P), { refuse: { active: 'qa: late' } }, GET] });
+// releaseSeeded: only a transient refusal is taken back, and only while nothing was saved.
+const T = { transient: true };
+add('release-transient', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC, EMBEDDING_NEXT_MODEL: B, EMBEDDING_NEXT_BASE_URL: OTHER },
+  steps: [{ release: 'active' }, { refuse: { active: 'qa: not yet', next: 'qa: next not yet' }, ...T }, GET, setNext({ model: C }, P), { release: 'next' }, GET, { release: 'next' },
+    { release: 'active' }, GET, setNext({ model: C }, P), { release: 'active' }, { release: 'qa' }],
+});
+add('release-not-transient', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC, EMBEDDING_NEXT_MODEL: B, EMBEDDING_NEXT_BASE_URL: OTHER },
+  steps: [{ refuse: { active: 'qa: refused', next: 'qa: next refused' } }, { release: 'active' }, { release: 'next' }, GET, { refuse: { next: 'qa: next later' }, ...T }, { release: 'next' }, GET],
+});
+add('release-then-refuse', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC }, steps: [{ refuse: { active: 'qa: first' }, ...T }, { refuse: { active: 'qa: for good' } }, { release: 'active' }, GET, act('clear-next', P)],
+});
+add('release-after-change', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_NEXT_MODEL: B, EMBEDDING_NEXT_BASE_URL: OTHER },
+  steps: [{ refuse: { next: 'qa: next not yet' }, ...T }, setNext({ model: C }, P), { release: 'next' }, GET, act('clear-next', P), { release: 'next' }, GET],
+});
+add('release-saved-file', {
+  env: { EMBEDDING_MODEL: C }, file: files.full, steps: [{ refuse: { active: 'qa: seeded', next: 'qa: next' }, ...T }, { release: 'active' }, { release: 'next' }, GET],
+});
+add('release-after-restart', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_NEXT_MODEL: B, EMBEDDING_NEXT_BASE_URL: OTHER }, steps: [{ refuse: { next: 'qa: next not yet' }, ...T }, { restart: true }, { release: 'next' }, GET],
+});
 
 // Target validation through set-next (every name is served, so normalizeTarget decides).
 const odd = [B, `${B}\u007f`, `${B}\u0085`, `${B}\ufeff`, `qa\u00a0b`, `qa\u0000`, 'x'.repeat(200), 'x'.repeat(201), '\u{1F600}'.repeat(100), '\u{1F600}'.repeat(101), 'qa x', ` ${C} `];
@@ -276,6 +303,22 @@ add('service-sync', {
     act('clear-next', P), { world: { service: managed({ enabled: false }) } }, act('finish', P), setNext({ model: B, baseUrl: SVC }, P), { world: { service: managed({ serveFail: [{ message: 'qa sync fails' }] }) } }, act('clear-next', P),
     { world: { diaryBase: '' } }, { restart: true }, setNext({ model: C, baseUrl: SVC }, P), act('clear-next', P)],
 });
+// A truthy status.models that is not an array: `.filter` throws before anything is served.
+const models = (m, over = {}) => ({ world: { service: managed({ status: { managed: true, enabled: true, models: m }, loaded: [false], ...over }) } });
+add('service-switch-odd-models', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC },
+  steps: [models({}), act('service-switch', { model: B }), models('x'), act('service-switch', { model: B }), models(7), act('service-switch', { model: B }), models(true), act('service-switch', { model: B }),
+    models(''), act('service-switch', { model: B }), models({}, { enabled: false }), act('service-switch', { model: B }), GET],
+});
+// A Diary target whose address String() cannot convert: servedSet throws (the sync after a change, a service-switch).
+const unreadable = { toString: 1 };
+const diaryGets = (active, next = null, previous = null) => ({ world: { diary: { GET: diaryStatus(active, next, previous), POST: { ok: true, status: 200, body: { ok: true } } } } });
+add('served-set-throws', {
+  env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC, EMBEDDING_NEXT_MODEL: C, EMBEDDING_NEXT_BASE_URL: SVC }, world: { service: managed(), diary: { GET: diaryStatus(dt(B, unreadable)) } },
+  steps: [act('clear-next', P), GET, act('service-switch', { model: C }), diaryGets(dt(A, SVC), null, dt(C, unreadable)), act('service-switch', { model: C }),
+    diaryGets(dt(B, SVC), null, dt(C, unreadable)), act('service-switch', { model: C }), diaryGets(dt(B, [unreadable])), act('service-switch', { model: C }),
+    diaryGets(dt(B, { valueOf: 1 })), act('service-switch', { model: C }), diaryGets(dt(B, unreadable)), act('finish', { scope: 'diary' }), act('clear-next', P), GET],
+});
 add('service-sync-full', {
   env: { EMBEDDING_MODEL: A, EMBEDDING_BASE_URL: SVC }, world: { service: managed({ at: [SVC, DIARY_EMBED, null] }), diary: { GET: diaryStatus(dt(B), dt(C), dt(A)) } },
   steps: [act('service-switch', { model: C }), act('finish', P), { world: { diary: { GET: diaryStatus(dt(A), dt(A, DIARY_EMBED, GEMMA), { model: 5, base_url: SVC }) } } }, act('finish', P),
@@ -341,11 +384,20 @@ async function run(sc) {
     if (step.world) Object.assign(world, clone(step.world));
     else if (step.restart) rec.boot = boot();
     else if (step.writeFile !== undefined) { if (step.writeFile === null) fs.rmSync(stateFile, { force: true }); else fs.writeFileSync(stateFile, step.writeFile); }
-    else if (step.refuse) config.refuseSeeded(step.refuse);
+    else if (step.refuse) { config.refuseSeeded(step.refuse, step.transient ? { transient: true } : undefined); rec.state = stateOf(config); }
+    else if (step.release) { config.releaseSeeded(step.release); rec.state = stateOf(config); }
     else {
       const method = step.method || (step.get ? 'GET' : 'POST');
       const res = { setHeader() {} };
-      const handled = await routes({ method, raw: step.post }, res, { path: '/api/embedding', authn: USERS[step.as || 'admin'] ? { user: USERS[step.as || 'admin'] } : {} });
+      let handled;
+      try {
+        handled = await routes({ method, raw: step.post }, res, { path: '/api/embedding', authn: USERS[step.as || 'admin'] ? { user: USERS[step.as || 'admin'] } : {} });
+      } catch (e) {
+        // index.cjs's request handler: an error the route throws is answered by errorResponse.
+        const failure = errorResponse(e);
+        json(res, failure.status, failure.body);
+        handled = true;
+      }
       if (!handled) throw Error(`${sc.name}: not handled`);
       rec.status = res.answer.status;
       rec.body = res.answer.body;
@@ -357,6 +409,8 @@ async function run(sc) {
   return out;
 }
 function json(res, status, body) { res.answer = { status, body: clone(body) }; }
+// The configuration after a start-up refusal or release (config.get() without its change counter).
+function stateOf(config) { const c = config.get(); return { active: c.active, next: c.next, previous: c.previous, source: c.source, damaged: config.damaged ?? null }; }
 async function readJson(r) { return JSON.parse(r.raw ?? ''); }
 
 // ── Direct cases: normalizeTarget, checkServed, seedFromEnv ─────────────────────────────────────

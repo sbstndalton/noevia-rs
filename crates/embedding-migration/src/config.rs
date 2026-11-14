@@ -59,7 +59,25 @@ pub struct Config {
     damaged: Option<String>,
     /// The stand-in of a damaged file (`loadEmbeddingConfig`): its `setNext` always refuses.
     off: bool,
+    /// `held`: the seeded values refused at start-up, with what they were.
+    held_active: Option<Held>,
+    held_next: Option<Held>,
     pub(crate) in_hold: bool,
+}
+
+/// Which seeded value a start-up refusal holds back (`refuseSeeded` / `releaseSeeded`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Seeded {
+    Active,
+    Next,
+}
+
+/// `held[which]`: `{ reason, transient, target }` (the target as it was before the refusal).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct Held {
+    reason: String,
+    transient: bool,
+    target: Option<Target>,
 }
 
 fn bad_state(message: &str) -> Failure {
@@ -156,6 +174,8 @@ impl Config {
             locked: None,
             damaged: None,
             off: false,
+            held_active: None,
+            held_next: None,
             in_hold: false,
         }
     }
@@ -272,20 +292,84 @@ impl Config {
         self.change(next)
     }
 
-    /// `refuseSeeded({ active?, next? })` (the start-up address guard), in memory only and only
-    /// while nothing was saved: a refused next is dropped; a refused active turns embedding off
-    /// (profile `unavailable`) and locks every change with its reason.
+    /// `refuseSeeded({ active?, next? })` (the start-up address guard) of a refusal that stays until
+    /// the process restarts: [`Config::refuse_seeded_as`] with `transient` false.
     pub fn refuse_seeded(&mut self, active: Option<&str>, next: Option<&str>) {
+        self.refuse_seeded_as(active, next, false);
+    }
+
+    /// `refuseSeeded({ active?, next? }, { transient })`, in memory only and only while nothing was
+    /// saved: a refused next is held back (dropped); a refused active turns embedding off (profile
+    /// `unavailable`) and locks every change with its reason. Each value is held with what it was;
+    /// refusing it again only replaces the reason and `transient`. A `transient` refusal (the name
+    /// did not resolve yet) can be taken back by [`Config::release_seeded`].
+    pub fn refuse_seeded_as(&mut self, active: Option<&str>, next: Option<&str>, transient: bool) {
         if self.saved || self.off {
             return;
         }
-        if next.is_some_and(|r| !r.is_empty()) {
-            self.state.next = None;
+        if let Some(reason) = next.filter(|r| !r.is_empty()) {
+            match &mut self.held_next {
+                Some(h) => {
+                    h.reason = reason.to_string();
+                    h.transient = transient;
+                }
+                None => {
+                    self.held_next = Some(Held {
+                        reason: reason.to_string(),
+                        transient,
+                        target: self.state.next.take(),
+                    });
+                }
+            }
         }
         if let Some(reason) = active.filter(|r| !r.is_empty()) {
-            self.state.active.profile = "unavailable".into();
+            match &mut self.held_active {
+                Some(h) => {
+                    h.reason = reason.to_string();
+                    h.transient = transient;
+                }
+                None => {
+                    self.held_active = Some(Held {
+                        reason: reason.to_string(),
+                        transient,
+                        target: Some(self.state.active.clone()),
+                    });
+                    self.state.active.profile = "unavailable".into();
+                }
+            }
             self.locked = Some(reason.to_string());
             self.damaged = Some(reason.to_string());
+        }
+    }
+
+    /// `releaseSeeded(which)`: takes back a transient refusal once the address resolves to this
+    /// network. Nothing happens when that value is not held, its refusal was not transient, or a
+    /// change was saved since (or the file was). A released next never replaces a next that is set
+    /// by then; a released active is used again and unlocks changes.
+    pub fn release_seeded(&mut self, which: Seeded) {
+        let slot = match which {
+            Seeded::Active => &mut self.held_active,
+            Seeded::Next => &mut self.held_next,
+        };
+        if !slot.as_ref().is_some_and(|h| h.transient) || self.saved {
+            return;
+        }
+        let Some(held) = slot.take() else {
+            return;
+        };
+        match which {
+            Seeded::Next => {
+                if self.state.next.is_none() {
+                    self.state.next = held.target;
+                }
+            }
+            Seeded::Active => {
+                if let Some(target) = held.target {
+                    self.state.active = target;
+                }
+                self.locked = None;
+                self.damaged = None;
+            }
         }
     }
 }

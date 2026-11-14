@@ -6,7 +6,8 @@
   "server/embedding-profile.cjs": "fa349dd5909a912335bb81e81b1e670e1ed774cbca626da30853e24c3743b740",
   "server/embedding-migration.cjs": "b97076fc242eaf337f1e16813942fe5edc342e7c6594787c00aa4af752c24bdd",
   "server/embedding-served.cjs": "9ab1c0d06c60d53beef408a887c5ca4f090451e91457ae50f89ff7c029054f3b",
-  "server/routes/embedding.cjs": "ae34b6be30f2b8880a5c6c0c141ed9d1e709e87ef92202bb3cc0e79465db9854"
+  "server/routes/embedding.cjs": "ae34b6be30f2b8880a5c6c0c141ed9d1e709e87ef92202bb3cc0e79465db9854",
+  "server/http.cjs": "d9bc3d67258f4adcbd10bfaaf9e6674086110fbba079fe8f6678340d3a0080e0"
  },
  "node": "v22.23.3",
  "normalize": [
@@ -32590,6 +32591,21 @@
        "active": "qa: the address is public"
       }
      },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-public.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: the address is public"
+     },
      "calls": [],
      "file": null
     },
@@ -32965,6 +32981,17 @@
        "next": "qa next"
       }
      },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-public.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: again"
+     },
      "calls": [],
      "file": null
     },
@@ -33237,6 +33264,17 @@
       "refuse": {
        "next": "qa: next refused"
       }
+     },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": null
      },
      "calls": [],
      "file": null
@@ -33765,6 +33803,17 @@
        "active": "qa: late"
       }
      },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": null,
+      "previous": null,
+      "source": "saved",
+      "damaged": null
+     },
      "calls": [],
      "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
     },
@@ -33859,6 +33908,3134 @@
       ]
      ],
      "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    }
+   ]
+  },
+  {
+   "name": "release-transient",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_BASE_URL": "http://qa-embed.invalid:8080",
+    "EMBEDDING_NEXT_MODEL": "qa-embed-b",
+    "EMBEDDING_NEXT_BASE_URL": "http://qa-other.invalid:9090"
+   },
+   "stateFile": "qa/release-transient/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": [
+     "[embedding] EMBEDDING_NEXT_MODEL=qa-embed-b is set without EMBEDDING_NEXT_PROFILE: using nomic-v1, which sends text unframed. Set the profile if the model needs prompts (known: nomic-v1, embeddinggemma-2)."
+    ]
+   },
+   "steps": [
+    {
+     "step": {
+      "release": "active"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": {
+       "baseUrl": "http://qa-other.invalid:9090",
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": null
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "refuse": {
+       "active": "qa: not yet",
+       "next": "qa: next not yet"
+      },
+      "transient": true
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: not yet"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       },
+       "next": null,
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null,
+       "damaged": "qa: not yet"
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed-c\"},\"scope\":\"projects\"}"
+     },
+     "status": 500,
+     "body": {
+      "projects": {
+       "error": "Embedding configuration requires the publication lock",
+       "status": 500
+      }
+     },
+     "calls": [
+      [
+       "servedModels",
+       null,
+       "qa-embed-c"
+      ],
+      [
+       "audit",
+       "embedding.set-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": "qa-embed-c",
+        "profile": null,
+        "force": false,
+        "projects": "refused",
+        "diary": "skipped"
+       }
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": {
+       "baseUrl": "http://qa-other.invalid:9090",
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: not yet"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       },
+       "next": {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null,
+       "damaged": "qa: not yet"
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": {
+       "baseUrl": "http://qa-other.invalid:9090",
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: not yet"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "active"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": {
+       "baseUrl": "http://qa-other.invalid:9090",
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": null
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed-c\"},\"scope\":\"projects\"}"
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      }
+     },
+     "calls": [
+      [
+       "servedModels",
+       null,
+       "qa-embed-c"
+      ],
+      [
+       "servedModels",
+       null,
+       "qa-embed-c"
+      ],
+      [
+       "lock"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "dropSlot",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "dropSlot",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "kick"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "audit",
+       "embedding.set-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": "qa-embed-c",
+        "profile": null,
+        "force": false,
+        "projects": "ok",
+        "diary": "skipped"
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "release": "active"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-c",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "release": "qa"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-c",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    }
+   ]
+  },
+  {
+   "name": "release-not-transient",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_BASE_URL": "http://qa-embed.invalid:8080",
+    "EMBEDDING_NEXT_MODEL": "qa-embed-b",
+    "EMBEDDING_NEXT_BASE_URL": "http://qa-other.invalid:9090"
+   },
+   "stateFile": "qa/release-not-transient/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": [
+     "[embedding] EMBEDDING_NEXT_MODEL=qa-embed-b is set without EMBEDDING_NEXT_PROFILE: using nomic-v1, which sends text unframed. Set the profile if the model needs prompts (known: nomic-v1, embeddinggemma-2)."
+    ]
+   },
+   "steps": [
+    {
+     "step": {
+      "refuse": {
+       "active": "qa: refused",
+       "next": "qa: next refused"
+      }
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: refused"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "active"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: refused"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: refused"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       },
+       "next": null,
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null,
+       "damaged": "qa: refused"
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "refuse": {
+       "next": "qa: next later"
+      },
+      "transient": true
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: refused"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": {
+       "baseUrl": "http://qa-other.invalid:9090",
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: refused"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       },
+       "next": {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null,
+       "damaged": "qa: refused"
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
+    }
+   ]
+  },
+  {
+   "name": "release-then-refuse",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_BASE_URL": "http://qa-embed.invalid:8080"
+   },
+   "stateFile": "qa/release-then-refuse/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": []
+   },
+   "steps": [
+    {
+     "step": {
+      "refuse": {
+       "active": "qa: first"
+      },
+      "transient": true
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: first"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "refuse": {
+       "active": "qa: for good"
+      }
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: for good"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "active"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-a",
+       "profile": "unavailable"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": "qa: for good"
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       },
+       "next": null,
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null,
+       "damaged": "qa: for good"
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "unavailable"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"clear-next\",\"scope\":\"projects\"}"
+     },
+     "status": 409,
+     "body": {
+      "projects": {
+       "error": "qa: for good",
+       "status": 409,
+       "code": "badState"
+      }
+     },
+     "calls": [
+      [
+       "lock"
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "audit",
+       "embedding.clear-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": null,
+        "profile": null,
+        "force": false,
+        "projects": "refused",
+        "diary": "skipped"
+       }
+      ]
+     ],
+     "file": null
+    }
+   ]
+  },
+  {
+   "name": "release-after-change",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_NEXT_MODEL": "qa-embed-b",
+    "EMBEDDING_NEXT_BASE_URL": "http://qa-other.invalid:9090"
+   },
+   "stateFile": "qa/release-after-change/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": [
+     "[embedding] EMBEDDING_NEXT_MODEL=qa-embed-b is set without EMBEDDING_NEXT_PROFILE: using nomic-v1, which sends text unframed. Set the profile if the model needs prompts (known: nomic-v1, embeddinggemma-2)."
+    ]
+   },
+   "steps": [
+    {
+     "step": {
+      "refuse": {
+       "next": "qa: next not yet"
+      },
+      "transient": true
+     },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": null
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed-c\"},\"scope\":\"projects\"}"
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      }
+     },
+     "calls": [
+      [
+       "servedModels",
+       null,
+       "qa-embed-c"
+      ],
+      [
+       "servedModels",
+       null,
+       "qa-embed-c"
+      ],
+      [
+       "lock"
+      ],
+      [
+       "kick"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "audit",
+       "embedding.set-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": "qa-embed-c",
+        "profile": null,
+        "force": false,
+        "projects": "ok",
+        "diary": "skipped"
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-c",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"clear-next\",\"scope\":\"projects\"}"
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      }
+     },
+     "calls": [
+      [
+       "lock"
+      ],
+      [
+       "kick"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "dropSlot",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "dropSlot",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "audit",
+       "embedding.clear-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": null,
+        "profile": null,
+        "force": false,
+        "projects": "ok",
+        "diary": "skipped"
+       }
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": null,
+      "previous": null,
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    }
+   ]
+  },
+  {
+   "name": "release-saved-file",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-c"
+   },
+   "stateFile": "qa/release-saved-file/embedding-config.json",
+   "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\"\n  },\n  \"previous\": {\n    \"model\": \"qa-embed-a\"\n  }\n}",
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": []
+   },
+   "steps": [
+    {
+     "step": {
+      "refuse": {
+       "active": "qa: seeded",
+       "next": "qa: next"
+      },
+      "transient": true
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-b",
+       "profile": "embeddinggemma-2"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-c",
+       "profile": "nomic-v1"
+      },
+      "previous": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\"\n  },\n  \"previous\": {\n    \"model\": \"qa-embed-a\"\n  }\n}"
+    },
+    {
+     "step": {
+      "release": "active"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-b",
+       "profile": "embeddinggemma-2"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-c",
+       "profile": "nomic-v1"
+      },
+      "previous": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\"\n  },\n  \"previous\": {\n    \"model\": \"qa-embed-a\"\n  }\n}"
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": "http://qa-embed.invalid:8080",
+       "model": "qa-embed-b",
+       "profile": "embeddinggemma-2"
+      },
+      "next": {
+       "baseUrl": null,
+       "model": "qa-embed-c",
+       "profile": "nomic-v1"
+      },
+      "previous": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "source": "saved",
+      "damaged": null
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\"\n  },\n  \"previous\": {\n    \"model\": \"qa-embed-a\"\n  }\n}"
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-b",
+        "profile": "embeddinggemma-2"
+       },
+       "next": {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       },
+       "previous": {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-b",
+        "profile": "embeddinggemma-2"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-b",
+        "profile": "embeddinggemma-2"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-b\",\n    \"profile\": \"embeddinggemma-2\"\n  },\n  \"next\": {\n    \"baseUrl\": null,\n    \"model\": \"qa-embed-c\"\n  },\n  \"previous\": {\n    \"model\": \"qa-embed-a\"\n  }\n}"
+    }
+   ]
+  },
+  {
+   "name": "release-after-restart",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_NEXT_MODEL": "qa-embed-b",
+    "EMBEDDING_NEXT_BASE_URL": "http://qa-other.invalid:9090"
+   },
+   "stateFile": "qa/release-after-restart/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": [
+     "[embedding] EMBEDDING_NEXT_MODEL=qa-embed-b is set without EMBEDDING_NEXT_PROFILE: using nomic-v1, which sends text unframed. Set the profile if the model needs prompts (known: nomic-v1, embeddinggemma-2)."
+    ]
+   },
+   "steps": [
+    {
+     "step": {
+      "refuse": {
+       "next": "qa: next not yet"
+      },
+      "transient": true
+     },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": null,
+      "previous": null,
+      "source": "environment",
+      "damaged": null
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "restart": true
+     },
+     "boot": {
+      "warnings": [
+       "[embedding] EMBEDDING_NEXT_MODEL=qa-embed-b is set without EMBEDDING_NEXT_PROFILE: using nomic-v1, which sends text unframed. Set the profile if the model needs prompts (known: nomic-v1, embeddinggemma-2)."
+      ]
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "release": "next"
+     },
+     "state": {
+      "active": {
+       "baseUrl": null,
+       "model": "qa-embed-a",
+       "profile": "nomic-v1"
+      },
+      "next": {
+       "baseUrl": "http://qa-other.invalid:9090",
+       "model": "qa-embed-b",
+       "profile": "nomic-v1"
+      },
+      "previous": null,
+      "source": "environment",
+      "damaged": null
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": null,
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-other.invalid:9090",
+        "model": "qa-embed-b",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ]
+     ],
+     "file": null
     }
    ]
   },
@@ -59107,6 +62284,2615 @@
          "file": "qa/a.gguf"
         }
        ]
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    }
+   ]
+  },
+  {
+   "name": "service-switch-odd-models",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_BASE_URL": "http://qa-embed.invalid:8080"
+   },
+   "stateFile": "qa/service-switch-odd-models/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     },
+     "POST": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "ok": true,
+       "qa": "diary"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": false,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {},
+     "installed": {},
+     "status": null,
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": []
+   },
+   "steps": [
+    {
+     "step": {
+      "world": {
+       "service": {
+        "managed": true,
+        "enabled": true,
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "at": [
+         "http://qa-embed.invalid:8080",
+         "http://qa-embed.invalid:8080/v1"
+        ],
+        "known": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "installed": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "status": {
+         "managed": true,
+         "enabled": true,
+         "models": {}
+        },
+        "serveFail": [],
+        "loaded": [
+         false
+        ]
+       }
+      }
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-b\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "world": {
+       "service": {
+        "managed": true,
+        "enabled": true,
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "at": [
+         "http://qa-embed.invalid:8080",
+         "http://qa-embed.invalid:8080/v1"
+        ],
+        "known": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "installed": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "status": {
+         "managed": true,
+         "enabled": true,
+         "models": "x"
+        },
+        "serveFail": [],
+        "loaded": [
+         false
+        ]
+       }
+      }
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-b\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "world": {
+       "service": {
+        "managed": true,
+        "enabled": true,
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "at": [
+         "http://qa-embed.invalid:8080",
+         "http://qa-embed.invalid:8080/v1"
+        ],
+        "known": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "installed": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "status": {
+         "managed": true,
+         "enabled": true,
+         "models": 7
+        },
+        "serveFail": [],
+        "loaded": [
+         false
+        ]
+       }
+      }
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-b\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "world": {
+       "service": {
+        "managed": true,
+        "enabled": true,
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "at": [
+         "http://qa-embed.invalid:8080",
+         "http://qa-embed.invalid:8080/v1"
+        ],
+        "known": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "installed": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "status": {
+         "managed": true,
+         "enabled": true,
+         "models": true
+        },
+        "serveFail": [],
+        "loaded": [
+         false
+        ]
+       }
+      }
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-b\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "world": {
+       "service": {
+        "managed": true,
+        "enabled": true,
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "at": [
+         "http://qa-embed.invalid:8080",
+         "http://qa-embed.invalid:8080/v1"
+        ],
+        "known": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "installed": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "status": {
+         "managed": true,
+         "enabled": true,
+         "models": ""
+        },
+        "serveFail": [],
+        "loaded": [
+         false
+        ]
+       }
+      }
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-b\"}"
+     },
+     "status": 504,
+     "body": {
+      "error": "The embedding service did not load qa-embed-b in time. Nothing was re-indexed; try again or pick another model.",
+      "code": "serviceNotLoaded",
+      "service": {
+       "managed": true,
+       "enabled": true,
+       "models": ""
+      }
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-diary-embed.invalid:8081"
+      ],
+      [
+       "serviceStatus"
+      ],
+      [
+       "serviceServe",
+       [
+        {
+         "model": "qa-embed-a",
+         "file": "qa/a.gguf"
+        },
+        {
+         "model": "qa-embed-b",
+         "file": "qa/b.gguf"
+        }
+       ]
+      ],
+      [
+       "serviceWaitLoaded",
+       [
+        "qa-embed-b"
+       ],
+       180000
+      ],
+      [
+       "serviceServe",
+       []
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "world": {
+       "service": {
+        "managed": true,
+        "enabled": false,
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "at": [
+         "http://qa-embed.invalid:8080",
+         "http://qa-embed.invalid:8080/v1"
+        ],
+        "known": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "installed": {
+         "qa-embed-a": "qa/a.gguf",
+         "qa-embed-b": "qa/b.gguf",
+         "qa-embed-c": "qa/c.gguf"
+        },
+        "status": {
+         "managed": true,
+         "enabled": true,
+         "models": {}
+        },
+        "serveFail": [],
+        "loaded": [
+         false
+        ]
+       }
+      }
+     },
+     "calls": [],
+     "file": null
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-b\"}"
+     },
+     "status": 504,
+     "body": {
+      "error": "The embedding service did not load qa-embed-b in time. Nothing was re-indexed; try again or pick another model.",
+      "code": "serviceNotLoaded",
+      "service": {
+       "managed": true,
+       "enabled": true,
+       "models": {}
+      }
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceServe",
+       [
+        {
+         "model": "qa-embed-b",
+         "file": "qa/b.gguf"
+        }
+       ]
+      ],
+      [
+       "serviceWaitLoaded",
+       [
+        "qa-embed-b"
+       ],
+       180000
+      ],
+      [
+       "serviceServe",
+       []
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": null,
+       "previous": null,
+       "source": "environment",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-a",
+        "profile": "nomic-v1",
+        "base_url": "http://qa-diary-embed.invalid:8081"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      },
+      "service": {
+       "managed": true,
+       "enabled": true,
+       "models": {}
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": null
+    }
+   ]
+  },
+  {
+   "name": "served-set-throws",
+   "env": {
+    "EMBEDDING_MODEL": "qa-embed-a",
+    "EMBEDDING_BASE_URL": "http://qa-embed.invalid:8080",
+    "EMBEDDING_NEXT_MODEL": "qa-embed-c",
+    "EMBEDDING_NEXT_BASE_URL": "http://qa-embed.invalid:8080"
+   },
+   "stateFile": "qa/served-set-throws/embedding-config.json",
+   "file": null,
+   "world": {
+    "indexes": [
+     "qa-u1/p1",
+     "qa-u2/p1"
+    ],
+    "coverage": {},
+    "served": {
+     "": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-embed.invalid:8080": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ],
+     "http://qa-other.invalid:9090": [
+      "qa-embed-a",
+      "qa-embed-b"
+     ],
+     "http://qa-diary-embed.invalid:8081": [
+      "qa-embed-a",
+      "qa-embed-b",
+      "qa-embed-c"
+     ]
+    },
+    "vectors": {
+     "": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-embed.invalid:8080": [
+      [
+       1,
+       0,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ],
+     "http://qa-other.invalid:9090": [
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       1,
+       0
+      ],
+      [
+       0,
+       0,
+       1
+      ],
+      [
+       0.5,
+       0.5,
+       0
+      ]
+     ]
+    },
+    "public": {
+     "http://qa-public.invalid:8080": "qa-public.invalid resolves to a public address"
+    },
+    "dropFails": [],
+    "lockFail": null,
+    "snapshot": {
+     "protocol": "rust-embedding-worker-v1",
+     "running": false,
+     "lastPass": {
+      "at": 1,
+      "embedded": 3,
+      "failed": 0
+     },
+     "nextServed": true,
+     "nextHeld": null,
+     "configValid": true,
+     "configInvalid": null
+    },
+    "diaryBase": "http://qa-diary.invalid:8090/",
+    "diary": {
+     "GET": {
+      "ok": true,
+      "status": 200,
+      "body": {
+       "active": {
+        "model": "qa-embed-b",
+        "profile": "nomic-v1",
+        "base_url": {
+         "toString": 1
+        }
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      }
+     }
+    },
+    "diaryQueue": [],
+    "service": {
+     "managed": true,
+     "enabled": true,
+     "baseUrl": "http://qa-embed.invalid:8080",
+     "at": [
+      "http://qa-embed.invalid:8080",
+      "http://qa-embed.invalid:8080/v1"
+     ],
+     "known": {
+      "qa-embed-a": "qa/a.gguf",
+      "qa-embed-b": "qa/b.gguf",
+      "qa-embed-c": "qa/c.gguf"
+     },
+     "installed": {
+      "qa-embed-a": "qa/a.gguf",
+      "qa-embed-b": "qa/b.gguf",
+      "qa-embed-c": "qa/c.gguf"
+     },
+     "status": {
+      "managed": true,
+      "enabled": true,
+      "models": [
+       {
+        "model": "qa-embed-a",
+        "file": "qa/a.gguf"
+       },
+       {
+        "model": "qa-x"
+       },
+       null,
+       {
+        "model": "qa-embed-b",
+        "file": "qa/b.gguf",
+        "extra": 1
+       }
+      ],
+      "stale": false
+     },
+     "serveFail": [],
+     "loaded": []
+    }
+   },
+   "boot": {
+    "warnings": [
+     "[embedding] EMBEDDING_NEXT_MODEL=qa-embed-c is set without EMBEDDING_NEXT_PROFILE: using nomic-v1, which sends text unframed. Set the profile if the model needs prompts (known: nomic-v1, embeddinggemma-2)."
+    ]
+   },
+   "steps": [
+    {
+     "step": {
+      "post": "{\"action\":\"clear-next\",\"scope\":\"projects\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "lock"
+      ],
+      [
+       "kick"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "dropSlot",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "dropSlot",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "audit",
+       "embedding.clear-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": null,
+        "profile": null,
+        "force": false,
+        "projects": "ok",
+        "diary": "skipped"
+       }
+      ],
+      [
+       "serviceManaged"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "toString": 1
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-b",
+        "profile": "nomic-v1",
+        "base_url": {
+         "toString": 1
+        }
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      },
+      "service": {
+       "managed": true,
+       "enabled": true,
+       "models": [
+        {
+         "model": "qa-embed-a",
+         "file": "qa/a.gguf"
+        },
+        {
+         "model": "qa-x"
+        },
+        null,
+        {
+         "model": "qa-embed-b",
+         "file": "qa/b.gguf",
+         "extra": 1
+        }
+       ],
+       "stale": false
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-c\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-c"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "toString": 1
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "world": {
+       "diary": {
+        "GET": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "active": {
+           "model": "qa-embed-a",
+           "profile": "nomic-v1",
+           "base_url": "http://qa-embed.invalid:8080"
+          },
+          "next": null,
+          "previous": {
+           "model": "qa-embed-c",
+           "profile": "nomic-v1",
+           "base_url": {
+            "toString": 1
+           }
+          },
+          "source": "saved"
+         }
+        },
+        "POST": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "ok": true
+         }
+        }
+       }
+      }
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-c\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-c"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "toString": 1
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "world": {
+       "diary": {
+        "GET": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "active": {
+           "model": "qa-embed-b",
+           "profile": "nomic-v1",
+           "base_url": "http://qa-embed.invalid:8080"
+          },
+          "next": null,
+          "previous": {
+           "model": "qa-embed-c",
+           "profile": "nomic-v1",
+           "base_url": {
+            "toString": 1
+           }
+          },
+          "source": "saved"
+         }
+        },
+        "POST": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "ok": true
+         }
+        }
+       }
+      }
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-c\"}"
+     },
+     "status": 409,
+     "body": {
+      "error": "Projects and the Diary use qa-embed-a and qa-embed-b; the embedding service serves at most two models. Finish or roll back the other switch first.",
+      "code": "tooManyModels"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-c"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-b"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-b"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "world": {
+       "diary": {
+        "GET": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "active": {
+           "model": "qa-embed-b",
+           "profile": "nomic-v1",
+           "base_url": [
+            {
+             "toString": 1
+            }
+           ]
+          },
+          "next": null,
+          "previous": null,
+          "source": "saved"
+         }
+        },
+        "POST": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "ok": true
+         }
+        }
+       }
+      }
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-c\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-c"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       [
+        {
+         "toString": 1
+        }
+       ]
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "world": {
+       "diary": {
+        "GET": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "active": {
+           "model": "qa-embed-b",
+           "profile": "nomic-v1",
+           "base_url": {
+            "valueOf": 1
+           }
+          },
+          "next": null,
+          "previous": null,
+          "source": "saved"
+         }
+        },
+        "POST": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "ok": true
+         }
+        }
+       }
+      }
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"service-switch\",\"model\":\"qa-embed-c\"}"
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       },
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        }
+       },
+       "nextServed": true,
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "ok": true
+      },
+      "service": {
+       "managed": true,
+       "enabled": true,
+       "models": [
+        {
+         "model": "qa-embed-a",
+         "file": "qa/a.gguf"
+        },
+        {
+         "model": "qa-x"
+        },
+        null,
+        {
+         "model": "qa-embed-b",
+         "file": "qa/b.gguf",
+         "extra": 1
+        }
+       ],
+       "stale": false
+      }
+     },
+     "calls": [
+      [
+       "serviceManaged"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "resolveFile",
+       "qa-embed-c"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "valueOf": 1
+       }
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "valueOf": 1
+       }
+      ],
+      [
+       "serviceStatus"
+      ],
+      [
+       "serviceServe",
+       [
+        {
+         "model": "qa-embed-a",
+         "file": "qa/a.gguf"
+        },
+        {
+         "model": "qa-embed-c",
+         "file": "qa/c.gguf"
+        }
+       ]
+      ],
+      [
+       "serviceWaitLoaded",
+       [
+        "qa-embed-c"
+       ],
+       180000
+      ],
+      [
+       "checkAddress",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "checkAddress",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "servedModels",
+       "http://qa-embed.invalid:8080",
+       "qa-embed-c"
+      ],
+      [
+       "servedModels",
+       "http://qa-embed.invalid:8080",
+       "qa-embed-c"
+      ],
+      [
+       "lock"
+      ],
+      [
+       "kick"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "POST",
+       "{\"action\":\"set-next\",\"target\":{\"model\":\"qa-embed-c\",\"base_url\":\"http://qa-embed.invalid:8080\"}}",
+       15000
+      ],
+      [
+       "audit",
+       "embedding.set-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "all",
+        "model": "qa-embed-c",
+        "profile": null,
+        "force": false,
+        "projects": "ok",
+        "diary": "ok"
+       }
+      ],
+      [
+       "serviceStatus"
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "world": {
+       "diary": {
+        "GET": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "active": {
+           "model": "qa-embed-b",
+           "profile": "nomic-v1",
+           "base_url": {
+            "toString": 1
+           }
+          },
+          "next": null,
+          "previous": null,
+          "source": "saved"
+         }
+        },
+        "POST": {
+         "ok": true,
+         "status": 200,
+         "body": {
+          "ok": true
+         }
+        }
+       }
+      }
+     },
+     "calls": [],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"finish\",\"scope\":\"diary\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "POST",
+       "{\"action\":\"finish\"}",
+       15000
+      ],
+      [
+       "audit",
+       "embedding.finish",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "diary",
+        "model": null,
+        "profile": null,
+        "force": false,
+        "projects": "skipped",
+        "diary": "ok"
+       }
+      ],
+      [
+       "serviceManaged"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "toString": 1
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-c\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "post": "{\"action\":\"clear-next\",\"scope\":\"projects\"}"
+     },
+     "status": 500,
+     "body": {
+      "error": "Internal error"
+     },
+     "calls": [
+      [
+       "lock"
+      ],
+      [
+       "kick"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "dropSlot",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "dropSlot",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-c",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "unlock"
+      ],
+      [
+       "audit",
+       "embedding.clear-next",
+       "qa-admin-1",
+       null,
+       {
+        "scope": "projects",
+        "model": null,
+        "profile": null,
+        "force": false,
+        "projects": "ok",
+        "diary": "skipped"
+       }
+      ],
+      [
+       "serviceManaged"
+      ],
+      [
+       "serviceEnabled"
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "serviceIsAt",
+       "http://qa-embed.invalid:8080"
+      ],
+      [
+       "serviceFileOf",
+       "qa-embed-a"
+      ],
+      [
+       "serviceIsAt",
+       {
+        "toString": 1
+       }
+      ]
+     ],
+     "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
+    },
+    {
+     "step": {
+      "get": true
+     },
+     "status": 200,
+     "body": {
+      "projects": {
+       "active": {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved",
+       "coverage": {
+        "active": {
+         "indexes": 2,
+         "chunks": 0,
+         "vectors": 0,
+         "unavailable": 2,
+         "complete": false,
+         "ready": false
+        },
+        "next": null
+       },
+       "running": false,
+       "lastPass": {
+        "at": 1,
+        "embedded": 3,
+        "failed": 0
+       },
+       "duty": 0.5,
+       "batch": 4,
+       "nextServed": true,
+       "nextHeld": null,
+       "stale": false,
+       "configValid": true,
+       "configInvalid": null
+      },
+      "diary": {
+       "active": {
+        "model": "qa-embed-b",
+        "profile": "nomic-v1",
+        "base_url": {
+         "toString": 1
+        }
+       },
+       "next": null,
+       "previous": null,
+       "source": "saved"
+      },
+      "service": {
+       "managed": true,
+       "enabled": true,
+       "models": [
+        {
+         "model": "qa-embed-a",
+         "file": "qa/a.gguf"
+        },
+        {
+         "model": "qa-x"
+        },
+        null,
+        {
+         "model": "qa-embed-b",
+         "file": "qa/b.gguf",
+         "extra": 1
+        }
+       ],
+       "stale": false
+      }
+     },
+     "calls": [
+      [
+       "serviceRefresh"
+      ],
+      [
+       "snapshot"
+      ],
+      [
+       "indexes"
+      ],
+      [
+       "coverage",
+       "qa-u1/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "coverage",
+       "qa-u2/p1",
+       {
+        "baseUrl": "http://qa-embed.invalid:8080",
+        "model": "qa-embed-a",
+        "profile": "nomic-v1"
+       }
+      ],
+      [
+       "diary",
+       "http://qa-diary.invalid:8090/api/internal/embedding",
+       "GET",
+       null,
+       15000
+      ],
+      [
+       "serviceManaged"
+      ],
+      [
+       "serviceStatus"
       ]
      ],
      "file": "{\n  \"version\": 1,\n  \"active\": {\n    \"baseUrl\": \"http://qa-embed.invalid:8080\",\n    \"model\": \"qa-embed-a\",\n    \"profile\": \"nomic-v1\"\n  },\n  \"next\": null,\n  \"previous\": null\n}"
