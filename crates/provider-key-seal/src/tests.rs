@@ -1,4 +1,5 @@
 use super::*;
+use std::fmt::Write as _;
 
 fn s(v: &str) -> JValue {
     JValue::Str(v.to_owned())
@@ -78,7 +79,7 @@ impl Sealer for Stub {
         // The recorder's stub: `enc:v1:` then the plaintext's hex (never real ciphertext).
         let mut out = String::from("enc:v1:stub-");
         for b in plaintext {
-            out.push_str(&format!("{b:02x}"));
+            let _ = write!(out, "{b:02x}");
         }
         Ok(out)
     }
