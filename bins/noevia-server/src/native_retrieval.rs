@@ -497,6 +497,8 @@ pub async fn store_answer(app: std::sync::Arc<crate::App>, raw: &[u8]) -> (u16, 
     let Some(user) = body.get("user").and_then(Value::as_str) else {
         return defer("shared index");
     };
+    // While the native writer owns the live index, its wanted versions are the ones that count.
+    versions.extend(app.config.index_writes.search_versions(project, user));
     let Some(data_dir) = app.config.data_dir.clone() else {
         return defer("no data directory");
     };

@@ -29,8 +29,9 @@
 //!   write is refused rather than risk writing a deleted project's index;
 //! - Node's own foreground (a Node chat or search in flight) is not visible here; only the native
 //!   counter is;
-//! - Node's in-process wanted versions are not this process's: while `on`, searches must take theirs
-//!   from [`IndexWrites::wanted_versions`] (or move native at the same flip; see the round report);
+//! - Node's in-process wanted versions are not this process's: while `on`, the native searches (Node's
+//!   through `/v1/retrieval/search`, and research) add this writer's ([`IndexWrites::search_versions`]);
+//!   Node's own `searchProjectLocal` still filters by its own only, so the two switches flip together;
 //! - those of `project_index` (`http_embed`, `request`).
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex, OnceLock};
@@ -349,6 +350,22 @@ impl IndexWrites {
             .as_ref()
             .map(|ix| ix.wanted_versions(project, user))
             .unwrap_or_default()
+    }
+
+    /// What a native search must filter by besides the caller's: this writer's wanted versions while
+    /// it owns the live index (`on`), none otherwise (Node's own come with its request; a shadow
+    /// writes only its side copy).
+    pub fn search_versions(
+        &self,
+        project: &str,
+        user: &str,
+    ) -> project_retrieval::search::Versions {
+        if self.mode != Mode::On {
+            return Default::default();
+        }
+        self.wanted_versions(project, Some(user))
+            .into_iter()
+            .collect()
     }
 
     /// One write, on the calling (blocking) thread: `{defer: reason}` when Node must write it.

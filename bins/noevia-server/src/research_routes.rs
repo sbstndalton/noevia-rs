@@ -896,7 +896,11 @@ async fn native_retrieve(
             now_ms: crate::identity::now_ms() as f64,
             maintenance_held: &held,
             rerank_env: rerank_env.as_ref(),
-            versions: Default::default(),
+            // Council p6: the native writer's wanted versions while it owns the index (none when off).
+            versions: app
+                .config
+                .index_writes
+                .search_versions(project, &account.user),
             limit: RESEARCH_HITS,
             until: None,
         })
