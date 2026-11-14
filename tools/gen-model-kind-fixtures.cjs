@@ -32,7 +32,8 @@ const ROLES = [
   enc('{"qa-sys":"\u3000Laya\u00A0"}'),
   enc('{"qa-router":"system-routing","x":"\\ud800"}'),
   Buffer.concat([enc('{"qa-router":"system-routing","x":"'), Buffer.from([0xff, 0xc3]), enc('"}')]),
-  Buffer.concat([enc('{"qa-router":"laya","qa-bad\xff":"chat","'), Buffer.from([0xe2, 0x82]), enc('":"system-routing"}')]),
+  // Bad bytes in keys: 0xff alone, and a cut three-byte sequence (one U+FFFD each, as WHATWG decodes).
+  Buffer.concat([enc('{"qa-router":"laya","qa-bad'), Buffer.from([0xff]), enc('":"chat","'), Buffer.from([0xe2, 0x82]), enc('":"system-routing"}')]),
   enc('{"\\ud800":"chat","qa-router":"laya"}'),
   enc('{"laya":"chat","qa-sys":5,"qa-chat":"chat"}'),
   enc('\uFEFF{"qa-router":"system-routing"}'),
@@ -46,7 +47,7 @@ const ROLES = [
 const NAMES = [
   'gemma-chat', 'qa-model', 'laya', 'Laya_v2', ' laya-1 ', 'layaway', '\uFEFFlaya', 'laya\u0085',
   '\u3000laya\u00A0', 'laya\u2028', 'qa-reran\u212A', 'qa-EMBED', 'qa-\u0130rerank', 'qa-sys',
-  'qa-sys\uFEFF', 'qa-sys\u0085', ' qa-sys', 'qa-router', 'qa-chat', 'qa-bad\uFFFD', 'qa-nested', 'x', '*', '',
+  'qa-sys\uFEFF', 'qa-sys\u0085', ' qa-sys', 'qa-router', 'qa-chat', 'qa-bad\uFFFD', '\uFFFD', 'qa-nested', 'x', '*', '',
 ];
 const LABELS = [
   [], ['embeddings'], ['EMBEDDING'], ['reran\u212A'], ['reranker\uFEFF'], ['vision'], ['Reranking'],

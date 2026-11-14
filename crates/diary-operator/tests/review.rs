@@ -50,12 +50,11 @@ fn restore_large_namespace_is_bounded() {
     // not on the disk. Every restored file is fsynced, and 5000 fsyncs alone take 25 s on a
     // slow disk and more than 5 s on a busy shared runner, so the namespace lives on tmpfs when
     // there is one (fsync is nearly free there).
-    let shm = Path::new("/dev/shm");
-    let dir = if shm.is_dir() {
-        tempfile::tempdir_in(shm).unwrap()
-    } else {
-        tempfile::tempdir().unwrap()
-    };
+    // About 21 MiB there (a 4 KiB page per file); a /dev/shm that is missing or not writable
+    // falls back to the ordinary temp directory.
+    let dir = tempfile::tempdir_in(Path::new("/dev/shm"))
+        .or_else(|_| tempfile::tempdir())
+        .unwrap();
     let tenant = "00000000-0000-4000-8000-000000000123";
     let object = format!("noevia-backups/{tenant}/objects/synthetic/payload");
     let source = dir.path().join(&object);

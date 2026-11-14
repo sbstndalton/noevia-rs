@@ -22,6 +22,9 @@ fn bytes_of(hex: &str) -> Vec<u8> {
 #[test]
 fn every_case_answers_as_core() {
     let f: Value = serde_json::from_str(include_str!("fixtures/model-kind-node.json")).unwrap();
+    // Recorded at this core main; re-record (and change this) when core's model-system.cjs or
+    // chat-model-kind.cjs changes.
+    assert_eq!(f["core"], "619f1e98ad310f7602db1f093c5aef8ad11b6a73");
     let cases = f["cases"].as_array().unwrap();
     assert!(cases.len() > 400, "{}", cases.len());
     let mut failures = Vec::new();
