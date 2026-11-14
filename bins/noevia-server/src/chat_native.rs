@@ -967,6 +967,18 @@ impl Host for FrontHost {
         );
     }
 
+    fn gate_record(&self, event: &str, tool: &str) {
+        // Track R15: the tool gate's log stays core's (tool-gate.cjs record).
+        self.core_later(
+            "/internal/chat/native/gate-record",
+            js::obj([
+                ("user", js::s(self.user.clone())),
+                ("event", js::s(event)),
+                ("tool", js::s(tool)),
+            ]),
+        );
+    }
+
     async fn engine_busy(&self) -> bool {
         // chat.cjs asks inferenceBusy(1): its turn is one count in core's gate. A native turn holds the
         // route's admission lease (S8) and, while it lasts, the model's lease: each is one count there.

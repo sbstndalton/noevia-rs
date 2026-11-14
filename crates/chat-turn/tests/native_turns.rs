@@ -467,6 +467,13 @@ impl Host for Script {
         );
     }
 
+    fn gate_record(&self, event: &str, tool: &str) {
+        self.store(
+            "toolGate.record",
+            vec![("event", js::s(event)), ("tool", js::s(tool))],
+        );
+    }
+
     async fn engine_busy(&self) -> bool {
         if self.busy_yields {
             YieldOnce(false).await;
@@ -1080,7 +1087,8 @@ fn every_prepared_turn_reads() {
     }
     assert!(read >= 30);
     // The coworker page save (#2446) is handed off too now (the `once` capability): no recorded turn stays in Node.
-    assert_eq!(refused, Vec::<String>::new());
+    // A tool gate prefetch decision (the read run before the model) is the one recorded turn still kept in Node.
+    assert_eq!(refused, ["gate_prefetch_stays_in_node: tool-gate"]);
 }
 
 #[test]
@@ -1213,7 +1221,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 125, "{ran:?}");
+    assert_eq!(ran.len(), 130, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

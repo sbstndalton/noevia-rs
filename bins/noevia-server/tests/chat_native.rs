@@ -865,7 +865,8 @@ async fn core_service(
         "/internal/chat/usage"
         | "/internal/chat/prefill"
         | "/internal/chat/native/title-save"
-        | "/internal/chat/native/tools-unsupported" => Ok(empty(204)),
+        | "/internal/chat/native/tools-unsupported"
+        | "/internal/chat/native/gate-record" => Ok(empty(204)),
         _ => Ok(json(404, &js::obj([("error", js::s("not found"))]))),
     }
 }

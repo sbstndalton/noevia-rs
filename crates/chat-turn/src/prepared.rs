@@ -70,6 +70,9 @@ pub struct Prepared {
     /// Step supervision is on (`supervise: true`, present only then; a core that has it on hands the turn off
     /// only to a front naming `supervise`).
     pub supervise: bool,
+    /// The tool gate's required tool (features.toolGate, `require` mode; chat.cjs `forcedTool`): `gate: {tool}`,
+    /// present only then (a core whose gate decided hands the turn off only to a front naming `tool-gate`).
+    pub gate_tool: Option<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -298,6 +301,11 @@ impl Prepared {
                 _ => return Err(Unreadable("prepared.provenance is not true".into())),
             },
             widen: widen(frame.get("widen"))?,
+            gate_tool: match frame.get("gate") {
+                JValue::Undefined => None,
+                g @ JValue::Obj(_) => Some(text(g, "tool")?),
+                _ => return Err(Unreadable("prepared.gate is not an object".into())),
+            },
             supervise: match frame.get("supervise") {
                 JValue::Undefined => false,
                 JValue::Bool(true) => true,

@@ -27,10 +27,13 @@ pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// [`crate::gate`]); `provenance`, the provenance policy's write checks (#769, [`crate::taint`]); `more-tools`, the
 /// routed list's `more_tools` widening (Roadmap E, [`crate::native`]); `retrieved-images`, a turn with retrieved images
 /// (#1726: core settles them before the cut, the frame's messages carry their parts and notes, sent as attached images
-/// are); `supervise`, step supervision after a tool round ([`crate::host::Host::supervise`]). Without them core keeps a
-/// turn whose project has skills, that offers the page save, that runs with the provenance policy on, whose tools
-/// routing narrowed, that retrieved images, or that runs while step supervision is on.
-pub const HANDOFF_CAPS: &str = "skills,once,provenance,more-tools,retrieved-images,supervise";
+/// are); `supervise`, step supervision after a tool round ([`crate::host::Host::supervise`]); `tool-gate`, the tool
+/// gate's required tool (`require` mode: `tool_choice` on the first model turn, one retry on a miss). Without them core
+/// keeps a turn whose project has skills, that offers the page save, that runs with the provenance policy on, whose
+/// tools routing narrowed, that retrieved images, that runs while step supervision is on, or whose tool gate decided
+/// (a `prefetch` decision stays in core either way).
+pub const HANDOFF_CAPS: &str =
+    "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate";
 
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]

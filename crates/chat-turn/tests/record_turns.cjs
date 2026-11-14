@@ -521,6 +521,8 @@ async function runTurn(c, { handoff = false } = {}) {
         backend: 'legacy', model: null, calibrated: false, latencyMs: null, status: 'fallback', fallbackReason: 'disabled', fallbackCause: null } }), servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
       // `vision`: what the probe says of the answering model's image input (chat.cjs visionProbe).
       visionProbe: async () => c.vision || { supported: false, reason: 'none' }, visionDescriptions: new Map(), skillsIndexFor: () => [],
+      // `gate`: the tool gate (features.toolGate) decides this (tool-gate.cjs evaluate's { decision }); its log is a store.
+      ...(c.gate ? { toolGate: { evaluate: async () => ({ decision: c.gate }), record: (event, entry) => store('toolGate.record', { event, ...entry }) } } : {}),
       // Multimodal retrieval (#1726, NOEVIA_MULTIMODAL_RAG) is on for the cases that script its hits.
       multimodalEnabled: () => c.imageHits !== undefined,
       chatSkillRouter: { select: async () => ({ loaded: [] }) },
@@ -577,7 +579,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise']), supervising: () => c.supervise !== undefined } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate']), supervising: () => c.supervise !== undefined } } : {}),
       // `supervise`: step supervision is on (features.stepSupervision); the decision service answers the k-th question
       // with c.supervise[k] (step-supervision.cjs's own rules apply). Each decide is recorded as the front's supervise
       // op sees it: its round, goal, write flag and the outputs the supervisor reads, and the action it answered.
@@ -629,7 +631,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, supervise: c.supervise || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, supervise: c.supervise || null, gate: c.gate || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
@@ -1076,6 +1078,20 @@ const CASES = [
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s5"}'), finish('tool_calls')] },
       { frames: [toolCall('drive_search_files', '{"query":"QA"}', 'qa-call-2'), finish('tool_calls')] },
       { frames: [toolCall('drive_list_recent', '{}', 'qa-call-3'), finish('tool_calls')] }, answer('Done in three steps.')] },
+  // Track R15: the tool gate (features.toolGate) required a read tool (`require` mode): tool_choice on the first model turn.
+  { name: 'gate_require_called', about: 'The gate requires a read: the first request names it in tool_choice, the model calls it, the answer follows.', gate: { tool: 'drive_read_file', mode: 'require' },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-g1"}'), finish('tool_calls')] }, answer('Read as required.')] },
+  { name: 'gate_require_retry', about: 'The model answers without the required tool: its text becomes narration, the gate logs a retry and the turn is asked once more.', gate: { tool: 'drive_read_file', mode: 'require' },
+    rounds: [answer('I would rather just answer.'), { frames: [toolCall('drive_read_file', '{"fileId":"qa-file-g2"}'), finish('tool_calls')] }, answer('Read on the second try.')] },
+  { name: 'gate_require_miss', about: 'Both tries answer without the tool: the gate logs a miss and the second answer stands.', gate: { tool: 'drive_read_file', mode: 'require' },
+    rounds: [answer('First answer without reading.'), answer('Second answer without reading.')] },
+  { name: 'gate_tool_choice_refused', about: 'The server refuses the named tool_choice: the same turn with only that tool and a call required.', gate: { tool: 'drive_read_file', mode: 'require' },
+    rounds: [{ status: 400, body: JSON.stringify({ error: { message: 'QA engine: tool_choice must be auto, none or required', type: 'invalid_request_error' } }) },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-file-g3"}'), finish('tool_calls')] }, answer('Read with a required call.')] },
+  { name: 'gate_prefetch_stays_in_node', about: 'A prefetch decision (the gate runs the read before the model) is not the executor\'s yet: the turn stays in Node.', gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-g4' } },
+    rounds: [answer('Answered from the fetched file.')] },
+  { name: 'gate_write_not_forced', about: 'A decision naming a write is never forced (chat.cjs): handed off with no gate, nothing forced.', gate: { tool: 'drive_create_file', mode: 'require' },
+    rounds: [answer('Nothing forced.')] },
 ];
 
 (async () => {

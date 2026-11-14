@@ -243,6 +243,8 @@ struct Rounds {
     widened: bool,
     /// #1456 `roundWrote`: a write was about to run in this round's tools.
     round_wrote: bool,
+    /// The tool gate's one retry of a missed required tool was spent (chat.cjs `gateRetried`).
+    gate_retried: bool,
     /// chat.cjs `nextToolRoutes`: the widened list's routes, applied when the next round starts.
     next_routes: Option<Vec<(String, String)>>,
     /// `roundMessages !== prepared.messages`: the round-0 `context` event is sent when they differ.
@@ -350,6 +352,36 @@ impl<H: Host> Turn<'_, H> {
         Ok(())
     }
 
+    /// chat.cjs `forceChoice(round)`: the tool gate's required tool, on the first model turn only (and its one
+    /// retry), while the tools are offered and include it.
+    fn forced(&self, s: &Rounds, round: i32) -> Option<String> {
+        let tool = self.p.gate_tool.as_deref()?;
+        (!s.tools_off
+            && round == 0
+            && s.tools
+                .iter()
+                .any(|t| t.get("function").get("name").as_str() == Some(tool)))
+        .then(|| tool.to_string())
+    }
+
+    /// The round's request body (chat.cjs 2025), with the gate's `tool_choice` when it forces one.
+    fn body_for(&self, s: &Rounds, fit: &Fit, round: i32) -> JValue {
+        let mut body = self.body(s, fit);
+        if !s.final_pass {
+            if let Some(tool) = self.forced(s, round) {
+                js::set(
+                    &mut body,
+                    "tool_choice",
+                    js::obj([
+                        ("type", js::s("function")),
+                        ("function", js::obj([("name", js::s(tool))])),
+                    ]),
+                );
+            }
+        }
+        body
+    }
+
     /// The round's request body (chat.cjs 2025).
     fn body(&self, s: &Rounds, fit: &Fit) -> JValue {
         let p = self.p;
@@ -396,6 +428,7 @@ impl<H: Host> Turn<'_, H> {
             tools: p.tools.clone(),
             widened: false,
             round_wrote: false,
+            gate_retried: false,
             next_routes: None,
             changed: false,
             tools_off: false,
@@ -489,7 +522,7 @@ impl<H: Host> Turn<'_, H> {
             if let Some(taint) = gate.provenance.as_mut() {
                 taint.ingest(&s.messages);
             }
-            let mut body = self.body(&s, &fit);
+            let mut body = self.body_for(&s, &fit, round);
             // chat.cjs takes the round's start before its request (the prefill sample's clock).
             let started = host.now_ms();
             let offered = !s.final_pass && self.offers_tools(&s);
@@ -511,6 +544,34 @@ impl<H: Host> Turn<'_, H> {
                     break;
                 }
             };
+            // The gate's named tool_choice refused by the server (a 4xx naming tool_choice): the form it accepts, only
+            // that tool and a call required.
+            if let Some(tool) = self.forced(&s, round).filter(|_| !s.final_pass) {
+                if (400..500).contains(&answer.status)
+                    && answer
+                        .detail
+                        .as_deref()
+                        .is_some_and(|d| d.to_ascii_lowercase().contains("tool_choice"))
+                {
+                    let only: Vec<JValue> = s
+                        .tools
+                        .iter()
+                        .filter(|t| t.get("function").get("name").as_str() == Some(tool.as_str()))
+                        .cloned()
+                        .collect();
+                    js::set(&mut body, "tools", JValue::Arr(only));
+                    js::set(&mut body, "tool_choice", js::s("required"));
+                    answer = match self.request(&body, &p.effort, cap, true, None).await {
+                        Ok(a) => a,
+                        Err(e) => {
+                            if !host.left() {
+                                host.emit(&unreachable(&e));
+                            }
+                            break;
+                        }
+                    };
+                }
+            }
             // #1002: the engine refused the tools for the model's template: once more without them.
             if offered
                 && p.template_gate
@@ -598,8 +659,31 @@ impl<H: Host> Turn<'_, H> {
                 )
                 .await;
             }
+            // The gate required a tool and the model answered without one: one retry of this turn (what it streamed
+            // becomes narration), then whatever the second try gives is kept.
+            if let Some(tool) = self.forced(&s, round) {
+                if current.tool_calls.is_empty() && current.saw_anything && !host.left() {
+                    if !s.gate_retried {
+                        s.gate_retried = true;
+                        host.gate_record("gate.retry", &tool);
+                        if js::has_text(&current.content) {
+                            host.emit(&event(
+                                "preamble",
+                                vec![("text", js::s(current.content.clone()))],
+                            ));
+                        }
+                        // chat.cjs clears the round's content (not its reasoning) and runs the round again.
+                        let mut kept = Round::new(host.now_ms());
+                        kept.reasoning = current.reasoning.clone();
+                        s.last = kept;
+                        continue;
+                    }
+                    host.gate_record("gate.miss", &tool);
+                }
+            }
             // #1552: tools on offer, no call, and the reply ends on announcing one: one more try.
-            if current.tool_calls.is_empty()
+            if self.forced(&s, round).is_none()
+                && current.tool_calls.is_empty()
                 && current.saw_anything
                 && !s.announced_retried
                 && round < 2

@@ -300,6 +300,9 @@ pub trait Host: Sync {
     /// The model's draft acceptance as evidence (model manager `recordEvidence`).
     fn mtp_evidence(&self, model: &str, drafted: f64, accepted: f64);
 
+    /// The tool gate's log (tool-gate.cjs `record`): `gate.retry` or `gate.miss` for the required tool.
+    fn gate_record(&self, event: &str, tool: &str);
+
     /// Step supervision after a tool round (chat.cjs `superviseNextStep`, asked of core's supervisor):
     /// `continue`, `verify` or `escalate`. `outputs` are the round's last tool and assistant messages as the
     /// supervisor reads them; `goal` the turn's message as it reads it (its first 1500 UTF-16 units). No answer is
