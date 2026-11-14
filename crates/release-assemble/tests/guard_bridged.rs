@@ -73,7 +73,9 @@ fn features(r: &mut Rng, root: &Path, feature: &str, moved: bool) {
     let lib = match r.below(12) {
         0 => None,
         1 => Some(format!("// pub const FEATURES: &[&str] = &[{feat}];\n")),
-        2 => Some(format!("pub const FEATURES: &[&str] = &[{feat}, {feat}];\n")),
+        2 => Some(format!(
+            "pub const FEATURES: &[&str] = &[{feat}, {feat}];\n"
+        )),
         _ if moved => Some(format!(
             "pub const FEATURES: &[&str] = &[\n    \"rust-auth\",\n    {feat},\n];\n"
         )),
@@ -112,7 +114,10 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
         for _ in 0..rows {
             let o = if r.chance(8) { "node" } else { owner };
             let o = if r.chance(5) { "rust" } else { o };
-            toml.push_str(&format!("[[route]]\npath = \"{}\"\nowner = \"{o}\"\n", p.path));
+            toml.push_str(&format!(
+                "[[route]]\npath = \"{}\"\nowner = \"{o}\"\n",
+                p.path
+            ));
             if r.chance(5) {
                 toml.push_str("switch = \"NOEVIA_RUST_X\"\n");
             }
@@ -122,7 +127,10 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
         }
         toml.push_str("[[route]]\npath = \"/api/other\"\nowner = \"node\"\n");
         if r.chance(10) {
-            toml.push_str(&format!("[[route]]\npath = \"{}/x\"\nowner = \"node\"\n", p.path));
+            toml.push_str(&format!(
+                "[[route]]\npath = \"{}/x\"\nowner = \"node\"\n",
+                p.path
+            ));
         }
         write(&root.join("rs/contracts/http/routes.toml"), &toml);
     }
@@ -264,7 +272,10 @@ fn gen_code_egress(r: &mut Rng, root: &Path) {
     }
     features(r, root, "rust-code-egress-issuer", moved);
     if r.chance(8) {
-        write(&root.join("core/server/code-egress-control.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/code-egress-control.cjs"),
+            "'use strict';\n",
+        );
     }
     let mut egress = String::from("'use strict';\n");
     match r.below(12) {
@@ -309,7 +320,9 @@ fn gen_research(r: &mut Rng, root: &Path) {
         for tail in tails {
             let o = if r.chance(4) { "node" } else { owner };
             let o = if r.chance(3) { "rust" } else { o };
-            toml.push_str(&format!("[[route]]\npath = \"{base}{tail}\"\nowner = \"{o}\"\n"));
+            toml.push_str(&format!(
+                "[[route]]\npath = \"{base}{tail}\"\nowner = \"{o}\"\n"
+            ));
             if r.chance(2) {
                 toml.push_str("switch = \"NOEVIA_RUST_X\"\n");
             }
@@ -318,7 +331,9 @@ fn gen_research(r: &mut Rng, root: &Path) {
             }
         }
         // Near misses the matcher must not take.
-        toml.push_str(&format!("[[route]]\npath = \"{base}/{{job}}/x\"\nowner = \"node\"\n"));
+        toml.push_str(&format!(
+            "[[route]]\npath = \"{base}/{{job}}/x\"\nowner = \"node\"\n"
+        ));
         toml.push_str("[[route]]\npath = \"/api/projects/{id}/research\"\nowner = \"node\"\n");
         write(&root.join("rs/contracts/http/routes.toml"), &toml);
     }
@@ -339,19 +354,34 @@ fn gen_research(r: &mut Rng, root: &Path) {
     }
     write(
         &root.join("core/server/rust-research.cjs"),
-        &format!("const OWNED_ROUTES = new Set(([\n  {},\n]));\n", refused.join(",\n  ")),
+        &format!(
+            "const OWNED_ROUTES = new Set(([\n  {},\n]));\n",
+            refused.join(",\n  ")
+        ),
     );
     if r.chance(5) {
-        write(&root.join("core/server/routes/research.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/routes/research.cjs"),
+            "'use strict';\n",
+        );
     }
     if r.chance(4) {
-        write(&root.join("core/server/research-service.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/research-service.cjs"),
+            "'use strict';\n",
+        );
     }
     if !r.chance(5) {
-        write(&root.join("core/server/inference-admission-lease.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/inference-admission-lease.cjs"),
+            "'use strict';\n",
+        );
     }
     if !r.chance(5) {
-        write(&root.join("core/server/rust-research-bridge.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/rust-research-bridge.cjs"),
+            "'use strict';\n",
+        );
     }
     // index.cjs: marker, capture, clientFromEnv, the constructors with the secret, the mounts.
     let mut lines: Vec<String> = vec!["'use strict';".into()];
@@ -398,7 +428,10 @@ fn gen_research(r: &mut Rng, root: &Path) {
         lines.push(format!("  secret: {secret},"));
         lines.push("});".into());
     }
-    for mount in ["inferenceAdmission.handle(req, res)", "researchBridge(req, res)"] {
+    for mount in [
+        "inferenceAdmission.handle(req, res)",
+        "researchBridge(req, res)",
+    ] {
         match r.below(16) {
             0 => {}
             1 => lines.push(format!("// if (await {mount}) return;")),
@@ -472,11 +505,17 @@ fn gen_task_reads(r: &mut Rng, root: &Path) {
     }
     write(
         &root.join("core/server/rust-task-reads.cjs"),
-        &format!("const OWNED_ROUTES = new Set(([\n  {},\n]));\n", refused.join(",\n  ")),
+        &format!(
+            "const OWNED_ROUTES = new Set(([\n  {},\n]));\n",
+            refused.join(",\n  ")
+        ),
     );
     for file in ["routes/code.cjs", "routes/browser.cjs"] {
         match r.below(20) {
-            0 => write(&root.join("core/server").join(file), "const t = service.get(id);\n"),
+            0 => write(
+                &root.join("core/server").join(file),
+                "const t = service.get(id);\n",
+            ),
             1 => write(
                 &root.join("core/server").join(file),
                 "// const t = service.listActive(id);\n",
@@ -489,7 +528,10 @@ fn gen_task_reads(r: &mut Rng, root: &Path) {
         }
     }
     if !r.chance(10) {
-        write(&root.join("core/server/rust-task-facts.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/rust-task-facts.cjs"),
+            "'use strict';\n",
+        );
     }
     let mut index = String::from("'use strict';\n");
     if core_moved {
@@ -497,17 +539,22 @@ fn gen_task_reads(r: &mut Rng, root: &Path) {
     }
     match r.below(16) {
         0 => {}
-        1 => index.push_str(
-            "// const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n",
-        ),
-        _ => index.push_str("const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n"),
+        1 => index
+            .push_str("// const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n"),
+        _ => {
+            index.push_str("const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n")
+        }
     }
     if !r.chance(5) {
         index.push_str("const facts = createTaskFactsBridge({\n");
         for _ in 0..r.below(5) {
             index.push_str("  store,\n");
         }
-        index.push_str(if r.chance(6) { "  secret: OTHER,\n" } else { "  secret: FRONT,\n" });
+        index.push_str(if r.chance(6) {
+            "  secret: OTHER,\n"
+        } else {
+            "  secret: FRONT,\n"
+        });
         index.push_str("});\n");
     }
     match r.below(14) {
@@ -599,7 +646,10 @@ fn gen_model_scan(r: &mut Rng, root: &Path) {
     }
     write(&root.join("core/server/models.cjs"), &models);
     if !r.chance(10) {
-        write(&root.join("core/server/rust-model-manager-scan-cache.cjs"), "'use strict';\n");
+        write(
+            &root.join("core/server/rust-model-manager-scan-cache.cjs"),
+            "'use strict';\n",
+        );
     }
     let mut index = String::from("'use strict';\n");
     if core_moved {
@@ -674,7 +724,10 @@ fn compare(
     }
     let dir = tempfile::tempdir().expect("a temporary directory");
     let block = section(name);
-    assert!(block.contains(label), "the {name} section does not name {label:?}");
+    assert!(
+        block.contains(label),
+        "the {name} section does not name {label:?}"
+    );
     let tree = dir.path().join("tree");
     let mut r = Rng(seed);
     let mut seen = std::collections::BTreeMap::<String, u64>::new();
@@ -805,20 +858,42 @@ fn code_has_reads_extended_regexes_outside_comments() {
     assert!(!bridged::code_has(s, "("));
     assert!(!bridged::code_has(None, "const"));
     // An empty code text is one empty line to grep.
-    assert!(bridged::code_has(Some(b"// only a comment\n".as_slice()), "^$"));
+    assert!(bridged::code_has(
+        Some(b"// only a comment\n".as_slice()),
+        "^$"
+    ));
 }
 
 #[test]
 fn captured_secret_and_its_constructor() {
     let index = b"const a = 1;\n  const S1 = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || ''); // x\nconst S2 = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\nconst b = createCalibrationCancelBridge({\n  x,\n  y,\n  secret: S1,\n});\n";
     assert_eq!(bridged::captured_secret(index), Some(b"S1".to_vec()));
-    assert!(bridged::secret_near(index, r"createCalibrationCancelBridge\(\{", b"S1"));
-    assert!(!bridged::secret_near(index, r"createCalibrationRoutesBridge\(\{", b"S1"));
+    assert!(bridged::secret_near(
+        index,
+        r"createCalibrationCancelBridge\(\{",
+        b"S1"
+    ));
+    assert!(!bridged::secret_near(
+        index,
+        r"createCalibrationRoutesBridge\(\{",
+        b"S1"
+    ));
     // Four lines after the constructor is too far.
     let far = b"const b = createCalibrationCancelBridge({\n  a,\n  b,\n  c,\n  secret: S1,\n";
-    assert!(!bridged::secret_near(far, r"createCalibrationCancelBridge\(\{", b"S1"));
+    assert!(!bridged::secret_near(
+        far,
+        r"createCalibrationCancelBridge\(\{",
+        b"S1"
+    ));
     // The same line counts.
     let same = b"const b = createCalibrationCancelBridge({ secret: S1 });\n";
-    assert!(bridged::secret_near(same, r"createCalibrationCancelBridge\(\{", b"S1"));
-    assert_eq!(bridged::captured_secret(b"const S = String(process.env.X || '');\n"), None);
+    assert!(bridged::secret_near(
+        same,
+        r"createCalibrationCancelBridge\(\{",
+        b"S1"
+    ));
+    assert_eq!(
+        bridged::captured_secret(b"const S = String(process.env.X || '');\n"),
+        None
+    );
 }

@@ -100,7 +100,9 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
     let core_moved = if r.chance(5) { !moved } else { moved };
     let mut files = BTreeMap::<String, String>::new();
     let mut add = |f: &str, line: &str| {
-        let e = files.entry(rel(f)).or_insert_with(|| "'use strict';\n".to_string());
+        let e = files
+            .entry(rel(f))
+            .or_insert_with(|| "'use strict';\n".to_string());
         e.push_str(line);
         e.push('\n');
     };
@@ -132,7 +134,10 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
         for _ in 0..rows {
             let o = if r.chance(4) { "node" } else { owner };
             let o = if r.chance(3) { "rust" } else { o };
-            toml.push_str(&format!("[[route]]\npath = \"{}\"\nowner = \"{o}\"\n", p.path));
+            toml.push_str(&format!(
+                "[[route]]\npath = \"{}\"\nowner = \"{o}\"\n",
+                p.path
+            ));
             if r.chance(4) {
                 toml.push_str("switch = \"NOEVIA_RUST_X\"\n");
             }
@@ -153,7 +158,10 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
         }
         toml.push_str("[[route]]\npath = \"/api/other\"\nowner = \"node\"\n");
         if r.chance(10) {
-            toml.push_str(&format!("[[route]]\npath = \"{}/x\"\nowner = \"node\"\n", p.path));
+            toml.push_str(&format!(
+                "[[route]]\npath = \"{}/x\"\nowner = \"node\"\n",
+                p.path
+            ));
         }
         write(&root.join("rs/contracts/http/routes.toml"), &toml);
     }
@@ -169,7 +177,10 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
             1 => Some(format!(
                 "const OWNED_ROUTES = new Set((['{entry}', 'GET /api/models']));\n"
             )),
-            2 => Some(format!("const OWNED_ROUTES = new Set((['PATCH {}']));\n", p.path)),
+            2 => Some(format!(
+                "const OWNED_ROUTES = new Set((['PATCH {}']));\n",
+                p.path
+            )),
             3 => Some(format!("// const OWNED_ROUTES = new Set((['{entry}']));\n")),
             _ => Some(format!("const OWNED_ROUTES = new Set((['{entry}']));\n")),
         },
@@ -186,7 +197,9 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
             1 => Some(format!("{line}\n{line}\n")),
             2 => Some(format!("/*\n{line}\n*/\n")),
             3 => Some(format!("{line} // the GET\n")),
-            4 => Some(format!("// const OWNED_ROUTES = x;\n  /* a\n  */\n{line}\n")),
+            4 => Some(format!(
+                "// const OWNED_ROUTES = x;\n  /* a\n  */\n{line}\n"
+            )),
             5 => Some(format!("const OWNED_ROUTES = new Set();\n{line}\n")),
             _ => Some(format!("{line}\n")),
         },
@@ -208,7 +221,11 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
                 _ => add(file, "  return null;"),
             },
             Check::Kept { all, .. } => {
-                let drop = if r.chance(8) { Some(r.below(all.len())) } else { None };
+                let drop = if r.chance(8) {
+                    Some(r.below(all.len()))
+                } else {
+                    None
+                };
                 for (i, (file, ere)) in all.iter().enumerate() {
                     if drop == Some(i) {
                         if r.chance(50) {
@@ -230,7 +247,10 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
         write(&root.join(f), body);
     }
     if !r.chance(7) {
-        write(&root.join("core/server").join(p.bridge_file), "'use strict';\n");
+        write(
+            &root.join("core/server").join(p.bridge_file),
+            "'use strict';\n",
+        );
     }
     // index.cjs: the marker, the captured secret, the bridge constructor with the secret, the mount.
     let mut index = String::from("'use strict';\n");
@@ -331,7 +351,11 @@ fn facts_pairings_match_the_shell() {
     for (k, (cli, p)) in facts::ALL.iter().enumerate() {
         let name = section_name(cli);
         let block = section(&name);
-        assert!(block.contains(p.label), "the {name} section does not name {:?}", p.label);
+        assert!(
+            block.contains(p.label),
+            "the {name} section does not name {:?}",
+            p.label
+        );
         let mut r = Rng(0xFAC7_0000_0000_0001 + k as u64);
         let mut seen = BTreeMap::<String, u64>::new();
         for _ in 0..n {
@@ -374,9 +398,15 @@ fn sample_lines_match_their_check_regexes() {
             };
             for (_, ere) in pairs {
                 let line = format!("  {}\n", sample(ere));
-                assert!(code_has(Some(line.as_bytes()), ere), "{ere:?} misses {line:?}");
+                assert!(
+                    code_has(Some(line.as_bytes()), ere),
+                    "{ere:?} misses {line:?}"
+                );
                 let commented = format!("  // {}\n", sample(ere));
-                assert!(!code_has(Some(commented.as_bytes()), ere), "{ere:?} reads a comment");
+                assert!(
+                    !code_has(Some(commented.as_bytes()), ere),
+                    "{ere:?} reads a comment"
+                );
             }
         }
     }
@@ -388,7 +418,10 @@ fn sample_lines_match_their_check_regexes() {
 #[test]
 fn untuned_candidate_policy_regex_misses_optional_chaining() {
     let ere = "latest?.version === VERSION";
-    assert!(!code_has(Some(b"if (latest?.version === VERSION) {\n"), ere));
+    assert!(!code_has(
+        Some(b"if (latest?.version === VERSION) {\n"),
+        ere
+    ));
     assert!(code_has(Some(b"if (latest.version === VERSION) {\n"), ere));
 }
 
@@ -399,7 +432,9 @@ fn model_assignments_declaration_awk() {
     assert!(ok(format!("{line}\n")));
     assert!(ok(line.to_string()));
     assert!(ok(format!("// const OWNED_ROUTES = x;\n{line}\n")));
-    assert!(ok(format!("  /* a\n const OWNED_ROUTES = y;\n */\n{line}\n")));
+    assert!(ok(format!(
+        "  /* a\n const OWNED_ROUTES = y;\n */\n{line}\n"
+    )));
     assert!(ok(format!("/* one line */\n{line}\n")));
     assert!(!ok(format!("{line}\n{line}\n")));
     assert!(!ok(format!("/*\n{line}\n*/\n")));

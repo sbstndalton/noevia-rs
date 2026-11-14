@@ -339,7 +339,10 @@ pub fn calibration_pairing(tree: &Path, p: &CalibrationPairing) -> Result<(), St
     if code_has(core_file(tree, "routes/models.cjs").as_deref(), p.path) {
         return die("Core still carries the public handler");
     }
-    if code_has(core_file(tree, "llamacpp-calibration.cjs").as_deref(), p.policy) {
+    if code_has(
+        core_file(tree, "llamacpp-calibration.cjs").as_deref(),
+        p.policy,
+    ) {
         return die(&format!("Core still carries {}", p.policy_text));
     }
     let manager = core_file(tree, "llamacpp-manager.cjs");
@@ -390,9 +393,14 @@ pub fn code_egress_pairing(tree: &Path) -> Result<(), String> {
         egress.as_deref(),
         "publishWebKey|createKeyKeeper|createControlClient|mintGrant|secrets[.]derive",
     ) {
-        return Err(format!("{label}: Core still publishes keys or signs grants"));
+        return Err(format!(
+            "{label}: Core still publishes keys or signs grants"
+        ));
     }
-    if !code_has(egress.as_deref(), r"require\('[.]/code-egress-client[.]cjs'\)") {
+    if !code_has(
+        egress.as_deref(),
+        r"require\('[.]/code-egress-client[.]cjs'\)",
+    ) {
         return Err(format!(
             "{label}: Core's egress setup does not use the native client"
         ));
@@ -526,22 +534,17 @@ pub fn research_pairing(tree: &Path) -> Result<(), String> {
         return die("Core must refuse exactly the five paths the front answers");
     }
     let server = tree.join("core/server");
-    if server.join("routes/research.cjs").exists()
-        || server.join("research-service.cjs").exists()
-    {
+    if server.join("routes/research.cjs").exists() || server.join("research-service.cjs").exists() {
         return die("Core still carries the research handlers");
     }
     if !server.join("inference-admission-lease.cjs").is_file()
         || !server.join("rust-research-bridge.cjs").is_file()
     {
-        return die(
-            "Core does not offer the front its admission lease and tool bridge",
-        );
+        return die("Core does not offer the front its admission lease and tool bridge");
     }
     let index = code_lines(core_file(tree, "index.cjs").as_deref());
-    let mounted = |re: &str| {
-        ere(re).is_some_and(|re| here_lines(&index).iter().any(|l| re.is_match(l)))
-    };
+    let mounted =
+        |re: &str| ere(re).is_some_and(|re| here_lines(&index).iter().any(|l| re.is_match(l)));
     if !mounted(r"inferenceAdmission\.handle\(req, res\)") {
         return die("Core does not mount the admission lease route");
     }

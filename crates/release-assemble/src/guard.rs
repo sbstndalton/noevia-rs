@@ -1028,11 +1028,7 @@ pub fn pairing_routes(tree: &Path, p: &NamespacePairing) -> Result<(), String> {
     let mut got: Vec<Vec<u8>> = Vec::new();
     for r in &rt.routes {
         let [path, owner, switch, methods] = tab_fields(r);
-        let Some(index) = p
-            .paths
-            .iter()
-            .position(|w| w.as_bytes() == path.as_slice())
-        else {
+        let Some(index) = p.paths.iter().position(|w| w.as_bytes() == path.as_slice()) else {
             continue;
         };
         if owner != b"rust" || switch != b"-" || !p.methods.allow(index, &methods) {
@@ -1073,7 +1069,8 @@ pub const PROJECT_LIFECYCLE_OWNERSHIP: NamespacePairing<'static> = NamespacePair
     rs_feature: "rust-project-lifecycle",
     paths: &["/api/projects", "/api/projects/{projectId}"],
     methods: Methods::Each(&["POST", "DELETE"]),
-    rule_text: "exactly POST /api/projects and DELETE /api/projects/{projectId} must belong to Rust",
+    rule_text:
+        "exactly POST /api/projects and DELETE /api/projects/{projectId} must belong to Rust",
     incomplete_text: "incomplete route ownership",
 };
 
