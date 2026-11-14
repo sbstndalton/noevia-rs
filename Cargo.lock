@@ -606,6 +606,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "code-harness-bridge"
+version = "0.1.0"
+dependencies = [
+ "nix",
+ "sandbox-bridge",
+ "serde_json",
+ "tempfile",
+ "tokio",
+]
+
+[[package]]
 name = "code-harness-config"
 version = "0.1.0"
 dependencies = [

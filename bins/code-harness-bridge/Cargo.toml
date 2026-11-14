@@ -1,0 +1,20 @@
+[package]
+name = "code-harness-bridge"
+version = "0.1.0"
+description = "Native ACP bridge for the Code sandbox's RPC-mode harness (port of noevia-core code-sandbox/pi-acp-bridge.cjs); unused until a harness command selects it"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+sandbox-bridge = { path = "../../crates/sandbox-bridge" }
+serde_json = "1"
+tokio = { version = "1", features = ["rt", "macros", "io-std", "io-util", "process", "sync", "time"] }
+nix = { version = "0.30", features = ["signal", "process"] }
+
+[dev-dependencies]
+tempfile = "3"
