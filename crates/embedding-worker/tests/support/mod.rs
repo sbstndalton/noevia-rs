@@ -61,8 +61,11 @@ pub fn signal(root: &std::path::Path, n: u64) {
     )
     .unwrap();
 }
+/// Waits for `condition`, polling every 20 ms. The 30 s bound (noevia#2563: 10 s ran out on a
+/// loaded shared runner while a transient proof failure waited out its retry) only decides how
+/// long a test that is about to fail takes to say so; a passing test waits for the event alone.
 pub async fn wait_until(mut condition: impl FnMut() -> bool) {
-    tokio::time::timeout(Duration::from_secs(10), async {
+    tokio::time::timeout(Duration::from_secs(30), async {
         while !condition() {
             tokio::time::sleep(Duration::from_millis(20)).await;
         }
