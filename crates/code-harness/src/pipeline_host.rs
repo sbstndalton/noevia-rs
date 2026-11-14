@@ -23,7 +23,10 @@
 //! - [`job_value`]: the derived job the driver reads carries `parentId` and `pendingApproval` as
 //!   `null` (the Rust fold does not keep them; the pipeline never reads them).
 //! - A per-turn `machine` (a Planner pinned on an inference machine) is refused as Node's
-//!   `model_mismatch` without a relay: the front refuses a Code role on a machine before any start.
+//!   `model_mismatch` without a relay. With one (council p6, [`PipeHarness::on_machine`]), the
+//!   run's relay lease was opened when the start resolved, so the turn's pinned key is compared
+//!   with that lease's key (Node opens the lease here with `expect: machine` and compares it with
+//!   the target at that moment; the relay re-checks the target on every request either way).
 
 use crate::executor::{ClaimRequest, Engine, Executor, Fail as XFail, Gate, Lease, RunHandle};
 use crate::executor::{StartRequest, INFERENCE_PAUSED};
@@ -50,6 +53,11 @@ pub const PLANNER_PREPARATION: (&str, &str, bool, &str) = (
     true,
     "The Planner plans the task, the coding agent carries it out, the operator\u{2019}s tests verify it and the Planner reviews it, at most twice more, before you accept.",
 );
+/// code-harness.cjs: pinned on a machine, the role is back here.
+pub const MOVED_BACK: &str = "The Code role moved back to this machine during this task, and one task runs on one model. Start the task again.";
+/// code-machine.cjs `open` with `expect` not the target's key.
+pub const MOVED_ELSEWHERE: &str = "The Code role moved to another machine or model during this task, and one task runs on one model. Start the task again.";
+
 /// code-service.cjs's refusal when the pipeline cannot be built for this start.
 pub const NOT_SET_UP: &str = "The Planner pipeline is not set up on this server.";
 
@@ -332,6 +340,8 @@ fn strings(v: &JValue) -> Vec<String> {
 pub struct PipeHarness {
     pub executor: Arc<Executor>,
     pub engine: Option<Engine>,
+    /// The relay's target key of the run's lease (`None`: this machine's engine).
+    pub machine: Option<String>,
     handles: Mutex<HashMap<u64, RunHandle>>,
     next: AtomicU64,
 }
@@ -341,10 +351,29 @@ impl PipeHarness {
         PipeHarness {
             executor,
             engine,
+            machine: None,
             handles: Mutex::new(HashMap::new()),
             next: AtomicU64::new(1),
         }
     }
+    /// The run's engine is a relay lease on this target key (a start on an inference machine).
+    pub fn on_machine(mut self, key: Option<String>) -> PipeHarness {
+        self.machine = key;
+        self
+    }
+
+    /// code-harness.cjs before a turn: `relay.open({ expect: machine })` on a machine, else a
+    /// pinned machine with the role back here is refused. `opts.machine` absent: no check.
+    pub fn machine_refusal(&self, pinned: &JValue) -> Option<&'static str> {
+        match (&self.machine, pinned) {
+            (_, JValue::Undefined) => None,
+            (Some(key), JValue::Str(p)) if p == key => None,
+            (Some(_), _) => Some(MOVED_ELSEWHERE),
+            (None, p) if p.truthy() => Some(MOVED_BACK),
+            (None, _) => None,
+        }
+    }
+
     fn run(&self, h: driver::RunHandle) -> Option<RunHandle> {
         self.handles
             .lock()
@@ -394,9 +423,9 @@ impl driver::Harness for PipeHarness {
         let Some(run) = self.run(handle) else {
             return Err(Fail::new("No such run"));
         };
-        if opts.get("machine").truthy() {
+        if let Some(text) = self.machine_refusal(opts.get("machine")) {
             self.executor.release_run(&run);
-            return Err(Fail::new("The Code role moved back to this machine during this task, and one task runs on one model. Start the task again."));
+            return Err(Fail::new(text));
         }
         let text = |k: &str| opts.get(k).as_str().unwrap_or("").to_string();
         let req = StartRequest {

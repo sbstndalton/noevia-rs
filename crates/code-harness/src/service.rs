@@ -192,6 +192,21 @@ pub struct Project<'a> {
 /// What the host resolved for one start: the engine and the gate (else the service's own), and the
 /// project's shared context for Code.
 #[derive(Default)]
+/// The `facts` key under which a host keeps the inference machine a start runs on, when it runs
+/// the Code role there itself (the front, council p6): `{ key, owner, target }`. `key` is the
+/// relay's `targetKey` the run's lease was opened on; a pipeline Executor pinned elsewhere is
+/// refused (code-harness.cjs `relay.open({ expect: machine })`).
+pub const FRONT_MACHINE: &str = "frontMachine";
+
+/// The [`FRONT_MACHINE`] key of a start's facts (`None`: this machine's engine).
+pub fn front_machine_key(facts: Option<&JValue>) -> Option<String> {
+    facts?
+        .get(FRONT_MACHINE)
+        .get("key")
+        .as_str()
+        .map(str::to_string)
+}
+
 pub struct Resolved {
     pub engine: Option<Engine>,
     pub inference: Option<Arc<dyn Inference>>,
@@ -876,10 +891,10 @@ impl Service {
                 start: start.clone(),
             }),
             workspaces: Arc::new(PipeWorkspaces(tenant.workspaces.clone())),
-            harness: Arc::new(PipeHarness::new(
-                tenant.executor.clone(),
-                resolved.engine.clone(),
-            )),
+            harness: Arc::new(
+                PipeHarness::new(tenant.executor.clone(), resolved.engine.clone())
+                    .on_machine(front_machine_key(resolved.facts.as_ref())),
+            ),
             approvals: Arc::new(Asker(self.registry.clone())),
             tree: tenant.workspaces.clone(),
         };

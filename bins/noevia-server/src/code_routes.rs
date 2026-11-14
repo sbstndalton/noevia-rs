@@ -44,7 +44,10 @@
 //! - the Code role on an inference machine (core's relay, #1853) is refused with 409, for the
 //!   Planner and the review too (so no role call ever goes to a machine); with
 //!   `NOEVIA_RUST_CODE_RELAY=1` (council p4, code_machine.rs) a direct task runs through the
-//!   front's relay instead. A relay refusal (no relay port, the role moved, another model named,
+//!   front's relay instead, and (council p6) the Planner preparation and the review run on the
+//!   same machine through the role engine's `machines`. On a machine the role's endpoint is the
+//!   start's, and a move of the Code role is seen at each role call's `ready` (Node's call-time
+//!   `model_mismatch` code and text, without its `role.model_refused` log line). A relay refusal (no relay port, the role moved, another model named,
 //!   the machine unreachable or serving another model) then answers the start with 409 and Node's
 //!   text, where Node starts the task and fails it with the same text; the relay's log events name
 //!   the project rather than the task (the task id is made after the engine is resolved);
@@ -538,16 +541,42 @@ pub fn role_endpoint(facts: &JValue) -> Option<role_engine::Endpoint> {
     })
 }
 
+/// This start's role engine endpoint: core's `role` fact; or, when the front runs the Code role on
+/// an inference machine itself (council p6: the relay switch on and the start resolved there),
+/// core's `codeRoleEndpoint` for that machine with the machine for the role engine's `machines`.
+/// `None`: no role engine for this start (Node's "not set up" / "no reviewer configured").
+pub fn role_of(
+    app: &App,
+    facts: &JValue,
+) -> Option<(role_engine::Endpoint, Option<code_machine::MachineRole>)> {
+    if facts.get("machine").as_bool() == Some(true) {
+        let (owner, target) = code_machine::front_machine_of(facts)?;
+        let state = app.code_relay.get().and_then(Clone::clone)?;
+        let endpoint = code_machine::role_endpoint_on(&target);
+        return Some((
+            endpoint,
+            Some(code_machine::MachineRole {
+                state,
+                owner,
+                target,
+            }),
+        ));
+    }
+    Some((role_endpoint(facts)?, None))
+}
+
 impl FrontPipeline {
     /// This start's Code role engine (core's `role` fact) and its key, or `None` without one.
     fn roles(&self, resolved: &Resolved) -> Option<(EngineRoles<FrontRoles>, Option<String>)> {
-        let endpoint = role_endpoint(resolved.facts.as_ref()?)?;
+        let app = self.app.upgrade()?;
+        let (endpoint, machine) = role_of(&app, resolved.facts.as_ref()?)?;
         let client = model_stream::client().ok()?;
         let engine_key = endpoint.api_key.clone();
         let engine = role_engine::RoleEngine::new(FrontRoles {
             endpoint,
             app: self.app.clone(),
             client,
+            machine,
         });
         let roles = EngineRoles {
             engine: Arc::new(engine),
@@ -574,7 +603,14 @@ impl Setup for FrontPipeline {
     fn reviewer(&self, resolved: &Resolved) -> Arc<dyn Reviewer> {
         // No `role` fact from core: Node's "no reviewer configured". A role fact but no reviewer
         // (the HTTP client could not be built): review_gate's `Unreachable`.
-        if resolved.facts.as_ref().and_then(role_endpoint).is_none() {
+        let configured = self.app.upgrade().is_some_and(|app| {
+            resolved
+                .facts
+                .as_ref()
+                .and_then(|f| role_of(&app, f))
+                .is_some()
+        });
+        if !configured {
             return Arc::new(Unconfigured);
         }
         match self.roles(resolved) {
@@ -613,11 +649,14 @@ impl Setup for FrontPipeline {
 /// The role engine's dependencies in the front (core index.cjs `createRoleEngine({...})`): this
 /// start's endpoint, the front's HTTP client (no redirect, no proxy), the sidecars' models as
 /// the keep-list (core's facts), the roles file beside models.ini, core's budget check, no
-/// admission (production passes none) and no machines (refused before any start).
+/// admission (production passes none) and, on a machine the front runs the Code role on (council
+/// p6), that machine as `machines` (chat-machines.cjs `ready`, `fetch`, `connectError`); elsewhere
+/// no machines.
 pub struct FrontRoles {
     endpoint: role_engine::Endpoint,
     app: std::sync::Weak<App>,
     client: reqwest::Client,
+    machine: Option<code_machine::MachineRole>,
 }
 
 /// A response body, chunk by chunk.
@@ -711,6 +750,44 @@ impl role_engine::Deps for FrontRoles {
             }),
             LoadDecision::Unavailable => Some(unchecked()),
         }
+    }
+
+    fn has_machines(&self) -> bool {
+        self.machine.is_some()
+    }
+
+    async fn machine_ready(&self, target: &JValue) -> Result<role_engine::MachineReady, ()> {
+        match &self.machine {
+            Some(m) => Ok(m.ready(target).await),
+            None => Err(()),
+        }
+    }
+
+    async fn machine_fetch(
+        &self,
+        req: role_engine::Request,
+        cancel: role_engine::Cancel,
+    ) -> Result<role_engine::Response<FrontBody>, role_engine::TransportError> {
+        let Some(m) = &self.machine else {
+            return Err(transport("no machine"));
+        };
+        let sent = tokio::select! {
+            r = m.state.machines.role_fetch(&req) => r?,
+            () = cancel.cancelled() => return Err(transport("aborted")),
+        };
+        Ok(role_engine::Response {
+            status: sent.status().as_u16(),
+            body: FrontBody(Some(sent)),
+        })
+    }
+
+    fn machine_connect_error(
+        &self,
+        target: &JValue,
+        error: &role_engine::TransportError,
+    ) -> Option<String> {
+        let m = self.machine.as_ref()?;
+        Some(m.state.machines.role_connect_error(target, error))
     }
 
     fn log(&self, entry: JValue) {
@@ -846,10 +923,10 @@ async fn resolve(
 /// use this machine's engine"). A relay refusal is the start's answer with its code and text
 /// (Node's `publicMessage`), as core's executor throws it.
 ///
-/// The Planner preparation and the review stay refused on a machine (the role engine's machine pin
-/// is not the front's yet): core gives no `role` fact on a machine, so a pipeline start answers
-/// Node's 409 "The Planner pipeline is not set up on this server." and a review its "No reviewer
-/// model is configured on this server." card.
+/// The Planner preparation and the review run on the same machine (council p6, the role engine's
+/// machine pin): core gives no `role` fact on a machine, so the front keeps the lease's target in
+/// the facts ([`code_machine::FRONT_MACHINE`]) and builds core's `codeRoleEndpoint` for it
+/// ([`role_of`]); the pipeline's Executor is checked against the lease's key.
 async fn on_a_machine(
     app: &Arc<App>,
     user: &str,
@@ -873,6 +950,17 @@ async fn on_a_machine(
         model: Some(opened.model.clone()),
         context_tokens: opened.context_tokens,
     };
+    // Council p6: the start's machine for its Planner and review (the role engine's machine pin)
+    // and the pipeline Executor's `expect` (code_harness `FRONT_MACHINE`).
+    let mut facts = facts;
+    if let JValue::Obj(items) = &mut facts {
+        let target = state.machines.full_target(&opened.target);
+        wtf16::set(
+            items,
+            code_machine::FRONT_MACHINE,
+            code_machine::front_machine_fact(user, &target),
+        );
+    }
     let gate = MachineGate {
         lease: std::sync::Mutex::new(Some(opened)),
     };

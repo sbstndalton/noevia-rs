@@ -13,6 +13,11 @@
 //!   probe cache), `contextTokens` (#1854's `/props` `n_ctx`, the 8,192 floor when it does not say),
 //!   `fetch` through the on-this-network client (no redirect, no proxy, every name resolved under
 //!   the rule) and `connectError` (#1840's texts);
+//! - the role engine on a machine (council p6, [`MachineRole`]): core's `codeRoleEndpoint` when the
+//!   Code role is remote (`{ baseUrl: <machine>/v1, apiKey: null, model, external: false,
+//!   provider: chatMachines.provider(t), machine: t }`) and the `machines` the role engine, the
+//!   Planner and the reviewer are given (`ready`, `fetch`, `connectError`), so the Planner
+//!   preparation and the review run on the Code role's machine too;
 //! - [`start`]: the relay itself, its listener on `CODE_ENGINE_RELAY_PORT` (code-engine-relay
 //!   `bind`), started once at boot when the switch is on.
 //!
@@ -22,9 +27,9 @@
 //! flight).
 //!
 //! Named differences from Node (each a refusal or a cache detail, never a different success):
-//! - the relay's per-request re-check reads the roles of the account whose task last opened a lease
-//!   (Node's `autoRoles()` there reads whatever account its request context has); it matters only
-//!   when the Code role is not assigned and the Smart role is, and Code tasks are administrators';
+//! - the relay's per-request re-check reads the roles of the account whose task opened that lease
+//!   (council p6, noevia#2720 item 1; Node's `autoRoles()` there reads whatever account its
+//!   request context has), on the blocking pool (item 2);
 //! - the probe cache keeps at most 32 entries and drops the oldest, as Node's; a probe in flight is
 //!   not shared between two callers (each makes its own request);
 //! - a registry row that cannot be read moves nothing (no target), as engine-admission reads it; core's
@@ -426,6 +431,11 @@ impl FrontMachines {
         if let Ok(mut f) = self.found.lock() {
             f.insert(key, t.machine.clone());
         }
+    }
+
+    /// The relay target with the role and port it was found for.
+    pub fn full_target(&self, t: &Target) -> machines::Target {
+        self.full(t)
     }
 
     fn full(&self, t: &Target) -> machines::Target {
@@ -1048,5 +1058,227 @@ mod tests {
         c.put("k39".into(), t0, 1);
         assert_eq!(c.get("k39", t0), Some(1));
         assert_eq!(c.entries.len(), CACHE_ENTRIES);
+    }
+}
+
+// --- The role engine on a machine (council p6; core index.cjs `codeRoleEndpoint` + chat-machines.cjs).
+
+/// The `facts` key under which the front keeps the machine a start runs on (code_routes.rs
+/// `on_a_machine`): `{ key, owner, target }`. Core never sends it; it is the front's own.
+pub const FRONT_MACHINE: &str = code_harness::service::FRONT_MACHINE;
+
+/// chat-machines.cjs's target as Node holds it: `{ role, machine: { id, name }, port, baseUrl, model }`.
+pub fn target_value(t: &machines::Target) -> JValue {
+    JValue::obj([
+        ("role", JValue::Str(t.role.clone())),
+        (
+            "machine",
+            JValue::obj([
+                ("id", JValue::Str(t.machine_id.clone())),
+                ("name", JValue::Str(t.machine_name.clone())),
+            ]),
+        ),
+        ("port", JValue::Num(f64::from(t.port))),
+        ("baseUrl", JValue::Str(t.base_url.clone())),
+        ("model", JValue::Str(t.model.clone())),
+    ])
+}
+
+/// chat-machines.cjs `provider(t)` (no measured context, no thinking switch: `codeRoleEndpoint`
+/// calls it bare).
+pub fn provider_value(t: &machines::Target) -> JValue {
+    JValue::obj([
+        ("id", JValue::Str(format!("machine:{}", t.machine_id))),
+        (
+            "label",
+            JValue::Str(format!(
+                "{} model\u{2019}s machine ({})",
+                label(&t.role),
+                t.machine_name
+            )),
+        ),
+        ("baseUrl", JValue::Str(format!("{}/v1", t.base_url))),
+        ("apiKey", JValue::Str(String::new())),
+        ("shared", JValue::Bool(true)),
+        (
+            "machine",
+            JValue::obj([
+                ("id", JValue::Str(t.machine_id.clone())),
+                ("name", JValue::Str(t.machine_name.clone())),
+                ("role", JValue::Str(t.role.clone())),
+                ("port", JValue::Num(f64::from(t.port))),
+                ("model", JValue::Str(t.model.clone())),
+            ]),
+        ),
+    ])
+}
+
+/// core index.cjs `codeRoleEndpoint()` when `codeMachineTarget()` is set: never an API key, never
+/// external (the machine is on this network), the provider row without its JSON-schema capability.
+pub fn role_endpoint_on(t: &machines::Target) -> role_engine::Endpoint {
+    role_engine::Endpoint {
+        base_url: Some(format!("{}/v1", t.base_url)),
+        api_key: None,
+        model: Some(t.model.clone()),
+        provider: provider_value(t),
+        external: false,
+        machine: Some(target_value(t)),
+    }
+}
+
+/// The relay's key of a target (`targetKey`), which is also the role engine's machine key.
+pub fn key_of(t: &machines::Target) -> String {
+    format!("{}|{}|{}", t.machine_id, t.base_url, t.model)
+}
+
+/// The facts entry [`FRONT_MACHINE`] for a start on `t` by `owner`.
+pub fn front_machine_fact(owner: &str, t: &machines::Target) -> JValue {
+    JValue::obj([
+        ("key", JValue::Str(key_of(t))),
+        ("owner", JValue::Str(owner.to_string())),
+        ("target", target_value(t)),
+    ])
+}
+
+/// [`FRONT_MACHINE`] read back: the owner and the target (`None`: not a front machine start).
+pub fn front_machine_of(facts: &JValue) -> Option<(String, machines::Target)> {
+    let f = facts.get(FRONT_MACHINE);
+    let t = f.get("target");
+    let text = |v: &JValue| v.as_str().map(str::to_string);
+    let port = t.get("port").as_num()?;
+    if !(0.0..=65535.0).contains(&port) || port.fract() != 0.0 {
+        return None;
+    }
+    Some((
+        text(f.get("owner"))?,
+        machines::Target {
+            role: text(t.get("role"))?,
+            machine_id: text(t.get("machine").get("id"))?,
+            machine_name: text(t.get("machine").get("name"))?,
+            port: port as u32,
+            model: text(t.get("model"))?,
+            base_url: text(t.get("baseUrl"))?,
+        },
+    ))
+}
+
+/// The role engine's `fetch` failure tags (its error is text only): [`FrontMachines::role_connect_error`]
+/// reads them back as Node's `connectError` reasons.
+const TAG_ADDRESS: &str = "machine: not on this network";
+const TAG_REDIRECT: &str = "machine: redirect";
+const TAG_TIMEOUT: &str = "machine: timeout";
+
+fn role_text(machine: &JValue, k: &str) -> String {
+    machine.get(k).as_str().unwrap_or("").to_string()
+}
+
+impl FrontMachines {
+    /// `machines.ready(t)` for the role engine: the relay's own probe and served-model check.
+    pub async fn role_ready(&self, t: &machines::Target) -> Ready {
+        let relay = CodeTarget { machine: t.clone() };
+        self.remember(&relay);
+        <Self as Machines>::ready(self, &relay.relay()).await
+    }
+
+    /// `machines.fetch(url, init)` for the role engine: the request as the engine built it (no API
+    /// key: it sends none on a machine), through the on-this-network client, no redirect followed.
+    pub async fn role_fetch(
+        &self,
+        req: &role_engine::Request,
+    ) -> Result<reqwest::Response, role_engine::TransportError> {
+        let fail = |tag: &str| role_engine::TransportError {
+            detail: tag.to_string(),
+        };
+        if !model_stream::net::url_allowed(&req.url) {
+            return Err(fail(TAG_ADDRESS));
+        }
+        let method = if req.method == "GET" {
+            reqwest::Method::GET
+        } else {
+            reqwest::Method::POST
+        };
+        let mut b = self.client.request(method, &req.url);
+        for (k, v) in &req.headers {
+            if k.eq_ignore_ascii_case("authorization") {
+                continue;
+            }
+            b = b.header(k.as_str(), v.as_str());
+        }
+        if let Some(body) = &req.body {
+            b = b.body(body.clone());
+        }
+        if let Some(ms) = req.timeout_ms {
+            b = b.timeout(Duration::from_millis(ms));
+        }
+        let sent = b.send().await.map_err(|e| {
+            if model_stream::net::refused_in_chain(&e) {
+                fail(TAG_ADDRESS)
+            } else if e.is_redirect() {
+                fail(TAG_REDIRECT)
+            } else if e.is_timeout() {
+                fail(TAG_TIMEOUT)
+            } else {
+                fail(&format!("machine: {e}"))
+            }
+        })?;
+        if sent.status().is_redirection() {
+            return Err(fail(TAG_REDIRECT));
+        }
+        Ok(sent)
+    }
+
+    /// `machines.connectError(t, err)` for a role call that never got an answer.
+    pub fn role_connect_error(&self, target: &JValue, error: &role_engine::TransportError) -> String {
+        let m = target.get("machine");
+        let t = machines::Target {
+            role: target.get("role").as_str().unwrap_or("code").to_string(),
+            machine_id: role_text(m, "id"),
+            machine_name: role_text(m, "name"),
+            port: target.get("port").as_num().map_or(0, |p| p as u32),
+            model: role_text(target, "model"),
+            base_url: role_text(target, "baseUrl"),
+        };
+        match error.detail.as_str() {
+            TAG_TIMEOUT => unreachable_text(&t, "no answer in time"),
+            TAG_ADDRESS => machines::connect_error(&t, true, false),
+            TAG_REDIRECT => machines::connect_error(&t, false, true),
+            _ => machines::connect_error(&t, false, false),
+        }
+    }
+}
+
+/// The Code role's machine as one start's role engine sees it: the target it was pinned to, the
+/// account whose task it is, and the relay's state (its machine client and target reader).
+#[derive(Clone)]
+pub struct MachineRole {
+    pub state: Arc<RelayState>,
+    pub owner: String,
+    pub target: machines::Target,
+}
+
+/// The role engine's call-time text when the role moved (role-engine.cjs `call`).
+pub const ROLE_MOVED: &str = "The Code role moved to another machine or model during this task. This step was not sent, because one task runs on one model.";
+
+impl MachineRole {
+    /// `ready(t)`, after re-reading where the Code role is now for the owner (on the blocking
+    /// pool): a role that moved since the start is Node's call-time `model_mismatch` (Node re-reads
+    /// `engine()` per call and compares keys before `ready`; the front's endpoint is the start's,
+    /// so the comparison is made here).
+    pub async fn ready(&self, target: &JValue) -> role_engine::MachineReady {
+        let now = self.state.target(&self.owner).await;
+        if now.as_ref().map(|t| key_of(&t.machine)) != Some(key_of(&self.target)) {
+            return role_engine::MachineReady {
+                ok: false,
+                code: Some("model_mismatch".into()),
+                error: Some(ROLE_MOVED.into()),
+            };
+        }
+        let _ = target;
+        let r = self.state.machines.role_ready(&self.target).await;
+        role_engine::MachineReady {
+            ok: r.ok,
+            code: r.code,
+            error: r.error,
+        }
     }
 }
