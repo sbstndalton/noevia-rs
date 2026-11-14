@@ -184,7 +184,7 @@ fn the_sweep_lists_every_pair_once_per_distinct_filling_and_ends_with_the_sessio
     assert!(s.len() >= swept);
     assert!(s.len() <= swept * FILLS.len());
     assert!(
-        s.iter().all(|(_, path)| !path.contains("diary")),
+        s.iter().all(|(_, path)| !held(path)),
         "a held pair is swept"
     );
     let distinct: BTreeSet<&(&str, String)> = s.iter().collect();
