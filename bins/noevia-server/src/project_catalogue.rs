@@ -34,7 +34,11 @@
 //! byte into noevia-rs `contracts/project-icons.json` (its sha256 is checked against the recording).
 //! Recorded proof: tests/fixtures/project-catalogue-node.v1.json (tools/gen-project-catalogue-fixtures.cjs
 //! over core's toolboxes.cjs, mcp-servers.cjs, toolbox-chat-facts.cjs and project-catalogue.cjs).
-use crate::{mcp_discovery, App};
+// Without `rust-storage-reads` (no MCP discovery in the build) only the file source remains.
+#![cfg_attr(not(feature = "rust-storage-reads"), allow(dead_code, unused_imports))]
+#[cfg(feature = "rust-storage-reads")]
+use crate::mcp_discovery;
+use crate::App;
 use server_projects::lifecycle::Catalogue;
 use std::collections::HashSet;
 use std::path::Path;
@@ -59,6 +63,7 @@ fn icons() -> &'static [String] {
     })
 }
 
+#[cfg(feature = "rust-storage-reads")]
 /// core index.cjs `current()` (`selectable: sanitizeToolboxes(ids) || []`, `known: ids`, `defaults:
 /// DEFAULT_TOOLBOXES`, `icons`) over the composed `allToolboxes()`. `sanitizeToolboxes` keeps each id
 /// once, in first-seen order, without the connector boxes; `known` keeps every box's id, repeats
@@ -147,11 +152,18 @@ impl Source {
     }
 }
 
+#[cfg(feature = "rust-storage-reads")]
 async fn compose(app: &Arc<App>) -> Option<Catalogue> {
     mcp_discovery::read(app).await.map(|c| of(&c))
 }
 
-#[cfg(test)]
+/// A build without `rust-storage-reads` has no MCP discovery: no native catalogue (not ready).
+#[cfg(not(feature = "rust-storage-reads"))]
+async fn compose(_app: &Arc<App>) -> Option<Catalogue> {
+    None
+}
+
+#[cfg(all(test, feature = "rust-storage-reads"))]
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,

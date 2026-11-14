@@ -3,6 +3,7 @@
 //! never from the `project-catalogue.json` core publishes, which here holds decoy ids. The switch is
 //! read once per process: every test in this binary sets it before the front starts. Synthetic,
 //! QA-named data only; no Node (an unreachable upstream).
+#![cfg(feature = "rust-storage-reads")]
 #![allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 #[path = "mcp_support/mod.rs"]
 mod support;
