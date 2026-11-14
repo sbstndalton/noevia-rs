@@ -300,12 +300,19 @@ async fn the_front_saves_the_budget_row_and_its_audit() {
         .iter()
         .any(|r| r.starts_with("POST /internal/models/facts "))
     {
-        assert!(tokio::time::Instant::now() < deadline, "core was never asked its figure");
+        assert!(
+            tokio::time::Instant::now() < deadline,
+            "core was never asked its figure"
+        );
         tokio::time::sleep(Duration::from_millis(20)).await;
     }
     let asked = seen.lock().unwrap().clone();
     let kind = |p: &str| asked.iter().filter(|r| r.starts_with(p)).count();
-    assert_eq!(kind("POST /internal/auto-roles/invalidate "), 3, "{asked:?}");
+    assert_eq!(
+        kind("POST /internal/auto-roles/invalidate "),
+        3,
+        "{asked:?}"
+    );
     assert_eq!(kind("POST /internal/models/facts "), 1, "{asked:?}");
     assert!(asked.iter().any(|r| r.contains(r#""want":"budget""#)));
     assert_eq!(asked.len(), 4, "{asked:?}");
@@ -321,7 +328,10 @@ async fn the_front_saves_the_budget_row_and_its_audit() {
     .await;
     assert_eq!((status, body), (202, json!({"relayed": true})));
     let relayed = seen.lock().unwrap().last().cloned().unwrap();
-    assert!(relayed.starts_with("PUT /api/models/inference-budget "), "{relayed}");
+    assert!(
+        relayed.starts_with("PUT /api/models/inference-budget "),
+        "{relayed}"
+    );
     let lower = relayed.to_ascii_lowercase();
     assert!(lower.contains("content-length: 19\r\n"), "{relayed}");
     assert!(lower.contains("cowork_session=admin-token"), "{relayed}");
@@ -333,7 +343,12 @@ async fn the_front_saves_the_budget_row_and_its_audit() {
     let (status, body) = put(addr, "/api/models/inference-budget", ADMIN, &big).await;
     assert_eq!((status, body), (400, json!({"error": "invalid JSON"})));
     let after: Vec<String> = seen.lock().unwrap()[before..].to_vec();
-    assert!(after.iter().all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")), "{after:?}");
+    assert!(
+        after
+            .iter()
+            .all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")),
+        "{after:?}"
+    );
 
     // Without the CSRF header: the session check refuses before anything is written.
     let mut s = TcpStream::connect(addr).await.unwrap();
@@ -372,7 +387,12 @@ async fn the_idle_unload_time_without_a_model_manager_is_unavailable() {
         )
     );
     let asked = seen.lock().unwrap().clone();
-    assert!(asked.iter().all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")), "{asked:?}");
+    assert!(
+        asked
+            .iter()
+            .all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")),
+        "{asked:?}"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -426,5 +446,10 @@ async fn the_idle_unload_time_is_written_through_the_model_manager() {
         )]
     );
     let asked = node_seen.lock().unwrap().clone();
-    assert!(asked.iter().all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")), "nothing relayed: {asked:?}");
+    assert!(
+        asked
+            .iter()
+            .all(|r| r.starts_with("POST /internal/auto-roles/invalidate ")),
+        "nothing relayed: {asked:?}"
+    );
 }
