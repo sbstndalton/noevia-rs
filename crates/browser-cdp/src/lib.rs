@@ -470,8 +470,8 @@ impl Browser for CdpBrowser {
             hooks: Mutex::default(),
             pages: Mutex::default(),
             sessions: Mutex::default(),
-            created: Mutex::default(),
-            created_changed: Condvar::new(),
+            creating: Mutex::default(),
+            creating_changed: Condvar::new(),
             closed: AtomicBool::new(false),
         });
         lock(&self.contexts).insert(id, Arc::downgrade(&ctx));
@@ -499,10 +499,21 @@ pub struct CdpContext {
     pages: Mutex<Vec<Arc<CdpPage>>>,
     /// Every session of the context (pages and frames), for `Fetch.enable`.
     sessions: Mutex<Vec<String>>,
-    /// Targets [`Context::new_page`] created, and the session each attached as.
-    created: Mutex<HashMap<String, Option<String>>>,
-    created_changed: Condvar,
+    creating: Mutex<Creating>,
+    creating_changed: Condvar,
     closed: AtomicBool,
+}
+
+/// Telling [`Context::new_page`]'s own targets from popups: a target's attachment may arrive
+/// before or after `Target.createTarget`'s reply, and no lock is held across that call.
+#[derive(Default)]
+struct Creating {
+    /// `Target.createTarget` calls not yet answered.
+    in_flight: usize,
+    /// Targets new_page made, and the session each attached as once it has.
+    expected: HashMap<String, Option<String>>,
+    /// Attachments waiting for the calls in flight to say whose they are.
+    parked: HashMap<String, String>,
 }
 
 impl CdpContext {
@@ -524,14 +535,31 @@ impl CdpContext {
 
     /// A page target of this context attached: [`Context::new_page`]'s own, or a popup.
     fn adopt(self: Arc<Self>, sid: String, target: String) {
-        {
-            let mut created = lock(&self.created);
-            if let Some(slot) = created.get_mut(&target) {
-                *slot = Some(sid);
-                self.created_changed.notify_all();
-                return;
+        let deadline = Instant::now() + CALL_TIMEOUT;
+        let mut c = lock(&self.creating);
+        if let Some(slot) = c.expected.get_mut(&target) {
+            *slot = Some(sid);
+            self.creating_changed.notify_all();
+            return;
+        }
+        if c.in_flight > 0 {
+            c.parked.insert(target.clone(), sid.clone());
+            loop {
+                if !c.parked.contains_key(&target) {
+                    return; // new_page took it
+                }
+                if c.in_flight == 0 || Instant::now() >= deadline {
+                    c.parked.remove(&target);
+                    break;
+                }
+                c = self
+                    .creating_changed
+                    .wait_timeout(c, POLL)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0;
             }
         }
+        drop(c);
         if let Ok(page) = self.open_page(sid, target) {
             for hook in self.hooks() {
                 hook(page.clone());
@@ -619,35 +647,41 @@ impl Context for CdpContext {
         if self.closed.load(Ordering::SeqCst) {
             return Err(closed());
         }
-        let mut created = lock(&self.created);
+        lock(&self.creating).in_flight += 1;
         let params = JValue::obj([("url", s("about:blank")), ("browserContextId", s(&self.id))]);
         let made = self
             .conn()
-            .call(None, "Target.createTarget", params, CALL_TIMEOUT)?;
-        let target = made
+            .call(None, "Target.createTarget", params, CALL_TIMEOUT);
+        let mut c = lock(&self.creating);
+        c.in_flight -= 1;
+        self.creating_changed.notify_all();
+        let target = made?
             .get("targetId")
             .as_str()
             .map(str::to_string)
             .ok_or_else(|| EngineError::new("No page was created."))?;
-        created.insert(target.clone(), None);
-        // Its attachment arrives on the reader thread, maybe before the reply did.
-        let deadline = Instant::now() + CALL_TIMEOUT;
-        let sid = loop {
-            if let Some(Some(sid)) = created.get(&target) {
-                break Some(sid.clone());
+        let mut sid = c.parked.remove(&target);
+        if sid.is_none() {
+            // Its attachment has not arrived yet.
+            c.expected.insert(target.clone(), None);
+            let deadline = Instant::now() + CALL_TIMEOUT;
+            loop {
+                if let Some(Some(found)) = c.expected.get(&target) {
+                    sid = Some(found.clone());
+                    break;
+                }
+                if Instant::now() >= deadline || self.conn().is_dead() {
+                    break;
+                }
+                c = self
+                    .creating_changed
+                    .wait_timeout(c, POLL)
+                    .unwrap_or_else(PoisonError::into_inner)
+                    .0;
             }
-            let left = deadline.saturating_duration_since(Instant::now());
-            if left.is_zero() || self.conn().is_dead() {
-                break None;
-            }
-            created = self
-                .created_changed
-                .wait_timeout(created, left.min(POLL))
-                .unwrap_or_else(PoisonError::into_inner)
-                .0;
-        };
-        created.remove(&target);
-        drop(created);
+            c.expected.remove(&target);
+        }
+        drop(c);
         let sid = sid.ok_or_else(|| {
             if self.conn().is_dead() {
                 closed()

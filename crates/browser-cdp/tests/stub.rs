@@ -843,6 +843,16 @@ fn proxy_auth_popups_and_foreign_pages() {
 #[test]
 fn a_detached_page_is_closed() {
     let stub = Stub::start(Box::new(move |msg, out| {
+        if msg.get("method").as_str() == Some("Target.createTarget") {
+            // Here the page attaches after the reply.
+            out.reply(msg, obj(vec![("targetId", s("T1"))]));
+            out.event(
+                None,
+                "Target.attachedToTarget",
+                attached("S1", "T1", "CTX1"),
+            );
+            return;
+        }
         if msg.get("method").as_str() == Some("Page.captureScreenshot") {
             out.event(
                 None,
