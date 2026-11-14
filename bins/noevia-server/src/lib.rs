@@ -137,6 +137,8 @@ pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
 pub mod task_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod text_write_op;
 pub mod tool_approval_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_picker;

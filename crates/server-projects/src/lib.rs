@@ -112,6 +112,7 @@ pub mod sync;
 mod task_authority;
 pub mod task_journals;
 pub mod task_store;
+pub mod text_write;
 pub mod toolbox_picker;
 pub mod transcript;
 pub mod upload;
