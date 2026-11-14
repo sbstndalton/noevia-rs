@@ -184,3 +184,30 @@ async fn the_kiwix_box_follows_cores_registered_construction_value() {
         "core's registered value wins over the stored setting"
     );
 }
+
+/// sbstndalton/noevia#2667: with no feature context (no core registers here) and no env override, the
+/// Offline Wikipedia box follows the stored typed setting (features.cjs `selected().value`).
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn without_a_registration_the_kiwix_box_follows_the_stored_setting() {
+    std::env::set_var("NOEVIA_RUST_CHAT_FACTS", "1");
+    std::env::set_var("KIWIX_URL", "http://qa-kiwix.invalid:8080");
+    for (stored, listed) in [("'true'", true), ("'false'", false), ("1", false)] {
+        let d = tempfile::tempdir().unwrap();
+        let db = seed(d.path());
+        db.execute(
+            &format!("INSERT INTO settings(key, value) VALUES('feature:kiwix', {stored})"),
+            [],
+        )
+        .unwrap();
+        let f = front_env(d.path(), true, &[]).await;
+        assert!(f.app.feature_context.is_none());
+        write_snapshot(&f, d.path(), published());
+        let (s, body) = get(f.addr, &format!("{PERMITTED}?mode=chat"), ADMIN).await;
+        assert_eq!(s, 200, "{body}");
+        assert_eq!(
+            ids(&body).iter().any(|i| i == "offline-wikipedia"),
+            listed,
+            "stored {stored}"
+        );
+    }
+}
