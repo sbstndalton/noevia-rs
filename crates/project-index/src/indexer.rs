@@ -8,7 +8,9 @@
 //! at once. Everything the account and project lifecycle decide comes from the [`Host`].
 
 use crate::chunk::{hash, units};
-use crate::index::{self, Embed, Index, IndexOutcome, TailChunk, TailGates, TailOutcome, TailRequest};
+use crate::index::{
+    self, Embed, Index, IndexOutcome, TailChunk, TailGates, TailOutcome, TailRequest,
+};
 use crate::slots::Target;
 use crate::state::{FileKey, FileState, Outcome};
 use std::collections::HashMap;
@@ -64,7 +66,11 @@ fn outcome_of(out: &IndexOutcome) -> Outcome {
 
 impl<H: Host> Indexer<H> {
     pub fn new(host: H) -> Self {
-        Self { host, state: Mutex::new(FileState::new()), lanes: Mutex::new(HashMap::new()) }
+        Self {
+            host,
+            state: Mutex::new(FileState::new()),
+            lanes: Mutex::new(HashMap::new()),
+        }
     }
 
     pub fn host(&self) -> &H {
@@ -73,18 +79,31 @@ impl<H: Host> Indexer<H> {
 
     /// `openIndex` with its checks: the account, the front's tombstone before and after the open.
     fn open(&self, project: &str, user: Option<&str>) -> Option<Index> {
-        if user.is_some_and(|u| !self.host.user_active(u)) || self.host.deleted_since(project, user, 0) || !self.host.rag_available() {
+        if user.is_some_and(|u| !self.host.user_active(u))
+            || self.host.deleted_since(project, user, 0)
+            || !self.host.rag_available()
+        {
             return None;
         }
         let deleted = || self.host.deleted_since(project, user, 0);
         // Node logs and falls back to direct injection on any open error.
-        index::open_index(&self.host.index_path(project, user), &self.host.active_target(), &deleted).ok().flatten()
+        index::open_index(
+            &self.host.index_path(project, user),
+            &self.host.active_target(),
+            &deleted,
+        )
+        .ok()
+        .flatten()
     }
 
     /// Joins the file's queue; returns its lock and whether a run was already queued.
     fn enter(&self, key: &FileKey) -> (Arc<Mutex<()>>, bool) {
         let mut lanes = locked(&self.lanes);
-        let lane = lanes.entry(key.clone()).or_insert_with(|| Lane { lock: Arc::new(Mutex::new(())), pending: 0, last: Outcome::None });
+        let lane = lanes.entry(key.clone()).or_insert_with(|| Lane {
+            lock: Arc::new(Mutex::new(())),
+            pending: 0,
+            last: Outcome::None,
+        });
         let prior = lane.pending > 0;
         lane.pending += 1;
         (lane.lock.clone(), prior)
@@ -94,7 +113,9 @@ impl<H: Host> Indexer<H> {
     /// a tail append prunes only when it was queued behind another run (as Node's queue does).
     fn leave(&self, key: &FileKey, outcome: Option<Outcome>, prune: bool) {
         let mut lanes = locked(&self.lanes);
-        let Some(lane) = lanes.get_mut(key) else { return };
+        let Some(lane) = lanes.get_mut(key) else {
+            return;
+        };
         lane.pending = lane.pending.saturating_sub(1);
         if let Some(o) = outcome {
             lane.last = o;
@@ -108,14 +129,28 @@ impl<H: Host> Indexer<H> {
         }
     }
 
-    fn current(&self, key: &FileKey, generation: Option<u64>, project: &str, user: Option<&str>, seen: u64) -> bool {
+    fn current(
+        &self,
+        key: &FileKey,
+        generation: Option<u64>,
+        project: &str,
+        user: Option<&str>,
+        seen: u64,
+    ) -> bool {
         locked(&self.state).current(key, generation)
             && user.is_none_or(|u| self.host.user_active(u))
             && !self.host.deleted_since(project, user, seen)
     }
 
     /// `indexProjectFile`: index (or re-index) one file; waits for any earlier run of the same file.
-    pub fn index_file(&self, project: &str, file: &str, text: &str, user: Option<&str>, embed: &mut dyn Embed) -> IndexOutcome {
+    pub fn index_file(
+        &self,
+        project: &str,
+        file: &str,
+        text: &str,
+        user: Option<&str>,
+        embed: &mut dyn Embed,
+    ) -> IndexOutcome {
         let user = user.filter(|u| !u.is_empty());
         let key = FileKey::new(project, file, user);
         let seen = self.host.lifecycle_generation(user);
@@ -126,7 +161,14 @@ impl<H: Host> Indexer<H> {
             let _turn = locked(&lane);
             let mut is_current = || self.current(&key, Some(generation), project, user, seen);
             let mut open = || Ok(self.open(project, user));
-            index::index_file_now(&mut open, file, &units(text), &version, &mut is_current, embed)
+            index::index_file_now(
+                &mut open,
+                file,
+                &units(text),
+                &version,
+                &mut is_current,
+                embed,
+            )
         };
         self.leave(&key, Some(outcome_of(&out)), true);
         out
@@ -151,7 +193,9 @@ impl<H: Host> Indexer<H> {
         let (lane, prior) = self.enter(&key);
         let out = {
             let _turn = locked(&lane);
-            let wanted: Option<Option<String>> = locked(&self.state).wanted(&key).map(|w| w.map(str::to_string));
+            let wanted: Option<Option<String>> = locked(&self.state)
+                .wanted(&key)
+                .map(|w| w.map(str::to_string));
             let path = self.host.index_path(project, user);
             let mut is_current = || self.current(&key, generation, project, user, seen);
             let busy = || self.host.foreground_busy();
@@ -164,7 +208,15 @@ impl<H: Host> Indexer<H> {
                 embedding_off: off,
             };
             let (limit, from_page, to_page, final_window) = window;
-            let req = TailRequest { file, head_text, tail, limit, from_page, to_page, final_window };
+            let req = TailRequest {
+                file,
+                head_text,
+                tail,
+                limit,
+                from_page,
+                to_page,
+                final_window,
+            };
             let mut open = || Ok(self.open(project, user));
             index::append_tail_now(&mut open, &req, &mut gates, embed)
         };
@@ -173,7 +225,13 @@ impl<H: Host> Indexer<H> {
     }
 
     /// `deleteProjectFile`: supersedes any run of the file and drops its rows (its text only with `keep_media`).
-    pub fn delete_file(&self, project: &str, file: &str, user: Option<&str>, keep_media: bool) -> Result<(), String> {
+    pub fn delete_file(
+        &self,
+        project: &str,
+        file: &str,
+        user: Option<&str>,
+        keep_media: bool,
+    ) -> Result<(), String> {
         let user = user.filter(|u| !u.is_empty());
         let key = FileKey::new(project, file, user);
         locked(&self.state).request_delete(&key);
@@ -185,12 +243,22 @@ impl<H: Host> Indexer<H> {
     }
 
     /// `wantedVersions`: this process's wanted versions of one project's files, for a search.
-    pub fn wanted_versions(&self, project: &str, user: Option<&str>) -> Vec<(String, Option<String>)> {
+    pub fn wanted_versions(
+        &self,
+        project: &str,
+        user: Option<&str>,
+    ) -> Vec<(String, Option<String>)> {
         locked(&self.state).wanted_versions(project, user)
     }
 
     /// `isCurrentVersion` for a search hit.
-    pub fn is_current_version(&self, project: &str, file: &str, user: Option<&str>, version: Option<&str>) -> bool {
+    pub fn is_current_version(
+        &self,
+        project: &str,
+        file: &str,
+        user: Option<&str>,
+        version: Option<&str>,
+    ) -> bool {
         locked(&self.state).is_current_version(&FileKey::new(project, file, user), version)
     }
 

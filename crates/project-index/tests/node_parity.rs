@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 //! Replays the steps `generate_index_fixtures.cjs` recorded from core's rag.cjs (index, tail append,
 //! delete, busy, embedding failures, retarget) with this crate, and checks after every step that the
@@ -16,7 +21,9 @@ use std::cell::{Cell, RefCell};
 use std::path::{Path, PathBuf};
 
 fn fixture(name: &str) -> Value {
-    let p = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures").join(name);
+    let p = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures")
+        .join(name);
     serde_json::from_str(&std::fs::read_to_string(p).unwrap()).unwrap()
 }
 
@@ -32,7 +39,12 @@ fn chunk_text_matches_node() {
             .iter()
             .map(|c| match c.as_str() {
                 Some(text) => units(text),
-                None => c.as_array().unwrap().iter().map(|u| u.as_u64().unwrap() as u16).collect(),
+                None => c
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|u| u.as_u64().unwrap() as u16)
+                    .collect(),
             })
             .collect();
         let got = chunk_text(&units(case["text"].as_str().unwrap()));
@@ -40,13 +52,18 @@ fn chunk_text_matches_node() {
     }
 }
 
-const WORDS: [&str; 8] = ["alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel"];
+const WORDS: [&str; 8] = [
+    "alpha", "bravo", "charlie", "delta", "echo", "foxtrot", "golf", "hotel",
+];
 
 /// The recorder's `vectorFor` of a chunk's unframed text.
 fn vector_for(text: &str, dim: usize) -> Vec<f64> {
     let mut v = vec![0f64; dim];
     let lower = text.to_lowercase();
-    for w in lower.split(|c: char| !c.is_ascii_lowercase()).filter(|w| !w.is_empty()) {
+    for w in lower
+        .split(|c: char| !c.is_ascii_lowercase())
+        .filter(|w| !w.is_empty())
+    {
         if let Some(i) = WORDS.iter().position(|x| *x == w) {
             if i < dim - 1 {
                 v[i] += 1.0;
@@ -59,7 +76,10 @@ fn vector_for(text: &str, dim: usize) -> Vec<f64> {
 }
 
 fn target(v: &Value) -> Target {
-    Target { profile: v["profile"].as_str().unwrap().into(), model: v["model"].as_str().unwrap().into() }
+    Target {
+        profile: v["profile"].as_str().unwrap().into(),
+        model: v["model"].as_str().unwrap().into(),
+    }
 }
 
 fn dump(path: &Path) -> Value {
@@ -78,9 +98,11 @@ fn dump(path: &Path) -> Value {
                     rusqlite::types::ValueRef::Integer(n) => json!(n),
                     rusqlite::types::ValueRef::Real(f) => json!(f),
                     rusqlite::types::ValueRef::Text(t) => json!(String::from_utf8_lossy(t)),
-                    rusqlite::types::ValueRef::Blob(b) => {
-                        Value::Array(b.chunks(4).map(|c| json!(f64::from(f32::from_le_bytes(c.try_into().unwrap())))).collect())
-                    }
+                    rusqlite::types::ValueRef::Blob(b) => Value::Array(
+                        b.chunks(4)
+                            .map(|c| json!(f64::from(f32::from_le_bytes(c.try_into().unwrap()))))
+                            .collect(),
+                    ),
                 };
                 o.insert(n.clone(), v);
             }
@@ -90,24 +112,44 @@ fn dump(path: &Path) -> Value {
         .collect::<Result<_, _>>()
         .unwrap()
     };
-    let master = rows("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid");
+    let master =
+        rows("SELECT type, name, sql FROM sqlite_master WHERE sql IS NOT NULL ORDER BY rowid");
     let virtuals: Vec<String> = master
         .iter()
-        .filter(|m| m["sql"].as_str().unwrap().to_uppercase().contains("CREATE VIRTUAL TABLE"))
+        .filter(|m| {
+            m["sql"]
+                .as_str()
+                .unwrap()
+                .to_uppercase()
+                .contains("CREATE VIRTUAL TABLE")
+        })
         .map(|m| m["name"].as_str().unwrap().to_string())
         .collect();
     let mut vectors = serde_json::Map::new();
     for v in &virtuals {
-        vectors.insert(v.clone(), Value::Array(rows(&format!("SELECT chunk_id, embedding FROM {v} ORDER BY chunk_id"))));
+        vectors.insert(
+            v.clone(),
+            Value::Array(rows(&format!(
+                "SELECT chunk_id, embedding FROM {v} ORDER BY chunk_id"
+            ))),
+        );
     }
     let mut maps = serde_json::Map::new();
     for m in &master {
         let name = m["name"].as_str().unwrap();
         if m["type"] == "table" && name.starts_with("vecmap_") {
-            maps.insert(name.into(), Value::Array(rows(&format!("SELECT chunk_id, content_hash FROM {name} ORDER BY chunk_id"))));
+            maps.insert(
+                name.into(),
+                Value::Array(rows(&format!(
+                    "SELECT chunk_id, content_hash FROM {name} ORDER BY chunk_id"
+                ))),
+            );
         }
     }
-    let columns: Vec<Value> = rows("PRAGMA table_info(chunks)").into_iter().map(|c| c["name"].clone()).collect();
+    let columns: Vec<Value> = rows("PRAGMA table_info(chunks)")
+        .into_iter()
+        .map(|c| c["name"].clone())
+        .collect();
     json!({
         "columns": columns,
         "chunks": rows("SELECT id, file, chunk_no, body, content_hash, version, direct, kind, meta FROM chunks ORDER BY id"),
@@ -125,7 +167,9 @@ fn same(a: &Value, b: &Value) -> bool {
             let (x, y) = (x.as_f64().unwrap(), y.as_f64().unwrap());
             x == y || (x as f32) == (y as f32)
         }
-        (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q)),
+        (Value::Array(x), Value::Array(y)) => {
+            x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q))
+        }
         (Value::Object(x), Value::Object(y)) => {
             x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w)))
         }
@@ -148,7 +192,11 @@ const USER: &str = "qa-user-p1";
 
 impl Replay {
     fn path(&self, project: &str) -> PathBuf {
-        self.dir.join("users").join(USER).join("rag").join(format!("{project}.db"))
+        self.dir
+            .join("users")
+            .join(USER)
+            .join("rag")
+            .join(format!("{project}.db"))
     }
 
     fn open(&self, project: &str) -> Result<Option<Index>, String> {
@@ -164,8 +212,11 @@ impl Replay {
             if self.short.get() && input.len() > 1 {
                 return Ok(vec![]);
             }
-            let mut data: Vec<Value> =
-                input.iter().enumerate().map(|(i, t)| json!({"index": i, "embedding": vector_for(t, self.dim)})).collect();
+            let mut data: Vec<Value> = input
+                .iter()
+                .enumerate()
+                .map(|(i, t)| json!({"index": i, "embedding": vector_for(t, self.dim)}))
+                .collect();
             data.reverse();
             Ok(data)
         };
@@ -183,7 +234,14 @@ impl Replay {
                 let version = hash(text);
                 let g = self.state.borrow_mut().request_index(&key, &version);
                 let mut current = || self.state.borrow().current(&key, Some(g));
-                let out = index::index_file_now(&mut || self.open(project), file, &units(text), &version, &mut current, &mut embed);
+                let out = index::index_file_now(
+                    &mut || self.open(project),
+                    file,
+                    &units(text),
+                    &version,
+                    &mut current,
+                    &mut embed,
+                );
                 let outcome = if out.ok {
                     Outcome::Ok
                 } else if out.reason.as_deref() == Some("failed") {
@@ -199,7 +257,10 @@ impl Replay {
                     .as_array()
                     .unwrap()
                     .iter()
-                    .map(|t| TailChunk { body: t["body"].as_str().unwrap().into(), page: t["page"].as_i64() })
+                    .map(|t| TailChunk {
+                        body: t["body"].as_str().unwrap().into(),
+                        page: t["page"].as_i64(),
+                    })
                     .collect();
                 let o = &step["opts"];
                 let req = TailRequest {
@@ -212,7 +273,11 @@ impl Replay {
                     final_window: o["final"].as_bool().unwrap(),
                 };
                 let g = self.state.borrow().generation(&key);
-                let wanted = self.state.borrow().wanted(&key).map(|w| w.map(str::to_string));
+                let wanted = self
+                    .state
+                    .borrow()
+                    .wanted(&key)
+                    .map(|w| w.map(str::to_string));
                 let mut current = || self.state.borrow().current(&key, g);
                 let busy = || self.busy.get();
                 let mut gates = TailGates {
@@ -222,12 +287,21 @@ impl Replay {
                     wanted: wanted.as_ref().map(|w| w.as_deref()),
                     embedding_off: false,
                 };
-                index::append_tail_now(&mut || self.open(project), &req, &mut gates, &mut embed).unwrap().to_json()
+                index::append_tail_now(&mut || self.open(project), &req, &mut gates, &mut embed)
+                    .unwrap()
+                    .to_json()
             }
             "delete" => {
                 self.state.borrow_mut().request_delete(&key);
-                let dropped = index::delete_file(&mut || self.open(project), file, step["keepMedia"].as_bool().unwrap()).unwrap();
-                self.state.borrow_mut().after_delete(&key, dropped, true, false);
+                let dropped = index::delete_file(
+                    &mut || self.open(project),
+                    file,
+                    step["keepMedia"].as_bool().unwrap(),
+                )
+                .unwrap();
+                self.state
+                    .borrow_mut()
+                    .after_delete(&key, dropped, true, false);
                 Value::Null
             }
             other => panic!("step {other}"),
@@ -262,12 +336,25 @@ fn index_writes_match_node() {
                 "retarget" => *r.target.borrow_mut() = target(&step["target"]),
                 _ => {
                     let got = r.step(step);
-                    assert!(same(&got, &step["result"]), "{at}: result\n rust {got}\n node {}", step["result"]);
+                    assert!(
+                        same(&got, &step["result"]),
+                        "{at}: result\n rust {got}\n node {}",
+                        step["result"]
+                    );
                     let calls: Vec<usize> = r.calls.borrow_mut().drain(..).collect();
-                    let want: Vec<usize> = step["calls"].as_array().unwrap().iter().map(|c| c.as_u64().unwrap() as usize).collect();
+                    let want: Vec<usize> = step["calls"]
+                        .as_array()
+                        .unwrap()
+                        .iter()
+                        .map(|c| c.as_u64().unwrap() as usize)
+                        .collect();
                     assert_eq!(calls, want, "{at}: embed requests");
                     let (g, v) = r.state.borrow().tracked();
-                    assert_eq!(json!({"generations": g, "versions": v}), step["tracked"], "{at}: tracked state");
+                    assert_eq!(
+                        json!({"generations": g, "versions": v}),
+                        step["tracked"],
+                        "{at}: tracked state"
+                    );
                     let got = dump(&r.path(step["projectId"].as_str().unwrap()));
                     let want = &step["index"];
                     for part in ["columns", "chunks", "vec_meta", "vectors", "maps"] {
@@ -275,7 +362,12 @@ fn index_writes_match_node() {
                             assert_eq!(got.is_null(), want.is_null(), "{at}: index exists");
                             break;
                         }
-                        assert!(same(&got[part], &want[part]), "{at}: index {part}\n rust {}\n node {}", got[part], want[part]);
+                        assert!(
+                            same(&got[part], &want[part]),
+                            "{at}: index {part}\n rust {}\n node {}",
+                            got[part],
+                            want[part]
+                        );
                     }
                     checked += 1;
                 }

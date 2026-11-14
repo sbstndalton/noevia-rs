@@ -85,14 +85,24 @@ pub fn open_index(path: &Path, active: &Target, deleted: &dyn Fn() -> bool) -> R
         let names = st.query_map([], |r| r.get::<_, String>(1)).map_err(err)?;
         names.collect::<Result<_, _>>().map_err(err)?
     };
-    for (col, ty) in [("version", "TEXT"), ("direct", "INTEGER"), ("kind", "TEXT"), ("meta", "TEXT")] {
+    for (col, ty) in [
+        ("version", "TEXT"),
+        ("direct", "INTEGER"),
+        ("kind", "TEXT"),
+        ("meta", "TEXT"),
+    ] {
         if !columns.iter().any(|c| c == col) {
-            db.execute_batch(&format!("ALTER TABLE chunks ADD COLUMN {col} {ty}")).map_err(err)?;
+            db.execute_batch(&format!("ALTER TABLE chunks ADD COLUMN {col} {ty}"))
+                .map_err(err)?;
         }
     }
     slots::adopt_legacy(&db, active)?;
     let slot = slots::find_slot(&db, active)?;
-    Ok(Some(Index { db, active: active.clone(), slot }))
+    Ok(Some(Index {
+        db,
+        active: active.clone(),
+        slot,
+    }))
 }
 
 fn ids(db: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Res<Vec<i64>> {
@@ -103,8 +113,17 @@ fn ids(db: &Connection, sql: &str, args: &[&dyn rusqlite::ToSql]) -> Res<Vec<i64
 
 /// `dropFileRows`: one file's chunks and their vectors in every slot. `text_only` keeps image rows;
 /// `keep_tail_of` keeps the tail rows cut from that version. The caller holds a transaction.
-pub fn drop_file_rows(index: &Index, file: &str, text_only: bool, keep_tail_of: Option<&str>) -> Res<()> {
-    let mut which = if text_only { format!(" AND {TEXT_ROW}") } else { String::new() };
+pub fn drop_file_rows(
+    index: &Index,
+    file: &str,
+    text_only: bool,
+    keep_tail_of: Option<&str>,
+) -> Res<()> {
+    let mut which = if text_only {
+        format!(" AND {TEXT_ROW}")
+    } else {
+        String::new()
+    };
     if keep_tail_of.is_some() {
         which.push_str(&format!(" AND NOT ({TAIL_ROW} AND version IS ?)"));
     }
@@ -112,9 +131,19 @@ pub fn drop_file_rows(index: &Index, file: &str, text_only: bool, keep_tail_of: 
     if let Some(v) = &keep_tail_of {
         args.push(v);
     }
-    let gone = ids(&index.db, &format!("SELECT id FROM chunks WHERE file = ?{which}"), &args)?;
+    let gone = ids(
+        &index.db,
+        &format!("SELECT id FROM chunks WHERE file = ?{which}"),
+        &args,
+    )?;
     slots::drop_chunks(&index.db, &gone)?;
-    index.db.execute(&format!("DELETE FROM chunks WHERE file = ?{which}"), args.as_slice()).map_err(err)?;
+    index
+        .db
+        .execute(
+            &format!("DELETE FROM chunks WHERE file = ?{which}"),
+            args.as_slice(),
+        )
+        .map_err(err)?;
     Ok(())
 }
 
@@ -148,22 +177,35 @@ pub fn embed_rows_into(
         if !is_current() {
             break;
         }
-        let dim = vectors.first().and_then(|v| v.as_ref().map(Vec::len)).unwrap_or(0);
+        let dim = vectors
+            .first()
+            .and_then(|v| v.as_ref().map(Vec::len))
+            .unwrap_or(0);
         let tx = index.db.unchecked_transaction().map_err(err)?;
         let slot = slots::ensure_slot(&tx, target, dim)?;
         let mut items = Vec::new();
         for (j, r) in batch.iter().enumerate() {
-            let Some(Some(vector)) = vectors.get(j) else { continue };
+            let Some(Some(vector)) = vectors.get(j) else {
+                continue;
+            };
             if vector.len() != slot.dim {
                 continue;
             }
             let still = tx
-                .query_row("SELECT 1 FROM chunks WHERE id = ? AND content_hash = ?", params![r.id, r.hash], |_| Ok(()))
+                .query_row(
+                    "SELECT 1 FROM chunks WHERE id = ? AND content_hash = ?",
+                    params![r.id, r.hash],
+                    |_| Ok(()),
+                )
                 .optional()
                 .map_err(err)?
                 .is_some();
             if still {
-                items.push(VectorRow { id: r.id, hash: r.hash.clone(), vector: vector.clone() });
+                items.push(VectorRow {
+                    id: r.id,
+                    hash: r.hash.clone(),
+                    vector: vector.clone(),
+                });
             }
         }
         slots::write_vectors(&tx, &slot, &items)?;
@@ -220,12 +262,19 @@ pub fn index_file_now(
     is_current: &mut dyn FnMut() -> bool,
     embed: &mut dyn Embed,
 ) -> IndexOutcome {
-    let superseded = IndexOutcome { ok: true, superseded: true, ..Default::default() };
+    let superseded = IndexOutcome {
+        ok: true,
+        superseded: true,
+        ..Default::default()
+    };
     if !is_current() {
         return superseded;
     }
     let Ok(Some(mut index)) = open() else {
-        return IndexOutcome { reason: Some("rag-unavailable".into()), ..Default::default() };
+        return IndexOutcome {
+            reason: Some("rag-unavailable".into()),
+            ..Default::default()
+        };
     };
     if !is_current() {
         return superseded;
@@ -233,7 +282,11 @@ pub fn index_file_now(
     match index_open(&mut index, file, text, version, is_current, embed) {
         Ok(out) => out,
         // Node throws here; its queue records the run as failed.
-        Err(e) => IndexOutcome { reason: Some("failed".into()), embed_error: Some(e), ..Default::default() },
+        Err(e) => IndexOutcome {
+            reason: Some("failed".into()),
+            embed_error: Some(e),
+            ..Default::default()
+        },
     }
 }
 
@@ -256,7 +309,12 @@ fn index_open(
         )
         .map_err(err)?;
         tx.commit().map_err(err)?;
-        return Ok(IndexOutcome { ok: true, stored: 1, direct: true, ..Default::default() });
+        return Ok(IndexOutcome {
+            ok: true,
+            stored: 1,
+            direct: true,
+            ..Default::default()
+        });
     }
     // Overlapping windows can yield identical chunks; the (file, content_hash) index keeps one.
     let mut seen = HashSet::new();
@@ -270,15 +328,21 @@ fn index_open(
     drop_file_rows(index, file, true, Some(version))?;
     let mut clashing = Vec::new();
     for (_, h) in &unique {
-        let sql = format!("SELECT id FROM chunks WHERE file = ? AND content_hash = ? AND {TAIL_ROW}");
-        if let Some(id) = tx.query_row(&sql, params![file, h], |r| r.get::<_, i64>(0)).optional().map_err(err)? {
+        let sql =
+            format!("SELECT id FROM chunks WHERE file = ? AND content_hash = ? AND {TAIL_ROW}");
+        if let Some(id) = tx
+            .query_row(&sql, params![file, h], |r| r.get::<_, i64>(0))
+            .optional()
+            .map_err(err)?
+        {
             clashing.push(id);
         }
     }
     if !clashing.is_empty() {
         slots::drop_chunks(&tx, &clashing)?;
         for id in &clashing {
-            tx.execute("DELETE FROM chunks WHERE id = ?", [id]).map_err(err)?;
+            tx.execute("DELETE FROM chunks WHERE id = ?", [id])
+                .map_err(err)?;
         }
     }
     let mut rows = Vec::with_capacity(unique.len());
@@ -288,15 +352,27 @@ fn index_open(
             params![file, i as i64, body, h, version],
         )
         .map_err(err)?;
-        rows.push(Row { id: tx.last_insert_rowid(), body, hash: h, fresh: true });
+        rows.push(Row {
+            id: tx.last_insert_rowid(),
+            body,
+            hash: h,
+            fresh: true,
+        });
     }
     tx.commit().map_err(err)?;
     let active = index.active.clone();
-    let (embedded, embed_error) = match embed_rows_into(index, &active, &rows, is_current, EMBED_BATCH, embed) {
-        Ok(n) => (n, None),
-        Err(e) => (0, Some(e)),
-    };
-    Ok(IndexOutcome { ok: true, stored: rows.len(), embedded, embed_error, ..Default::default() })
+    let (embedded, embed_error) =
+        match embed_rows_into(index, &active, &rows, is_current, EMBED_BATCH, embed) {
+            Ok(n) => (n, None),
+            Err(e) => (0, Some(e)),
+        };
+    Ok(IndexOutcome {
+        ok: true,
+        stored: rows.len(),
+        embedded,
+        embed_error,
+        ..Default::default()
+    })
 }
 
 /// One chunk of a long document's tail (`{ body, page }`).
@@ -349,7 +425,10 @@ pub struct TailOutcome {
 
 impl TailOutcome {
     fn none(reason: &str) -> Self {
-        Self { reason: Some(reason.into()), ..Default::default() }
+        Self {
+            reason: Some(reason.into()),
+            ..Default::default()
+        }
     }
 
     /// The outcome as Node returns it.
@@ -382,35 +461,61 @@ impl TailOutcome {
 fn page_of(body: &str) -> i64 {
     let u = units(body);
     match crate::chunk::page_marker(&u) {
-        Some(end) => body.get(6..end.saturating_sub(1)).and_then(|d| d.parse::<i64>().ok()).unwrap_or(0),
+        Some(end) => body
+            .get(6..end.saturating_sub(1))
+            .and_then(|d| d.parse::<i64>().ok())
+            .unwrap_or(0),
         None => 0,
     }
 }
 
 /// `metaPage`: `Number(JSON.parse(meta).page) || 0`.
 fn meta_page(meta: Option<&str>) -> f64 {
-    let Some(v) = meta.and_then(|m| serde_json::from_str::<Value>(m).ok()) else { return 0.0 };
+    let Some(v) = meta.and_then(|m| serde_json::from_str::<Value>(m).ok()) else {
+        return 0.0;
+    };
     let n = match v.get("page") {
         Some(Value::Number(n)) => n.as_f64().unwrap_or(0.0),
         Some(Value::String(s)) => {
             let t = s.trim();
-            if t.is_empty() { 0.0 } else { t.parse::<f64>().unwrap_or(f64::NAN) }
+            if t.is_empty() {
+                0.0
+            } else {
+                t.parse::<f64>().unwrap_or(f64::NAN)
+            }
         }
         Some(Value::Bool(b)) => f64::from(u8::from(*b)),
         _ => f64::NAN,
     };
-    if n.is_nan() { 0.0 } else { n }
+    if n.is_nan() {
+        0.0
+    } else {
+        n
+    }
 }
 
 fn tail_ids(db: &Connection, file: &str) -> Res<Vec<(i64, String)>> {
-    let mut st = db.prepare(&format!("SELECT id, content_hash FROM chunks WHERE file = ? AND {TAIL_ROW}")).map_err(err)?;
-    let rows = st.query_map([file], |r| Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))).map_err(err)?;
+    let mut st = db
+        .prepare(&format!(
+            "SELECT id, content_hash FROM chunks WHERE file = ? AND {TAIL_ROW}"
+        ))
+        .map_err(err)?;
+    let rows = st
+        .query_map([file], |r| {
+            Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?))
+        })
+        .map_err(err)?;
     rows.collect::<Result<_, _>>().map_err(err)
 }
 
 fn vectored(index: &Index, file: &str) -> Res<HashSet<i64>> {
-    let Some(slot) = slots::find_slot(&index.db, &index.active)? else { return Ok(HashSet::new()) };
-    let sql = format!("SELECT c.id FROM {} WHERE c.file = ? AND {TAIL_ROW}", slots::join_sql(&slot));
+    let Some(slot) = slots::find_slot(&index.db, &index.active)? else {
+        return Ok(HashSet::new());
+    };
+    let sql = format!(
+        "SELECT c.id FROM {} WHERE c.file = ? AND {TAIL_ROW}",
+        slots::join_sql(&slot)
+    );
     Ok(ids(&index.db, &sql, &[&file])?.into_iter().collect())
 }
 
@@ -437,7 +542,9 @@ pub fn append_tail_now(
     if !gates.index_exists {
         return Ok(TailOutcome::none("no-index"));
     }
-    let Ok(Some(mut index)) = open() else { return Ok(TailOutcome::none("rag-unavailable")) };
+    let Ok(Some(mut index)) = open() else {
+        return Ok(TailOutcome::none("rag-unavailable"));
+    };
     let version = hash(req.head_text);
     if gates.wanted.is_some_and(|w| w != Some(version.as_str())) {
         return Ok(TailOutcome::none("reindex-pending"));
@@ -446,7 +553,11 @@ pub fn append_tail_now(
     let head: Vec<(Option<String>, i64)> = {
         let sql = format!("SELECT version, COUNT(*) AS n FROM chunks WHERE file = ? AND {TEXT_ROW} AND NOT {TAIL_ROW} GROUP BY version");
         let mut st = index.db.prepare(&sql).map_err(err)?;
-        let rows = st.query_map([file], |r| Ok((r.get::<_, Option<String>>(0)?, r.get::<_, i64>(1)?))).map_err(err)?;
+        let rows = st
+            .query_map([file], |r| {
+                Ok((r.get::<_, Option<String>>(0)?, r.get::<_, i64>(1)?))
+            })
+            .map_err(err)?;
         rows.collect::<Result<_, _>>().map_err(err)?
     };
     let head_ok = matches!(head.as_slice(), [(Some(v), _)] if *v == version);
@@ -457,9 +568,13 @@ pub fn append_tail_now(
         return Ok(TailOutcome::none("embedding-off"));
     }
     let head_hashes: HashSet<String> = {
-        let sql = format!("SELECT content_hash FROM chunks WHERE file = ? AND {TEXT_ROW} AND NOT {TAIL_ROW}");
+        let sql = format!(
+            "SELECT content_hash FROM chunks WHERE file = ? AND {TEXT_ROW} AND NOT {TAIL_ROW}"
+        );
         let mut st = index.db.prepare(&sql).map_err(err)?;
-        let rows = st.query_map([file], |r| r.get::<_, String>(0)).map_err(err)?;
+        let rows = st
+            .query_map([file], |r| r.get::<_, String>(0))
+            .map_err(err)?;
         rows.collect::<Result<_, _>>().map_err(err)?
     };
     let mut wanted = Vec::new();
@@ -473,19 +588,33 @@ pub fn append_tail_now(
             continue;
         }
         seen.insert(h.clone());
-        let page = t.page.filter(|p| *p > 0).unwrap_or_else(|| page_of(&t.body));
-        wanted.push(Wanted { body: t.body.clone(), hash: h, page });
+        let page = t
+            .page
+            .filter(|p| *p > 0)
+            .unwrap_or_else(|| page_of(&t.body));
+        wanted.push(Wanted {
+            body: t.body.clone(),
+            hash: h,
+            page,
+        });
     }
     let lo = req.from_page.map_or(f64::NEG_INFINITY, |p| p as f64);
     let hi = req.to_page.map_or(f64::INFINITY, |p| p as f64);
     let rows = {
         let tx = index.db.unchecked_transaction().map_err(err)?;
         let stale: Vec<i64> = {
-            let sql = format!("SELECT id, content_hash, version, meta FROM chunks WHERE file = ? AND {TAIL_ROW}");
+            let sql = format!(
+                "SELECT id, content_hash, version, meta FROM chunks WHERE file = ? AND {TAIL_ROW}"
+            );
             let mut st = tx.prepare(&sql).map_err(err)?;
             let all = st
                 .query_map([file], |r| {
-                    Ok((r.get::<_, i64>(0)?, r.get::<_, String>(1)?, r.get::<_, Option<String>>(2)?, r.get::<_, Option<String>>(3)?))
+                    Ok((
+                        r.get::<_, i64>(0)?,
+                        r.get::<_, String>(1)?,
+                        r.get::<_, Option<String>>(2)?,
+                        r.get::<_, Option<String>>(3)?,
+                    ))
                 })
                 .map_err(err)?;
             let mut out = Vec::new();
@@ -495,7 +624,11 @@ pub fn append_tail_now(
                     true
                 } else {
                     let page = meta_page(meta.as_deref());
-                    if page >= lo && page <= hi { !seen.contains(&h) } else { req.final_window && page > hi }
+                    if page >= lo && page <= hi {
+                        !seen.contains(&h)
+                    } else {
+                        req.final_window && page > hi
+                    }
                 };
                 if gone {
                     out.push(id);
@@ -506,10 +639,14 @@ pub fn append_tail_now(
         if !stale.is_empty() {
             slots::drop_chunks(&tx, &stale)?;
             for id in &stale {
-                tx.execute("DELETE FROM chunks WHERE id = ?", [id]).map_err(err)?;
+                tx.execute("DELETE FROM chunks WHERE id = ?", [id])
+                    .map_err(err)?;
             }
         }
-        let mut present: HashMap<String, i64> = tail_ids(&tx, file)?.into_iter().map(|(id, h)| (h, id)).collect();
+        let mut present: HashMap<String, i64> = tail_ids(&tx, file)?
+            .into_iter()
+            .map(|(id, h)| (h, id))
+            .collect();
         let have = vectored(&index, file)?;
         let mut out = Vec::new();
         // First the rows already appended whose embedding failed or was cut short, then new rows.
@@ -519,12 +656,22 @@ pub fn append_tail_now(
             }
             if let Some(&id) = present.get(&w.hash) {
                 if !have.contains(&id) {
-                    out.push(Row { id, body: w.body.clone(), hash: w.hash.clone(), fresh: false });
+                    out.push(Row {
+                        id,
+                        body: w.body.clone(),
+                        hash: w.hash.clone(),
+                        fresh: false,
+                    });
                 }
             }
         }
-        let max: Option<i64> =
-            tx.query_row("SELECT MAX(chunk_no) AS n FROM chunks WHERE file = ?", [file], |r| r.get(0)).map_err(err)?;
+        let max: Option<i64> = tx
+            .query_row(
+                "SELECT MAX(chunk_no) AS n FROM chunks WHERE file = ?",
+                [file],
+                |r| r.get(0),
+            )
+            .map_err(err)?;
         let mut next = max.unwrap_or(-1) + 1;
         for w in &wanted {
             if out.len() >= req.limit {
@@ -543,7 +690,12 @@ pub fn append_tail_now(
             next += 1;
             let id = tx.last_insert_rowid();
             present.insert(w.hash.clone(), id);
-            out.push(Row { id, body: w.body.clone(), hash: w.hash.clone(), fresh: true });
+            out.push(Row {
+                id,
+                body: w.body.clone(),
+                hash: w.hash.clone(),
+                fresh: true,
+            });
         }
         tx.commit().map_err(err)?;
         out
@@ -555,14 +707,24 @@ pub fn append_tail_now(
         let busy = gates.busy;
         let current = &mut *gates.is_current;
         let mut check = || current() && !busy();
-        match embed_rows_into(&mut index, &active, &rows, &mut check, TAIL_EMBED_REQUEST, embed) {
+        match embed_rows_into(
+            &mut index,
+            &active,
+            &rows,
+            &mut check,
+            TAIL_EMBED_REQUEST,
+            embed,
+        ) {
             Ok(n) => embedded = n,
             Err(e) => error = Some(to_text(units(&e).get(..200).unwrap_or(&units(&e)))),
         }
     }
     let yielded = error.is_none() && embedded < rows.len() && (gates.busy)();
     let have = vectored(&index, file)?;
-    let ids: HashMap<String, i64> = tail_ids(&index.db, file)?.into_iter().map(|(id, h)| (h, id)).collect();
+    let ids: HashMap<String, i64> = tail_ids(&index.db, file)?
+        .into_iter()
+        .map(|(id, h)| (h, id))
+        .collect();
     let missing = |w: &&Wanted| !ids.get(&w.hash).is_some_and(|id| have.contains(id));
     let first_missing = wanted.iter().find(missing);
     let pending = wanted.iter().filter(missing).count();
@@ -589,8 +751,14 @@ pub fn append_tail_now(
 
 /// `deleteProjectFile`'s write: drops the file's rows (its text only with `keep_media`). Returns
 /// false when the index could not be opened (the caller's [`crate::state::FileState::after_delete`]).
-pub fn delete_file(open: &mut dyn FnMut() -> Res<Option<Index>>, file: &str, keep_media: bool) -> Res<bool> {
-    let Ok(Some(index)) = open() else { return Ok(false) };
+pub fn delete_file(
+    open: &mut dyn FnMut() -> Res<Option<Index>>,
+    file: &str,
+    keep_media: bool,
+) -> Res<bool> {
+    let Ok(Some(index)) = open() else {
+        return Ok(false);
+    };
     let tx = index.db.unchecked_transaction().map_err(err)?;
     drop_file_rows(&index, file, keep_media, None)?;
     tx.commit().map_err(err)?;

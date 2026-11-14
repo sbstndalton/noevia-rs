@@ -19,7 +19,11 @@ pub struct FileKey {
 impl FileKey {
     pub fn new(project: &str, file: &str, user: Option<&str>) -> Self {
         // `userId || null`: an empty account id is the shared index.
-        Self { user: user.filter(|u| !u.is_empty()).map(str::to_string), project: project.into(), file: file.into() }
+        Self {
+            user: user.filter(|u| !u.is_empty()).map(str::to_string),
+            project: project.into(),
+            file: file.into(),
+        }
     }
 }
 
@@ -90,7 +94,11 @@ impl FileState {
 
     /// `wantedVersions(projectId, userId)`: every file of a project with a wanted version (null included),
     /// as a search sends them to the front.
-    pub fn wanted_versions(&self, project: &str, user: Option<&str>) -> Vec<(String, Option<String>)> {
+    pub fn wanted_versions(
+        &self,
+        project: &str,
+        user: Option<&str>,
+    ) -> Vec<(String, Option<String>)> {
         let user = user.filter(|u| !u.is_empty());
         let mut out: Vec<_> = self
             .versions
@@ -111,7 +119,13 @@ impl FileState {
     /// `deleteProjectFile`'s last step. `dropped`: the rows went; otherwise the open failed, and
     /// `rag_available` says whether that was a transient error (the null version must stay) or no
     /// index can exist at all. `queued`: a run of this file is still in its queue.
-    pub fn after_delete(&mut self, key: &FileKey, dropped: bool, rag_available: bool, queued: bool) {
+    pub fn after_delete(
+        &mut self,
+        key: &FileKey,
+        dropped: bool,
+        rag_available: bool,
+        queued: bool,
+    ) {
         if dropped {
             if self.versions.get(key) == Some(&None) {
                 self.versions.remove(key);
@@ -167,7 +181,10 @@ mod tests {
         assert!(!s.is_current_version(&key(), Some("v1")));
         s.drained(&key(), Outcome::Ok, true);
         assert_eq!(s.tracked(), (0, 0));
-        assert!(s.is_current_version(&key(), Some("v1")), "nothing known: every version is current");
+        assert!(
+            s.is_current_version(&key(), Some("v1")),
+            "nothing known: every version is current"
+        );
     }
 
     #[test]
@@ -178,7 +195,11 @@ mod tests {
         assert_eq!(s.wanted(&key()), Some(Some("v1")));
         s.request_index(&key(), "v2");
         s.drained(&key(), Outcome::Unavailable, true);
-        assert_eq!(s.wanted(&key()), Some(Some("v2")), "a transient open error keeps filtering");
+        assert_eq!(
+            s.wanted(&key()),
+            Some(Some("v2")),
+            "a transient open error keeps filtering"
+        );
         s.drained(&key(), Outcome::Unavailable, false);
         assert_eq!(s.wanted(&key()), None, "no deps: no index to protect");
     }
@@ -213,7 +234,13 @@ mod tests {
         s.request_delete(&FileKey::new("p", "a", Some("u")));
         s.request_index(&FileKey::new("p", "c", None), "vc");
         s.request_index(&FileKey::new("q", "d", Some("u")), "vd");
-        assert_eq!(s.wanted_versions("p", Some("u")), vec![("a".into(), None), ("b".into(), Some("vb".into()))]);
-        assert_eq!(s.wanted_versions("p", Some("")), vec![("c".into(), Some("vc".into()))]);
+        assert_eq!(
+            s.wanted_versions("p", Some("u")),
+            vec![("a".into(), None), ("b".into(), Some("vb".into()))]
+        );
+        assert_eq!(
+            s.wanted_versions("p", Some("")),
+            vec![("c".into(), Some("vc".into()))]
+        );
     }
 }

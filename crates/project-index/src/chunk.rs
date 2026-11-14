@@ -59,8 +59,14 @@ fn js_space(u: u16) -> bool {
 
 /// `String.prototype.trim` on code units.
 pub fn js_trim(text: &[u16]) -> &[u16] {
-    let start = text.iter().position(|u| !js_space(*u)).unwrap_or(text.len());
-    let end = text.iter().rposition(|u| !js_space(*u)).map_or(start, |i| i + 1);
+    let start = text
+        .iter()
+        .position(|u| !js_space(*u))
+        .unwrap_or(text.len());
+    let end = text
+        .iter()
+        .rposition(|u| !js_space(*u))
+        .map_or(start, |i| i + 1);
     text.get(start..end).unwrap_or_default()
 }
 
@@ -74,7 +80,11 @@ pub fn page_marker(text: &[u16]) -> Option<usize> {
     if !text.starts_with(&lead) {
         return None;
     }
-    let digits = text.iter().skip(lead.len()).take_while(|u| digit(**u)).count();
+    let digits = text
+        .iter()
+        .skip(lead.len())
+        .take_while(|u| digit(**u))
+        .count();
     if digits == 0 {
         return None;
     }
@@ -120,7 +130,10 @@ pub fn chunk_text(text: &[u16]) -> Vec<Vec<u16>> {
 
 /// `chunkText` of a `&str` (a convenience: the chunks come back as Node would store them).
 pub fn chunk_str(text: &str) -> Vec<String> {
-    chunk_text(&units(text)).iter().map(|c| to_text(c)).collect()
+    chunk_text(&units(text))
+        .iter()
+        .map(|c| to_text(c))
+        .collect()
 }
 
 fn chunk_part(text: &[u16], page_part: bool) -> Vec<Vec<u16>> {
@@ -130,7 +143,9 @@ fn chunk_part(text: &[u16], page_part: bool) -> Vec<Vec<u16>> {
         bounds.push(text.len());
         let mut out = Vec::new();
         for pair in bounds.windows(2) {
-            let (Some(&a), Some(&b)) = (pair.first(), pair.get(1)) else { continue };
+            let (Some(&a), Some(&b)) = (pair.first(), pair.get(1)) else {
+                continue;
+            };
             let part = text.get(a..b).unwrap_or_default();
             if part.is_empty() {
                 continue;
@@ -166,7 +181,9 @@ fn chunk_part(text: &[u16], page_part: bool) -> Vec<Vec<u16>> {
                 Some(para) if para > half => end = start + para + 1,
                 _ => {
                     let best = (half..window.len()).rev().find(|&i| {
-                        window.get(i).is_some_and(|u| b".!?\n".iter().any(|c| u16::from(*c) == *u))
+                        window
+                            .get(i)
+                            .is_some_and(|u| b".!?\n".iter().any(|c| u16::from(*c) == *u))
                     });
                     if let Some(best) = best.filter(|b| *b > 0) {
                         end = start + best + 1;
@@ -206,18 +223,27 @@ mod tests {
 
     #[test]
     fn pages_keep_their_marker_and_empty_pages_vanish() {
-        assert_eq!(chunk_str("[Page 1]\none\n\n[Page 2]\n  \n[Page 3]\nthree"), vec!["[Page 1]\none", "[Page 3]\nthree"]);
+        assert_eq!(
+            chunk_str("[Page 1]\none\n\n[Page 2]\n  \n[Page 3]\nthree"),
+            vec!["[Page 1]\none", "[Page 3]\nthree"]
+        );
     }
 
     #[test]
     fn hash_is_sha256_hex() {
-        assert_eq!(hash(""), "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+        assert_eq!(
+            hash(""),
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
     }
 
     #[test]
     fn windows_overlap_by_the_stride() {
         let text = "x".repeat(3000);
         let chunks = chunk_str(&text);
-        assert_eq!(chunks.iter().map(String::len).collect::<Vec<_>>(), vec![1200, 1200, 900]);
+        assert_eq!(
+            chunks.iter().map(String::len).collect::<Vec<_>>(),
+            vec![1200, 1200, 900]
+        );
     }
 }

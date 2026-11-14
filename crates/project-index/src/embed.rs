@@ -34,7 +34,11 @@ fn truthy(v: Option<&Value>) -> bool {
 pub type Vector = Option<Vec<f64>>;
 
 fn vector(item: &Value) -> Vector {
-    item.get("embedding")?.as_array()?.iter().map(Value::as_f64).collect()
+    item.get("embedding")?
+        .as_array()?
+        .iter()
+        .map(Value::as_f64)
+        .collect()
 }
 
 fn integer_index(item: &Value) -> Option<f64> {
@@ -60,7 +64,9 @@ pub fn embed_framed(call: &mut dyn EmbedOnce, input: &[String]) -> Result<Vec<Ve
                 if items.iter().all(|it| integer_index(it).is_some()) {
                     // Array.prototype.sort is stable; equal indexes keep their order.
                     ordered.sort_by(|a, b| {
-                        integer_index(a).unwrap_or(0.0).total_cmp(&integer_index(b).unwrap_or(0.0))
+                        integer_index(a)
+                            .unwrap_or(0.0)
+                            .total_cmp(&integer_index(b).unwrap_or(0.0))
                     });
                 }
                 return Ok(ordered.into_iter().map(vector).collect());
@@ -82,7 +88,12 @@ mod tests {
 
     #[test]
     fn a_batch_is_ordered_by_index() {
-        let mut call = |_: &[String]| Ok(vec![json!({"index": 1, "embedding": [2.0]}), json!({"index": 0, "embedding": [1.0]})]);
+        let mut call = |_: &[String]| {
+            Ok(vec![
+                json!({"index": 1, "embedding": [2.0]}),
+                json!({"index": 0, "embedding": [1.0]}),
+            ])
+        };
         let out = embed_framed(&mut call, &["a".into(), "b".into()]).unwrap();
         assert_eq!(out, vec![Some(vec![1.0]), Some(vec![2.0])]);
     }
@@ -92,7 +103,11 @@ mod tests {
         let mut calls = Vec::new();
         let mut call = |input: &[String]| {
             calls.push(input.len());
-            if input.len() > 1 { Ok(vec![]) } else { Ok(vec![json!({"embedding": [input[0].len() as f64]})]) }
+            if input.len() > 1 {
+                Ok(vec![])
+            } else {
+                Ok(vec![json!({"embedding": [input[0].len() as f64]})])
+            }
         };
         let out = embed_framed(&mut call, &["a".into(), "bb".into()]).unwrap();
         assert_eq!(out, vec![Some(vec![1.0]), Some(vec![2.0])]);
@@ -102,14 +117,22 @@ mod tests {
     #[test]
     fn one_text_needs_exactly_one_vector() {
         let mut call = |_: &[String]| Ok(vec![json!({"embedding": []}), json!({"embedding": []})]);
-        assert_eq!(embed_framed(&mut call, &["a".into()]).unwrap_err(), "embeddings returned no vector");
+        assert_eq!(
+            embed_framed(&mut call, &["a".into()]).unwrap_err(),
+            "embeddings returned no vector"
+        );
         let mut none = |_: &[String]| Ok(vec![json!({"embedding": null})]);
         assert!(embed_framed(&mut none, &["a".into()]).is_err());
     }
 
     #[test]
     fn mixed_indexes_keep_the_answer_order() {
-        let mut call = |_: &[String]| Ok(vec![json!({"index": 1, "embedding": [2.0]}), json!({"embedding": [1.0]})]);
+        let mut call = |_: &[String]| {
+            Ok(vec![
+                json!({"index": 1, "embedding": [2.0]}),
+                json!({"embedding": [1.0]}),
+            ])
+        };
         let out = embed_framed(&mut call, &["a".into(), "b".into()]).unwrap();
         assert_eq!(out, vec![Some(vec![2.0]), Some(vec![1.0])]);
     }
