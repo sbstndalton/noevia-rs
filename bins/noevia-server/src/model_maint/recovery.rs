@@ -467,11 +467,19 @@ mod tests {
     /// A Node latch stub on 127.0.0.1: grants (confirmed for 10 s: within the 15 s margin at once),
     /// renews, takes the recovery barrier and its proof, and gives latches back.
     async fn node_stub() -> u16 {
+        node_stub_slow(Duration::ZERO).await
+    }
+
+    /// As [`node_stub`], giving a latch back (its DELETE) only after `delete`.
+    async fn node_stub_slow(delete: Duration) -> u16 {
         use axum::{body::Body, http::Request, http::Response};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let port = listener.local_addr().unwrap().port();
-        let app = axum::Router::new().fallback(|r: Request<Body>| async move {
+        let app = axum::Router::new().fallback(move |r: Request<Body>| async move {
             let path = r.uri().path().to_owned();
+            if r.method() == "DELETE" && !path.contains("/recovery/") {
+                tokio::time::sleep(delete).await;
+            }
             let (status, body) = if path.contains("/recovery/") || r.method() == "DELETE" {
                 (204, String::new())
             } else if path == "/internal/model-maintenance/lease" {
@@ -515,6 +523,8 @@ mod tests {
     struct Probe {
         maint: Arc<super::super::Maint>,
         seen: Arc<Mutex<Vec<bool>>>,
+        /// Every attempt succeeds at once (otherwise its hold is refused).
+        succeed: bool,
     }
 
     impl Env for Probe {
@@ -529,7 +539,11 @@ mod tests {
             gone
         }
         async fn hold(&self) -> Result<(), String> {
-            Err("probe".into())
+            if self.succeed {
+                Ok(())
+            } else {
+                Err("probe".into())
+            }
         }
         async fn settle(&self, _: &()) -> Result<(), String> {
             Ok(())
@@ -558,6 +572,7 @@ mod tests {
                 Probe {
                     maint: Arc::clone(&m),
                     seen: Arc::clone(&seen),
+                    succeed: false,
                 },
             ));
             let hold = m
@@ -584,6 +599,45 @@ mod tests {
             assert!(m.maintenance_held());
             driver.abort();
         }
+    }
+
+    /// Re-review O1: `release` lets the hold go once. The driver, kicked then, completes its whole
+    /// attempt while the release still waits for Node's acknowledgement; the `Drop` at the end of
+    /// `release` owes no stale settle again.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_released_lost_hold_owes_its_settle_once() {
+        let port = node_stub_slow(Duration::from_millis(500)).await;
+        let m = test_maint(port, true);
+        let seen = Arc::new(Mutex::new(Vec::new()));
+        let driver = tokio::spawn(drive(
+            Arc::clone(&m.coverage.recoveries),
+            Probe {
+                maint: Arc::clone(&m),
+                seen: Arc::clone(&seen),
+                succeed: true,
+            },
+        ));
+        let hold = m
+            .acquire("qa reload", Duration::from_secs(300), false)
+            .await
+            .unwrap();
+        assert!(
+            hold.assert_covered(Duration::ZERO).is_err(),
+            "lost within the margin"
+        );
+        hold.release().await;
+        assert_eq!(
+            seen.lock().unwrap().len(),
+            1,
+            "one attempt, during the release"
+        );
+        assert!(
+            !m.coverage.recoveries.pending(),
+            "the settle ran and is not owed again"
+        );
+        tokio::time::sleep(Duration::from_millis(100)).await;
+        assert_eq!(seen.lock().unwrap().len(), 1, "no extra attempt");
+        driver.abort();
     }
 
     /// Review finding 1: a recovery's own hold that is lost re-owes the settle when let go (Node's

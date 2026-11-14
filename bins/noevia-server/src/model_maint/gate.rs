@@ -597,6 +597,8 @@ struct Shared {
     /// The release found the recovery required (decided under the release lock): letting the hold
     /// go owes the settle even without a loss of its own (a fenced or already-owed lease).
     owes_settle: AtomicBool,
+    /// `let_go` ran (Node's release is idempotent: `if(released)return`).
+    let_go_done: AtomicBool,
 }
 
 impl Shared {
@@ -628,6 +630,7 @@ impl Shared {
             lost_wake: tokio::sync::Notify::new(),
             settle: None,
             owes_settle: AtomicBool::new(false),
+            let_go_done: AtomicBool::new(false),
         })
     }
 
@@ -824,8 +827,12 @@ impl Shared {
     /// Node's `release()`: the hold is let go (under the same lock as a loss, so a loss is either
     /// seen here or never happens), and a lost one, or one whose release found the recovery
     /// required, owes `settle`.
-    fn let_go(&self) {
+    /// Once only (true the first time): a second call (the `Drop` after `release`) owes nothing again.
+    fn let_go(&self) -> bool {
         let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if self.let_go_done.swap(true, Ordering::AcqRel) {
+            return false;
+        }
         self.released.store(true, Ordering::Release);
         let owes = self.lost.load(Ordering::Acquire) || self.owes_settle.load(Ordering::Acquire);
         drop(state);
@@ -833,6 +840,7 @@ impl Shared {
         if let (true, Some(r)) = (owes, self.settle.as_ref()) {
             r.require(SETTLE, None);
         }
+        true
     }
 
     /// The release's `if(recoveries.size)scheduleRecovery(0)`, once this process's admission is back.
@@ -1360,8 +1368,9 @@ impl Hold {
     }
 
     fn finish(&mut self) {
+        let mut first = false;
         if self.shared.node {
-            self.shared.let_go();
+            first = self.shared.let_go();
         } else {
             self.shared.released.store(true, Ordering::Release);
             self.shared.wake.notify_one();
@@ -1370,7 +1379,7 @@ impl Hold {
             self.local.store(false, Ordering::Release);
             self.local_finished = true;
         }
-        if self.shared.node {
+        if first {
             self.shared.kick_owed();
         }
     }

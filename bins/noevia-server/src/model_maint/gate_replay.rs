@@ -396,6 +396,20 @@ async fn replay(sc: &Value, options: &Value) -> (Vec<Value>, Vec<Value>) {
     (steps, events)
 }
 
+/// `n` attempt times from `first`: Node's `recoveryDelay` (retry, doubling, capped) from the options.
+fn backoff(first: u64, n: usize, options: &Value) -> Vec<u64> {
+    let (retry, max) = (
+        ms(&options["recoveryRetryMs"]),
+        ms(&options["recoveryMaxDelayMs"]),
+    );
+    let (mut out, mut delay) = (vec![first], 0u64);
+    while out.len() < n {
+        delay = max.min(retry.max(if delay == 0 { retry } else { delay * 2 }));
+        out.push(out.last().unwrap() + delay);
+    }
+    out
+}
+
 fn without_t(events: &[Value]) -> Vec<Value> {
     events
         .iter()
@@ -440,6 +454,27 @@ async fn replays_nodes_gate_recordings() {
     let options = &fixture["options"];
     let scenarios = fixture["scenarios"].as_array().unwrap();
     assert!(scenarios.len() >= 13);
+    // The backoff the driver is held to is Node's own where Node applies it (a refused fresh hold).
+    let refused = scenarios
+        .iter()
+        .find(|s| {
+            s["name"]
+                == json!("a recovery whose fresh hold is refused backs off 5 s doubling to 60 s")
+        })
+        .unwrap();
+    let node_attempts: Vec<u64> = refused["events"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|e| e["call"] == json!("acquire") && e["recovery"] == json!(true))
+        .map(|e| e["t"].as_u64().unwrap())
+        .collect();
+    assert!(node_attempts.len() >= 7, "{node_attempts:?}");
+    assert_eq!(
+        backoff(node_attempts[0], node_attempts.len(), options),
+        node_attempts,
+        "Node's recorded backoff"
+    );
     for sc in scenarios {
         let name = sc["name"].as_str().unwrap();
         let (steps, events) = replay(sc, options).await;
@@ -465,12 +500,7 @@ async fn replays_nodes_gate_recordings() {
             .filter(|e| e["call"] == json!("acquire") && e["recovery"] == json!(true))
             .map(|e| e["t"].as_u64().unwrap())
             .collect();
-        let mut expected = vec![release];
-        let mut wait = 5_000;
-        while expected.len() < attempts.len() {
-            expected.push(expected.last().unwrap() + wait);
-            wait = (wait * 2).min(60_000);
-        }
+        let expected = backoff(release, attempts.len(), options);
         assert_eq!(attempts, expected, "{name}: the backoff Node intends");
         let last = *expected.last().unwrap();
         for (ours, node) in steps.iter().zip(node_steps) {
