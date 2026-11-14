@@ -40,11 +40,55 @@ impl Kind {
 /// The model manager the deployment configured (index.cjs: `MODEL_MANAGER_KIND`,
 /// `MODEL_MANAGER_BASE_URL` (or `LEMONADE_BASE_URL`, or the inference base), `MODEL_MANAGER_API_KEY`
 /// (or the inference key)).
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Config {
     pub kind: Kind,
     pub base_url: String,
     pub api_key: Option<String>,
+}
+
+/// Where a [`Request`] goes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Target {
+    /// The configured model manager (its base URL): the llama.cpp manager's maintenance hold
+    /// header belongs on these only.
+    Manager,
+    /// The public Hugging Face API: no credentials, no hold header, nothing but what the request
+    /// lists.
+    PublicHub,
+}
+
+/// Debug without the key (it is a credential).
+impl std::fmt::Debug for Config {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Config")
+            .field("kind", &self.kind)
+            .field("base_url", &self.base_url)
+            .field("api_key", &self.api_key.as_ref().map(|_| "<redacted>"))
+            .finish()
+    }
+}
+
+/// Debug with the `Authorization` value redacted.
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let headers: Vec<(&str, &str)> = self
+            .headers
+            .iter()
+            .map(|(k, v)| {
+                let secret = k.eq_ignore_ascii_case("authorization");
+                (k.as_str(), if secret { "<redacted>" } else { v.as_str() })
+            })
+            .collect();
+        f.debug_struct("Request")
+            .field("target", &self.target)
+            .field("method", &self.method)
+            .field("url", &self.url)
+            .field("headers", &headers)
+            .field("body", &self.body)
+            .field("timeout_ms", &self.timeout_ms)
+            .finish()
+    }
 }
 
 impl Config {
@@ -77,8 +121,11 @@ impl Config {
 
 /// One HTTP request the host sends as http.cjs `fetchJson(url, init, timeoutMs)` does: `redirect:
 /// 'error'` (a redirect throws), an 8 MiB reply cap, the deadline over the whole exchange.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct Request {
+    /// Who the request is for: the host attaches nothing of the manager's (its key, the
+    /// maintenance hold header) to a [`Target::PublicHub`] request.
+    pub target: Target,
     pub method: &'static str,
     pub url: String,
     pub headers: Vec<(String, String)>,
@@ -148,6 +195,7 @@ pub fn variants_request(config: &Config, repo: &str) -> Result<Request, Thrown> 
     match config.kind {
         Kind::None => Err(Thrown::internal(DISABLED)),
         Kind::Lemonade => Ok(Request {
+            target: Target::Manager,
             method: "GET",
             url: format!(
                 "{}/api/v1/pull/variants?checkpoint={}",
@@ -161,6 +209,7 @@ pub fn variants_request(config: &Config, repo: &str) -> Result<Request, Thrown> 
         }),
         // Public Hugging Face file metadata; the inference key is not forwarded.
         Kind::Llamacpp => Ok(Request {
+            target: Target::PublicHub,
             method: "GET",
             url: format!("https://huggingface.co/api/models/{repo}?blobs=true"),
             headers: Vec::new(),
@@ -318,7 +367,9 @@ fn number(s: Option<&String>) -> f64 {
 /// row up by name, so the rows' `size_bytes` and their `localeCompare` order are not computed.
 /// `Err`: a `null` sibling (`file.rfilename` throws).
 pub fn variant_rows(siblings: &[JValue]) -> Result<Vec<JValue>, Thrown> {
+    // In the order the quantizations first appear (core's Map), indexed by quantization.
     let mut groups: Vec<(String, Vec<File>)> = Vec::new();
+    let mut index: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
     for file in siblings {
         if file == &JValue::Null {
             return Err(Thrown::internal(
@@ -337,9 +388,12 @@ pub fn variant_rows(siblings: &[JValue]) -> Result<Vec<JValue>, Thrown> {
             shard: q.shard,
             count: q.count,
         };
-        match groups.iter_mut().find(|(k, _)| *k == q.quant) {
+        match index.get(&q.quant).and_then(|&at| groups.get_mut(at)) {
             Some((_, list)) => list.push(f),
-            None => groups.push((q.quant, vec![f])),
+            None => {
+                index.insert(q.quant.clone(), groups.len());
+                groups.push((q.quant, vec![f]));
+            }
         }
     }
     let mut rows = Vec::new();
@@ -443,6 +497,7 @@ pub fn lemonade_pull_request(
         ("subscribe", JValue::Bool(false)),
     ]);
     Request {
+        target: Target::Manager,
         method: "POST",
         url: format!("{}/api/v1/pull", config.base()),
         headers: config.headers(),
@@ -454,6 +509,7 @@ pub fn lemonade_pull_request(
 /// The llama.cpp router's pull request (`POST /models`, `post`'s default deadline).
 pub fn llamacpp_pull_request(config: &Config, checkpoint: &JValue) -> Request {
     Request {
+        target: Target::Manager,
         method: "POST",
         url: format!("{}/models", config.base()),
         headers: config.headers(),
@@ -479,6 +535,53 @@ mod tests {
         assert_eq!(q("m-Q.gguf"), None);
         assert_eq!(q("a.Q4.b_Q5_K.gguf"), Some(("Q5_K".into(), None, None)));
         assert_eq!(q("m-F16-1-of-2.gguf"), None);
+    }
+
+    #[test]
+    fn debug_never_shows_the_key() {
+        let key = "qa-secret-key-0451";
+        let config = Config {
+            kind: Kind::Lemonade,
+            base_url: "http://qa-manager.invalid".into(),
+            api_key: Some(key.into()),
+        };
+        let request = lemonade_pull_request(
+            &config,
+            &JValue::from("qa"),
+            &JValue::from("qa/x"),
+            &JValue::from("llamacpp"),
+        );
+        assert!(request.headers.iter().any(|(_, v)| v.contains(key)));
+        for text in [
+            format!("{config:?}"),
+            format!("{request:?}"),
+            format!("{config:#?}"),
+            format!("{request:#?}"),
+        ] {
+            assert!(!text.contains(key), "{text}");
+        }
+    }
+
+    #[test]
+    fn the_public_hub_request_is_marked_and_bare() {
+        let mut config = Config {
+            kind: Kind::Llamacpp,
+            base_url: "http://qa-router.invalid/v1".into(),
+            api_key: Some("qa-secret-key-0451".into()),
+        };
+        let hub = variants_request(&config, "qa/x").unwrap();
+        assert_eq!(hub.target, Target::PublicHub);
+        assert!(hub.headers.is_empty());
+        assert!(hub.url.starts_with("https://huggingface.co/"));
+        assert_eq!(
+            llamacpp_pull_request(&config, &JValue::from("qa/x")).target,
+            Target::Manager
+        );
+        config.kind = Kind::Lemonade;
+        assert_eq!(
+            variants_request(&config, "qa/x").unwrap().target,
+            Target::Manager
+        );
     }
 
     #[test]

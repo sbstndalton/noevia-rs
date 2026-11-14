@@ -42,11 +42,17 @@
 //! - `meta-error-at-cap`: a revision reply whose stream fails right after exactly 4 MiB is read by
 //!   Node as complete (its look past the cap swallows the error); the host reports the failure
 //!   ([`artifact::Fetched::body`] is `Err` before `max_bytes`), and the reason is its message.
+//! - `reserved-code-points`: a manager reply that holds a character of U+10F800..U+10FFFF is not
+//!   readable by the host (`wtf16::parse` refuses it: those code points stand for lone
+//!   surrogates), so a variant with such a name cannot be found where Node would find it. A query
+//!   value with those characters matches no variant (Node: it equals no lone-surrogate name).
 //!
 //! # Kept as core does (recorded; worth a look upstream)
 //!
-//! - The artifact check runs for any signed-in user (a GET passes the models prelude), and each one
-//!   may fetch up to four 16 MiB prefixes from Hugging Face; only two run at once.
+//! - The artifact check runs for any signed-in user (a GET passes the models prelude). Each request
+//!   makes the variants call (on llama.cpp a Hugging Face listing of up to 8 MiB) and, unless
+//!   cached, up to four 16 MiB prefixes (64 MiB); only two checks run at once, but an `unknown`
+//!   answer is never cached, so a member can repeat it at will. Filed upstream; parity kept.
 //! - The variants request (llama.cpp) refuses redirects while the artifact check follows them.
 //! - A llama.cpp pull whose request throws (no answer, the deadline) leaves the download tracker at
 //!   `requested`: only a refused answer marks it `rejected`.
@@ -61,9 +67,10 @@ pub mod gguf;
 pub mod js;
 pub mod manager;
 
-use artifact::{Artifacts, Fetcher, Start};
+use artifact::{Artifacts, Checked, Fetcher};
 use js_json::{wtf16, JValue};
 use manager::{Config, Kind, Reply, Request, Thrown};
+use std::sync::Mutex;
 
 /// http.cjs `readBody`'s limit.
 pub const BODY_LIMIT: usize = 1024 * 1024;
@@ -73,6 +80,9 @@ pub trait Host: Fetcher {
     /// `service.invalidateModelReads()`: drops the shared model reads (a write under
     /// `/api/models/` does, before and after it is handled).
     fn invalidate_model_reads(&mut self);
+    /// `modelScanCache.clear()`: drops the cached model folder scan (an administrator's write
+    /// under `/api/models/`, any method but GET, HEAD and OPTIONS).
+    fn clear_model_scan(&mut self);
     /// One request to the model manager (or, for llama.cpp's variants, to Hugging Face), as
     /// http.cjs `fetchJson` sends it; `Err` for what `fetchJson` throws (no answer, the deadline,
     /// a redirect) or the llama.cpp manager's coverage loss.
@@ -144,7 +154,7 @@ fn shared_reads(path: &str) -> bool {
 /// wrapper's invalidation after a write.
 pub fn handle(
     config: &Config,
-    artifacts: &mut Artifacts,
+    artifacts: &Mutex<Artifacts>,
     call: Call<'_>,
     host: &mut impl Host,
 ) -> Outcome {
@@ -154,22 +164,25 @@ pub fn handle(
     }
     let out = if call.path.starts_with("/api/models/") && writes(call.method) && !call.admin {
         error(403, "administrator required")
-    } else if call.path == "/api/models/mtp-artifact" && call.method == "GET" {
-        match mtp_selection(config, call.query, host) {
-            Ok((repo, files)) => match artifacts.start(&repo, &files, host.now_ms()) {
-                Start::Done(body) => answer(200, body),
-                Start::Join(key) => Outcome::Join(key),
-                Start::Run(key) => {
-                    let ran = artifact::run(&key, host);
-                    answer(200, artifacts.finish(&key, ran, host.now_ms()))
-                }
-            },
-            Err(out) => out,
-        }
-    } else if call.path == "/api/models/pull" && call.method == "POST" {
-        pull(config, call.body, host)
     } else {
-        Outcome::Pass
+        // routes/models.cjs: any other change under /api/models/ also drops the folder scan.
+        if call.path.starts_with("/api/models/") && writes(call.method) && call.method != "OPTIONS"
+        {
+            host.clear_model_scan();
+        }
+        if call.path == "/api/models/mtp-artifact" && call.method == "GET" {
+            match mtp_selection(config, call.query, host) {
+                Ok((repo, files)) => match artifact::check_shared(artifacts, &repo, &files, host) {
+                    Checked::Answer(body) => answer(200, body),
+                    Checked::Join(key) => Outcome::Join(key),
+                },
+                Err(out) => out,
+            }
+        } else if call.path == "/api/models/pull" && call.method == "POST" {
+            pull(config, call.body, host)
+        } else {
+            Outcome::Pass
+        }
     };
     if write {
         host.invalidate_model_reads();
@@ -214,7 +227,11 @@ pub fn mtp_selection(
             JValue::Obj(_) => {
                 let hit = match (v.get("name"), &wanted) {
                     (JValue::Null, None) => true,
-                    (JValue::Str(name), Some(w)) => name == w,
+                    // A name held with a lone surrogate (js-json's U+10F800..) never equals a
+                    // query value, which cannot hold one.
+                    (JValue::Str(name), Some(w)) => {
+                        name == w && !w.chars().any(|c| wtf16::lone_unit(c).is_some())
+                    }
                     _ => false,
                 };
                 if hit {

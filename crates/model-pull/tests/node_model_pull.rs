@@ -10,9 +10,10 @@
 
 use js_json::{wtf16, JValue};
 use model_pull::artifact::{self, Artifacts, FetchError, Fetched, Fetcher, Start};
-use model_pull::manager::{self, Config, Kind, Reply, Request, Thrown};
+use model_pull::manager::{self, Config, Kind, Reply, Request, Target, Thrown};
 use model_pull::{gguf, handle, mtp_selection, Call, Host, Outcome};
 use std::collections::BTreeMap;
+use std::sync::Mutex;
 
 fn fixture() -> JValue {
     wtf16::parse(include_str!("fixtures/node-model-pull.v1.json")).expect("the fixture parses")
@@ -158,6 +159,7 @@ struct Stub<'a> {
     calls: Vec<JValue>,
     fetches: Vec<JValue>,
     invalidated: f64,
+    scan_cleared: f64,
     entered: i32,
     requested: Option<JValue>,
     rejected: bool,
@@ -175,6 +177,7 @@ impl<'a> Stub<'a> {
             calls: Vec::new(),
             fetches: Vec::new(),
             invalidated: 0.0,
+            scan_cleared: 0.0,
             entered: 0,
             requested: None,
             rejected: false,
@@ -205,7 +208,16 @@ impl Host for Stub<'_> {
         self.invalidated += 1.0;
     }
 
+    fn clear_model_scan(&mut self) {
+        self.scan_cleared += 1.0;
+    }
+
     fn send(&mut self, request: &Request) -> Result<Reply, Thrown> {
+        let hub = request.url.starts_with("https://huggingface.co/");
+        assert_eq!(request.target == Target::PublicHub, hub, "{request:?}");
+        if hub {
+            assert!(request.headers.is_empty());
+        }
         let mut send = vec![
             ("url".to_string(), JValue::from(request.url.as_str())),
             ("method".to_string(), JValue::from(request.method)),
@@ -290,7 +302,7 @@ fn the_fixture_names_its_sources_and_the_cut_lines() {
             "{file}"
         );
     }
-    for block in ["prelude", "mtp", "pull", "run", "derive"] {
+    for block in ["prelude", "scan", "mtp", "pull", "run", "derive"] {
         assert!(f.get("blocks").get(block).is_object(), "{block}");
     }
     assert_eq!(f.get("limit"), &JValue::Num(gguf::LIMIT as f64));
@@ -410,7 +422,7 @@ fn the_pull_matches_node() {
                 .as_deref()
                 .filter(|b| b.len() <= model_pull::BODY_LIMIT),
         };
-        let out = handle(&config, &mut Artifacts::new(), call, &mut host);
+        let out = handle(&config, &Mutex::new(Artifacts::new()), call, &mut host);
         if out == Outcome::Forward {
             // Named difference body-unsupported.
             assert!(
@@ -540,7 +552,7 @@ fn the_mtp_artifact_check_matches_node() {
     let mut seen = BTreeMap::new();
     let (mut requests, mut definite) = (0, 0);
     for scenario in list(&f, "mtp") {
-        let mut artifacts = Artifacts::new();
+        let artifacts = Mutex::new(Artifacts::new());
         for step in items(scenario.get("steps")) {
             let now = step.get("at").as_num().unwrap() as i64;
             let hf = step.get("hf");
@@ -565,11 +577,13 @@ fn the_mtp_artifact_check_matches_node() {
                             let (s, b) = outcome_parts(&out);
                             Pending::Done(s.unwrap(), b)
                         }
-                        Ok((repo, files)) => match artifacts.start(&repo, &files, now) {
-                            Start::Done(b) => Pending::Done(200, b),
-                            Start::Run(key) => Pending::Run(key),
-                            Start::Join(key) => Pending::Join(key),
-                        },
+                        Ok((repo, files)) => {
+                            match artifacts.lock().unwrap().start(&repo, &files, now) {
+                                Start::Done(b) => Pending::Done(200, b),
+                                Start::Run(key) => Pending::Run(key),
+                                Start::Join(key) => Pending::Join(key),
+                            }
+                        }
                     });
                     hosts.push(host);
                 }
@@ -577,7 +591,8 @@ fn the_mtp_artifact_check_matches_node() {
                 for (p, host) in pending.iter().zip(hosts.iter_mut()) {
                     if let Pending::Run(key) = p {
                         let ran = artifact::run(key, host);
-                        answers.push((key.clone(), artifacts.finish(key, ran, now)));
+                        answers
+                            .push((key.clone(), artifacts.lock().unwrap().finish(key, ran, now)));
                     }
                 }
                 for ((p, host), r) in pending
@@ -614,7 +629,7 @@ fn the_mtp_artifact_check_matches_node() {
                         admin: r.get("role").as_str() == Some("admin"),
                         body: None,
                     };
-                    let out = handle(&config, &mut artifacts, call, &mut host);
+                    let out = handle(&config, &artifacts, call, &mut host);
                     let (status, body) = outcome_parts(&out);
                     differs |= compare_mtp(r, status, &body, hf, &mut seen);
                     assert_eq!(

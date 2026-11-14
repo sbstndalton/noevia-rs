@@ -86,11 +86,13 @@ const PRELUDE = routes('prelude', "    if (!['GET', 'HEAD'].includes(req.method 
   "      return json(res, 403, { error: 'administrator required' });\n    }\n");
 const MTP = routes('mtp', "    if (p === '/api/models/mtp-artifact' && req.method === 'GET') {", '\n    }\n');
 const PULL = routes('pull', "    if (p === '/api/models/pull' && req.method === 'POST') {", '\n    }\n');
+const SCAN = routes('scan', '    // A change to the models anywhere else', 'modelScanCache.clear();\n');
 const RUN = routes('run', '    const run = async () => {', '\n    };\n');
 const DERIVE = cutter('server/models.cjs')('derive', '  function deriveUserModelName(checkpoint) {', '\n  }\n');
 const AsyncFunction = (async () => {}).constructor;
-const route = new AsyncFunction('req', 'res', 'ctx', 'json', 'readBody', 'modelManager', 'service', 'require',
-  `const PASS = Symbol('unhandled');\n${DERIVE}\n  async function handle(req, res, { path: p, authn, url }) {\n${PRELUDE}${MTP}${PULL}    return PASS;\n  }\n${RUN}    return run();`);
+// Between the prelude and the scan line core has only routes of other paths (/api/stats, routing-default, auto-roles).
+const route = new AsyncFunction('req', 'res', 'ctx', 'json', 'readBody', 'modelManager', 'service', 'require', 'modelScanCache',
+  `const PASS = Symbol('unhandled');\n${DERIVE}\n  async function handle(req, res, { path: p, authn, url }) {\n${PRELUDE}${SCAN}${MTP}${PULL}    return PASS;\n  }\n${RUN}    return run();`);
 const deriveUserModelName = new Function(`${DERIVE}\nreturn deriveUserModelName;`)();
 
 // ── Deterministic inputs ────────────────────────────────────────────────────────────────────
@@ -295,9 +297,10 @@ async function callRoute({ method, p, role, query, body, manager }) {
   const reqStub = { method, async *[Symbol.asyncIterator]() { for (const c of chunks) yield c; } };
   const jsonStub = (r, status, b) => { out.status = status; out.body = viaJson(b); };
   const service = { invalidateModelReads: () => { out.invalidated = (out.invalidated || 0) + 1; } };
+  const scan = { clear: () => { out.scanCleared = (out.scanCleared || 0) + 1; } };
   const url = new URL(query === undefined ? p : `${p}?${query}`, 'http://localhost');
   try {
-    const handled = await route(reqStub, {}, { path: p, authn: { user: { id: 'qa-user', role } }, url }, jsonStub, readBody, manager, service, routeRequire);
+    const handled = await route(reqStub, {}, { path: p, authn: { user: { id: 'qa-user', role } }, url }, jsonStub, readBody, manager, service, routeRequire, scan);
     if (!handled) out.unhandled = true;
   } catch (err) {
     // index.cjs: a rejection is answered with errorResponse.
@@ -339,7 +342,7 @@ const PULL_REPLIES = [[ok({ id: 'qa-job-1', modelName: 'qa-served' })], [ok({ jo
   [{ throw: { message: 'qa: fetch failed' } }], [{ throw: { message: 'qa: lease lost', status: 503 } }], [{ throw: { message: 'qa: refused', status: 409 } }],
   [{ throw: { message: '', status: 404 } }], [{ throw: { message: 'qa', status: 600 } }], [{ throw: { message: 'qa', status: 399 } }]];
 async function pulls() {
-  for (const method of ['POST', 'PUT', 'GET', 'DELETE', 'HEAD', 'PATCH']) for (const role of ['admin', 'member']) {
+  for (const method of ['POST', 'PUT', 'GET', 'DELETE', 'HEAD', 'PATCH', 'OPTIONS']) for (const role of ['admin', 'member']) {
     await addPull({ ...LEMONADE, method, role, body: PULL_BODIES[0], script: PULL_REPLIES[0] });
   }
   for (const kind of [NONE, LEMONADE, LLAMACPP, { ...LEMONADE, base: 'http://qa-manager.invalid/qa/', apiKey: 'local' }, { ...LEMONADE, apiKey: '' },
@@ -450,7 +453,7 @@ async function mtps() {
   const hf1 = (answer) => happyHf(repo, files1, [answer]);
 
   // Methods and roles (a member may GET; any other method is a write: the prelude, then not this route).
-  for (const method of ['GET', 'HEAD', 'POST', 'PUT']) for (const role of ['admin', 'member']) {
+  for (const method of ['GET', 'HEAD', 'POST', 'PUT', 'OPTIONS']) for (const role of ['admin', 'member']) {
     await one(`method ${method} ${role}`, base({ method, role }), method === 'GET' ? hf1(ggufAnswer(MTP_GGUF)) : {});
   }
   // Queries.
@@ -473,6 +476,10 @@ async function mtps() {
     [ok({ variants: [{ name: 'Q4_K_M', files: 'qa-Q4_K_M.gguf' }] })], [ok({ variants: [{ name: 'Q4_K_M', files: { a: 'qa-Q4_K_M.gguf' } }] })], [ok({ variants: [{ name: 'Q4_K_M', files: 7 }] })],
     [ok({ variants: [{ name: 'Q4_K_M', files: [7] }] })], [ok({ variants: [{ name: 'Q4_K_M', files: ['qa-Q4_K_M.gguf', 'qa-Q4_K_M.gguf'] }] })]]) {
     await one(`lemonade ${JSON.stringify(script)}`, { query: q(), script }, hf1(ggufAnswer(MTP_GGUF)));
+  }
+  // U+10F800 in the query (js-json's stand-in for a lone surrogate) and a variant named with a lone surrogate.
+  for (const variant of ['%F4%8F%A0%80', '%ED%A0%80']) {
+    await one(`lone surrogate variant ${variant}`, { query: `repo=${repo}&variant=${variant}`, script: lemonadeVariants([ROW('\ud800', files1)]) }, hf1(ggufAnswer(MTP_GGUF)));
   }
   await one('variant null name, no variant param', { query: `repo=${repo}`, script: [ok({ variants: [ROW(null, files1)] })] }, hf1(ggufAnswer(MTP_GGUF)));
   await one('lemonade base and key', { ...base(), base: 'http://qa-manager.invalid/qa/', apiKey: '' }, hf1(ggufAnswer(MTP_GGUF)));
