@@ -419,13 +419,23 @@ async fn open_refuses_with_node_s_codes_and_words() {
         *r.fake.ready.lock().unwrap() = Some(Ready {
             ok: false,
             code: code.map(str::to_string),
-            error: "QA machine serves another model.".into(),
+            error: Some("QA machine serves another model.".into()),
         });
         assert_eq!(
             refused(r.relay.open("t", None, None).await.unwrap_err()),
             (want.into(), "QA machine serves another model.".into())
         );
     }
+    // No error text: `Error(undefined).message` is "".
+    *r.fake.ready.lock().unwrap() = Some(Ready {
+        ok: false,
+        code: None,
+        error: None,
+    });
+    assert_eq!(
+        refused(r.relay.open("t", None, None).await.unwrap_err()),
+        ("machineUnreachable".into(), String::new())
+    );
     *r.fake.ready.lock().unwrap() = None;
     // No relay (unset, or a listener that could not bind).
     r.relay.disable();
@@ -454,7 +464,7 @@ async fn every_request_rechecks_the_role_and_the_machine() {
     *r.fake.ready.lock().unwrap() = Some(Ready {
         ok: false,
         code: Some("machineUnreachable".into()),
-        error: "QA machine is not answering.".into(),
+        error: Some("QA machine is not answering.".into()),
     });
     assert_eq!(
         json(r.relay.handle(req("POST", CHAT, t, body)).await),
@@ -467,12 +477,28 @@ async fn every_request_rechecks_the_role_and_the_machine() {
     *r.fake.ready.lock().unwrap() = Some(Ready {
         ok: false,
         code: None,
-        error: "QA machine is not answering.".into(),
+        error: Some("QA machine is not answering.".into()),
     });
     assert_eq!(
         json(r.relay.handle(req("POST", CHAT, t, body)).await),
         error(502, "QA machine is not answering.", None)
     );
+    // An answer without an error text: Node's JSON.stringify leaves `message` out (noevia#2676).
+    *r.fake.ready.lock().unwrap() = Some(Ready {
+        ok: false,
+        code: Some("machineWrongModel".into()),
+        error: None,
+    });
+    match r.relay.handle(req("POST", CHAT, t, body)).await {
+        Reply::Json { status, body } => {
+            assert_eq!(status, 502);
+            assert_eq!(
+                body,
+                r#"{"error":{"type":"relay_error","code":"machineWrongModel"}}"#
+            );
+        }
+        other => panic!("not JSON: {other:?}"),
+    }
     *r.fake.ready.lock().unwrap() = None;
     // The connection fails: the #1840 text.
     r.fake.refuse_connect.store(true, Ordering::SeqCst);

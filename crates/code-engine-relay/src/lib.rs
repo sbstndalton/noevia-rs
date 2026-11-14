@@ -66,12 +66,14 @@ pub fn target_key(t: Option<&Target>) -> Option<String> {
     t.map(|t| format!("{}|{}|{}", t.machine_id, t.base_url, t.model))
 }
 
-/// chat-machines.cjs `ready(target)`: `{ ok }`, else the #1840 code and text.
+/// chat-machines.cjs `ready(target)`: `{ ok }`, else the #1840 code and text. `error` is `None`
+/// where Node's answer has no `error` (the relay's 502 then has no `message`, as
+/// `JSON.stringify` drops an undefined key).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Ready {
     pub ok: bool,
     pub code: Option<String>,
-    pub error: String,
+    pub error: Option<String>,
 }
 
 impl Ready {
@@ -79,7 +81,7 @@ impl Ready {
         Ready {
             ok: true,
             code: None,
-            error: String::new(),
+            error: None,
         }
     }
 }
@@ -403,10 +405,16 @@ pub fn json_error(
     message: &str,
     code: Option<&str>,
 ) -> Reply<std::convert::Infallible> {
-    let mut error = vec![
-        ("message".to_string(), JValue::Str(message.into())),
-        ("type".to_string(), JValue::Str("relay_error".into())),
-    ];
+    error_body(status, Some(message), code)
+}
+
+/// `jsonError` with `message` possibly undefined (then the key is left out).
+fn error_body<U>(status: u16, message: Option<&str>, code: Option<&str>) -> Reply<U> {
+    let mut error = Vec::new();
+    if let Some(message) = message {
+        error.push(("message".to_string(), JValue::Str(message.into())));
+    }
+    error.push(("type".to_string(), JValue::Str("relay_error".into())));
     if let Some(code) = code.filter(|c| !c.is_empty()) {
         error.push(("code".into(), JValue::Str(code.into())));
     }
@@ -421,10 +429,7 @@ fn stringify(v: &JValue) -> String {
 }
 
 fn error_reply<U>(status: u16, message: &str, code: Option<&str>) -> Reply<U> {
-    match json_error(status, message, code) {
-        Reply::Json { status, body } => Reply::Json { status, body },
-        _ => Reply::Cut,
-    }
+    error_body(status, Some(message), code)
 }
 
 /// JS `\s` (WhiteSpace and LineTerminator).
@@ -561,7 +566,8 @@ impl<M: Machines> Relay<M> {
                 .code
                 .filter(|c| !c.is_empty())
                 .unwrap_or_else(|| "machineUnreachable".into());
-            return Err(refusal(&code, ready.error));
+            // `Error(undefined).message` is "".
+            return Err(refusal(&code, ready.error.unwrap_or_default()));
         }
         let context_tokens = self.machines.context_tokens(&t).await;
         let Some(token) = mint() else {
@@ -683,7 +689,7 @@ impl<M: Machines> Relay<M> {
         let ready = or_cut!(self.machines.ready(&t));
         if !ready.ok {
             self.refused(&lease, ready.code.as_deref());
-            return error_reply(502, &ready.error, ready.code.as_deref());
+            return error_body(502, ready.error.as_deref(), ready.code.as_deref());
         }
         // #1880: each forwarded request counts as a turn on the machine until its answer has been relayed.
         slot.turn = self.machines.begin_turn(&t.machine_id);
