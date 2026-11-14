@@ -439,6 +439,131 @@ fn read(dir: &Path, project: Option<&JValue>, args: &JValue) -> Option<Outcome> 
     Some(done(out, false))
 }
 
+/// core mcp-internal.cjs `textResult(text, isError)`: the in-app server's tool result.
+fn text_result(text: String, is_error: bool) -> JValue {
+    let mut items = vec![(
+        "content".to_string(),
+        JValue::Arr(vec![JValue::obj([
+            ("type", JValue::Str("text".into())),
+            ("text", JValue::Str(text)),
+        ])]),
+    )];
+    if is_error {
+        items.push(("isError".to_string(), JValue::Bool(true)));
+    }
+    JValue::Obj(items)
+}
+
+/// mcp-internal-tools.cjs `requireProject`'s refusal, as the in-app server answers a throw.
+const NO_PROJECT: &str = "ERROR: this chat is not in a project, so there are no project files";
+
+/// mcp-internal-tools.cjs `clip`: at most [`TOOL_RESULT_CAP`] UTF-16 units, then a mark.
+fn clip(text: &str) -> String {
+    let u = units(text);
+    if u.len() > TOOL_RESULT_CAP {
+        format!("{}\n…[truncated]", slice(&u, 0, TOOL_RESULT_CAP))
+    } else {
+        text.to_string()
+    }
+}
+
+/// The in-app MCP server's (core mcp-internal.cjs + mcp-internal-tools.cjs) result for one of its
+/// read-only project tools, `project_list_files` or `project_read_file`, called for the account whose
+/// directory is `dir` with the project as stored now (`None`: no project in the call, or none of that
+/// id). `None` leaves the call to core's server (a tool this does not answer, or an answer core words
+/// from an error the port does not copy).
+pub fn inapp_result(
+    dir: &Path,
+    project: Option<&JValue>,
+    name: &str,
+    arguments: &JValue,
+) -> Option<JValue> {
+    match name {
+        "project_list_files" => {
+            let Some(project) = project else {
+                return Some(text_result(NO_PROJECT.into(), true));
+            };
+            Some(text_result(list_files(dir, project)?, false))
+        }
+        "project_read_file" => {
+            let Some(project) = project else {
+                return Some(text_result(NO_PROJECT.into(), true));
+            };
+            // createHandler: `params.arguments` when it is a plain object, else `{}`; then
+            // readProjectFile's `JSON.stringify(args)` read back by the tool.
+            let args = if arguments.is_object() {
+                arguments.clone()
+            } else {
+                JValue::Obj(Vec::new())
+            };
+            match read_project_file(dir, Some(project), &args) {
+                // The in-app server answers the tool's text as it is (never isError: the tool's own
+                // "ERROR: ..." texts are text results there).
+                Outcome::Done(r) => Some(text_result(r.text, false)),
+                Outcome::Core => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// mcp-internal-tools.cjs `project_list_files`: every file with where it came from and its length.
+fn list_files(dir: &Path, project: &JValue) -> Option<String> {
+    let project_id = project.get("id").as_str().unwrap_or("");
+    let files: &[JValue] = match project.get("files") {
+        JValue::Arr(items) => items,
+        _ => &[],
+    };
+    if files.is_empty() {
+        return Some("This project has no files attached.".into());
+    }
+    let mut lines = Vec::with_capacity(files.len());
+    for f in files {
+        // A record the pipeline never writes (core's listing throws on null, words primitives oddly).
+        if !f.is_object() {
+            return None;
+        }
+        let source = f.get("source");
+        let kind = if source.truthy() {
+            format!("from folder {}", js_json::to_js_string(source).ok()?)
+        } else if f.get("document").truthy() {
+            "document".into()
+        } else {
+            "text".into()
+        };
+        // source-text.cjs isExternal: a valid text pointer and no own content (the workspace load gives
+        // such a file its content accessor); textLength: the saved `chars` when a safe integer, else
+        // the text's length.
+        let own = own_content(f);
+        let reference = js_json::to_js_string(f.get("textRef")).ok()?;
+        let external = own.is_none()
+            && reference.len() == 64
+            && reference
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        let size = if external || own.is_some_and(|c| c.as_str().is_some()) {
+            let chars = f
+                .get("chars")
+                .as_num()
+                .filter(|n| external && n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_991.0);
+            match chars {
+                Some(n) => format!("{} chars", number_to_string(n)),
+                None => format!("{} chars", wtf16::len(&content(dir, project_id, f)?)),
+            }
+        } else {
+            "no readable text".into()
+        };
+        lines.push(format!(
+            "{} — {kind}, {size}",
+            js_json::to_js_string(f.get("name")).ok()?
+        ));
+    }
+    Some(clip(&format!(
+        "Pass a name exactly as shown (or just its file name, when unique) to project_read_file.\n{}",
+        lines.join("\n")
+    )))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
