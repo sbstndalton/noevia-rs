@@ -856,15 +856,12 @@ async fn on_a_machine(
         return Err(fail(409, ON_A_MACHINE));
     };
     let task = record.get("id").as_str().unwrap_or("").to_string();
-    let opened = state
-        .open(user, &task, model)
-        .await
-        .map_err(|r| Fail {
-            status: Some(409),
-            message: r.message.clone(),
-            public_message: Some(r.message),
-            result: JValue::Undefined,
-        })?;
+    let opened = state.open(user, &task, model).await.map_err(|r| Fail {
+        status: Some(409),
+        message: r.message.clone(),
+        public_message: Some(r.message),
+        result: JValue::Undefined,
+    })?;
     let engine = Engine {
         base_url: Some(opened.base_url.clone()),
         api_key: Some(opened.token.clone()),

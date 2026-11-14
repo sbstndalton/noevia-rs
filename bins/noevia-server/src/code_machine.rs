@@ -206,7 +206,12 @@ pub fn unreachable_text(t: &machines::Target, detail: &str) -> String {
 /// chat-machines.cjs `wrongModelText(t, served)`.
 pub fn wrong_model_text(t: &machines::Target, served: &[String]) -> String {
     let role = label(&t.role);
-    let shown = served.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+    let shown = served
+        .iter()
+        .take(3)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
     let shown = if shown.is_empty() {
         "no model".to_string()
     } else {
@@ -450,13 +455,7 @@ impl FrontMachines {
         let result = if !model_stream::net::url_allowed(&url) {
             Health::Unreachable("not-on-this-network")
         } else {
-            match self
-                .client
-                .get(&url)
-                .timeout(HEALTH_TIMEOUT)
-                .send()
-                .await
-            {
+            match self.client.get(&url).timeout(HEALTH_TIMEOUT).send().await {
                 Ok(r) => health_of_status(r.status().as_u16()),
                 Err(e) => health_of_error(&e),
             }
@@ -609,7 +608,10 @@ pub struct RelayState {
 }
 
 fn log_relay(entry: &JValue) {
-    println!("[code-relay] {}", wtf16::stringify(entry).unwrap_or_default());
+    println!(
+        "[code-relay] {}",
+        wtf16::stringify(entry).unwrap_or_default()
+    );
 }
 
 /// Build the relay over the front's registry. `url` is the relay as the sandbox reaches it (`None`:
@@ -756,7 +758,9 @@ pub async fn start(
         code_engine_relay::bind::Bind::Lookup(h) => Some(lookup(h).await),
         code_engine_relay::bind::Bind::Explicit(_) => None,
     };
-    let (address, fallback) = env.bind.address(|h| looked.unwrap_or(Err(format!("getaddrinfo ENOTFOUND {h}"))));
+    let (address, fallback) = env
+        .bind
+        .address(|h| looked.unwrap_or(Err(format!("getaddrinfo ENOTFOUND {h}"))));
     if let Some(entry) = fallback {
         log_relay(&entry);
     }
@@ -948,7 +952,9 @@ mod tests {
     fn model_ids_reads_data_then_models() {
         let ids = |t: &str| model_ids(&wtf16::parse(t).unwrap());
         assert_eq!(
-            ids(r#"{"data":[{"id":"a"},{"id":"a"},{"model":"b"},{"name":"c"},"d",{"id":" "},{"id":5},{"id":"x\u0001"},null]}"#),
+            ids(
+                r#"{"data":[{"id":"a"},{"id":"a"},{"model":"b"},{"name":"c"},"d",{"id":" "},{"id":5},{"id":"x\u0001"},null]}"#
+            ),
             ["a", "b", "c", "d"]
         );
         assert_eq!(ids(r#"{"models":[{"name":"m"}]}"#), ["m"]);

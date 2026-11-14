@@ -3,7 +3,12 @@
 //! `/props`, a forwarded chat completion with the model forced and no credential, the refusals and
 //! the lease's end. Answers are chat-machines.cjs's and code-machine.cjs's
 //! (code-machine-1853.test.cjs, chat-machines-1840.test.cjs).
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 use axum::{
     extract::State,
     http::{HeaderMap, StatusCode},
