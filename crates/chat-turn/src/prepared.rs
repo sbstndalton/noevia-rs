@@ -61,6 +61,9 @@ pub struct Prepared {
     /// save; `onceTools`, present only when there are any; a core that offers one hands the turn off only to a
     /// front naming the `once` capability).
     pub once_tools: Vec<String>,
+    /// #769: the provenance policy is on for this turn (`provenance: true`, present only then; a core that has it
+    /// on hands the turn off only to a front naming the `provenance` capability).
+    pub provenance: bool,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -237,6 +240,7 @@ impl Prepared {
                 _ => names(frame, "onceTools")?,
             },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
+            provenance: flag(frame, "provenance"),
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),
