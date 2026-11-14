@@ -1,5 +1,6 @@
 use super::*;
 use crate::{Assessment, Verdict};
+use std::collections::BTreeSet;
 
 fn tree(files: &[(&str, &str)]) -> Tree {
     files
@@ -510,6 +511,68 @@ fn the_embedded_recordings_file_verdicts_plan_on_a_tree_built_from_their_index_u
         after[INDEX],
         "async function handleRequestInner(req, res) {\n}\n"
     );
+    let deleted: Vec<String> = plans.iter().map(|p| p.file.clone()).collect();
+    assert!(check(&t, &after, &deleted).is_empty());
+}
+
+/// Lines 1308-1436 of core main 8f100d0's server/index.cjs: the refusal guard block (66 guards among bridges and
+/// comments), copied verbatim so the guard rule runs on the real shapes.
+const INDEX_GUARDS: &str = include_str!("../fixtures/index-guards-core-8f100d0.txt");
+
+#[test]
+fn core_mains_guard_block_plans_every_pinned_file_verdict_mechanically() {
+    let rec = crate::embedded().unwrap();
+    let m = crate::Manifest::parse(include_str!("../fixtures/front-owned-routes.txt")).unwrap();
+    let list = crate::classify(&rec, &m.front(&rec));
+    let files = list
+        .iter()
+        .filter(|a| {
+            matches!(
+                a.verdict,
+                Verdict::DeleteFile | Verdict::DeleteFileEditTests { .. }
+            )
+        })
+        .count();
+    // The pinned delete list: 24 plain + 8 with test edits.
+    assert_eq!(files, 32);
+    let mut t = Tree::new();
+    t.insert(
+        INDEX.into(),
+        format!("async function handleRequestInner(req, res) {{\n{INDEX_GUARDS}}}\n"),
+    );
+    for a in &list {
+        t.insert(a.file.clone(), "module.exports = {};\n".into());
+    }
+    let plans = plan(&t, &list);
+    assert_eq!(plans.len(), 32);
+    for p in &plans {
+        assert!(p.mechanical(), "{p:?}");
+        assert_eq!(p.index_lines.len(), 1, "{}", p.file);
+        assert_eq!(p.delete, [p.file.clone()]);
+    }
+    assert_eq!(plans.iter().filter(|p| p.stage == Stage::Plain).count(), 24);
+    assert_eq!(
+        plans.iter().filter(|p| p.stage == Stage::EditTests).count(),
+        8
+    );
+    let after = apply(&t, &plans, &[Stage::Plain, Stage::EditTests]).unwrap();
+    let removed: BTreeSet<usize> = plans.iter().map(|p| p.index_lines[0].line).collect();
+    assert_eq!(removed.len(), 32);
+    let expect: Vec<&str> = t[INDEX]
+        .lines()
+        .enumerate()
+        .filter(|(i, _)| !removed.contains(&(i + 1)))
+        .map(|(_, l)| l)
+        .collect();
+    assert_eq!(after[INDEX].lines().collect::<Vec<_>>(), expect);
+    // 34 guards of kept stubs stay (66 in the block).
+    let guards = |text: &str| {
+        text.lines()
+            .filter(|l| l.starts_with("  if (require('./"))
+            .count()
+    };
+    assert_eq!(guards(&t[INDEX]), 66);
+    assert_eq!(guards(&after[INDEX]), 34);
     let deleted: Vec<String> = plans.iter().map(|p| p.file.clone()).collect();
     assert!(check(&t, &after, &deleted).is_empty());
 }

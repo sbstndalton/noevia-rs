@@ -1,0 +1,129 @@
+  if (require('./rust-auto-roles-write.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await autoRolesWriteBridge(req, res)) return;
+  if (await modelStateBridge(req, res)) return;
+  if (require('./rust-tool-approvals.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // Track R11: the model writes, MTP artifact check and pull are the front's under NOEVIA_RUST_MODEL_WRITES=rust (rust-model-writes.cjs).
+  if (require('./rust-model-writes.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // Track R11: /api/embedding is the front's under NOEVIA_RUST_EMBEDDING_ADMIN=rust (rust-embedding-admin.cjs).
+  if (require('./rust-embedding-admin.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-idle-unload-read.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await idleUnloadFacts(req, res)) return;
+  if (require('./rust-model-downloads-read.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await modelDownloadsFacts(req, res)) return;
+  if (await modelDownloadsBridge(req, res)) return;
+  if (require('./rust-autotune-read.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await embeddingOwner.handleSourceChanged(req, res, json)) return;
+  if (embeddingOwner.handle(req, res, json)) return;
+  if (require('./rust-preset-read.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await presetReadBridge(req, res)) return;
+  if (await autotuneReadBridge(req, res)) return;
+  if (require('./rust-autotune-resume.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await autotuneResumeBridge(req, res)) return;
+  if (require('./rust-autotune-clear.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await autotuneClearBridge(req, res)) return;
+  if (require('./rust-autotune-untuned.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await autotuneUntunedFacts(req, res)) return;
+  // The Rust front's maintenance lease on this process's gate (#2210): before everything, and only the front's.
+  if (await maintenanceLeases.handle(req, res)) return;
+  // ... and the load decision its calibration asks before each load (#2303).
+  if (await loadRefusalRoute.handle(req, res)) return;
+  // #2191 round 2: a toolbox discovered since the last request reaches the front's next project create
+  // (project-catalogue.cjs; written only when it changed).
+  projectCatalogue.publish();
+  // ... and index or sweep work the front queued in an outbox starts now, not only on the 2 s interval.
+  // GET /api/integrations/storage is the Rust front's (#1071): refused before authentication.
+  if (require('./features.cjs').refuseRustStorageRead(req, res, { parseRequestUrl, badRequestUrl, json })) return;
+  if (require('./routes/chat-framing.cjs').refuseOwnedPreferences(req, res, { parseRequestUrl, json })) return;
+  // And the framing suggestion's POST (chat port S4), with the front's loopback call for the lists and the decision.
+  if (require('./rust-chat-framing-suggest.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await chatFramingSuggestBridge(req, res)) return;
+  if (await chatMirrorBridge(req, res)) return;
+  if (await chatNativeTools(req, res)) return;
+  // And the chat turn itself (chat port S5): only the front's relay reaches the pipeline below (rust-chat-turn.cjs).
+  if (require('./rust-chat-turn.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./routes/features.cjs').refuseOwnedFeatures(req, res, { parseRequestUrl, json })) return;
+  // The Diary routes that are only a proxy and a policy are the Rust front's (#2185).
+  if (require('./rust-diary.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the rest of the Diary routes the web client names but the local exchange (#2206): the storage
+  // status, the exchanges, the context, the connector endpoint and the connector credentials.
+  if (require('./rust-diary-routes.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the local exchange: the front relays it and holds this process's throttle and gate by lease.
+  if (require('./rust-diary-local-exchange.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // So are the two configuration-only model reads (#2187): GET /api/models/capabilities and /hardware.
+  if (require('./rust-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-model-state-reads.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-autotune-settings.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await autotuneSettingsBridge(req, res)) return;
+  // And a project source's stored text and originals (#2191): GET sources/text, documents/original, uploads/original.
+  if (require('./rust-project-reads.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And a project's create and delete (#2191 round 2): POST /api/projects, DELETE /api/projects/{id}.
+  if (require('./rust-project-lifecycle.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-project-files.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And a stored document's page reader (#2191 round 4).
+  if (require('./rust-project-document-pages.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the conversation import (#2191 round 4).
+  if (require('./rust-conversation-import.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And a project document's upload, on the front's Docling pipeline (#2191 round 5).
+  if (require('./rust-project-documents.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the background source jobs, whose store the front owns (#2191 round 6).
+  if (require('./rust-source-jobs.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the project source operations themselves: the upload, the folder sync and the folder import's plan (#2191 round 8).
+  if (require('./rust-project-source-work.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And deep research, every method, and the front's loopback calls for its jobs (#2218).
+  if (require('./rust-research.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await approvalRevocation(req, res)) return;
+  if (await inferenceAdmission.handle(req, res)) return;
+  if (await researchBridge(req, res)) return;
+  // And the Code and Browser task reads, and the front's loopback call for what only this process knows (#2257).
+  if (require('./rust-task-reads.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await taskFactsBridge(req, res)) return;
+  if (codeExecutor.frontOwnsCode() && await codeEngineBridge(req, res)) return;
+  if (await modelFactsBridge(req, res)) return;
+  if (await budgetWatchBridge(req, res)) return;
+  // And a project's configuration, its instruction skills and a published skill's install (#2191 round 9).
+  if (require('./rust-project-config.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And an account's deletion, complete (#2190, #2191 round 9): DELETE /api/admin/users/{id}.
+  if (require('./rust-admin-users.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the two read-only sizing reads (#2189): GET /api/models/estimate and /api/models/preset/suggest.
+  if (require('./rust-model-sizing.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the model maintenance authorities (#2210): POST /api/models/presets/reload.
+  if (require('./rust-model-maintenance.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-model-evidence-recheck.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // #2190: the public pages and the device approval page, and the plugin directory.
+  if (require('./rust-public-pages.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-plugin-directory.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-decision-settings.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-storage-integrations.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-storage-connection.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-provider-test.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-chatgpt-oauth.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-provider-models.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-providers.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-residual-fallbacks.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-mcp-credentials.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  // And the admin MCP directory, the permitted-tools view and the connectors list (#2202 round 2).
+  if (require('./rust-mcp-directory.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-toolboxes-permitted.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-toolbox-picker.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-model-assignments.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await modelAssignmentsFacts(req, res)) return;
+  if (req.url?.startsWith('/internal/inference-machines/') && await inferenceMachineRoutes(req, res)) return;
+  if (require('./rust-calibration-routes.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await calibrationRoutesBridge(req, res)) return;
+  // Track R11: the model manager proxy is the front's under NOEVIA_RUST_MODEL_MANAGER=rust (rust-model-manager-proxy.cjs).
+  if (require('./rust-model-manager-proxy.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-model-manager-scan.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await modelManagerScanCache(req, res)) return;
+  if (require('./rust-autotune-cancel.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await autotuneCancelBridge(req, res)) return;
+  if (require('./rust-calibration-cancel.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (await calibrationCancelBridge(req, res)) return;
+  if (require('./rust-connectors.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-vault-mirror-preferences.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-google-drive.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-offsite-backup.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-health.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-auto-roles.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-workspace.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-chat-search.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
+  if (require('./rust-chat-export.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;

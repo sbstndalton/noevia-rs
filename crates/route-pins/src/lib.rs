@@ -28,6 +28,11 @@
 //! re-read from a newer core tree with the recorder's own rules and without Node, so a deletion train at a later core
 //! SHA sees what moved since the recording (`route-pins-recheck --core DIR`).
 //!
+//! Council p15 added [`train`]: the deletion train's concrete core edits per file verdict (the stub and its own tests,
+//! the one-line index.cjs guard; any other production use makes the plan manual), applied in memory and checked
+//! (nothing names a deleted file, nothing newly unreached), plus the noevia pairing lines by kind
+//! (`route-pins-train --core DIR [--noevia DIR]`).
+//!
 //! The library has no I/O and no production caller: an inert leaf crate. The `route-pins-recheck` binary reads a
 //! core directory and prints Markdown; nothing ships or calls it.
 
