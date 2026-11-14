@@ -73,6 +73,8 @@ pub struct Prepared {
     /// The tool gate's required tool (features.toolGate, `require` mode; chat.cjs `forcedTool`): `gate: {tool}`,
     /// present only then (a core whose gate decided hands the turn off only to a front naming `tool-gate`).
     pub gate_tool: Option<String>,
+    /// A `prefetch` decision's arguments (`gate.prefetch`): the read is run before the model (chat.cjs `prefetchTool`).
+    pub gate_prefetch: Option<JValue>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -301,6 +303,11 @@ impl Prepared {
                 _ => return Err(Unreadable("prepared.provenance is not true".into())),
             },
             widen: widen(frame.get("widen"))?,
+            gate_prefetch: match frame.get("gate").get("prefetch") {
+                JValue::Undefined => None,
+                a @ JValue::Obj(_) => Some(a.clone()),
+                _ => return Err(Unreadable("prepared.gate.prefetch is not an object".into())),
+            },
             gate_tool: match frame.get("gate") {
                 JValue::Undefined => None,
                 g @ JValue::Obj(_) => Some(text(g, "tool")?),

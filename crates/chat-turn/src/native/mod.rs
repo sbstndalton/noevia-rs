@@ -245,6 +245,8 @@ struct Rounds {
     round_wrote: bool,
     /// The tool gate's one retry of a missed required tool was spent (chat.cjs `gateRetried`).
     gate_retried: bool,
+    /// The gate's prefetch ran: nothing is forced (chat.cjs `forcedTool = null`).
+    prefetched: bool,
     /// chat.cjs `nextToolRoutes`: the widened list's routes, applied when the next round starts.
     next_routes: Option<Vec<(String, String)>>,
     /// `roundMessages !== prepared.messages`: the round-0 `context` event is sent when they differ.
@@ -356,7 +358,8 @@ impl<H: Host> Turn<'_, H> {
     /// retry), while the tools are offered and include it.
     fn forced(&self, s: &Rounds, round: i32) -> Option<String> {
         let tool = self.p.gate_tool.as_deref()?;
-        (!s.tools_off
+        (!s.prefetched
+            && !s.tools_off
             && round == 0
             && s.tools
                 .iter()
@@ -429,6 +432,7 @@ impl<H: Host> Turn<'_, H> {
             widened: false,
             round_wrote: false,
             gate_retried: false,
+            prefetched: false,
             next_routes: None,
             changed: false,
             tools_off: false,
@@ -487,6 +491,14 @@ impl<H: Host> Turn<'_, H> {
         // #769: the untrusted text this exchange has put in front of the model, for the write check.
         gate.provenance = p.provenance.then(Taint::new);
         gate.skills = Some(self.skills);
+        // The tool gate's prefetch: the decided read runs before the model; when it cannot, the tool is required instead.
+        if let (Some(tool), Some(args)) = (p.gate_tool.as_deref(), p.gate_prefetch.as_ref()) {
+            if self.prefetch(&mut s, &mut gate, tool, args).await {
+                s.prefetched = true;
+            } else {
+                host.gate_record("prefetch.failed", tool);
+            }
+        }
         let mut round: i32 = 0;
         loop {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
@@ -988,6 +1000,111 @@ impl<H: Host> Turn<'_, H> {
                 }
             }
         }
+    }
+
+    /// chat.cjs `prefetchTool`: the gate's read before the first round, its `tool` and `tool_result` events, then the
+    /// round's messages with the note and the exchange (the result framed). False when it did not run or failed (the
+    /// tool is then required instead); the checks are chat.cjs's (a revoked skill, the page save, a client gone, an
+    /// account policy other than allow). The framing reasoner's packet and the cloud hold never apply here: core keeps
+    /// those turns.
+    async fn prefetch(
+        &mut self,
+        s: &mut Rounds,
+        gate: &mut Tools<'_>,
+        tool: &str,
+        args: &JValue,
+    ) -> bool {
+        let host = self.host;
+        if self.skills.revoked(host).await
+            || gate.once_tools.contains(tool)
+            || host.left()
+            || host.tool_policy(tool, false) != "allow"
+        {
+            return false;
+        }
+        let call = Call {
+            index: 0.0,
+            id: js::s(format!("gate-{}", host.uuid())),
+            name: tool.to_string(),
+            args: js::stringify(args),
+            too_large: false,
+        };
+        let index = self.exchange.tool_offset;
+        host.emit(&event(
+            "tool",
+            vec![
+                ("index", js::n(index)),
+                ("name", js::s(call.name.clone())),
+                ("args", js::s(call.args.clone())),
+            ],
+        ));
+        let (result, failed) = gate.prefetch(host, &call).await;
+        host.emit(&event(
+            "tool_result",
+            vec![
+                ("index", js::n(index)),
+                ("name", js::s(call.name.clone())),
+                ("text", js::s(js::slice(&result, 300))),
+            ],
+        ));
+        self.exchange.tool_offset = index + 1.0;
+        let reduced = (self.helpers.reduce_tool_result)(&result, self.helpers.tool_result_cap);
+        let framed = prompt_framing::framing::frame_untrusted(
+            &js::to_units("tool result"),
+            &js::to_units(tool),
+            &js::to_units(&reduced),
+        );
+        let is_error = result.starts_with("ERROR")
+            && !result.get(5..).is_some_and(|rest| {
+                rest.starts_with(|c: char| c.is_ascii_alphanumeric() || c == '_')
+            });
+        if failed || is_error {
+            return false;
+        }
+        self.skills.note_read(host, &call.args, &result).await;
+        const NOTE: &str = "The following was fetched for you; use it.";
+        match s
+            .messages
+            .iter()
+            .position(|m| m.get("role").as_str() == Some("system"))
+        {
+            Some(at) => {
+                if let Some(m) = s.messages.get_mut(at) {
+                    if let Some(content) = m.get("content").as_str().map(str::to_string) {
+                        js::set(m, "content", js::s(format!("{content}\n\n{NOTE}")));
+                    }
+                }
+            }
+            None => s.messages.insert(
+                0,
+                js::obj([("role", js::s("system")), ("content", js::s(NOTE))]),
+            ),
+        }
+        s.messages.push(js::obj([
+            ("role", js::s("assistant")),
+            ("content", JValue::Null),
+            (
+                "tool_calls",
+                JValue::Arr(vec![js::obj([
+                    ("id", call.id.clone()),
+                    ("type", js::s("function")),
+                    (
+                        "function",
+                        js::obj([
+                            ("name", js::s(call.name.clone())),
+                            ("arguments", js::s(call.args.clone())),
+                        ]),
+                    ),
+                ])]),
+            ),
+        ]));
+        s.messages.push(js::obj([
+            ("role", js::s("tool")),
+            ("tool_call_id", call.id),
+            ("content", js::s(js::from_units(&framed))),
+        ]));
+        s.changed = true;
+        true
     }
 
     /// chat.cjs's `more_tools` answer: the first call widens the offered tools to the project's whole selection
