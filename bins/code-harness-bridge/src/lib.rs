@@ -15,6 +15,11 @@
 //! one event) at a time, talks to the harness through [`Harness`], and queues what goes to the
 //! client in [`Bridge::take_output`]. `main.rs` is the tokio shell around it.
 //!
+//! Nothing runs it yet. In the sandbox image (noevia-core `code-sandbox/Dockerfile`) it is built only
+//! from its own source pin (`CODE_HARNESS_BRIDGE_RS_REF`, empty), installed at
+//! `/usr/local/libexec/noevia/harness-bridge/code-harness-bridge`, and the selector starts it in place
+//! of `node /srv/pi-acp-bridge.cjs` only with `CODE_HARNESS_BRIDGE_IMPL=rust` (default `js`).
+//!
 //! The JS reference's framing and `toolCallFor` are the shared `sandbox-bridge` crate, so this
 //! bridge behaves as the JS one does with `SANDBOX_BRIDGE_IMPL=rust` (a failure of either is the
 //! fixed [`RUST_FAILED`] session end).
