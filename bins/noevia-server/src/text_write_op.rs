@@ -6,8 +6,9 @@
 //! Body: `{ user, project, name, text }` and core's options when it set them (`expectName`,
 //! `expectContent`, `expectAttachment`, `adoptTo`, `adoptAccount`; left out = `undefined`). Answers
 //! 200 `{ file }` (the source as recorded) or 200 `{ error }` (core's refusal, for the model), 400
-//! for a body core never sends, 404 `no such account` for an account that is gone or disabled
-//! (core's `runAs` refuses it), 503 when the front cannot run it now.
+//! for a body core never sends, 404 `no such account` for an account that is gone (core's `runAs`
+//! refuses it) or, deliberately stricter than core, disabled (core's `runAs` still writes as a
+//! disabled account; track R14 D7), 503 when the front cannot run it now.
 //!
 //! The write acts for the account core names, as core's MCP server does (`runAs`: `{ user, legacy:
 //! false }`): the account's own role from the `users` table, which the storage endpoint policy

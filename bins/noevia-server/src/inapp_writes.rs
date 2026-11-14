@@ -10,9 +10,17 @@
 //! the in-app server only (mcp_call.rs, beside track R13's in-app reads), with the token's account,
 //! project and edit pin.
 //!
-//! As core's `runAs`: an account that is gone or disabled answers `ERROR: that account no longer
-//! exists`. getProject's own save (the #352 heal, a changed skills reconcile) is not made here: it
-//! changes nothing a write tool reads (workspace_view).
+//! An account that is gone answers `ERROR: that account no longer exists`, as core's `runAs` does.
+//! Deliberately stricter than core (track R14 D7): a **disabled** account (or one with a role core
+//! does not know) is refused the same way, where core's `runAs` (`listUsers`, every row) still
+//! writes as it. getProject's own save (the #352 heal, a changed skills reconcile) is not made
+//! here: it changes nothing a write tool reads (workspace_view).
+//!
+//! [`answer`] is blocking. Every `None` comes before the write starts; once [`answer`] has begun
+//! the write it always answers. A caller that runs it on the blocking pool must therefore map a
+//! failure of that task (a panic) to an error result, never to `None` (core would write again).
+//! Unlike core's in-app listener (120 s per request), the write has no deadline of its own beyond
+//! the project's source lock wait and the storage client's timeouts.
 use std::sync::{Arc, OnceLock};
 
 use edit_target_lookup::inapp::{self, Prepared};
@@ -58,6 +66,11 @@ pub fn answer(
     write: bool,
 ) -> Option<JValue> {
     if !enabled() || !write || !inapp::TOOLS.contains(&name) {
+        return None;
+    }
+    // Without the storage client a write could not reach the account's storage; without the
+    // extraction client it cannot run at all.
+    if cfg!(not(feature = "rust-storage-browse")) || app.extraction.is_none() {
         return None;
     }
     let data_dir = app.config.data_dir.clone()?;
