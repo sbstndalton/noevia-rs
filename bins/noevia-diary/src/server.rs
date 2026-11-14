@@ -937,6 +937,8 @@ async fn serve_write(
     let uid = header_uid.to_ascii_lowercase();
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
+        // Shift 4, step 1: the document an append wrote, for Python's `_reindex_today` (below).
+        let mut appended: Option<String> = None;
         let reply = app2.writers
             .with_lock_as(&uid, None, app2.write_wait, |held| {
                 if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
@@ -984,8 +986,13 @@ async fn serve_write(
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
                 };
+                if let (Op::Append(_), Reply::Json(200, body)) = (&op, &saved) {
+                    appended = serde_json::from_slice::<Value>(body)
+                        .ok()
+                        .and_then(|v| v.get("document").and_then(Value::as_str).map(str::to_owned));
+                }
                 // S6b: Python's PUT /api/file and edit run `_reindex_dirty` under the same lock
-                // before they reply (append re-indexes in a background thread: left to Python).
+                // before they reply (append re-indexes in a background thread, after the lock).
                 if matches!(op, Op::File | Op::Edit(_)) && matches!(saved, Reply::Json(200, _)) {
                     if let Some(embedder) = app2.save_embedder.get() {
                         drop(ctx);
@@ -1009,6 +1016,11 @@ async fn serve_write(
         // cannot hide it from the child (front.rs tells it on the tenant's next forward).
         if app2.write_wait.is_some() && !matches!(reply, Reply::Decline | Reply::Busy) {
             app2.writers.note_native_write(&uid);
+        }
+        // Python starts `_reindex_today` once the append reached the corpus; it waits for the
+        // writer slot this task has just returned (main mode with the embedding owner only).
+        if let (Some(document), Some(embedder)) = (appended, app2.save_embedder.get()) {
+            crate::reindex::reindex_today(app2.clone(), uid.clone(), document, embedder.clone());
         }
         reply
     });

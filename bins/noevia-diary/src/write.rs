@@ -1069,7 +1069,7 @@ impl<'h> Journal<'h> {
 
     /// An index effect of another connection under this tenant's primary reservation (the
     /// retrieval index's writes: Python's `index_publication`), refused when the index outbox
-    /// holds paths (Python drains it first; that stays with Python).
+    /// holds paths (every caller drains it first: recovery, `reindex::drain_outbox`).
     pub fn index_publication<T>(
         &self,
         effect: impl FnOnce() -> Result<T, Error>,
