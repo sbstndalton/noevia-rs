@@ -19,6 +19,8 @@ pub mod calibration_routes;
 pub mod chat_activity;
 pub mod chat_admission;
 pub mod chat_edge;
+// Track R14: core's toolbox chat facts built here (NOEVIA_RUST_CHAT_FACTS); part of the MCP discovery.
+#[cfg(feature = "rust-storage-reads")]
 pub mod chat_facts_native;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
