@@ -183,6 +183,24 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
         .iter()
         .filter(|r| r.verdict == Verdict::Match)
         .count();
+    // P7c: project turns are covered; the ones with what is not ported yet are skipped by name.
+    let project_matched = replayed
+        .iter()
+        .filter(|r| r.name.contains("project") && r.verdict == Verdict::Match)
+        .count();
+    assert!(
+        project_matched >= 40,
+        "{project_matched} project turns matched"
+    );
+    for (name, reason) in [
+        ("project_files_skipped", "files"),
+        ("project_shared_context_skipped", "shared-context"),
+        ("project_assets_skipped", "assets"),
+        ("free_chat_context_project_skipped", "context-project"),
+    ] {
+        let r = replayed.iter().find(|r| r.name == name).unwrap();
+        assert_eq!(r.verdict, Verdict::Skip(reason), "{name}");
+    }
     let mut counts = std::collections::BTreeMap::new();
     for r in &replayed {
         *counts.entry(r.verdict.line()).or_insert(0) += 1;
