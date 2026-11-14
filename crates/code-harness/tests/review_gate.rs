@@ -13,7 +13,9 @@
 
 use code_acp::Transport;
 use code_harness::executor::StartRequest;
-use code_harness::executor::{Approvals, Deps, Egress, Engine, Executor, Fail, Jobs};
+use code_harness::executor::{
+    Approvals, Deps, Egress, Engine, Executor, Fail, Holding, Jobs, Lease,
+};
 use code_harness::review_gate::{self, PlannerReview, ReviewRoles, Reviewer};
 use code_harness::session::Ended;
 use code_pipeline::driver::{self, Signal};
@@ -121,11 +123,16 @@ struct Scripted {
     answers: Mutex<VecDeque<String>>,
     asked: Log,
     executor: Arc<OnceLock<Arc<Executor>>>,
+    /// Council p14: where the lease, the pin and the card went, in order (`None`: not watched).
+    order: Option<Log>,
 }
 
 impl Approvals for Scripted {
     fn ask(&self, request: &JValue, ended: &Arc<Ended>) -> String {
         self.asked.lock().unwrap().push(request.clone());
+        if let Some(order) = &self.order {
+            order.lock().unwrap().push(s("card"));
+        }
         let next = self.answers.lock().unwrap().pop_front();
         let answer = next.unwrap_or_else(|| "deny".into());
         if answer != "cancel" {
@@ -147,10 +154,14 @@ struct QaRoles {
     sc: JValue,
     calls: Log,
     executor: Arc<OnceLock<Arc<Executor>>>,
+    order: Option<Log>,
 }
 
 impl ReviewRoles for QaRoles {
     fn pin(&self, task_id: &str) -> Result<Arc<dyn driver::Session>, RoleFail> {
+        if let Some(order) = &self.order {
+            order.lock().unwrap().push(s("pin"));
+        }
         let pin = JValue::obj([("taskId", s(task_id))]);
         self.calls.lock().unwrap().push(JValue::obj([("pin", pin)]));
         let refused = self.sc.get("pin");
@@ -273,7 +284,29 @@ fn norm(v: &JValue, tree: &str, base: &str) -> JValue {
 }
 
 /// One scenario through the Rust executor: what Node's recorder records.
+/// Council p14: the run's lease, watched. `run_ended` is where core's runExecutor `finally` closes
+/// a machine task's relay lease (before the review gate); the drop is the task's end.
+struct OrderLease(Log);
+
+impl Holding for OrderLease {
+    fn run_ended(&mut self) {
+        self.0.lock().unwrap().push(s("run ended"));
+    }
+}
+
+impl Drop for OrderLease {
+    fn drop(&mut self) {
+        self.0.lock().unwrap().push(s("lease dropped"));
+    }
+}
+
 fn replay(name: &str, sc: &JValue) {
+    replay_with(name, sc, None);
+}
+
+/// [`replay`], with the host's inference gate handing out an [`OrderLease`] on `order` when given
+/// (Node's journal, cards and logs are the same with a lease held: it writes nothing of its own).
+fn replay_with(name: &str, sc: &JValue, order: Option<Log>) {
     let dir = tempfile::tempdir().unwrap();
     let base = fs::canonicalize(dir.path()).unwrap();
     let b = base.to_str().unwrap().to_string();
@@ -322,6 +355,7 @@ fn replay(name: &str, sc: &JValue) {
         answers: Mutex::new(strings("answers").into()),
         asked: asked.clone(),
         executor: slot.clone(),
+        order: order.clone(),
     });
     // `engineThrowsAfter`: the host's engine panics from that call on.
     let throws_after = sc.get("engineThrowsAfter").as_num().map(|n| n as usize);
@@ -359,7 +393,10 @@ fn replay(name: &str, sc: &JValue) {
         transport: Some(Transport::Socket(format!("127.0.0.1:{port}"))),
         log: Box::new(move |e| sink.lock().unwrap().push(e)),
         now: Box::new(|| 5000.0),
-        inference: None,
+        inference: order.clone().map(|o| {
+            Box::new(move || Ok(Box::new(OrderLease(o.clone())) as Lease))
+                as Box<dyn Fn() -> Result<Lease, Fail> + Send + Sync>
+        }),
         guard: Box::new(|| false),
         owner: None,
         base_path: Some("/usr/local/bin:/usr/bin:/bin".into()),
@@ -374,6 +411,7 @@ fn replay(name: &str, sc: &JValue) {
                 sc: sc.clone(),
                 calls: calls.clone(),
                 executor: slot.clone(),
+                order: order.clone(),
             }),
             Arc::new(move |e| sink.lock().unwrap().push(e)),
         );
@@ -487,4 +525,50 @@ fn a_reviewer_without_a_role_engine_says_so() {
         (s("error"), s("The reviewer could not be reached."))
     );
     assert!(review_gate::decide(&|| false, &make).is_none());
+}
+
+/// Council p14: the run's part of the lease ends when the agent's run does, before the review is
+/// pinned and its card asked (core closes a machine task's relay lease in runExecutor's `finally`,
+/// and reviewGate runs after `work`); the lease itself goes with the task. The replay is otherwise
+/// Node's own, unchanged by the lease. A run that was cancelled ends its lease part with no pin.
+#[test]
+fn the_run_s_lease_part_ends_before_the_review_and_the_lease_with_the_task() {
+    let f = wtf16::parse(&fs::read_to_string(FIXTURE).unwrap()).unwrap();
+    for (name, want) in [
+        (
+            "approved-and-accepted",
+            vec!["run ended", "pin", "card", "lease dropped"],
+        ),
+        (
+            "pin-refused",
+            vec!["run ended", "pin", "card", "lease dropped"],
+        ),
+        ("cancelled-run", vec!["run ended", "lease dropped"]),
+    ] {
+        let sc = f.get("scenarios").get(name).clone();
+        assert!(sc.is_object(), "{name}: no such scenario");
+        let order: Log = Log::default();
+        replay_with(name, &sc, Some(order.clone()));
+        // The lease is dropped when the task's thread ends, just after it stops being live.
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !order
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| e.as_str() == Some("lease dropped"))
+        {
+            assert!(
+                Instant::now() < deadline,
+                "{name}: the lease was never given back"
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+        let got: Vec<String> = order
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|e| e.as_str().unwrap().to_string())
+            .collect();
+        assert_eq!(got, want, "{name}");
+    }
 }

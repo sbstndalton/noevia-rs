@@ -114,6 +114,11 @@ pub trait Holding: Send {
     /// Calls `hook` once if the lease stops covering the run before it is given back (a lease
     /// that cannot be lost ignores it).
     fn on_lost(&mut self, _hook: Box<dyn FnOnce() + Send>) {}
+
+    /// The agent's run is over (code-harness.cjs `runExecutor`'s `finally`), before the review
+    /// gate: what only the run needed is given back now (a machine task's relay lease, which Node
+    /// closes there), the rest when the lease is dropped at the task's end.
+    fn run_ended(&mut self) {}
 }
 
 impl Holding for () {}
@@ -643,8 +648,8 @@ impl Executor {
                 let handle = handle.clone();
                 let cancel = cancel.clone();
                 move || {
-                    let _lease = lease;
-                    me.run(&task_id, &handle, &req, guarded, &cancel);
+                    let mut lease = lease;
+                    me.run(&task_id, &handle, &req, guarded, &cancel, &mut lease);
                 }
             });
         if spawned.is_err() {
@@ -756,9 +761,16 @@ impl Executor {
         req: &StartRequest,
         guarded: bool,
         cancel: &Arc<Cancel>,
+        lease: &mut Option<Lease>,
     ) {
         let outcome = catch_unwind(AssertUnwindSafe(|| {
-            let result = self.execute(task_id, handle, req, &req.prompt, guarded, cancel)?;
+            let ran = self.execute(task_id, handle, req, &req.prompt, guarded, cancel);
+            // Node closes a machine task's relay lease in runExecutor's `finally`, so before the
+            // review gate asks anything (here just after the run's release instead of just before).
+            if let Some(held) = lease.as_mut() {
+                held.run_ended();
+            }
+            let result = ran?;
             // A cancelled run is recorded as cancelled below; there is nothing to accept.
             match &req.review {
                 Some(reviewer) if !cancel.is_cancelled() => {

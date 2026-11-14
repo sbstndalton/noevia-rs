@@ -991,10 +991,16 @@ struct MachineGate {
     lease: std::sync::Mutex<Option<code_engine_relay::Opened>>,
 }
 
-/// The relay lease as the run holds it.
-struct RelayHeld(#[allow(dead_code)] code_engine_relay::Opened);
+/// The relay lease as the run holds it: closed when the agent's run ends (core code-harness.cjs
+/// `runExecutor`'s `finally` closes `relayLease` before the review gate), or with the task at the
+/// latest. A dropped `Opened` closes itself.
+struct RelayHeld(#[allow(dead_code)] Option<code_engine_relay::Opened>);
 
-impl code_harness::executor::Holding for RelayHeld {}
+impl code_harness::executor::Holding for RelayHeld {
+    fn run_ended(&mut self) {
+        self.0 = None;
+    }
+}
 
 impl code_harness::service::Inference for MachineGate {
     fn enter(&self) -> Result<Lease, Fail> {
@@ -1004,7 +1010,7 @@ impl code_harness::service::Inference for MachineGate {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .take();
         Ok(match taken {
-            Some(opened) => Box::new(RelayHeld(opened)),
+            Some(opened) => Box::new(RelayHeld(Some(opened))),
             None => Box::new(()),
         })
     }
