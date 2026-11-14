@@ -748,8 +748,11 @@ impl<'a> Tools<'a> {
             };
             // Port contract S9: core's grant bridge answers with a single-use handle for Node's grant (D17).
             // #2446: "Allow for this chat" never covers a once-only tool; its grant is not even asked for.
+            // noevia#2575: nor is it asked for a call that is asked anyway (an Automatic-only write, a
+            // provenance hit): its single-use handle would never be redeemed and would fill core's
+            // per-account cap. Named difference: chat.cjs asks the front for the ticket and drops it.
             let once = self.once_tools.contains(name);
-            let used_grant = if once {
+            let used_grant = if once || !hits.is_empty() || self.automatic_only_writes.contains(name) {
                 None
             } else {
                 host.chat_wide_approved(
