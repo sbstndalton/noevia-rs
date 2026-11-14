@@ -1263,6 +1263,301 @@ mod tests {
     fn the_provider_client_is_built() {
         assert!(provider_client().is_some());
     }
+
+    /// The sign-in row (council p10-1, p9-3 CONTINUE 2).
+    #[cfg(feature = "rust-chatgpt-status")]
+    mod signin {
+        use super::*;
+
+        /// A sign-in row (the sign-in kind; its address a QA host here, not the server constant).
+        const SIGNIN_ROW: &str = r#"{"id":"qa-provider","kind":"chatgpt-oauth","label":"QA","baseUrl":"https://qa-provider.example/v1"}"#;
+
+        fn signin<'a>(
+            caps: &'a str,
+            enabled: bool,
+            connection: Connection,
+            cleared: bool,
+        ) -> Signin<'a> {
+            Signin {
+                caps,
+                enabled,
+                connection,
+                cleared,
+            }
+        }
+
+        fn with_signin<'a>(u: &'a User, r: &'a JValue, s: Signin<'a>) -> Facts<'a> {
+            Facts {
+                signin: s,
+                ..facts(Some(u), Some(r), "")
+            }
+        }
+
+        #[test]
+        fn the_front_names_the_sign_in_token_only_beside_providers_and_never_before_the_rules_are_cleared(
+        ) {
+            let base = chat_turn::handoff::HANDOFF_CAPS;
+            assert_eq!(front_caps(false, false), base);
+            assert_eq!(front_caps(false, true), base, "never without providers");
+            assert_eq!(front_caps(true, false), caps(true));
+            assert_eq!(
+                front_caps(true, true),
+                format!("{base},providers,signin-transport-v1")
+            );
+            // One token, three names: chat-upstream's refusal lift, the sign-in transport's offer and this front's.
+            assert_eq!(SIGNIN_CAPS_TOKEN, chat_upstream::refusal::SIGNIN_CAP);
+            assert_eq!(SIGNIN_CAPS_TOKEN, crate::signin_wire::CAPS_TOKEN);
+            assert_eq!(CAPS_TOKEN, chat_upstream::refusal::CAP);
+            for (providers, cleared, value, on) in [
+                (true, true, Some("1"), true),
+                (true, true, Some(" 1 "), true),
+                (true, true, Some("0"), false),
+                (true, true, Some("true"), false),
+                (true, true, None, false),
+                (false, true, Some("1"), false),
+                (true, false, Some("1"), false),
+            ] {
+                assert_eq!(
+                    signin_offered_by(providers, cleared, value),
+                    on,
+                    "{providers} {cleared} {value:?}"
+                );
+            }
+            // Today: the rules are not cleared, so whatever the switches say the front never names the token.
+            const { assert!(!EXTERNAL_EGRESS_CLEARED) };
+            assert!(!signin_offered());
+            assert_eq!(Signin::OFF.caps, "");
+            assert!(!Signin::OFF.cleared);
+        }
+
+        /// What core's refusal (as chat-upstream ports it) answers a sign-in row for this front's caps: lifted only
+        /// for the caps naming both tokens, which is exactly when [`plan`] plans the sign-in row.
+        #[test]
+        fn core_lifts_the_sign_in_row_for_exactly_the_caps_plan_takes_it_for() {
+            let f = chat_upstream::refusal::Facts {
+                provider_id: Some("qa-provider".into()),
+                default_provider_id: Some("default".into()),
+                machine: false,
+                external: false,
+                sign_in: true,
+                route_target: false,
+                authorized: false,
+            };
+            let u = member();
+            let r = row(SIGNIN_ROW);
+            for (offer, signin_on) in [(false, false), (false, true), (true, false), (true, true)] {
+                let caps = front_caps(offer, signin_on);
+                let lifted =
+                    chat_upstream::refusal::with_caps(&f, &chat_upstream::refusal::caps(&caps))
+                        .is_none();
+                let planned = matches!(
+                    plan(
+                        &frame(HOSTED),
+                        &with_signin(&u, &r, signin(&caps, true, Connection::Connected, true))
+                    ),
+                    Plan::Signin(_)
+                );
+                assert_eq!(lifted, offer && signin_on, "{caps}");
+                assert_eq!(planned, lifted, "{caps}");
+            }
+        }
+
+        #[test]
+        fn a_cleared_sign_in_row_is_planned_over_the_broker_and_bound_to_the_frame() {
+            let u = member();
+            let r = row(SIGNIN_ROW);
+            let caps = front_caps(true, true);
+            let Plan::Signin(s) = plan(
+                &frame(HOSTED),
+                &with_signin(&u, &r, signin(&caps, true, Connection::Connected, true)),
+            ) else {
+                panic!("planned");
+            };
+            assert_eq!(s.owner, USER);
+            assert_eq!(s.conversation.as_deref(), Some("qa-chat"), "the chat id");
+            assert_eq!(s.binding.url, URL);
+            assert_eq!(s.binding.model, "qa-model");
+            assert!((s.binding.expires_ms - (1_000.0 + BINDING_MS)).abs() < f64::EPSILON);
+            // Without a chat id the conversation is the space (`chatId || spaceId || null`), an empty chat id too.
+            let mut spaced = frame(HOSTED);
+            spaced.chat_id = Some(String::new());
+            spaced.space_id = Some("qa-space".into());
+            let Plan::Signin(s) = plan(
+                &spaced,
+                &with_signin(&u, &r, signin(&caps, true, Connection::Connected, true)),
+            ) else {
+                panic!("planned");
+            };
+            assert_eq!(s.conversation.as_deref(), Some("qa-space"));
+        }
+
+        #[test]
+        fn without_the_token_or_before_the_rules_are_cleared_the_sign_in_row_is_refused_as_before()
+        {
+            let u = member();
+            let r = row(SIGNIN_ROW);
+            // The front named no sign-in token: Node's own 409 (the transport read as off), as before this slice,
+            // whatever the broker says.
+            for caps in [
+                String::new(),
+                front_caps(true, false),
+                "signin-transport-v10".into(),
+            ] {
+                assert_eq!(
+                    plan(
+                        &frame(HOSTED),
+                        &with_signin(&u, &r, signin(&caps, true, Connection::Connected, true))
+                    ),
+                    Plan::Refuse(NODE_REFUSES),
+                    "{caps}"
+                );
+            }
+            // With the token but the rules not cleared: the external-row hold.
+            let caps = front_caps(true, true);
+            assert_eq!(
+                plan(
+                    &frame(HOSTED),
+                    &with_signin(&u, &r, signin(&caps, true, Connection::Connected, false))
+                ),
+                Plan::Refuse(EXTERNAL)
+            );
+            // Signin::OFF (every row but the sign-in kind gets it) refuses it too.
+            assert_eq!(
+                plan(&frame(HOSTED), &facts(Some(&u), Some(&r), "")),
+                Plan::Refuse(NODE_REFUSES)
+            );
+        }
+
+        #[test]
+        fn the_sign_in_checks_answer_first_in_nodes_order() {
+            let u = member();
+            let r = row(SIGNIN_ROW);
+            let caps = front_caps(true, true);
+            // Node's checks (on, owner, connected) come before the external-row hold and the binding's checks.
+            for cleared in [false, true] {
+                for (enabled, connection) in [
+                    (false, Connection::Connected),
+                    (true, Connection::Reconnect),
+                    (true, Connection::Missing),
+                ] {
+                    assert_eq!(
+                        plan(
+                            &frame(""),
+                            &with_signin(&u, &r, signin(&caps, enabled, connection, cleared))
+                        ),
+                        Plan::Refuse(NODE_REFUSES),
+                        "{enabled} {connection:?} {cleared}"
+                    );
+                }
+                // A shared sign-in row, or a turn in another account's workspace, is not the owner's: Node's 403.
+                let shared = row(
+                    r#"{"id":"qa-provider","kind":"chatgpt-oauth","label":"QA","baseUrl":"https://qa-provider.example/v1","shared":true}"#,
+                );
+                assert_eq!(
+                    plan(
+                        &frame(HOSTED),
+                        &with_signin(
+                            &u,
+                            &shared,
+                            signin(&caps, true, Connection::Connected, cleared)
+                        )
+                    ),
+                    Plan::Refuse(NODE_REFUSES)
+                );
+                let nameless = User {
+                    id: None,
+                    admin: false,
+                };
+                assert_eq!(
+                    plan(
+                        &frame(HOSTED),
+                        &with_signin(
+                            &nameless,
+                            &r,
+                            signin(&caps, true, Connection::Connected, cleared)
+                        )
+                    ),
+                    Plan::Refuse(NODE_REFUSES)
+                );
+            }
+            // A row without a text baseUrl: Node throws.
+            let no_base =
+                row(r#"{"id":"qa-provider","kind":"chatgpt-oauth","label":"QA","baseUrl":7}"#);
+            assert_eq!(
+                plan(
+                    &frame(HOSTED),
+                    &with_signin(
+                        &u,
+                        &no_base,
+                        signin(&caps, true, Connection::Connected, true)
+                    )
+                ),
+                Plan::Refuse(NODE_THROWS)
+            );
+        }
+
+        #[test]
+        fn a_cleared_sign_in_frame_that_disagrees_is_refused() {
+            let u = member();
+            let r = row(SIGNIN_ROW);
+            let caps = front_caps(true, true);
+            let f = with_signin(&u, &r, signin(&caps, true, Connection::Connected, true));
+            assert_eq!(plan(&frame(""), &f), Plan::Refuse(LIMIT), "no runtimeLimit");
+            for edit in [
+                (|p: &mut Prepared| p.model_lease = true) as fn(&mut Prepared),
+                |p| p.manager_enabled = true,
+                |p| p.title.enabled = true,
+            ] {
+                let mut local = frame(HOSTED);
+                edit(&mut local);
+                assert_eq!(plan(&local, &f), Plan::Refuse(LOCAL_ENGINE));
+            }
+            let mut moved = frame(HOSTED);
+            moved.upstream_url = "https://elsewhere.example/v1/chat/completions".into();
+            assert_eq!(plan(&moved, &f), Plan::Refuse(crate::signin_drive::ADDRESS));
+            let mut nameless = frame(HOSTED);
+            nameless.model = String::new();
+            assert_eq!(
+                plan(&nameless, &f),
+                Plan::Refuse(crate::signin_drive::NO_MODEL)
+            );
+            let late = Facts {
+                now_ms: f64::INFINITY,
+                ..f
+            };
+            assert_eq!(
+                plan(&frame(HOSTED), &late),
+                Plan::Refuse(crate::signin_drive::BAD_EXPIRY)
+            );
+            // A row with its own context setting: the frame must carry that limit, not the hosted default.
+            let sized = row(
+                r#"{"id":"qa-provider","kind":"chatgpt-oauth","label":"QA","baseUrl":"https://qa-provider.example/v1","contextTokens":65536}"#,
+            );
+            let fs = with_signin(&u, &sized, signin(&caps, true, Connection::Connected, true));
+            assert_eq!(plan(&frame(HOSTED), &fs), Plan::Refuse(LIMIT));
+            let (tokens, source) = chat_upstream::limit::hosted_limit(&sized);
+            let mut fitted = frame(HOSTED);
+            fitted.runtime_limit = Some((tokens, source.to_string()));
+            assert!(matches!(plan(&fitted, &fs), Plan::Signin(_)));
+        }
+
+        #[test]
+        fn the_brokers_state_words_read_as_the_target_rules_read_them() {
+            assert_eq!(connection_of(Some("connected")), Connection::Connected);
+            assert_eq!(connection_of(Some("reconnect")), Connection::Reconnect);
+            assert_eq!(connection_of(Some("disconnected")), Connection::Missing);
+            assert_eq!(
+                connection_of(None),
+                Connection::Missing,
+                "an unreadable store"
+            );
+            assert_eq!(
+                connection_of(Some("Connected")),
+                Connection::Missing,
+                "exact words"
+            );
+        }
+    }
 }
 
 #[cfg(test)]
