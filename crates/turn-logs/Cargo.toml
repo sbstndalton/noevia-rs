@@ -1,0 +1,19 @@
+[package]
+name = "turn-logs"
+version = "0.1.0"
+description = "The text-free durable logs of core decision-log.cjs and context-log.cjs (writers, read-back summaries, CLIs)"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+context-fit = { path = "../context-fit" }
+js-json = { path = "../js-json" }
+sha2 = "=0.10.9"
+
+[dev-dependencies]
+tempfile = "3"
