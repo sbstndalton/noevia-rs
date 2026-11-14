@@ -498,6 +498,7 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   await addTurn('auto_distinct_unassigned', { roles: { fast: 'qa-fast-4b' }, pick: 'smart', models: ['qa-fast-4b'], body: req() });
   await addTurn('project_own_model', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b' })], body: preq() });
   await addTurn('project_own_model_default', { projects: [project({ model: MODEL })], body: preq() });
+  await addTurn('project_own_model_context_low', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'low' })], body: preq() });
   await addTurn('project_context_high_skipped', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'high' })], body: preq() });
   // Not covered yet (the shadow skips them): knowledge files, a project sharing into Chat, attached images.
   await addTurn('project_files_skipped', { projects: [project({ files: [{ name: 'qa.md', content: 'QA text', attachment: { state: 'ready' } }] })], body: preq() });

@@ -504,10 +504,12 @@ fn new_chat_id(id: &JValue, started_at: &JValue) -> bool {
 /// the classification is a decision call); a Manual project turn with the project's own model
 /// (a handed-off turn passed the chat-model check). Not compared: a Manual turn without a project
 /// model (`manual-default`: chat.cjs then asks `lastLoadedModel()`, core's own state), a project
-/// with a context profile (`context-profile`: the long-context pick), an Automatic turn whose roles
-/// were not read or name no model for the role (`roles`).
+/// with Context: High (`context-profile`: the long-context pick), an Automatic turn whose roles
+/// were not read or name no model for the role (`roles`). Known limit: auto-roles.json saved
+/// between core's read and this one shows as a `model` diff.
 fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &'static str> {
-    if project.is_some_and(|p| p.get("contextProfile").truthy()) {
+    // long-profile.cjs normalizeProfile(project?.contextProfile) === 'high' (only that moves the model).
+    if project.is_some_and(crate::reroute::context_high) {
         return Err("context-profile");
     }
     if t.frame.get("auto") == &JValue::Bool(true) {
