@@ -2769,6 +2769,7 @@ dependencies = [
 name = "project-index"
 version = "0.1.0"
 dependencies = [
+ "embedding-worker",
  "prompt-framing",
  "rusqlite",
  "serde_json",
