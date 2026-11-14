@@ -301,7 +301,25 @@ impl Run {
             return f.clone();
         }
         let run = self.clone();
-        let f = Flight::spawn_or(JValue::Null, move || run.clean());
+        let f = Flight::spawn_or(JValue::Null, move || {
+            // A cleanup that panicked (an egress or engine implementation) confirmed nothing.
+            let r = run.clone();
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || r.clean()))
+                .unwrap_or_else(|_| {
+                    run.executor_closed.store(false, Ordering::SeqCst);
+                    if run.grant.is_some() {
+                        JValue::obj([
+                            ("available", JValue::Bool(false)),
+                            ("final", JValue::Bool(false)),
+                            ("partial", JValue::Bool(true)),
+                            ("state", s("uncertain")),
+                            ("cleanupConfirmed", JValue::Bool(false)),
+                        ])
+                    } else {
+                        JValue::Null
+                    }
+                })
+        });
         *slot = Some(f.clone());
         f
     }
@@ -685,8 +703,10 @@ impl Service {
                     me.work(&run2, &ready2, &domains2, &project, downloads_dir, proxy)
                 });
                 let outcome = std::panic::catch_unwind(work).unwrap_or_else(|_| {
-                    // Nobody waits forever on a task whose own thread stopped.
+                    // Nobody waits forever on a task whose own thread stopped, and its session and
+                    // grant are still taken away.
                     run2.close_queue(true);
+                    run2.cleanup().wait();
                     Err(Fail::plain(None, "The browser task stopped unexpectedly."))
                 });
                 if let Err(e) = &outcome {
@@ -1131,12 +1151,15 @@ impl Service {
         if approval_id.is_empty() {
             return Err(Fail::public(400, "Which approval is this answer for?"));
         }
-        // Found and answered under one lock: a card cannot time out in between.
+        let run = lock(&self.live).get(task_id).cloned();
+        // Found and answered under one lock: a card cannot time out in between, and a cancelled task's
+        // card is never answered (core refuses its cards before it aborts the task).
         let waiting = {
             let mut pending = lock(&self.registry.pending);
+            let cancelled = run.as_ref().is_some_and(|r| r.signal.is_aborted());
             match pending
                 .iter()
-                .position(|w| w.id == approval_id && w.task_id == task_id)
+                .position(|w| w.id == approval_id && w.task_id == task_id && !cancelled)
             {
                 Some(i) => Ok(pending.remove(i)),
                 None => {
