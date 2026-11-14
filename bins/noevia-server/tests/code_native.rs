@@ -2088,7 +2088,7 @@ async fn a_reviewed_direct_task_on_a_machine_is_reviewed_there_and_accepted() {
 /// `model_mismatch` with the call-time text), code-review's mapping keeps `model_mismatch`, and
 /// the card offers the change unreviewed with that reason; denied, the task completes with
 /// `review: { reviewed: false, verdict: null, accepted: false, decision: 'deny', headSha }`.
-/// Named difference (noevia issue filed by council p14): Node pins a review alone afresh at review
+/// Named difference (noevia#2800 item 1): Node pins a review alone afresh at review
 /// time on wherever `codeRoleEndpoint` points then, so it would send this review to the second
 /// machine, a model other than the one that wrote the change. The review is sent nowhere here.
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]

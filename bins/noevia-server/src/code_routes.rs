@@ -52,6 +52,13 @@
 //!   another model) then answers the start with 409 and Node's text, where Node starts the task
 //!   and fails it with the same text; the relay's log events name the project rather than the
 //!   task (the task id is made after the engine is resolved);
+//! - a direct task's Planner review on a machine (council p14) pins at review time on the start's
+//!   machine, so a Code role moved during the run leaves the change unreviewed with the role
+//!   engine's `model_mismatch` text; Node pins the review afresh on wherever the role is then
+//!   and reviews the change with that model (noevia#2800 item 1). A direct task's relay lease
+//!   ends with the agent's run, before the review card, as Node's `runExecutor` closes it; a
+//!   Planner task keeps one relay lease for all its runs, where Node opens one per run
+//!   (noevia#2800 item 3);
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
 //!   rather than pinned unchecked;
