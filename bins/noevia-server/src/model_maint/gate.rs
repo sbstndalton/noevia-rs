@@ -1330,7 +1330,10 @@ mod tests {
         ) {
             *at = old;
         }
-        assert!(!lapsing.covers(Duration::ZERO, true), "a lapse within the margin");
+        assert!(
+            !lapsing.covers(Duration::ZERO, true),
+            "a lapse within the margin"
+        );
         assert!(
             lapsing.lost.load(Ordering::Acquire),
             "the lapse is the loss itself (sticky)"
@@ -1339,10 +1342,19 @@ mod tests {
         lost.lost.store(true, Ordering::Release);
         assert!(!lost.covers(Duration::ZERO, true));
         let ending = s(10);
-        assert!(!ending.covers(Duration::ZERO, false), "the hard cap within the margin");
-        assert!(!ending.lost.load(Ordering::Acquire), "a check that may not mark it");
+        assert!(
+            !ending.covers(Duration::ZERO, false),
+            "the hard cap within the margin"
+        );
+        assert!(
+            !ending.lost.load(Ordering::Acquire),
+            "a check that may not mark it"
+        );
         assert!(!ending.covers(Duration::ZERO, true));
-        assert!(ending.lost.load(Ordering::Acquire), "the hard cap within the margin is a loss");
+        assert!(
+            ending.lost.load(Ordering::Acquire),
+            "the hard cap within the margin is a loss"
+        );
         let releasing = s(10);
         if let Ok(mut state) = releasing.release.lock() {
             *state = ReleaseState::Pending;
