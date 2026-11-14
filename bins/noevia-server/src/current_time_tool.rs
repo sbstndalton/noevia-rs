@@ -11,14 +11,13 @@
 //! bridge as before, among them an unknown zone (core writes the error), a zone whose tz data differs
 //! between the two (sbstndalton/noevia#2653) and every call after the recorded span.
 //!
-//! The server zone is the web container's `TZ` (Node's ICU reads the same variable; web-supervisor.sh
-//! starts core and the front in one container with one environment, which this relies on): only one
-//! of the zone IDs the recording ran Node under ([`current_time::server_zone_from_tz`]). With `TZ`
-//! unset ICU reads the system's zone file; calls without a `timezone` argument then go to core.
-//!
 //! The recording proves the answers for its own Node only: the front answers nothing until core's
 //! native op `runtime` has reported a Node with the recording's ICU and tz data
 //! ([`current_time::runtime_recorded`]); an older core (404) or another Node keeps every call core's.
+//! The same answer gives the server zone, the one core's process resolved: calls without a
+//! `timezone` argument are answered here only when it is one the recording ran under
+//! ([`current_time::server_zone_recorded`]), so the front never guesses core's zone from its own
+//! environment.
 //!
 //! Core keeps counting the call: chat_native.rs asks core's native op `tool-used`, as for
 //! read_project_file. If that op does not answer (core down or older), the call is answered and its
@@ -37,51 +36,80 @@ pub fn enabled() -> bool {
     *ON.get_or_init(|| std::env::var("NOEVIA_RUST_CURRENT_TIME").as_deref() == Ok("1"))
 }
 
-/// The process's `TZ` as the server zone, read once (see the module documentation).
-pub fn server_zone() -> Option<&'static str> {
-    static ZONE: OnceLock<Option<String>> = OnceLock::new();
-    ZONE.get_or_init(|| {
-        let tz = std::env::var("TZ").ok();
-        current_time::server_zone_from_tz(tz.as_deref()).map(str::to_string)
-    })
-    .as_deref()
+/// What core's op `runtime` reported, as far as this module uses it.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Runtime {
+    /// Core's Node has the recording's ICU and tz data ([`current_time::runtime_recorded`]).
+    pub recorded: bool,
+    /// Core's resolved zone, when it is one the recording ran under.
+    pub server_zone: Option<String>,
 }
 
-/// What core's op `runtime` said: `Some(true)` for a Node with the recording's ICU and tz data. Only
-/// a 200 answer is kept (an older core's 404, or a gone account, is asked again next time).
-static RUNTIME: Mutex<Option<bool>> = Mutex::new(None);
+/// Core's answer, kept once it is a 200 (an older core's 404, a gone account or no answer is asked
+/// again next time).
+static RUNTIME: Mutex<Option<Runtime>> = Mutex::new(None);
 
-/// Core's Node, if already known: whether it is the recording's.
-pub fn runtime_known() -> Option<bool> {
-    *RUNTIME
+/// Core's Node, if already known.
+pub fn runtime_known() -> Option<Runtime> {
+    RUNTIME
         .lock()
         .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
 }
 
-/// Keeps core's `runtime` answer (`{node, icu, tz}`) and says whether it is the recording's Node.
-pub fn runtime_answered(body: &JValue) -> bool {
-    let field = |k: &str| body.get(k).as_str().unwrap_or("");
-    let same = current_time::runtime_recorded(field("node"), field("icu"), field("tz"));
+/// What an answer of core's op `runtime` (`{node, icu, tz, zone}`) says, if it is one to keep.
+pub fn runtime_of(asked: Option<(u16, JValue)>) -> Option<Runtime> {
+    let Some((200, body)) = asked else {
+        return None;
+    };
+    let field = |k: &str| body.get(k).as_str().unwrap_or("").to_string();
+    let zone = field("zone");
+    Some(Runtime {
+        recorded: current_time::runtime_recorded(&field("node"), &field("icu"), &field("tz")),
+        server_zone: current_time::server_zone_recorded(&zone).then_some(zone),
+    })
+}
+
+/// Keeps an answer of core's op `runtime` ([`runtime_of`]); whether core's Node is the recording's.
+pub fn runtime_answered(asked: Option<(u16, JValue)>) -> bool {
+    let Some(runtime) = runtime_of(asked) else {
+        return false;
+    };
+    let recorded = runtime.recorded;
     *RUNTIME
         .lock()
-        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(same);
-    same
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(runtime);
+    recorded
 }
 
-/// The tool's text and failure flag when the front answers this call at `now_ms` on a server whose
-/// zone is `server_zone`; `None` leaves it to core. `active(user)` is core's account check
-/// ([`crate::project_file_read::account_active`]). The caller has checked core's Node
-/// ([`runtime_known`]).
+/// The tool's text and failure flag when the front answers this call at `now_ms`; `None` leaves it
+/// to core. Nothing is answered before core's Node is known to be the recording's ([`runtime_known`]).
+/// `active(user)` is core's account check ([`crate::project_file_read::account_active`]).
 pub fn answer(
     data_dir: &Path,
     user: &str,
     run: &ToolRun,
-    server_zone: Option<&str>,
     now_ms: f64,
     active: impl FnOnce(&str) -> bool,
 ) -> Option<(String, bool)> {
-    // The cheap checks first: a call left to core reads no store here.
-    if run.name != NAME {
+    answer_with(&runtime_known()?, data_dir, user, run, now_ms, active)
+}
+
+/// [`answer`] for a known runtime.
+fn answer_with(
+    runtime: &Runtime,
+    data_dir: &Path,
+    user: &str,
+    run: &ToolRun,
+    now_ms: f64,
+    active: impl FnOnce(&str) -> bool,
+) -> Option<(String, bool)> {
+    // The cheap checks first, in the bridge's order (name, body size, arguments): a call left to
+    // core reads no store here.
+    if !runtime.recorded
+        || run.name != NAME
+        || js_json::wtf16::len(&run.args) > ARGS_CAP
+    {
         return None;
     }
     let args = if run.args.is_empty() {
@@ -89,11 +117,14 @@ pub fn answer(
     } else {
         js_json::wtf16::parse(&run.args).ok()?
     };
-    let answer = time_text(&args, server_zone, now_ms)?;
+    let answer = time_text(&args, runtime.server_zone.as_deref(), now_ms)?;
     // Then what core's bridge checks (the same arguments parsed again there).
     crate::project_file_read::bridge_scope(data_dir, user, run, NAME, active)?;
     Some(answer)
 }
+
+/// core's bridge reads `args` up to 16 Mi UTF-16 units (bridge_scope checks the whole body).
+const ARGS_CAP: usize = 16 * 1024 * 1024;
 
 /// The tool's answer for these arguments, when [`current_time::verified`] holds for the zone it uses.
 fn time_text(args: &JValue, server_zone: Option<&str>, now_ms: f64) -> Option<(String, bool)> {
@@ -152,108 +183,121 @@ mod tests {
         data
     }
 
+    fn rt(server_zone: Option<&str>) -> Runtime {
+        Runtime {
+            recorded: true,
+            server_zone: server_zone.map(str::to_string),
+        }
+    }
+
+    fn reported(node: &str, icu: &str, tz: &str, zone: &str) -> Option<(u16, JValue)> {
+        let body = js_json::parse(&format!(
+            r#"{{"node":"{node}","icu":"{icu}","tz":"{tz}","zone":"{zone}"}}"#
+        ))
+        .unwrap();
+        Some((200, body))
+    }
+
+    /// Only a 200 is kept; core's Node must be the recording's, its zone a recorded one.
     #[test]
-    fn runtime_must_be_the_recordings() {
-        assert_eq!(runtime_known(), None);
-        let node = |n: &str, i: &str, t: &str| {
-            js_json::parse(&format!(r#"{{"node":"{n}","icu":"{i}","tz":"{t}"}}"#)).unwrap()
+    fn what_core_reports_decides() {
+        let (node, icu, tz) = current_time::recorded_runtime();
+        assert_eq!(runtime_of(None), None);
+        assert_eq!(runtime_of(Some((404, JValue::Null))), None);
+        assert_eq!(runtime_of(Some((500, JValue::Null))), None);
+        assert_eq!(
+            runtime_of(reported(node, icu, tz, "America/New_York")),
+            Some(rt(Some("America/New_York")))
+        );
+        // ICU's own name for Kolkata is what core reports, and what the recording ran under.
+        assert_eq!(
+            runtime_of(reported(node, icu, tz, "Asia/Calcutta")),
+            Some(rt(Some("Asia/Calcutta")))
+        );
+        for zone in ["", "Eire", "Europe/Paris", "Asia/Kolkata"] {
+            assert_eq!(runtime_of(reported(node, icu, tz, zone)), Some(rt(None)), "{zone}");
+        }
+        let other = Runtime {
+            recorded: false,
+            server_zone: Some("UTC".into()),
         };
-        assert!(!runtime_answered(&node("22.23.3", "78.3", "2026d")));
-        assert_eq!(runtime_known(), Some(false));
-        assert!(!runtime_answered(&js_json::parse("{}").unwrap()));
-        assert!(runtime_answered(&node("22.23.3", "78.3", "2026c")));
-        assert_eq!(runtime_known(), Some(true));
+        assert_eq!(runtime_of(reported(node, icu, "2099z", "UTC")), Some(other.clone()));
+        assert_eq!(runtime_of(reported("99.0.0", icu, tz, "UTC")), Some(other));
+        assert_eq!(
+            runtime_of(Some((200, js_json::parse("{}").unwrap()))),
+            Some(Runtime {
+                recorded: false,
+                server_zone: None
+            })
+        );
+        // The process-wide cache (only this test touches it): nothing answered before a 200.
+        let data = data_dir("runtime");
+        assert_eq!(answer(&data, USER, &run("{}"), NOW, yes), None);
+        assert!(!runtime_answered(Some((404, JValue::Null))));
+        assert_eq!(runtime_known(), None);
+        assert!(!runtime_answered(reported(node, icu, "2099z", "UTC")));
+        assert_eq!(answer(&data, USER, &run("{}"), NOW, yes), None);
+        assert!(runtime_answered(reported(node, icu, tz, "UTC")));
+        assert_eq!(runtime_known(), Some(rt(Some("UTC"))));
+        assert!(answer(&data, USER, &run("{}"), NOW, yes).is_some());
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     #[test]
     fn answers_verified_zones_and_leaves_the_rest_to_core() {
         let data = data_dir("zones");
-        let ny = Some("America/New_York");
+        let ny = rt(Some("America/New_York"));
+        let a = |run: &ToolRun, rt: &Runtime, now: f64| answer_with(rt, &data, USER, run, now, yes);
         // The texts are the leaf's (replayed against Node there); here: who answers.
-        let (text, failed) = answer(
-            &data,
-            USER,
-            &run(r#"{"timezone":"Europe/Berlin"}"#),
-            ny,
-            NOW,
-            yes,
-        )
-        .unwrap();
+        let (text, failed) = a(&run(r#"{"timezone":"Europe/Berlin"}"#), &ny, NOW).unwrap();
         assert!(!failed);
         assert!(text.starts_with("Current time: Saturday, 14 November 2026 at 07:05:12 CET (Europe/Berlin) | ISO: 2026-11-14T06:05:12.000Z | "), "{text}");
-        let (text, _) = answer(&data, USER, &run("{}"), ny, NOW, yes).unwrap();
+        let (text, _) = a(&run("{}"), &ny, NOW).unwrap();
         assert!(
             text.starts_with(
                 "Current time: Sat Nov 14 2026 01:05:12 GMT-0500 (Eastern Standard Time) | "
             ),
             "{text}"
         );
-        let (text, _) = answer(&data, USER, &run(""), ny, NOW, yes).unwrap();
+        let (text, _) = a(&run(""), &ny, NOW).unwrap();
         assert!(text.contains("Eastern Standard Time"));
         // A non-string or empty timezone is the server zone's, as in Node.
-        let (text, _) = answer(&data, USER, &run(r#"{"timezone":5}"#), ny, NOW, yes).unwrap();
+        let (text, _) = a(&run(r#"{"timezone":5}"#), &ny, NOW).unwrap();
         assert!(text.contains("Eastern Standard Time"));
-        let (text, _) = answer(
-            &data,
-            USER,
-            &run(r#"{"timezone":"+05:30"}"#),
-            None,
-            NOW,
-            yes,
-        )
-        .unwrap();
+        let (text, _) = a(&run(r#"{"timezone":""}"#), &ny, NOW).unwrap();
+        assert!(text.contains("Eastern Standard Time"));
+        let (text, _) = a(&run(r#"{"timezone":"+05:30"}"#), &rt(None), NOW).unwrap();
         assert!(text.contains("(+05:30)"), "{text}");
-        // Core's: the server zone unknown, an unknown zone (core's error text), a zone whose tz data
-        // differs, outside the recorded span, and every call the bridge answers otherwise.
-        assert_eq!(answer(&data, USER, &run("{}"), None, NOW, yes), None);
-        assert_eq!(
-            answer(
-                &data,
-                USER,
-                &run(r#"{"timezone":"Mars/Olympus"}"#),
-                ny,
-                NOW,
-                yes
-            ),
-            None
-        );
-        assert_eq!(
-            answer(
-                &data,
-                USER,
-                &run(r#"{"timezone":"America/Vancouver"}"#),
-                ny,
-                NOW,
-                yes
-            ),
-            None
-        );
-        assert_eq!(
-            answer(&data, USER, &run("{}"), Some("Africa/Casablanca"), NOW, yes),
-            None
-        );
-        assert_eq!(
-            answer(&data, USER, &run("{}"), ny, 1_900_000_000_000.0, yes),
-            None
-        );
-        assert_eq!(answer(&data, USER, &run("[]"), ny, NOW, yes), None);
-        assert_eq!(answer(&data, USER, &run("{"), ny, NOW, yes), None);
-        assert_eq!(answer(&data, USER, &run("{}"), ny, NOW, |_| false), None);
+        // Core's: another Node, the server zone not a recorded one, an unknown zone (core's error
+        // text), a zone whose tz data differs, outside the recorded span, and every call the bridge
+        // answers otherwise.
+        let other = Runtime {
+            recorded: false,
+            server_zone: Some("America/New_York".into()),
+        };
+        assert_eq!(a(&run(r#"{"timezone":"Europe/Berlin"}"#), &other, NOW), None);
+        assert_eq!(a(&run("{}"), &rt(None), NOW), None);
+        assert_eq!(a(&run(r#"{"timezone":"Mars/Olympus"}"#), &ny, NOW), None);
+        assert_eq!(a(&run(r#"{"timezone":"America/Vancouver"}"#), &ny, NOW), None);
+        assert_eq!(a(&run("{}"), &ny, 1_900_000_000_000.0), None);
+        assert_eq!(a(&run("[]"), &ny, NOW), None);
+        assert_eq!(a(&run("{"), &ny, NOW), None);
+        assert_eq!(answer_with(&ny, &data, USER, &run("{}"), NOW, |_| false), None);
         let mut other = run("{}");
         other.name = "read_project_file".into();
-        assert_eq!(answer(&data, USER, &other, ny, NOW, yes), None);
+        assert_eq!(a(&other, &ny, NOW), None);
         let mut off = run("{}");
         off.allowed = vec!["read_project_file".into()];
-        assert_eq!(answer(&data, USER, &off, ny, NOW, yes), None);
+        assert_eq!(a(&off, &ny, NOW), None);
         let mut routed = run("{}");
         routed.routes = vec![(NAME.into(), "qa-mcp".into())];
-        assert_eq!(answer(&data, USER, &routed, ny, NOW, yes), None);
+        assert_eq!(a(&routed, &ny, NOW), None);
         let mut missing = run("{}");
         missing.project_id = Some("qa-gone".into());
-        assert_eq!(answer(&data, USER, &missing, ny, NOW, yes), None);
+        assert_eq!(a(&missing, &ny, NOW), None);
         let mut free = run("{}");
         free.project_id = None;
-        assert!(answer(&data, USER, &free, ny, NOW, yes).is_some());
+        assert!(a(&free, &ny, NOW).is_some());
         let _ = std::fs::remove_dir_all(&data);
     }
 }

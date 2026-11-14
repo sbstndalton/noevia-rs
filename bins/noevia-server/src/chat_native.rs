@@ -712,7 +712,7 @@ impl FrontHost {
     /// `runtime`, asked until it answers 200; current_time_tool.rs).
     async fn core_runtime_recorded(&self) -> bool {
         if let Some(known) = crate::current_time_tool::runtime_known() {
-            return known;
+            return known.recorded;
         }
         let asked = self
             .core_full(
@@ -721,10 +721,7 @@ impl FrontHost {
                 BRIDGE_TIMEOUT,
             )
             .await;
-        match asked {
-            Some((200, body)) => crate::current_time_tool::runtime_answered(&body),
-            _ => false,
-        }
+        crate::current_time_tool::runtime_answered(asked)
     }
 
     /// A built-in tool call the front answered: core counts it (recordToolUse, its native op
@@ -1406,7 +1403,6 @@ impl Host for FrontHost {
                     &data,
                     &user,
                     &call,
-                    crate::current_time_tool::server_zone(),
                     crate::identity::now_ms() as f64,
                     |u| crate::project_file_read::account_active(&data, u),
                 )
