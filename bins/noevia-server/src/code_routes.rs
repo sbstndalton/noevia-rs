@@ -47,9 +47,9 @@
 //!   front's relay instead, and (council p6) the Planner preparation and the review run on the
 //!   same machine through the role engine's `machines`. On a machine the role's endpoint is the
 //!   start's, and a move of the Code role is seen at each role call's `ready` (Node's call-time
-//!   `model_mismatch` code and text, without its `role.model_refused` log line). A relay refusal (no relay port, the role moved, another model named,
-//!   the machine unreachable or serving another model) then answers the start with 409 and Node's
-//!   text, where Node starts the task and fails it with the same text; the relay's log events name
+//!   `model_mismatch` code and text, without its `role.model_refused` log line). A relay refusal
+//!   (no relay port, the role moved, another model named, the machine unreachable or serving
+//!   another model) then answers the start with 409 and Node's text, where Node starts the task and fails it with the same text; the relay's log events name
 //!   the project rather than the task (the task id is made after the engine is resolved);
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
