@@ -11,6 +11,10 @@
 //!   and the per-request re-check against the row as it is now (fail closed on a changed row).
 //! - [`envelope`]: the response headers that may cross a relay (an allowlist) and the upstream
 //!   status envelope, so a relay's own refusal is never read as the provider's.
+//! - [`plan`]: one request as the host sends it (method, headers rebuilt from the key as it is now,
+//!   redirects refused, the call site's deadline).
+//! - [`relay`]: one relayed request as a pure decision (shape, token, expiry, re-check, pinned
+//!   model, request), with typed refusals and the transport-error answer.
 //! - [`refusal`]: the `provider`/`provider-key` checks of `refusal()` and what a front that runs
 //!   this path (a future `providers` caps token) may lift: external rows only, never machines,
 //!   the sign-in provider or a route target in this slice.
@@ -20,5 +24,7 @@
 
 pub mod binding;
 pub mod envelope;
+pub mod plan;
 pub mod refusal;
+pub mod relay;
 pub mod target;

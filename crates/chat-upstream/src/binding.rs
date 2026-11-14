@@ -52,7 +52,11 @@ pub fn fingerprint(row: &JValue) -> String {
     for part in [
         field(row.get("id")),
         field(row.get("baseUrl")),
-        if row.get("shared").truthy() { "1".to_string() } else { "0".to_string() },
+        if row.get("shared").truthy() {
+            "1".to_string()
+        } else {
+            "0".to_string()
+        },
     ] {
         h.update((part.len() as u64).to_be_bytes());
         h.update(part.as_bytes());
@@ -68,17 +72,16 @@ fn field(v: &JValue) -> String {
 }
 
 fn hex(bytes: &[u8]) -> String {
-    const D: &[u8; 16] = b"0123456789abcdef";
+    use std::fmt::Write;
     let mut s = String::with_capacity(bytes.len() * 2);
     for b in bytes {
-        s.push(char::from(D[usize::from(b >> 4)]));
-        s.push(char::from(D[usize::from(b & 15)]));
+        let _ = write!(s, "{b:02x}");
     }
     s
 }
 
 fn unhex(s: &str) -> Option<Vec<u8>> {
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return None;
     }
     let nib = |c: u8| match c {
@@ -165,7 +168,8 @@ pub fn open(secret: &[u8], token: &str, now_ms: f64) -> Result<Binding, TokenErr
     let text = String::from_utf8(bytes).map_err(|_| TokenError::Malformed)?;
     let v = js_json::parse(&text).map_err(|_| TokenError::Malformed)?;
     let b = from_json(&v).ok_or(TokenError::Malformed)?;
-    if !(now_ms < b.expires_ms) {
+    // Not before the expiry (NaN included) is expired.
+    if now_ms.partial_cmp(&b.expires_ms) != Some(std::cmp::Ordering::Less) {
         return Err(TokenError::Expired);
     }
     Ok(b)

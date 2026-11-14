@@ -166,8 +166,12 @@ pub fn resolve(t: &Turn<'_>) -> Option<Result<Target, Refused>> {
                 error: SIGN_IN_OFF,
             }));
         }
-        let owner = t.user.and_then(|u| u.id.as_deref()).filter(|s| !s.is_empty());
-        let foreign = matches!((t.workspace_user, owner), (Some(w), Some(o)) if !w.is_empty() && w != o);
+        let owner = t
+            .user
+            .and_then(|u| u.id.as_deref())
+            .filter(|s| !s.is_empty());
+        let foreign =
+            matches!((t.workspace_user, owner), (Some(w), Some(o)) if !w.is_empty() && w != o);
         let Some(owner) = owner.filter(|_| !row.get("shared").truthy() && !foreign) else {
             return Some(Err(Refused {
                 status: 403,

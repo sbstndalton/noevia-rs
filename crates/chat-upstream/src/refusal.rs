@@ -26,7 +26,12 @@ pub struct Facts {
 
 /// Node's answer for these two checks, in its order.
 pub fn node_reason(f: &Facts) -> Option<&'static str> {
-    if f.provider_id != f.default_provider_id || f.machine || f.external || f.sign_in || f.route_target {
+    if f.provider_id != f.default_provider_id
+        || f.machine
+        || f.external
+        || f.sign_in
+        || f.route_target
+    {
         return Some("provider");
     }
     if f.authorized {
@@ -54,5 +59,9 @@ pub fn caps(header: &str) -> Vec<&str> {
     if js_json::js_len(header) > 1000 {
         return Vec::new();
     }
-    header.split(',').map(str::trim).filter(|s| !s.is_empty()).collect()
+    header
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .collect()
 }

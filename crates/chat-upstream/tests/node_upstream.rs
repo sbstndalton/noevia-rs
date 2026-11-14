@@ -68,7 +68,11 @@ fn every_recorded_target() {
             _ => None,
         };
         let machine = opt_text(c.get("machine"));
-        let row = if machine.is_some() { node.get("row") } else { c.get("row") };
+        let row = if machine.is_some() {
+            node.get("row")
+        } else {
+            c.get("row")
+        };
         let connection = match c.get("connection").as_str() {
             Some("connected") => Connection::Connected,
             Some("reconnect") => Connection::Reconnect,
@@ -113,7 +117,11 @@ fn every_recorded_target() {
                 conversation: opt_text(f.get("conversation")).map(str::to_string),
             },
         };
-        let key = if matches!(fetch, Fetch::Direct) { KeyUse::RowKey } else { KeyUse::None };
+        let key = if matches!(fetch, Fetch::Direct) {
+            KeyUse::RowKey
+        } else {
+            KeyUse::None
+        };
         let want = Target {
             provider_id: node.get("providerId").as_str().unwrap().to_string(),
             label: node.get("label").as_str().unwrap().to_string(),
@@ -126,7 +134,10 @@ fn every_recorded_target() {
         ok += 1;
     }
     // Every kind of answer is exercised.
-    assert!(ok > 1000 && refused > 1000 && thrown == 3, "{ok} {refused} {thrown}");
+    assert!(
+        ok > 1000 && refused > 1000 && thrown == 3,
+        "{ok} {refused} {thrown}"
+    );
 }
 
 #[test]
@@ -156,7 +167,11 @@ fn every_recorded_refusal() {
         let want = r.get("node").as_str();
         assert_eq!(refusal::node_reason(&facts), want, "{f:?}");
         // Without the caps token a front gets exactly Node's answer.
-        assert_eq!(refusal::with_caps(&facts, &["skills", "once"]), want, "{f:?}");
+        assert_eq!(
+            refusal::with_caps(&facts, &["skills", "once"]),
+            want,
+            "{f:?}"
+        );
         // With it, only machines, the sign-in provider and route targets stay refused.
         let lifted = refusal::with_caps(&facts, &refusal::caps("skills, providers"));
         let stays = facts.machine || facts.sign_in || facts.route_target;

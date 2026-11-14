@@ -97,7 +97,13 @@ mod tests {
         assert_eq!(upstream_status(&h(&[(STATUS_HEADER, "2000")])), None);
         assert_eq!(upstream_status(&h(&[(STATUS_HEADER, "+20")])), None);
         assert_eq!(upstream_status(&h(&[(STATUS_HEADER, "099")])), None);
-        assert_eq!(upstream_status(&h(&[(STATUS_HEADER, "200"), (STATUS_HEADER, "200")])), None);
-        assert_eq!(upstream_status(&h(&[("X-Noevia-Upstream-Status", " 503 ")])), Some(503));
+        assert_eq!(
+            upstream_status(&h(&[(STATUS_HEADER, "200"), (STATUS_HEADER, "200")])),
+            None
+        );
+        assert_eq!(
+            upstream_status(&h(&[("X-Noevia-Upstream-Status", " 503 ")])),
+            Some(503)
+        );
     }
 }

@@ -503,7 +503,7 @@ dependencies = [
  "engine-facts",
  "hmac",
  "js-json",
- "serde_json",
+ "proptest",
  "sha2",
  "url",
 ]
