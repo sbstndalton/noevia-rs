@@ -1,0 +1,53 @@
+[package]
+name = "noevia-server"
+version = "0.1.0"
+description = "noevia front server (full-Rust migration M1): serves the web bundle and the routes Rust owns, proxies the rest to Node"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "noevia-server"
+path = "src/main.rs"
+
+[features]
+# sbstndalton/noevia#1071: the front read routes are permanent (no deployment switch); the shipped
+# build carries every one of them, and the web supervisor refuses to start without them.
+default = [
+    "rust-reasoning-settings",
+    "rust-routing-mode",
+    "rust-storage-reads",
+    "rust-storage-browse",
+    "rust-routing-default",
+    "rust-stats",
+    "rust-export",
+    "rust-free-chats",
+    "rust-project-chats",
+    "rust-chatgpt-status",
+    "rust-project-writes",
+]
+rust-reasoning-settings = []
+rust-routing-mode = []
+rust-storage-reads = ["dep:server-storage-reads", "dep:storage-path"]
+# M4 (#1368): connected-storage list/read (permanent under NOEVIA_RUST_AUTH, #1071; src/storage_browse_routes.rs).
+rust-storage-browse = ["rust-storage-reads"]
+# M6 (#1305): GET /api/routing-default (permanent under NOEVIA_RUST_AUTH; src/routes.rs ROUTING_DEFAULT).
+rust-routing-default = []
+# M6 (#1650): GET /api/stats (permanent under NOEVIA_RUST_AUTH; src/routes.rs STATS, crates/server-stats).
+rust-stats = []
+# M4 (#1315): GET /api/export/conversations (permanent since #1071; src/routes.rs EXPORT, crates/server-export).
+rust-export = []
+# M6 (#1373): GET /api/providers/chatgpt (permanent under NOEVIA_RUST_AUTH; src/routes.rs CHATGPT_STATUS,
+# crates/server-chatgpt-status).
+rust-chatgpt-status = ["dep:server-chatgpt-status"]
+# M4's second slice: a project's chat list (permanent since #1071; src/routes.rs PROJECT_CHATS).
+rust-project-chats = []
+# M4's third slice: the free-chat list (permanent since #1071; src/routes.rs FREE_CHATS).
+rust-free-chats = []
+# sbstndalton/noevia#1071: GET/POST chat context are permanent native routes.
+# (src/routes.rs PROJECT_WRITES; slice 1: a free chat's attachments project).
+rust-project-writes = []
