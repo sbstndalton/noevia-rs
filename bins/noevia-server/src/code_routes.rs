@@ -42,7 +42,12 @@
 //!
 //! Named differences (each refused, never run differently):
 //! - the Code role on an inference machine (core's relay, #1853) is refused with 409, for the
-//!   Planner and the review too (so no role call ever goes to a machine);
+//!   Planner and the review too (so no role call ever goes to a machine); with
+//!   `NOEVIA_RUST_CODE_RELAY=1` (council p4, code_machine.rs) a direct task runs through the
+//!   front's relay instead. A relay refusal (no relay port, the role moved, another model named,
+//!   the machine unreachable or serving another model) then answers the start with 409 and Node's
+//!   text, where Node starts the task and fails it with the same text; the relay's log events name
+//!   the project rather than the task (the task id is made after the engine is resolved);
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
 //!   rather than pinned unchecked;

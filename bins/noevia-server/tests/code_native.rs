@@ -152,6 +152,8 @@ struct CoreState {
     role: Option<Value>,
     /// Core still runs Code tasks itself: its facts name no `owner: 'front'`.
     node_owns: bool,
+    /// Core says the Code role is on an inference machine (`machine: true`, no engine).
+    machine: bool,
     leases: Vec<String>,
     released: Vec<String>,
 }
@@ -177,6 +179,10 @@ fn core_handler(state: Arc<Mutex<CoreState>>) -> Handler {
                 });
                 if let Some(role) = &st.role {
                     facts["role"] = role.clone();
+                }
+                if st.machine {
+                    facts["engine"] = Value::Null;
+                    facts["machine"] = json!(true);
                 }
                 ok(facts)
             }
@@ -373,6 +379,10 @@ struct Opts {
     harness: bool,
     /// `NOEVIA_RUST_COWORK=1`: the front answers a Cowork start.
     cowork: bool,
+    /// Council p4: core says `machine: true`, the registry's Code role is on this synthetic
+    /// machine, and `NOEVIA_RUST_CODE_RELAY=1` (with a relay port when `relay_port`).
+    relay_machine: Option<SocketAddr>,
+    relay_port: bool,
 }
 
 struct Rig {
@@ -386,6 +396,7 @@ struct Rig {
     verified: Seen,
     agent: Arc<Mutex<Agent>>,
     sandbox: Arc<Mutex<Sandbox>>,
+    relay: Option<Arc<noevia_server::code_machine::RelayState>>,
 }
 
 fn seed(data: &Path) {
@@ -432,6 +443,15 @@ async fn rig(o: Opts) -> Rig {
     let data = base.join("data");
     std::fs::create_dir_all(&data).unwrap();
     seed(&data);
+    if let Some(m) = o.relay_machine {
+        Connection::open(server_store::db_path(&data))
+            .unwrap()
+            .execute(
+                "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:machines',?1)",
+                [format!(r#"{{"version":1,"machines":[{{"id":"qa-m","name":"QA machine","address":"http://{}"}}],"assignments":{{"chatCode":{{"machine":"qa-m","port":{},"model":"qa-code"}}}}}}"#, m.ip(), m.port())],
+            )
+            .unwrap();
+    }
     if o.code_machine {
         Connection::open(server_store::db_path(&data))
             .unwrap()
@@ -449,7 +469,10 @@ async fn rig(o: Opts) -> Rig {
     git(&repo, &["add", "."]);
     git(&repo, &["commit", "-qm", "QA first"]);
 
-    let core = Arc::new(Mutex::new(CoreState::default()));
+    let core = Arc::new(Mutex::new(CoreState {
+        machine: o.relay_machine.is_some(),
+        ..CoreState::default()
+    }));
     if o.pipeline || o.review {
         core.lock().unwrap().role = Some(
             json!({"baseUrl": null, "apiKey": null, "model": "qa-model", "external": false, "jsonSchema": false}),
@@ -503,7 +526,20 @@ async fn rig(o: Opts) -> Rig {
     if let Some(mode) = o.facts {
         env.insert("NOEVIA_RUST_ENGINE_FACTS", mode.into());
     }
+    if o.relay_machine.is_some() {
+        env.insert("NOEVIA_RUST_CODE_RELAY", "1".into());
+        if o.relay_port {
+            let free = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+            env.insert(
+                "CODE_ENGINE_RELAY_PORT",
+                free.local_addr().unwrap().port().to_string(),
+            );
+            env.insert("CODE_ENGINE_RELAY_BIND", "127.0.0.1".into());
+        }
+    }
     let app = noevia_server::App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
+    let relay = noevia_server::code_machine::start(&app, &|k: &str| env.get(k).cloned()).await;
+    let _ = app.code_relay.set(relay.clone());
     tokio::spawn(serve(
         listener,
         app,
@@ -521,6 +557,7 @@ async fn rig(o: Opts) -> Rig {
         verified,
         agent,
         sandbox: sandbox_state,
+        relay,
     }
 }
 
@@ -1478,6 +1515,81 @@ async fn a_cowork_start_goes_to_core_unless_the_front_owns_code() {
             )
         );
         assert!(off.asked("/internal/chat/cowork").is_empty());
+    })
+    .await;
+}
+
+/// A synthetic inference machine serving `qa-code`: what it was asked, in order.
+async fn qa_machine() -> (SocketAddr, Seen) {
+    let seen: Seen = Arc::default();
+    let handler: Handler = Arc::new(|_method, path, _body| match path.split('?').next() {
+        Some("/health") => (200, "application/json", "{}".into()),
+        Some("/v1/models") => (
+            200,
+            "application/json",
+            r#"{"data":[{"id":"qa-code"}]}"#.into(),
+        ),
+        Some("/props") => (
+            200,
+            "application/json",
+            r#"{"default_generation_settings":{"n_ctx":16384}}"#.into(),
+        ),
+        _ => (404, "application/json", "{}".into()),
+    });
+    (stub(Arc::clone(&seen), handler).await, seen)
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_machine_code_task_without_a_relay_port_gets_node_s_machine_relay_off() {
+    within(async {
+        let (machine, _) = qa_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            relay_machine: Some(machine),
+            ..Opts::default()
+        })
+        .await;
+        let (status, refused) = r.start(json!({"repository": "qa-repo", "prompt": RUN})).await;
+        assert_eq!(status, 409, "{refused}");
+        assert_eq!(
+            refused["error"],
+            json!("The Code role runs on QA machine, but the sandbox has no route to it: web needs CODE_ENGINE_RELAY_PORT (see the code-sandbox override). The task was not started.")
+        );
+        assert_eq!(r.relay.as_ref().unwrap().relay.active(), 0);
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_machine_code_task_runs_through_the_relay_and_its_lease_ends_with_the_run() {
+    within(async {
+        let (machine, asked) = qa_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let relay = r.relay.clone().unwrap();
+        let (status, started) = r.run_once().await;
+        assert_eq!(status, 202, "{started}");
+        // Readiness was asked of the machine (health, then the served models), no local lease.
+        let paths: Vec<String> = asked.lock().unwrap().iter().map(|(_, p, _)| p.clone()).collect();
+        assert!(paths.iter().any(|p| p == "/health"), "{paths:?}");
+        assert!(paths.iter().any(|p| p == "/v1/models"), "{paths:?}");
+        assert!(r.core.lock().unwrap().leases.is_empty(), "no inference lease on a machine");
+        // The run is over: its relay lease is closed.
+        assert_eq!(relay.relay.active(), 0);
+        // A named model the machine does not serve is refused (one task, one model).
+        let (status, refused) = r
+            .start(json!({"repository": "qa-repo", "prompt": RUN, "model": "qa-other"}))
+            .await;
+        assert_eq!(status, 409, "{refused}");
+        assert_eq!(
+            refused["error"],
+            json!("This task names qa-other, but the Code role runs qa-code on QA machine. One task runs on one model.")
+        );
     })
     .await;
 }

@@ -157,7 +157,9 @@ async fn a_ready_machine_opens_a_lease_and_relays_with_the_model_forced() {
             Chunk::Cut => panic!("cut"),
         }
     }
-    assert!(String::from_utf8(got).unwrap().ends_with("data: [DONE]\n\n"));
+    assert!(String::from_utf8(got)
+        .unwrap()
+        .ends_with("data: [DONE]\n\n"));
     let seen = m.seen.lock().unwrap().clone();
     assert_eq!(seen.len(), 1);
     // No credential reaches the machine (neither the relay token nor any key).
@@ -168,7 +170,10 @@ async fn a_ready_machine_opens_a_lease_and_relays_with_the_model_forced() {
     let token = opened.token.clone();
     opened.close();
     let after = relay.handle(completion(&token, "{}")).await;
-    assert!(matches!(after, Reply::Json { status: 401, .. }), "{after:?}");
+    assert!(
+        matches!(after, Reply::Json { status: 401, .. }),
+        "{after:?}"
+    );
 }
 
 #[tokio::test]
@@ -242,7 +247,10 @@ async fn the_health_result_is_cached_between_opens() {
     let (m, port) = machine().await;
     let (_machines, relay, _) = relay(port);
     for i in 0..3 {
-        relay.open(&format!("qa-task-c{i}"), None, None).await.unwrap();
+        relay
+            .open(&format!("qa-task-c{i}"), None, None)
+            .await
+            .unwrap();
     }
     assert_eq!(*m.health_calls.lock().unwrap(), 1);
 }
