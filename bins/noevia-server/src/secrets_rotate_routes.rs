@@ -15,17 +15,28 @@
 //! read the way that client reads it (rust-providers-reseal.cjs, rust-mcp-credentials.cjs,
 //! project-store-client.cjs `gdriveReseal`), so the report is the one Node would make.
 //!
-//! Rotations run one at a time. No key, ciphertext or plaintext is ever logged or answered.
+//! Rotations run one at a time, each in its own task. No key, ciphertext or plaintext is ever logged
+//! or answered.
 //!
-//! Differences from Node: the keys are read from disk at the rotation (Node's own copy was read at its
-//! start, so `previousKey` and step 4 now see a retired key added since); the 500 for a pass that cannot
-//! run names the pass in the front's words; a Drive token file that cannot be read (a directory named
-//! `x.sealed`) fails with a fixed reason instead of Node's file-system message.
+//! Differences from Node:
+//! - the keys are read from disk at the rotation (Node's own copy was read at its start, so
+//!   `previousKey` and step 4 now see a retired key added since);
+//! - the 500 for a pass that cannot run, or for an audit row that cannot be written, names it in the
+//!   front's words (Node's answer carried the error's own text);
+//! - a Drive token file that cannot be read (a directory named `x.sealed`), or a Drive token path that
+//!   is a file, fails with a fixed reason instead of Node's file-system message;
+//! - Node's client gave up on a front pass after 120 s (providers) or 45 s (MCP, Drive: then soft,
+//!   "unreachable"); here each pass runs to its end, and the whole rotation runs to its end even when the
+//!   client goes away (Node's did too, in its process), with its audit row.
+//!
+//! Precondition, as with Node's own rotation: restart after swapping the key files, then rotate. Node
+//! reads `secrets.key` once at its start; this rotation seals under the key on disk now, so a Node that
+//! still holds the old key can no longer open what was re-sealed until it restarts.
 //!
 //! Rollback (switch unset again): everything written here is in the formats Node writes and reads
 //! (`enc:v2:` bound to the account under the current `secrets.key`, the same audit row), so Node's
-//! own rotation and every Node reader carry on as before; keep `secrets.key.previous` until a rotation
-//! reports no failures, as with Node's.
+//! own rotation and every Node reader carry on as before (given the precondition above); keep
+//! `secrets.key.previous` until a rotation reports no failures, as with Node's.
 use crate::{identity, reply, App};
 use axum::{
     body::Body,
@@ -33,9 +44,9 @@ use axum::{
     response::IntoResponse,
 };
 use js_json::{wtf16, JValue};
-use secrets_rotate::{KeyError, 
-    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure, Keys,
-    Pass, Row, Status, Table, AUDIT_ACTION, DRIVE_TABLE,
+use secrets_rotate::{
+    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure,
+    KeyError, Keys, Pass, Row, Status, Table, AUDIT_ACTION, DRIVE_TABLE,
 };
 use server_auth::secrets::SecretKeys;
 use std::path::{Path, PathBuf};
@@ -74,7 +85,11 @@ impl Keys for DiskKeys {
 /// `{ ok: true, tables, failures }` as core's client of a front pass reads it: every table's five counts
 /// (whole numbers from 0), the first 1,000 failures with `table` as a string, `ref` kept as `keep_ref`
 /// says, the reason cut to 200 UTF-16 units. `None` where that client throws.
-fn pass_of(body: &JValue, keep_ref: impl Fn(&JValue) -> JValue) -> Option<Pass> {
+fn pass_of(
+    body: &JValue,
+    keep_ref: impl Fn(&JValue) -> JValue,
+    names: Option<&[&str]>,
+) -> Option<Pass> {
     if body.get("ok") != &JValue::Bool(true) {
         return None;
     }
@@ -90,6 +105,10 @@ fn pass_of(body: &JValue, keep_ref: impl Fn(&JValue) -> JValue) -> Option<Pass> 
     };
     let mut out = Pass::default();
     for (name, c) in tables {
+        // rust-mcp-credentials.cjs: only the four MCP tables.
+        if names.is_some_and(|allowed| !allowed.contains(&name.as_str())) {
+            return None;
+        }
         out.tables.push((
             name.clone(),
             Counts {
@@ -105,11 +124,24 @@ fn pass_of(body: &JValue, keep_ref: impl Fn(&JValue) -> JValue) -> Option<Pass> 
         out.failures.push(Failure {
             table: js_json::to_js_string(f.get("table")).unwrap_or_default(),
             reference: keep_ref(f.get("ref")),
-            error: js_json::to_js_string(f.get("error")).unwrap_or_default(),
+            // `String(f && f.error || '')`.
+            error: if f.get("error").truthy() {
+                js_json::to_js_string(f.get("error")).unwrap_or_default()
+            } else {
+                String::new()
+            },
         });
     }
     Some(out.normalised())
 }
+
+/// rust-mcp-credentials.cjs `TABLES`.
+const MCP_TABLES: [&str; 4] = [
+    "mcp_oauth_tokens",
+    "mcp_oauth_clients",
+    "directory_mcp_user_keys",
+    "directory_mcp_servers",
+];
 
 /// rust-providers-reseal.cjs: `ref` a safe integer, else `null`.
 fn provider_ref(r: &JValue) -> JValue {
@@ -274,6 +306,19 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
     if id.user.role != server_auth::Role::Admin {
         return error(StatusCode::FORBIDDEN, "administrator required");
     }
+    // The rotation runs to its end in its own task, whatever happens to this request (a client that
+    // goes away, a proxy timeout): the passes, the audit row and the one-at-a-time lock all belong to
+    // the work, not to the connection.
+    let app = Arc::clone(app);
+    let actor = id.user.id.clone();
+    match tokio::spawn(async move { run(app, actor).await }).await {
+        Ok(response) => response,
+        Err(_) => internal("secrets rotation could not finish"),
+    }
+}
+
+/// One whole rotation, in core's order.
+async fn run(app: Arc<App>, actor: String) -> Response<Body> {
     let Some(data_dir) = app.config.data_dir.clone() else {
         return internal("secrets rotation is not available");
     };
@@ -298,15 +343,15 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
     let Some(providers) = providers
         .ok()
         .flatten()
-        .and_then(|b| pass_of(&b, provider_ref))
+        .and_then(|b| pass_of(&b, provider_ref, None))
     else {
         return internal(
             "the Rust front could not re-seal the provider keys (credential store unavailable)",
         );
     };
     // 2. The MCP credentials.
-    let Some(mcp_pass) = (match mcp.reseal(app).await {
-        Ok(report) => pass_of(&report.json(), mcp_ref),
+    let Some(mcp_pass) = (match mcp.reseal(&app).await {
+        Ok(report) => pass_of(&report.json(), mcp_ref, Some(&MCP_TABLES)),
         Err(_) => None,
     }) else {
         return internal(
@@ -314,7 +359,7 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
         );
     };
     // 3. The Google Drive token files (soft).
-    let drive_front = match crate::gdrive::of(app) {
+    let drive_front = match crate::gdrive::of(&app) {
         None => DriveFront::Error(drive_front_error(Some(503))),
         Some(drive) => match tokio::task::spawn_blocking(move || drive.reseal_users()).await {
             Ok(Ok(r)) => DriveFront::Counts(Counts {
@@ -329,28 +374,33 @@ pub async fn serve(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
         },
     };
     // 4 and 5: this process's tables, the merge, the audit row.
-    let app2 = Arc::clone(app);
-    let actor = id.user.id.clone();
-    let done = tokio::task::spawn_blocking(move || -> Option<String> {
-        let keys = DiskKeys(crate::provider_routes::load_keys(&data_dir)?);
-        let report = own_tables(&app2, &data_dir, &keys);
+    let done = tokio::task::spawn_blocking(move || -> Result<String, &'static str> {
+        let keys = DiskKeys(
+            crate::provider_routes::load_keys(&data_dir)
+                .ok_or("secrets rotation could not finish (credential store unavailable)")?,
+        );
+        let report = own_tables(&app, &data_dir, &keys);
         let report = merge(report, &providers, &mcp_pass, &drive_front, keys.0.has_previous());
         let detail = audit_detail(&report);
-        let audited = app2.writes.writer().ok()?.write(|tx| {
-            tx.execute(
-                "INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?1,?2,?3,?4)",
-                server_store::rusqlite::params![actor, AUDIT_ACTION, detail, identity::now_ms()],
-            )
+        // authService.audit throws in Node when the row cannot be written: a 500 there too.
+        let audited = app.writes.writer().ok().map(|w| {
+            w.write(|tx| {
+                tx.execute(
+                    "INSERT INTO audit_events(actor_user_id,target_user_id,action,detail,created_at) VALUES(?1,?1,?2,?3,?4)",
+                    server_store::rusqlite::params![actor, AUDIT_ACTION, detail, identity::now_ms()],
+                )
+            })
         });
-        if audited.is_err() {
-            eprintln!("noevia-server: the secrets rotation's audit row could not be written");
+        match audited {
+            Some(Ok(_)) => Ok(report.json()),
+            _ => Err("the secrets rotation finished, but its audit row could not be written"),
         }
-        Some(report.json())
     })
     .await;
     match done {
-        Ok(Some(text)) => reply::json_text(StatusCode::OK, text, true),
-        _ => internal("secrets rotation could not finish (credential store unavailable)"),
+        Ok(Ok(text)) => reply::json_text(StatusCode::OK, text, true),
+        Ok(Err(message)) => internal(message),
+        Err(_) => internal("secrets rotation could not finish"),
     }
 }
 
@@ -384,7 +434,7 @@ mod tests {
     #[test]
     fn pass_reading_follows_core_clients() {
         let body = wtf16::parse(r#"{"ok":true,"tables":{"b":{"current":1,"rotated":0,"upgraded":0,"empty":0,"failed":1},"a":{"current":0,"rotated":0,"upgraded":0,"empty":0,"failed":0}},"failures":[{"table":"b","ref":1.5,"error":"x"}]}"#).unwrap();
-        let pass = pass_of(&body, provider_ref).unwrap();
+        let pass = pass_of(&body, provider_ref, None).unwrap();
         assert_eq!(
             pass.tables
                 .iter()
@@ -394,7 +444,13 @@ mod tests {
         );
         assert_eq!(pass.failures[0].reference, JValue::Null);
         let bad = wtf16::parse(r#"{"ok":true,"tables":{"a":{"current":-1,"rotated":0,"upgraded":0,"empty":0,"failed":0}},"failures":[]}"#).unwrap();
-        assert!(pass_of(&bad, provider_ref).is_none());
+        assert!(pass_of(&bad, provider_ref, None).is_none());
+        let other = wtf16::parse(r#"{"ok":true,"tables":{"qa_table":{"current":0,"rotated":0,"upgraded":0,"empty":0,"failed":0}},"failures":[{"table":"qa_table","ref":null,"error":null}]}"#).unwrap();
+        assert!(pass_of(&other, mcp_ref, Some(&MCP_TABLES)).is_none());
+        assert_eq!(
+            pass_of(&other, mcp_ref, None).unwrap().failures[0].error,
+            ""
+        );
         assert_eq!(
             mcp_ref(&wtf16::parse(r#"["u",2,"x"]"#).unwrap()),
             wtf16::parse(r#"["u","2"]"#).unwrap()

@@ -39,7 +39,7 @@ fn hex(s: &str) -> String {
         .collect()
 }
 
-async fn post(addr: std::net::SocketAddr, cookie: &str) -> (u16, Value) {
+async fn post_raw(addr: std::net::SocketAddr, cookie: &str) -> (u16, String) {
     let mut s = TcpStream::connect(addr).await.unwrap();
     let head = format!("POST {ROUTE} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\nCookie: {cookie}\r\nOrigin: http://{addr}\r\nX-CSRF-Token: csrf\r\nContent-Type: application/json\r\nContent-Length: 2\r\n\r\n{{}}");
     s.write_all(head.as_bytes()).await.unwrap();
@@ -49,8 +49,13 @@ async fn post(addr: std::net::SocketAddr, cookie: &str) -> (u16, Value) {
     let (h, b) = text.split_once("\r\n\r\n").unwrap();
     (
         h.split_whitespace().nth(1).unwrap().parse().unwrap(),
-        serde_json::from_str(b).unwrap_or(Value::Null),
+        b.to_string(),
     )
+}
+
+async fn post(addr: std::net::SocketAddr, cookie: &str) -> (u16, Value) {
+    let (status, body) = post_raw(addr, cookie).await;
+    (status, serde_json::from_str(&body).unwrap_or(Value::Null))
 }
 
 fn seal(key: &[u8], n: u8, plain: &str, user: Option<&str>) -> String {
@@ -172,7 +177,8 @@ async fn the_front_rotates_every_credential_in_one_request() {
         post(addr, MEMBER).await,
         (403, serde_json::json!({"error": "administrator required"}))
     );
-    let (status, report) = post(addr, ADMIN).await;
+    let (status, report_text) = post_raw(addr, ADMIN).await;
+    let report: Value = serde_json::from_str(&report_text).unwrap();
     assert_eq!(status, 200, "{report}");
     let counts = |c: [u64; 5]| serde_json::json!({"current": c[0], "rotated": c[1], "upgraded": c[2], "empty": c[3], "failed": c[4]});
     assert_eq!(
@@ -199,9 +205,31 @@ async fn the_front_rotates_every_credential_in_one_request() {
     }
     assert_eq!(report["failures"], serde_json::json!([]));
     assert_eq!(report["previousKey"], true);
-    // The first three tables in Node's order.
-    let names: Vec<&String> = report["tables"].as_object().unwrap().keys().collect();
-    assert!(names.contains(&&"storage_connections".to_string()));
+    // Node's table order (read from the reply's text: serde_json's map would sort the keys).
+    let order: Vec<String> = match js_json::wtf16::parse(&report_text).unwrap().get("tables") {
+        js_json::JValue::Obj(items) => items.iter().map(|(k, _)| k.clone()).collect(),
+        _ => panic!("tables"),
+    };
+    let at = |name: &str| order.iter().position(|n| n == name).unwrap();
+    assert_eq!(
+        order[..3],
+        [
+            "storage_connections",
+            "chatgpt_oauth_tokens",
+            "google_drive_users"
+        ]
+    );
+    assert!(at("google_drive_users") < at("shared_providers"));
+    assert!(at("shared_providers") < at("mcp_oauth_tokens"));
+    assert_eq!(
+        order[order.len() - 4..],
+        [
+            "mcp_oauth_tokens",
+            "mcp_oauth_clients",
+            "directory_mcp_user_keys",
+            "directory_mcp_servers"
+        ]
+    );
     // Every value now opens under the current key alone, to what it held.
     let secret = |u: &str| -> String {
         db.query_row(

@@ -11,9 +11,9 @@
 //! are the recorded stand-ins; the front's route test runs the real ones.
 use js_json::JValue;
 use secret_envelope::KeyUsed;
-use secrets_rotate::{KeyError, 
-    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure, Keys,
-    Pass, Row, Status, Table, DRIVE_TABLE,
+use secrets_rotate::{
+    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure,
+    KeyError, Keys, Pass, Row, Status, Table, DRIVE_TABLE,
 };
 use serde_json::Value;
 use zeroize::Zeroizing;
@@ -34,7 +34,11 @@ struct TestKeys {
 }
 
 impl Keys for TestKeys {
-    fn open(&self, value: &str, user: Option<&str>) -> Result<(Zeroizing<String>, KeyUsed), KeyError> {
+    fn open(
+        &self,
+        value: &str,
+        user: Option<&str>,
+    ) -> Result<(Zeroizing<String>, KeyUsed), KeyError> {
         let units: Vec<u16> = value.encode_utf16().collect();
         let (used, plain) = secret_envelope::open(
             &self.current,
@@ -155,10 +159,11 @@ impl Table for DriveTable {
             .find(|(n, _)| *n == row.value)
             .unwrap()
             .1;
-        Some(drive_check(text, |t| self.sealer.open(t).map_err(|_| KeyError)))
+        Some(drive_check(text, |t| {
+            self.sealer.open(t).map_err(|_| KeyError)
+        }))
     }
 }
-
 
 /// The front pass stand-in as Node's client returns it (read with JS key order).
 fn pass(v: &JValue) -> Option<Pass> {
