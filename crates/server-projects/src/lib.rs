@@ -73,6 +73,7 @@ pub mod document_ingest;
 pub mod document_pages;
 pub mod extract;
 pub mod extract_queue;
+pub mod file_read;
 pub mod files;
 pub mod folder_import;
 pub mod frame;

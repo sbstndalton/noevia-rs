@@ -46,8 +46,9 @@
 //! 6. [`Settled::round_note`]: the note each model round of such a turn carries (chat.cjs ~2047),
 //!    added with [`with_system_note`] to the round's messages.
 //!
-//! Later parts (not here): `holdForCloud` (a round-time rule), the egress and ChatGPT checks, the
-//! private-tool refusal (`egressToolRefusal`) and the `blocked` reader, the route notes.
+//! Elsewhere: `holdForCloud` (a round-time rule) is [`crate::pre_rules::CloudHold`]; the `blocked`
+//! reader and the route notes are [`crate::offer`]. Later parts (not here): the egress and ChatGPT
+//! checks, the private-tool refusal (`egressToolRefusal`) and the [`Seam::Wanted`] decision itself.
 //!
 //! Recorded in `tests/fixtures/node-offbox.v1.json`, written by `tests/record_offbox.cjs`; no
 //! named differences.
