@@ -8,10 +8,12 @@
     clippy::indexing_slicing,
     clippy::panic
 )]
-use noevia_server::chatgpt_oauth_routes::generation_of;
-use noevia_server::signin_wire::{client, fetch_for, into_response, FrontAccounts, SigninWire, SESSIONS};
-use noevia_server::{config::Config, App};
 use http_body_util::BodyExt;
+use noevia_server::chatgpt_oauth_routes::generation_of;
+use noevia_server::signin_wire::{
+    client, fetch_for, into_response, FrontAccounts, SigninWire, SESSIONS,
+};
+use noevia_server::{config::Config, App};
 use server_store::rusqlite::Connection;
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
@@ -22,7 +24,8 @@ use tokio::net::TcpListener;
 const A: &str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 const KEY: [u8; 32] = [7; 32];
 const DEADLINE: Duration = Duration::from_secs(20);
-const BODY: &str = r#"{"model":"m-large","messages":[{"role":"user","content":"q"}],"stream":true}"#;
+const BODY: &str =
+    r#"{"model":"m-large","messages":[{"role":"user","content":"q"}],"stream":true}"#;
 const STREAM: &str = concat!(
     "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"m1\",\"delta\":\"Hel\"}\n\n",
     "data: {\"type\":\"response.output_text.delta\",\"item_id\":\"m1\",\"delta\":\"lo\"}\n\n",
@@ -112,7 +115,8 @@ async fn backend() -> (String, Arc<Mutex<Vec<(String, Vec<(String, String)>)>>>)
                         STREAM.len()
                     )
                 } else {
-                    "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n".into()
+                    "HTTP/1.1 404 Not Found\r\ncontent-length: 0\r\nconnection: close\r\n\r\n"
+                        .into()
                 };
                 log.lock().unwrap().push((path, headers));
                 let _ = sock.write_all(answer.as_bytes()).await;
@@ -145,10 +149,17 @@ async fn a_sign_in_turn_through_the_front_broker() {
         ("PUBLIC_ORIGIN", "http://127.0.0.1:9".to_string()),
         ("NOEVIA_FEATURE_CHATGPT_OAUTH", "1".to_string()),
         ("NOEVIA_QA_CHATGPT_ISSUER", base.clone()),
-        ("NOEVIA_QA_CHATGPT_CODEX_BASE", format!("{base}/backend-api/codex/")),
+        (
+            "NOEVIA_QA_CHATGPT_CODEX_BASE",
+            format!("{base}/backend-api/codex/"),
+        ),
     ]);
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
-    let broker = Arc::clone(app.chatgpt_oauth.as_ref().expect("the front has a sign-in broker"));
+    let broker = Arc::clone(
+        app.chatgpt_oauth
+            .as_ref()
+            .expect("the front has a sign-in broker"),
+    );
     let transport = broker.transport();
     assert_eq!(transport.base_url, format!("{base}/backend-api/codex"));
     let mut wire = SigninWire {
@@ -158,16 +169,38 @@ async fn a_sign_in_turn_through_the_front_broker() {
     let url = "http://x/v1/chat/completions";
 
     // No sign-in yet: the broker's "not connected" refusal, as core's error answer.
-    let answer = fetch_for(&mut wire, &SESSIONS, &transport, A, Some("chat-1"), url, BODY).await;
+    let answer = fetch_for(
+        &mut wire,
+        &SESSIONS,
+        &transport,
+        A,
+        Some("chat-1"),
+        url,
+        BODY,
+    )
+    .await;
     let (status, text) = reply_text(answer).await;
     assert_eq!(status, 401, "{text}");
     assert!(text.contains("is not connected"), "{text}");
-    assert!(seen.lock().unwrap().iter().all(|(p, _)| !p.ends_with("/responses")));
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .all(|(p, _)| !p.ends_with("/responses")));
 
     // A stored sign-in: the turn streams, with the account's headers on the wire.
     let now = noevia_server::identity::now_ms();
     let sealed = store_tokens(&db, "synthetic-access-1", now + 3_600_000);
-    let answer = fetch_for(&mut wire, &SESSIONS, &transport, A, Some("chat-1"), url, BODY).await;
+    let answer = fetch_for(
+        &mut wire,
+        &SESSIONS,
+        &transport,
+        A,
+        Some("chat-1"),
+        url,
+        BODY,
+    )
+    .await;
     let (status, text) = reply_text(answer).await;
     assert_eq!(status, 200, "{text}");
     assert!(text.contains("\"content\":\"Hel\""), "{text}");
@@ -182,14 +215,23 @@ async fn a_sign_in_turn_through_the_front_broker() {
     assert_eq!(calls.len(), 1);
     let (path, headers) = &calls[0];
     assert_eq!(path, "/backend-api/codex/responses");
-    let h = |n: &str| headers.iter().find(|(k, _)| k == n).map(|(_, v)| v.as_str());
+    let h = |n: &str| {
+        headers
+            .iter()
+            .find(|(k, _)| k == n)
+            .map(|(_, v)| v.as_str())
+    };
     assert_eq!(h("authorization"), Some("Bearer synthetic-access-1"));
     assert_eq!(h("chatgpt-account-id"), Some("acct-synthetic"));
     assert_eq!(h("x-openai-fedramp"), Some("true"));
     assert_eq!(h("accept"), Some("text/event-stream"));
     assert!(h("user-agent").is_some_and(|v| v.starts_with("noevia/")));
     // The session the cache keeps names this sign-in (core's generation of its ciphertext).
-    let cached = SESSIONS.lock().unwrap().lookup(A, wire_signal(&broker).as_deref(), false, now as f64);
+    let cached =
+        SESSIONS
+            .lock()
+            .unwrap()
+            .lookup(A, wire_signal(&broker).as_deref(), false, now as f64);
     assert_eq!(
         cached.map(|s| s.generation),
         Some(js_json::JValue::Str(generation_of(&sealed)))
@@ -197,7 +239,16 @@ async fn a_sign_in_turn_through_the_front_broker() {
 
     // A disconnect moves the broker's change signal: the cached session is not used again.
     broker.disconnect(&app, A, false).await.unwrap();
-    let answer = fetch_for(&mut wire, &SESSIONS, &transport, A, Some("chat-1"), url, BODY).await;
+    let answer = fetch_for(
+        &mut wire,
+        &SESSIONS,
+        &transport,
+        A,
+        Some("chat-1"),
+        url,
+        BODY,
+    )
+    .await;
     let (status, text) = reply_text(answer).await;
     assert_eq!(status, 401, "{text}");
     let responses = seen
