@@ -12,7 +12,9 @@
 //! `egress.isExternalProvider`'s answer). Then, in order:
 //!
 //! 1. Off the box ([`off_box_turn`]): the brain block goes (`sys = sysWithoutBrain`, the wire
-//!    rebuilt from the replay) and the time part is swapped for the zoneless one
+//!    rebuilt from the replay). The brain block is the [`BRAIN_PART`] part of [`Prepared::parts`],
+//!    found by its kind; like Node's `part !== brainBlock` filter, any other part with the same
+//!    text goes with it and the time part is swapped for the zoneless one
 //!    (`sys.replace(timePart, zoneless)`, the first match, in `sys` and the system message).
 //! 2. On an ungranted hybrid cloud route (`cloudUngranted()`) of a turn that is not `compactOnly`:
 //!    [`Seam::Wanted`], whether this turn needs a private-data box (its own picks, what Automatic
@@ -25,7 +27,7 @@
 //!    A moved turn answers through the default provider with no ChatGPT connection and the plain
 //!    fetch ([`Settled::moved`]); its model is [`Settled::model`].
 //! 3. [`Seam::Settled`]: the provider once the Inference-machine rules (#1840/#1849) ran, the
-//!    caller's; then [`Seam::Boxes`], `requestToolboxes(automaticAdded)` after
+//!    caller's (a row that takes an on-box turn off the box is refused: [`Step::OutOfOrder`]); then [`Seam::Boxes`], `requestToolboxes(automaticAdded)` after
 //!    `egress.stripPrivateToolboxes`, asked with whether the turn is on the box (`automaticLocal`).
 //! 4. Off the box: the replay is rebuilt from `replaySource` with `offBox: true`; the current
 //!    message keeps what was added to it (the attached files block), the wire keeps its head.
@@ -37,7 +39,9 @@
 //!
 //! Note the order Node keeps: steps 1 and 2 run before the move, so a moved turn still lost the
 //! brain block and the zone (the route was cloud when they ran) while its history is the on-box
-//! replay. [`Prepared::parts`] is left as built (Node's `sysParts` keeps the brain block too).
+//! replay. [`Prepared::parts`] is changed with `sys` (no brain part, the zoneless time part), so
+//! `parts.text()` stays `sys` and nothing read later brings them back; Node's `sysParts` keeps
+//! them, but nothing after this point sends them.
 //!
 //! 6. [`Settled::round_note`]: the note each model round of such a turn carries (chat.cjs ~2047),
 //!    added with [`with_system_note`] to the round's messages.
@@ -54,7 +58,7 @@ use crate::history::{self, Entry, ReplayOptions};
 use crate::modes::{off_box_turn, RouteTarget};
 use crate::skills::SKILL_INDEX_LEAD;
 use crate::tools_mode::is_private_data_box;
-use crate::{js, time, Prepared};
+use crate::{js, time, PartKind, Prepared};
 
 /// chat.cjs SKILL_INDEX_LEAD_NO_READER.
 pub const SKILL_INDEX_LEAD_NO_READER: &str =
@@ -84,6 +88,9 @@ pub fn with_system_note(messages: &[JValue], note: &str) -> Vec<JValue> {
     out
 }
 
+/// The brain block's part (#742), pushed last by the caller (see [`crate::Turn::trailing`]).
+pub const BRAIN_PART: PartKind = PartKind::Other("brain");
+
 /// What the off-box rules read of the turn.
 #[derive(Clone, Copy)]
 pub struct OffBoxTurn<'a> {
@@ -94,8 +101,6 @@ pub struct OffBoxTurn<'a> {
     /// `body.compactOnly` is truthy.
     pub compact_only: bool,
     pub default_provider_id: &'a str,
-    /// `brainBlock` (`''`: none).
-    pub brain_block: &'a str,
     /// `currentNow()` and `serverTimeZone()` (as for [`crate::Turn`]).
     pub now_ms: i64,
     pub time_zone: &'a str,
@@ -227,11 +232,18 @@ fn replace_first(text: &mut String, from: &str, to: &str) {
     }
 }
 
+/// `dropReader(text)`'s replacements, in order.
+const READER: [(&str, &str); 3] = [
+    (SKILL_INDEX_LEAD, SKILL_INDEX_LEAD_NO_READER),
+    (RAG_READ_FILE_HINT, ""),
+    (crate::sources::READ_FILE_HINT, ""),
+];
+
 /// `dropReader(text)`.
 fn drop_reader(text: &mut String) {
-    replace_first(text, SKILL_INDEX_LEAD, SKILL_INDEX_LEAD_NO_READER);
-    replace_first(text, RAG_READ_FILE_HINT, "");
-    replace_first(text, crate::sources::READ_FILE_HINT, "");
+    for (from, to) in READER {
+        replace_first(text, from, to);
+    }
 }
 
 impl<'a> OffBox<'a> {
@@ -277,16 +289,16 @@ impl<'a> OffBox<'a> {
     fn start(&mut self) -> Step {
         if self.off_box() {
             let p = &mut self.out.prepared;
-            if !self.t.brain_block.is_empty() {
-                // `sysParts.filter((part) => part !== brainBlock).join('\n\n')`
-                let kept: Vec<&str> = p
-                    .parts
-                    .parts()
-                    .iter()
-                    .map(|(_, text)| text.as_str())
-                    .filter(|text| *text != self.t.brain_block)
-                    .collect();
-                p.system = kept.join("\n\n");
+            // `sysParts.filter((part) => part !== brainBlock).join('\n\n')`, the block found by kind.
+            let brain = p
+                .parts
+                .parts()
+                .iter()
+                .find(|(kind, _)| *kind == BRAIN_PART)
+                .map(|(_, text)| text.clone());
+            if let Some(brain) = brain {
+                p.parts.parts_mut().retain(|(_, text)| *text != brain);
+                p.system = p.parts.text();
                 p.messages = wire(&p.system, &p.history);
                 self.out.brain_dropped = true;
             }
@@ -299,6 +311,16 @@ impl<'a> OffBox<'a> {
             if holds_time {
                 if let Some(zoneless) = time::part(self.t.now_ms, self.t.time_zone, false) {
                     replace_first(&mut p.system, &p.time_part, &zoneless);
+                    // The same first match, in its part (the time part holds no blank line, so a
+                    // match never spans two parts).
+                    if let Some((_, text)) = p
+                        .parts
+                        .parts_mut()
+                        .iter_mut()
+                        .find(|(_, text)| text.contains(p.time_part.as_str()))
+                    {
+                        replace_first(text, &p.time_part, &zoneless);
+                    }
                     if let Some(c) = p.messages.first_mut().and_then(content_mut) {
                         replace_first(c, &p.time_part, &zoneless);
                     }
@@ -368,8 +390,18 @@ impl<'a> OffBox<'a> {
             ),
             (At::Line, Reply::Done) => self.ask(At::Settled, Seam::Settled),
             (At::Settled, Reply::Provider { row, external }) => {
-                self.out.provider = row;
-                self.out.external = external;
+                // The machine rules only ever keep a turn on this network: a row that would take an
+                // on-box turn off the box (step 1 kept its brain block and zone) is refused.
+                let was_off = self.off_box();
+                let (provider, ext) = (
+                    std::mem::replace(&mut self.out.provider, row),
+                    std::mem::replace(&mut self.out.external, external),
+                );
+                if !was_off && self.off_box() {
+                    self.out.provider = provider;
+                    self.out.external = ext;
+                    return Step::OutOfOrder;
+                }
                 let local = !self.off_box();
                 self.ask(At::Boxes, Seam::Boxes { local })
             }
@@ -412,6 +444,17 @@ impl<'a> OffBox<'a> {
                 || (self.t.project_files && self.out.boxes.iter().any(|id| id == "core"));
             let p = &mut self.out.prepared;
             drop_reader(&mut p.system);
+            // The same first matches in the parts (none of the texts holds a blank line).
+            for (from, to) in READER {
+                if let Some((_, text)) = p
+                    .parts
+                    .parts_mut()
+                    .iter_mut()
+                    .find(|(_, text)| text.contains(from))
+                {
+                    replace_first(text, from, to);
+                }
+            }
             for m in &mut p.messages {
                 if let Some(c) = content_mut(m) {
                     drop_reader(c);

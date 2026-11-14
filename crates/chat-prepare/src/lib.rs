@@ -221,6 +221,11 @@ impl SystemParts {
         &self.parts
     }
 
+    /// The parts, for the off-box rules ([`offbox`]) that take some out or rewrite one.
+    pub(crate) fn parts_mut(&mut self) -> &mut Vec<(PartKind, String)> {
+        &mut self.parts
+    }
+
     /// The first part of `kind`.
     pub fn get(&self, kind: PartKind) -> Option<&str> {
         self.parts

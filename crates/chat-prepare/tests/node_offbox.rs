@@ -13,15 +13,15 @@
 use std::collections::HashSet;
 
 use chat_prepare::history::{self, Entry};
-use chat_prepare::modes::RouteTarget;
+use chat_prepare::modes::{off_box_turn, RouteTarget};
 use chat_prepare::offbox::{
-    settle, with_system_note, OffBox, OffBoxTurn, Reply, Seam, Settled, Step,
+    settle, with_system_note, OffBox, OffBoxTurn, Reply, Seam, Settled, Step, BRAIN_PART,
     SKILL_INDEX_LEAD_NO_READER,
 };
 use chat_prepare::skills::SKILL_INDEX_LEAD;
 use chat_prepare::time::{self, FixedNow};
 use chat_prepare::vision::CODE_ROUTE_NOTE;
-use chat_prepare::{account, js, memory, PartKind, Prepared, Turn};
+use chat_prepare::{account, js, memory, PartKind, Prepared, ProjectTurn, Turn};
 use js_json::{wtf16, JValue};
 
 const FIXTURE: &str = include_str!("fixtures/node-offbox.v1.json");
@@ -94,13 +94,14 @@ fn target_of(t: &JValue, providers: &JValue) -> Option<RouteTarget> {
         "local"
     };
     let reason = entry.get("reason").clone();
-    let flags = &items(spec, "freeChats")[0];
-    let choice = spec.get("modes").get("choice");
-    let remembered_cloud =
-        choice.get("remember").truthy() && choice.get("choice").as_str() == Some("cloud");
-    let granted = flags.get("allowCloud") == &JValue::Bool(true)
-        || remembered_cloud
-        || reason.as_str() == Some("user-choice");
+    let flags = if spec.get("project").is_nullish() {
+        &items(spec, "freeChats")[0]
+    } else {
+        &items(spec.get("project"), "chats")[0]
+    };
+    // A remembered "Send to cloud" is a user choice: `user-choice` grants, with or without remember.
+    let granted =
+        flags.get("allowCloud") == &JValue::Bool(true) || reason.as_str() == Some("user-choice");
     let cloud = settings.get("cloud").clone();
     let row = (route == "cloud").then(|| {
         providers
@@ -139,6 +140,29 @@ fn routed_role(spec: &JValue) -> String {
 struct Replayed {
     settled: Box<Settled>,
     asked: Vec<Seam>,
+    /// The turn was off the box when step 1 ran.
+    off_at_start: bool,
+}
+
+/// A Manual project turn (`routing: 'manual'`): never routed, never moved.
+fn manual(spec: &JValue) -> bool {
+    spec.get("project").get("routing").as_str() == Some("manual")
+}
+
+/// The provider row Node answered through first (`getProvider` of the recorded id).
+fn first_provider(t: &JValue, providers: &JValue, target: Option<&RouteTarget>) -> JValue {
+    if let Some(row) = target.and_then(RouteTarget::provider) {
+        return row;
+    }
+    let id = at(&items(t, "external")[0], 0).clone();
+    let JValue::Obj(rows) = providers else {
+        panic!("no providers")
+    };
+    rows.iter()
+        .map(|(_, row)| row)
+        .find(|row| row.get("id") == &id)
+        .cloned()
+        .unwrap()
 }
 
 fn prepare(
@@ -152,12 +176,16 @@ fn prepare(
     let memory = memory::read(None);
     let now = time::fixed_now(Some(PIN));
     assert!(matches!(now, FixedNow::Pinned { .. }));
-    let brain = spec.get("brain").as_str().map(String::from);
-    let trailing: Vec<(PartKind, String)> = brain
-        .into_iter()
-        .map(|b| (PartKind::Other("brain"), b))
-        .collect();
+    // chat.cjs reads no frame (so no brain block) for compactOnly.
+    let brain = spec
+        .get("brain")
+        .as_str()
+        .filter(|_| !body.get("compactOnly").truthy())
+        .map(String::from);
+    let trailing: Vec<(PartKind, String)> = brain.into_iter().map(|b| (BRAIN_PART, b)).collect();
     let compact = body.get("compactOnly").truthy();
+    let project = spec.get("project");
+    let files_block = spec.get("filesBlock").as_str();
     chat_prepare::prepare(&Turn {
         instructions: &instructions,
         memory: &memory,
@@ -172,7 +200,14 @@ fn prepare(
         },
         carry_orphan_tool: carry,
         known_tool: known,
-        project: None,
+        project: (!project.is_nullish()).then_some(ProjectTurn {
+            project,
+            code_tasks: &[],
+            files_block,
+            not_ready: &[],
+            partial_reads: &[],
+            skills: &[],
+        }),
         trailing: &trailing,
     })
     .unwrap_or_else(|e| panic!("{}: prepare {e:?}", name(t)))
@@ -190,27 +225,24 @@ fn replay(t: &JValue, f: &JValue) -> Replayed {
     let mapped: Vec<Entry> = history::map_history(body.get("history"), 1000);
     let target = target_of(t, providers);
     let external = items(t, "external");
-    let provider = match target.as_ref().and_then(RouteTarget::provider) {
-        Some(row) => row,
-        None => providers.get("default").clone(),
-    };
+    let provider = first_provider(t, providers, target.as_ref());
     let role = routed_role(spec);
-    let brain = spec.get("brain").as_str().unwrap_or("");
+    let auto = !manual(spec);
     let turn = OffBoxTurn {
-        wants_auto: true,
-        routed_role: Some(&role),
+        wants_auto: auto,
+        routed_role: auto.then_some(role.as_str()),
         compact_only: body.get("compactOnly").truthy(),
         default_provider_id: "default",
-        brain_block: brain,
         now_ms: time::fixed_now(Some(PIN)).now(0),
         time_zone: spec.get("tz").as_str().unwrap(),
         replay_source: &mapped,
         message: body.get("message").as_str().unwrap_or(""),
         carry_orphan_tool: &carry,
         known_tool: &knows,
-        project_files: false,
+        project_files: !items(spec.get("project"), "files").is_empty(),
     };
     let first_external = at(&external[0], 1) == &JValue::Bool(true);
+    let off_at_start = off_box_turn(first_external, target.as_ref(), &provider, "default");
     let machine = OffBox::new(turn, prepared, target, provider, first_external);
     let wanted = strings(body.get("turnToolboxes"))
         .iter()
@@ -233,13 +265,7 @@ fn replay(t: &JValue, f: &JValue) -> Replayed {
             // No Inference machines: the provider stays as it is.
             Seam::Settled => Reply::Provider {
                 row: provider_now.clone().map_or_else(
-                    || match target_of(t, providers)
-                        .as_ref()
-                        .and_then(RouteTarget::provider)
-                    {
-                        Some(row) => row,
-                        None => providers.get("default").clone(),
-                    },
+                    || first_provider(t, providers, target_of(t, providers).as_ref()),
                     |p| p.0,
                 ),
                 external: provider_now.as_ref().map_or(first_external, |p| p.1),
@@ -248,7 +274,11 @@ fn replay(t: &JValue, f: &JValue) -> Replayed {
         }
     })
     .expect("every seam answered in order");
-    Replayed { settled, asked }
+    Replayed {
+        settled,
+        asked,
+        off_at_start,
+    }
 }
 
 #[test]
@@ -266,7 +296,30 @@ fn the_recorded_turns_send_what_node_sent() {
             continue;
         }
         let reply = t.get("reply");
-        let Replayed { settled, asked } = replay(t, &f);
+        let Replayed {
+            settled,
+            asked,
+            off_at_start,
+        } = replay(t, &f);
+        // The parts say what the system message says: no brain part, the zoneless time part.
+        let parts = &settled.prepared.parts;
+        assert_eq!(parts.text(), settled.prepared.system, "{n}: the parts");
+        let had_brain =
+            !t.get("spec").get("brain").is_nullish() && !t.get("body").get("compactOnly").truthy();
+        assert_eq!(
+            settled.brain_dropped,
+            off_at_start && had_brain,
+            "{n}: brain"
+        );
+        if settled.brain_dropped {
+            assert!(parts.get(BRAIN_PART).is_none(), "{n}: the brain part");
+        }
+        let day = parts.get(PartKind::Time).unwrap().lines().next().unwrap();
+        assert_eq!(
+            day.contains(" ("),
+            !off_at_start,
+            "{n}: the time part's zone: {day}"
+        );
         assert_eq!(
             settled.boxes,
             strings(t.get("routedBoxes")),
@@ -274,8 +327,13 @@ fn the_recorded_turns_send_what_node_sent() {
         );
         stripped += usize::from(settled.private_stripped);
         if reply.is_nullish() {
-            // compactOnly: the summary request is a later slice; the boxes are what is recorded.
+            // compactOnly: no reply request; the wire chat-context.cjs compacts is recorded.
             assert!(t.get("body").get("compactOnly").truthy(), "{n}: no reply");
+            assert_eq!(
+                json(&JValue::Arr(settled.prepared.messages.clone())),
+                json(t.get("compactWire")),
+                "{n}: the compacted wire"
+            );
             compact += 1;
             continue;
         }
@@ -289,11 +347,8 @@ fn the_recorded_turns_send_what_node_sent() {
             JValue::Arr(a) => &a[..],
             _ => panic!("{n}: no messages"),
         };
-        let mut got = match settled.round_note() {
-            Some(note) => with_system_note(&settled.prepared.messages, note),
-            None => settled.prepared.messages.clone(),
-        };
-        if routed_role(t.get("spec")) == "code" {
+        let mut got = settled.prepared.messages.clone();
+        if !manual(t.get("spec")) && routed_role(t.get("spec")) == "code" {
             // chat.cjs ~1478 (#1604), a later step: the Code route's note after every system message.
             for m in &mut got {
                 if let (Some("system"), Some(c)) =
@@ -302,6 +357,10 @@ fn the_recorded_turns_send_what_node_sent() {
                     *m = js::message("system", format!("{c}\n\n{CODE_ROUTE_NOTE}"));
                 }
             }
+        }
+        // Then each model round's note (~2047), after the Code note as in Node.
+        if let Some(note) = settled.round_note() {
+            got = with_system_note(&got, note);
         }
         assert_eq!(
             json(&JValue::Arr(got)),
@@ -363,7 +422,7 @@ fn the_recorded_turns_send_what_node_sent() {
     }
     // The recording reaches every branch.
     assert!(
-        moved >= 5 && dropped >= 5 && refiltered >= 10 && stripped >= 2 && compact == 2 && refused <= 8,
+        moved >= 5 && dropped >= 5 && refiltered >= 10 && stripped >= 5 && compact == 2 && refused <= 8,
         "moved {moved}, dropped {dropped}, off-box {refiltered}, stripped {stripped}, compact {compact}, refused {refused}"
     );
 }
@@ -416,7 +475,6 @@ fn a_still_ungranted_cloud_route_takes_the_reader_out_of_every_message() {
         routed_role: Some("fast"),
         compact_only: false,
         default_provider_id: "default",
-        brain_block: "",
         now_ms: 0,
         time_zone: "UTC",
         replay_source: &[],
@@ -482,7 +540,6 @@ fn a_reply_out_of_order_settles_nothing() {
         routed_role: Some("fast"),
         compact_only: false,
         default_provider_id: "default",
-        brain_block: "",
         now_ms: 0,
         time_zone: "UTC",
         replay_source: &[],
@@ -510,4 +567,162 @@ fn a_reply_out_of_order_settles_nothing() {
     // On the box with no target: no move question, straight to the settled provider.
     assert_eq!(m.step(Reply::Start), Step::Ask(Seam::Settled));
     assert_eq!(m.step(Reply::Done), Step::OutOfOrder);
+}
+
+fn turn_for_units<'a>(no: &'a (dyn Fn(&str) -> bool + Sync)) -> OffBoxTurn<'a> {
+    OffBoxTurn {
+        wants_auto: true,
+        routed_role: Some("fast"),
+        compact_only: false,
+        default_provider_id: "default",
+        now_ms: 0,
+        time_zone: "UTC",
+        replay_source: &[],
+        message: "QA",
+        carry_orphan_tool: no,
+        known_tool: no,
+        project_files: false,
+    }
+}
+
+fn parts_prepared(parts: &[(PartKind, &str)]) -> Prepared {
+    let mut sp = chat_prepare::SystemParts::default();
+    for (kind, text) in parts {
+        sp.push(*kind, (*text).to_string());
+    }
+    let system = sp.text();
+    let history = vec![js::message("user", "QA".to_string())];
+    let mut messages = vec![js::message("system", system.clone())];
+    messages.extend(history.iter().cloned());
+    Prepared {
+        parts: sp,
+        time_part: "QA-time".to_string(),
+        system,
+        history,
+        messages,
+    }
+}
+
+fn cloud_target() -> RouteTarget {
+    RouteTarget {
+        route: "cloud",
+        reason: JValue::from("mode"),
+        detail: None,
+        cloud: JValue::Null,
+        row: Some(JValue::obj([("id", JValue::from("qa-cloud"))])),
+        hybrid_ungranted: false,
+    }
+}
+
+#[test]
+fn the_brain_block_is_found_by_its_kind() {
+    let no = |_: &str| false;
+    // A brain part whose text no caller string names, beside a frame part: it goes by its kind.
+    let prepared = parts_prepared(&[
+        (PartKind::Time, "QA-time"),
+        (PartKind::Other("frameBlock"), "QA frame"),
+        (BRAIN_PART, "QA brain notes"),
+    ]);
+    let target = cloud_target();
+    let row = target.provider().unwrap();
+    let machine = OffBox::new(
+        turn_for_units(&no),
+        prepared,
+        Some(target),
+        row.clone(),
+        true,
+    );
+    let settled = settle(machine, |seam| match seam {
+        Seam::Settled => Reply::Provider {
+            row: row.clone(),
+            external: true,
+        },
+        Seam::Boxes { .. } => Reply::Boxes(vec!["core".into()]),
+        other => panic!("{other:?}"),
+    })
+    .unwrap();
+    assert!(settled.brain_dropped);
+    assert!(!settled.prepared.system.contains("QA brain notes"));
+    assert!(settled.prepared.system.contains("QA frame"));
+    assert!(settled.prepared.parts.get(BRAIN_PART).is_none());
+    assert_eq!(settled.prepared.parts.text(), settled.prepared.system);
+
+    // The same text in a part of another kind and no brain part: nothing is dropped.
+    let prepared = parts_prepared(&[
+        (PartKind::Time, "QA-time"),
+        (PartKind::Account, "QA brain notes"),
+    ]);
+    let target = cloud_target();
+    let machine = OffBox::new(
+        turn_for_units(&no),
+        prepared,
+        Some(target),
+        row.clone(),
+        true,
+    );
+    let settled = settle(machine, |seam| match seam {
+        Seam::Settled => Reply::Provider {
+            row: row.clone(),
+            external: true,
+        },
+        Seam::Boxes { .. } => Reply::Boxes(vec![]),
+        other => panic!("{other:?}"),
+    })
+    .unwrap();
+    assert!(!settled.brain_dropped);
+    assert!(settled.prepared.system.contains("QA brain notes"));
+}
+
+#[test]
+fn a_settled_provider_that_takes_an_on_box_turn_off_the_box_is_refused() {
+    let no = |_: &str| false;
+    let local = JValue::obj([("id", JValue::from("default"))]);
+    let prepared = parts_prepared(&[(PartKind::Time, "QA-time"), (BRAIN_PART, "QA brain")]);
+    let mut m = OffBox::new(
+        turn_for_units(&no),
+        prepared.clone(),
+        None,
+        local.clone(),
+        false,
+    );
+    assert_eq!(m.step(Reply::Start), Step::Ask(Seam::Settled));
+    // A non-default, non-machine row after step 1 kept the brain block: refused.
+    let other = JValue::obj([("id", JValue::from("qa-other-id"))]);
+    assert_eq!(
+        m.step(Reply::Provider {
+            row: other,
+            external: false
+        }),
+        Step::OutOfOrder
+    );
+    // The default provider marked external: refused too.
+    let mut m = OffBox::new(
+        turn_for_units(&no),
+        prepared.clone(),
+        None,
+        local.clone(),
+        false,
+    );
+    m.step(Reply::Start);
+    assert_eq!(
+        m.step(Reply::Provider {
+            row: local.clone(),
+            external: true
+        }),
+        Step::OutOfOrder
+    );
+    // An Inference machine's row keeps the turn on this network: accepted.
+    let mut m = OffBox::new(turn_for_units(&no), prepared, None, local, false);
+    m.step(Reply::Start);
+    let machine = JValue::obj([
+        ("id", JValue::from("qa-machine")),
+        ("machine", JValue::obj([("id", JValue::from("qa-m1"))])),
+    ]);
+    assert_eq!(
+        m.step(Reply::Provider {
+            row: machine,
+            external: false
+        }),
+        Step::Ask(Seam::Boxes { local: true })
+    );
 }

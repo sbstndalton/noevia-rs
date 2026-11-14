@@ -17,7 +17,8 @@
 //          stripPrivateToolboxes are wrapped (the real answer is recorded), chatToolRouter.select records the boxes it is
 //          given. Recorded: the routing seams in order up to the meta event, the external answers, the boxes after the
 //          egress strip and after the #1646 strip, the meta event's model and routing, the `[routing]` lines, and the
-//          reply request's model, url, messages and offered tool names; or what handleChat threw.
+//          reply request's model, url, messages and offered tool names (a compactOnly turn: the wire chat-context.cjs
+//          prepare is given); or what handleChat threw. Project turns stub rag.filesContext with the case's block.
 // Each source file's sha256 is recorded, so a changed Node file needs a fresh recording. stdout is the fixture.
 
 const crypto = require('node:crypto');
@@ -36,7 +37,7 @@ const logged = [];
 for (const k of ['log', 'info', 'warn', 'error', 'debug']) {
   console[k] = (...a) => { const line = a.map(String).join(' '); logged.push(line); process.stderr.write(`${line}\n`); };
 }
-const READ_FILES = ['server/chat.cjs', 'server/index.cjs', 'server/routing-modes.cjs', 'server/current-time-part.cjs', 'server/chat-brain.cjs', 'server/chat-frame-steering.cjs'];
+const READ_FILES = ['server/chat.cjs', 'server/index.cjs', 'server/routing-modes.cjs', 'server/current-time-part.cjs', 'server/chat-brain.cjs', 'server/chat-frame-steering.cjs', 'server/chat-context.cjs', 'server/rag.cjs', 'server/source-coverage.cjs'];
 const sha = (f) => crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex');
 function sourcesRead() {
   const server = `${path.join(root, 'server')}${path.sep}`;
@@ -77,6 +78,11 @@ const realExternal = egress.isExternalProvider;
 egress.isExternalProvider = (provider, ...rest) => { const out = realExternal(provider, ...rest); current.log.external.push([provider ? provider.id : null, out]); return out; };
 const realStrip = egress.stripPrivateToolboxes;
 egress.stripPrivateToolboxes = (selected, ...rest) => { const out = realStrip(selected, ...rest); current.log.egressBoxes = [...selected]; return out; };
+
+// A compactOnly turn sends no reply request: the wire it compacts (context.prepare's messages, force) is recorded.
+const chatContext = serverRequire('chat-context.cjs');
+const realContextPrepare = chatContext.prepare;
+chatContext.prepare = (args, ...rest) => { if (args && args.force === true) current.log.compactWire = structuredClone(args.messages); return realContextPrepare(args, ...rest); };
 
 let seed = 0x2026_1114 ^ 0x5d2;
 function rand() { // mulberry32
@@ -145,7 +151,7 @@ function handlerFor(dir, spec) {
     DEFAULT_TOOLBOXES: TB.DEFAULT_TOOLBOXES, CONNECTOR_BOXES: TB.CONNECTOR_BOXES, connectedBoxes: TB.connectedBoxes, allToolboxes: TB.allToolboxes,
     resolveTools: TB.resolveTools, isWriteTool: TB.isWriteTool,
     toolPolicy: { mode: () => 'allow' }, requestScope: { getStore: () => (S().noUser ? {} : { workspace: { userId: 'qa-user' } }) },
-    rag: { filesContext: async () => null }, prefill: { recordSample() {} }, reduceToolResult: () => ({ text: 'reduced' }), diaryExtras,
+    rag: { filesContext: async () => (S().filesBlock === undefined ? null : S().filesBlock) }, prefill: { recordSample() {} }, reduceToolResult: () => ({ text: 'reduced' }), diaryExtras,
     DIARY_BASE: 'http://qa-diary.invalid', TOOL_RESULT_CAP: 8000,
     json: (res, status, body) => { L().refused = { status, body }; },
     saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
@@ -164,7 +170,7 @@ async function addTurn(name, raw) {
   const spec = viaJson({ message: 'QA question', roles: ROLES, tz: 'UTC', ...raw });
   process.env.NOEVIA_CONTRACT_FIXED_NOW = '2026-11-13T23:30:00Z';
   process.env.TZ = spec.tz;
-  const log = { requests: [], calls: [], meta: false, refused: null, modesOn: false, mappedHistory: null, external: [], egressBoxes: null, routedBoxes: null };
+  const log = { requests: [], calls: [], meta: false, refused: null, modesOn: false, mappedHistory: null, external: [], egressBoxes: null, routedBoxes: null, compactWire: null };
   log.seam = (entry) => { if (entry[0] === 'enabled') log.modesOn = true; if (!log.meta) log.calls.push(entry); };
   current = { spec, log, seam: log.seam };
   const rawEvents = [];
@@ -174,7 +180,7 @@ async function addTurn(name, raw) {
   res.end = () => { res.writableEnded = true; res.emit('finish'); };
   current.res = res;
   const { handleChat } = handlerFor(fs.mkdtempSync(path.join(tmp, 'qa-')), spec);
-  const body = { message: spec.message, spaceId: 'free', ...(spec.body || {}) };
+  const body = { message: spec.message, ...(spec.project ? { projectId: spec.project.id } : { spaceId: 'free' }), ...(spec.body || {}) };
   const from = logged.length;
   let thrown = null;
   const [now, random] = [Date.now, Math.random];
@@ -188,7 +194,7 @@ async function addTurn(name, raw) {
   const reply = log.requests.find((r) => r.body.stream === true) || null;
   if (!thrown && !meta && !log.refused) throw new Error(`${name}: no meta event and no refusal; events: ${rawEvents.join('').slice(0, 600)}`);
   turns.push({ name, spec, body, ended: !!res.writableEnded, calls: log.calls, ...(thrown ? { throws: thrown } : {}), refused: log.refused,
-    external: log.external, egressBoxes: log.egressBoxes, routedBoxes: log.routedBoxes,
+    external: log.external, egressBoxes: log.egressBoxes, routedBoxes: log.routedBoxes, compactWire: log.compactWire,
     meta: meta ? { model: meta.model, route: meta.route ?? null, routing: meta.routing ?? null } : null, lines,
     reply: reply ? { model: reply.body.model, url: reply.url, messages: reply.body.messages, tools: (reply.body.tools || []).map((t) => t.function.name) } : null });
 }
@@ -243,6 +249,29 @@ const PRIV = { turnToolboxes: ['qa-notes'] };
   await addTurn('hybrid_local_choice_private', { ...free({}, { history: HIST, ...PRIV }), brain: BRAIN, modes: { enabled: true, settings: S('hybrid'), verdict: SENS, choice: { choice: 'local' } } });
   await addTurn('hybrid_compact', { ...free({}, { compactOnly: true, history: HIST, ...PRIV }), message: '', modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
   await addTurn('cloud_compact', { ...free({}, { compactOnly: true, history: HIST }), message: '', brain: BRAIN, tz: 'Europe/Berlin', modes: { enabled: true, settings: S('cloud') } });
+
+  // Project turns (#1646): the project's own private box is carried but not wanted (Manual tools, no gate), so an
+  // ungranted cloud route keeps the route and loses the box; project files make read_project_file count as stripped.
+  // The skill-index lead and both read-file hints ride in the project's instructions and the files block, where
+  // dropReader finds them (the first match of each, in every message).
+  const SKILL_LEAD = 'Available skills (load the full file with the read_project_file tool when a task matches; do not guess their contents):';
+  const COVERAGE_HINT = ' read_project_file with an offset can read more of a file.';
+  const RAG_HINT = ' Use read_project_file with PDF startPage/endPage and offset for pages beyond the summary.';
+  const PROJ = (flags = {}, extra = {}) => ({ id: 'qa-project-1', name: 'QA Project', routing: 'auto', toolsMode: 'manual', toolboxes: ['core', 'qa-notes'],
+    instructions: `QA rules.\n${SKILL_LEAD}\n- qa-skill: QA steps.\nQA long file.${COVERAGE_HINT} QA again.${COVERAGE_HINT}`,
+    files: [{ name: 'QA notes.txt', content: 'QA source text' }], chats: [{ id: CHAT, title: 'QA chat', ...flags }], ...extra });
+  const inProj = (flags, body = {}) => ({ project: PROJ(flags), filesBlock: `QA excerpt from QA notes.txt.${RAG_HINT}`, body: { chatId: CHAT, ...body } });
+  await addTurn('project_hybrid_strip_hints', { ...inProj({}, { history: [{ role: 'user', content: `QA earlier ${SKILL_LEAD}` }, { role: 'assistant', content: 'QA ok' }] }),
+    brain: BRAIN, tz: 'Europe/Berlin', modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
+  await addTurn('project_hybrid_granted_hints', { ...inProj({ allowCloud: true }), modes: { enabled: true, settings: S('hybrid'), verdict: CLEAR } });
+  await addTurn('project_hybrid_strip_code', { ...inProj({}), classification: { role: 'code' }, modes: { enabled: true, settings: S('hybrid', { cloud: { ...CLOUD, code: 'qa-cloud-code' } }), verdict: CLEAR } });
+  await addTurn('project_cloud_mode_hints', { ...inProj({}), classification: { role: 'code' }, modes: { enabled: true, settings: S('cloud', { cloud: { ...CLOUD, code: 'qa-cloud-code' } }) } });
+  await addTurn('project_local_hints', { ...inProj({}, { history: HIST }), brain: BRAIN, modes: { enabled: true, settings: S('local') } });
+  // A Manual turn on a provider other than the local default one: off the box with no cloud route.
+  const MANUAL = (extra = {}) => ({ id: 'qa-project-1', name: 'QA Project', routing: 'manual', provider: 'qa-other', model: 'qa-other-model', chats: [], ...extra });
+  await addTurn('manual_other_provider', { project: MANUAL(), body: { chatId: CHAT, history: HIST }, brain: BRAIN, tz: 'Asia/Tokyo', modes: { enabled: true, settings: S('cloud') } });
+  await addTurn('manual_other_provider_plain', { project: MANUAL(), body: { history: HIST.slice(2) }, tz: 'America/New_York', modes: { enabled: false } });
+  await addTurn('manual_default_provider', { project: MANUAL({ provider: 'default', model: FAST }), body: { history: HIST }, brain: BRAIN, tz: 'Europe/Berlin', modes: { enabled: false } });
 
   const MSGS = ['QA question', 'QA hi', 'QA plan the QA week'];
   const TZS = ['UTC', 'Europe/Berlin', 'America/New_York', 'Asia/Tokyo', 'Australia/Adelaide'];
