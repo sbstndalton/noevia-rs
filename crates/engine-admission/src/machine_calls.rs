@@ -257,11 +257,9 @@ impl Vision {
 
 /// vision.cjs `admit(baseUrl, model)` (#697): makes room for the model before the probe; `Err(publicMessage)` refuses
 /// it (reported, never cached). Machines probe without one.
-pub type Admit = Arc<
-    dyn Fn(String, String) -> Pin<Box<dyn Future<Output = Result<(), Option<String>>> + Send>>
-        + Send
-        + Sync,
->;
+pub type Admit = Arc<dyn Fn(String, String) -> AdmitFuture + Send + Sync>;
+/// What an [`Admit`] returns.
+pub type AdmitFuture = Pin<Box<dyn Future<Output = Result<(), Option<String>>> + Send>>;
 
 /// `JSON.stringify([baseUrl, headers, model])`, the cache key: `headers` as the object a spread of them makes.
 pub fn probe_key(base_url: &str, headers: &[(String, String)], model: &str) -> String {
