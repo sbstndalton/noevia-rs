@@ -401,8 +401,13 @@ impl Index for JValue {
 const UNORDERED: [&str; 1] = ["cancel-pending"];
 
 fn sorted(v: &JValue) -> JValue {
-    let JValue::Arr(items) = v else { return v.clone() };
-    let mut keyed: Vec<(String, JValue)> = items.iter().map(|i| (js_json::stringify(i).unwrap_or_default(), i.clone())).collect();
+    let JValue::Arr(items) = v else {
+        return v.clone();
+    };
+    let mut keyed: Vec<(String, JValue)> = items
+        .iter()
+        .map(|i| (js_json::stringify(i).unwrap_or_default(), i.clone()))
+        .collect();
     keyed.sort_by(|a, b| a.0.cmp(&b.0));
     JValue::Arr(keyed.into_iter().map(|(_, i)| i).collect())
 }
