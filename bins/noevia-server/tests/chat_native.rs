@@ -273,6 +273,7 @@ const ANSWERED: &[&str] = &[
     "allowsTools",
     "inferenceBusy",
     "supervise",
+    "condense",
 ];
 
 impl Script {
@@ -674,6 +675,26 @@ async fn core_service(
             ok(js::obj([("allowed", JValue::Bool(allowed))]))
         }
         // Track R15: core's step supervisor, answered from the recorded decide (its question checked).
+        // Track R15 (#740): core's framing reasoner, answered from the recorded condense (its question checked).
+        "/internal/chat/native/condense" => {
+            let Some(rec) = sc.stub("condense") else {
+                sc.errors.push("condense: not asked in Node".into());
+                return ok(js::obj([("rendered", JValue::Null)]));
+            };
+            for k in ["kind", "message", "tool", "resultText", "model"] {
+                if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
+                    sc.errors.push(format!(
+                        "condense: {k} {} (Node {})",
+                        js::stringify(sent.get(k)),
+                        js::stringify(rec.get(k))
+                    ));
+                }
+            }
+            match rec.get("answer") {
+                a @ JValue::Obj(_) => ok(a.clone()),
+                _ => ok(js::obj([("rendered", JValue::Null)])),
+            }
+        }
         "/internal/chat/native/supervise" => {
             let Some(rec) = sc.stub("supervise") else {
                 sc.errors.push("supervise: not asked in Node".into());
@@ -867,7 +888,8 @@ async fn core_service(
         | "/internal/chat/prefill"
         | "/internal/chat/native/title-save"
         | "/internal/chat/native/tools-unsupported"
-        | "/internal/chat/native/gate-record" => Ok(empty(204)),
+        | "/internal/chat/native/gate-record"
+        | "/internal/chat/native/reasoner-trace" => Ok(empty(204)),
         _ => Ok(json(404, &js::obj([("error", js::s("not found"))]))),
     }
 }

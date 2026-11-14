@@ -71,6 +71,9 @@ const FORWARD_QUEUE: usize = 1024 * 1024;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
 /// Core's step supervisor answers within its own deadline (step-supervision.cjs: at most 2 s); later is `continue`.
 const SUPERVISE_TIMEOUT: Duration = Duration::from_secs(10);
+/// Core's framing reasoner answers within its own deadline (framing-reasoner.cjs: the decision timeout, 6 s by
+/// default) after its budget check; later is a skip (the raw result goes on, as on any skip).
+const CONDENSE_TIMEOUT: Duration = Duration::from_secs(60);
 /// Core's grant check for a native turn's write (rust-chat-native.cjs GRANT_PATH; D17).
 const GRANT_PATH: &str = "/internal/chat/tools/grant";
 /// Core's revoke of the chat's grant (rust-chat-native.cjs REVOKE_PATH; Node's revokeChatGrant).
@@ -991,6 +994,55 @@ impl Host for FrontHost {
             )
             .await;
         r.is_some_and(|(s, v)| s == 200 && v.get("busy") == &JValue::Bool(true))
+    }
+
+    async fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> Option<(String, JValue)> {
+        // Track R15 (#740): core's framing reasoner through the condense op; no answer, or one not understood, is
+        // a skip (the raw framed result goes on).
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("kind", js::s(kind)),
+            ("message", js::s(message)),
+            ("tool", js::s(tool)),
+            ("resultText", js::s(result_text)),
+            ("model", js::s(model)),
+        ]);
+        match self
+            .core("/internal/chat/native/condense", &body, CONDENSE_TIMEOUT)
+            .await
+        {
+            Some((200, v)) => match (v.get("rendered").as_str(), v.get("trace")) {
+                (Some(rendered), trace @ JValue::Obj(_)) => {
+                    Some((rendered.to_string(), trace.clone()))
+                }
+                _ => None,
+            },
+            Some((status, _)) => {
+                eprintln!("chat native: the framing reasoner answered {status}; the prefetched result goes on as read");
+                None
+            }
+            None => None,
+        }
+    }
+
+    fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+        // Track R15 (#740): the opt-in trace stays core's (the person's preference and their workspace's file).
+        self.core_later(
+            "/internal/chat/native/reasoner-trace",
+            js::obj([
+                ("user", js::s(self.user.clone())),
+                ("trace", trace.clone()),
+                ("answerChars", js::n(answer_chars)),
+                ("answerMs", js::n(answer_ms)),
+            ]),
+        );
     }
 
     async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {

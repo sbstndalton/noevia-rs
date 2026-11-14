@@ -523,6 +523,22 @@ async function runTurn(c, { handoff = false } = {}) {
       visionProbe: async () => c.vision || { supported: false, reason: 'none' }, visionDescriptions: new Map(), skillsIndexFor: () => [],
       // `gate`: the tool gate (features.toolGate) decides this (tool-gate.cjs evaluate's { decision }); its log is a store.
       ...(c.gate ? { toolGate: { evaluate: async () => ({ decision: c.gate }), record: (event, entry) => store('toolGate.record', { event, ...entry }) } } : {}),
+      // `reasoner` (#740, R15): chat framing on, the chat's stored frame confirmed (`reasoner.kind`), and core's own
+      // framing reasoner whose engine answers `reasoner.output` (`reasoner.refused`: the budget check refuses). Each
+      // condense is recorded as the front's condense op sees it: its question and the packet and trace it answers.
+      // `reasoner.traces`: the person keeps reasoning traces (each append is a store call).
+      ...(c.reasoner ? (() => {
+        const real = require(path.join(server, 'framing-reasoner.cjs')).createFramingReasoner({ enabled: () => true, model: () => 'qa-reasoner',
+          complete: async () => c.reasoner.output, admit: async () => c.reasoner.refused || null, log: () => {} });
+        return { chatFramingEnabled: () => true,
+          framingReasoner: { condense: async (input) => {
+            const out = await real.condense(input);
+            const answer = out.ok ? { rendered: out.rendered, trace: { kind: input.frame.kind, tool: input.tool, packet: out.packet, timings: { ...out.timings } } } : null;
+            stub('condense', { kind: input.frame.kind, message: input.message, tool: input.tool, resultText: input.resultText, model: input.answerModel, answer });
+            return out;
+          } },
+          reasoningTraces: { enabled: () => c.reasoner.traces === true, append: (_dir, entry) => store('reasoningTraces.append', { entry }) } };
+      })() : {}),
       // Multimodal retrieval (#1726, NOEVIA_MULTIMODAL_RAG) is on for the cases that script its hits.
       multimodalEnabled: () => c.imageHits !== undefined,
       chatSkillRouter: { select: async () => ({ loaded: [] }) },
@@ -579,7 +595,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate']), supervising: () => c.supervise !== undefined } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate', 'reasoner']), supervising: () => c.supervise !== undefined } } : {}),
       // `supervise`: step supervision is on (features.stepSupervision); the decision service answers the k-th question
       // with c.supervise[k] (step-supervision.cjs's own rules apply). Each decide is recorded as the front's supervise
       // op sees it: its round, goal, write flag and the outputs the supervisor reads, and the action it answered.
@@ -634,7 +650,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, supervise: c.supervise || null, gate: c.gate || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, supervise: c.supervise || null, gate: c.gate || null, reasoner: c.reasoner || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
@@ -686,6 +702,11 @@ const QA_DOCS_FILES = [{ name: 'qa-notes.txt', content: 'QA notes line one.' }, 
 const QA_DOCS = { toolboxes: ['core', 'qa-docs'], files: QA_DOCS_FILES };
 // A storage account digest (project-edit-target.cjs storageAccount): synthetic.
 const QA_ACCOUNT = '5ca1ab1e'.repeat(8);
+// #740 (R15): a confirmed frame stored on the chat (chat-frame-steering.cjs storedFrame) and a valid task packet.
+const QA_FRAMED = (kind) => ({ chats: [{ id: 'qa-chat-1', frame: { kind, confirmed: true, projectId: 'qa-project', source: 'user' } }] });
+const QA_PACKET = { packet_schema: 1, goal: 'Find the opening hours of the synthetic museum',
+  facts: [{ text: 'The synthetic museum opens at 09:00 on weekdays.', source: { kind: 'tool', ref: 'drive_read_file' }, quote: 'Open 09:00-17:00 Mon-Fri' }],
+  constraints: ['Weekdays only'], open_questions: ['Weekend hours are not stated'] };
 const APPEND = '{"name":"qa-notes.txt","text":"QA appended line."}';
 // A project image source (#1512): a synthetic 1x1 PNG, attached to the turn's last user message.
 const QA_PNG = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP4//8/AwAI/AL+p9akwQAAAABJRU5ErkJggg==';
@@ -1132,6 +1153,27 @@ const CASES = [
     rounds: [answer('Answered from the fetched file in a free chat.')] },
   { name: 'gate_prefetch_left_in_tool', about: 'The client leaves while the prefetched read runs: the read still returns, the turn ends without a model call.', gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-g11' } },
     leaveInTool: 'drive_read_file', rounds: [] },
+  // Track R15 (#740): the framing reasoner on a framed chat's gate prefetch, through core's condense op.
+  { name: 'reasoner_packet_traced', about: 'A confirmed search frame and a prefetched read: the reasoner\'s packet replaces the raw result in the tool message; the person keeps traces, so the trace is appended after the reply.',
+    reasoner: { kind: 'search', traces: true, output: JSON.stringify(QA_PACKET) }, project: QA_FRAMED('search'),
+    gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-f1' } },
+    rounds: [answer('The synthetic museum opens at 09:00.')] },
+  { name: 'reasoner_packet_untraced', about: 'An action frame: the packet is handed on; the person keeps no traces, so nothing is appended.',
+    reasoner: { kind: 'action', traces: false, output: JSON.stringify(QA_PACKET) }, project: QA_FRAMED('action'),
+    gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-f2' } },
+    rounds: [answer('Done from the packet.')] },
+  { name: 'reasoner_bad_packet', about: 'The reasoner answers no valid packet: the raw framed result goes on exactly as without it, no trace.',
+    reasoner: { kind: 'search', traces: true, output: 'QA not a packet' }, project: QA_FRAMED('search'),
+    gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-f3' } },
+    rounds: [answer('Answered from the raw result.')] },
+  { name: 'reasoner_budget_refused', about: 'The inference budget refuses the reasoner model: a skip, the raw result goes on.',
+    reasoner: { kind: 'search', traces: true, output: JSON.stringify(QA_PACKET), refused: 'budget' }, project: QA_FRAMED('search'),
+    gate: { tool: 'drive_read_file', mode: 'prefetch', args: { fileId: 'qa-file-f4' } },
+    rounds: [answer('Answered without the reasoner.')] },
+  { name: 'reasoner_require_mode', about: 'A framed chat whose gate requires (not prefetches) a read: the reasoner is never asked, and the turn is handed off with no reasoner field.',
+    reasoner: { kind: 'search', traces: true, output: JSON.stringify(QA_PACKET) }, project: QA_FRAMED('search'),
+    gate: { tool: 'drive_read_file', mode: 'require' },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-f5"}'), finish('tool_calls')] }, answer('Read as required.')] },
   // Track R15: production's feature set at once (noevia#2640): the provenance policy, step supervision, the tool router
   // narrowing the selection and the tool gate on together, so each pair of them meets in one recorded turn.
   { name: 'prod_flags_answer', about: 'Production\'s flags on (provenance, supervision, a narrowed list): a plain answer, more_tools offered and unused, the supervisor not asked.',

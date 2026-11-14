@@ -75,6 +75,9 @@ pub struct Prepared {
     pub gate_tool: Option<String>,
     /// A `prefetch` decision's arguments (`gate.prefetch`): the read is run before the model (chat.cjs `prefetchTool`).
     pub gate_prefetch: Option<JValue>,
+    /// #740: the chat frame's kind when the framing reasoner may condense the gate's prefetch (`reasoner: {kind}`,
+    /// present only then; a core that has one hands the turn off only to a front naming `reasoner`).
+    pub reasoner: Option<String>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -312,6 +315,11 @@ impl Prepared {
                 JValue::Undefined => None,
                 g @ JValue::Obj(_) => Some(text(g, "tool")?),
                 _ => return Err(Unreadable("prepared.gate is not an object".into())),
+            },
+            reasoner: match frame.get("reasoner") {
+                JValue::Undefined => None,
+                r @ JValue::Obj(_) => Some(text(r, "kind")?),
+                _ => return Err(Unreadable("prepared.reasoner is not an object".into())),
             },
             supervise: match frame.get("supervise") {
                 JValue::Undefined => false,

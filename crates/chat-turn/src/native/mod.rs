@@ -247,6 +247,8 @@ struct Rounds {
     gate_retried: bool,
     /// The gate's prefetch ran: nothing is forced (chat.cjs `forcedTool = null`).
     prefetched: bool,
+    /// #740 chat.cjs `reasonerTrace`: the trace of a packet the reasoner handed on, and when (`handedAt`).
+    reasoner_trace: Option<(JValue, f64)>,
     /// chat.cjs `nextToolRoutes`: the widened list's routes, applied when the next round starts.
     next_routes: Option<Vec<(String, String)>>,
     /// `roundMessages !== prepared.messages`: the round-0 `context` event is sent when they differ.
@@ -433,6 +435,7 @@ impl<H: Host> Turn<'_, H> {
             round_wrote: false,
             gate_retried: false,
             prefetched: false,
+            reasoner_trace: None,
             next_routes: None,
             changed: false,
             tools_off: false,
@@ -1069,6 +1072,18 @@ impl<H: Host> Turn<'_, H> {
             return false;
         }
         self.skills.note_read(host, &call.args, &result).await;
+        // #740 (framingReasoner): a confirmed search/action frame may hand the answer model the reasoner's task packet
+        // instead of the raw result (core's condense op); any skip keeps the framed result exactly as before.
+        let mut handed = js::from_units(&framed);
+        if let Some(kind) = self.p.reasoner.as_deref() {
+            if let Some((rendered, trace)) = host
+                .condense(kind, &self.p.message, tool, &reduced, &self.p.model)
+                .await
+            {
+                handed = rendered;
+                s.reasoner_trace = Some((trace, host.now_ms()));
+            }
+        }
         const NOTE: &str = "The following was fetched for you; use it.";
         match s
             .messages
@@ -1108,7 +1123,7 @@ impl<H: Host> Turn<'_, H> {
         s.messages.push(js::obj([
             ("role", js::s("tool")),
             ("tool_call_id", call.id),
-            ("content", js::s(js::from_units(&framed))),
+            ("content", js::s(handed)),
         ]));
         s.changed = true;
         true
@@ -1209,6 +1224,12 @@ impl<H: Host> Turn<'_, H> {
                 ("timeToFirstToken", self.exchange.time_to_first_token()),
             ],
         ));
+        // #740: the person's own opt-in trace (core checks it and writes it): packet, answer length, timings only.
+        if let Some((trace, handed_at)) = &s.reasoner_trace {
+            #[allow(clippy::cast_precision_loss)]
+            let chars = js::len(&s.last.content) as f64;
+            host.reasoner_trace(trace, chars, (host.now_ms() - handed_at).max(0.0));
+        }
         host.emit(&event("done", vec![("model", js::s(p.model.clone()))]));
         self.title(s).await;
         Ended::Done

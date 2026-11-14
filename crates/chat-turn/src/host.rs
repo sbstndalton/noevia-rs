@@ -315,4 +315,20 @@ pub trait Host: Sync {
         goal: &str,
         wrote: bool,
     ) -> impl Future<Output = String> + Send;
+
+    /// #740 the framing reasoner on the gate's prefetched read (chat.cjs `prefetchTool`'s `condense`, asked of core):
+    /// the packet as the tool message's content and the trace the reply's opt-in trace records
+    /// (`{kind, tool, packet, timings}`), or None (any skip: the raw framed result goes on).
+    fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> impl Future<Output = Option<(String, JValue)>> + Send;
+
+    /// #740 after the reply: the person's opt-in trace of the handed-on packet (`reasoningTraces.append`; core checks
+    /// the opt-in). `answer_chars` the last round's content in UTF-16 units, `answer_ms` since the packet was handed.
+    fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64);
 }

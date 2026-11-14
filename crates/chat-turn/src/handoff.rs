@@ -29,12 +29,12 @@ pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// (#1726: core settles them before the cut, the frame's messages carry their parts and notes, sent as attached images
 /// are); `supervise`, step supervision after a tool round ([`crate::host::Host::supervise`]); `tool-gate`, the tool
 /// gate's decision (`require` mode: `tool_choice` on the first model turn, one retry on a miss; `prefetch` mode: the
-/// read run before the model). Without them core keeps a turn whose project has skills, that offers the page save,
+/// read run before the model); `reasoner`, the framing reasoner's packet for that prefetched read on a framed chat
+/// (#740, [`crate::host::Host::condense`]). Without them core keeps a turn whose project has skills, that offers the page save,
 /// that runs with the provenance policy on, whose tools routing narrowed, that retrieved images, that runs while step
-/// supervision is on, or whose tool gate decided (a prefetch the framing reasoner would condense stays in core either
-/// way).
+/// supervision is on, whose tool gate decided, or whose prefetch the framing reasoner would condense.
 pub const HANDOFF_CAPS: &str =
-    "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate";
+    "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate,reasoner";
 
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]

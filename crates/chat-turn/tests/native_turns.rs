@@ -481,6 +481,43 @@ impl Host for Script {
         self.answer("inferenceBusy", &[("n", js::n(1.0))]) == JValue::Bool(true)
     }
 
+    async fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> Option<(String, JValue)> {
+        // The recorder answers core's framing reasoner (framing-reasoner.cjs condense) with the case's packet.
+        let answer = self.answer(
+            "condense",
+            &[
+                ("kind", js::s(kind)),
+                ("message", js::s(message)),
+                ("tool", js::s(tool)),
+                ("resultText", js::s(result_text)),
+                ("model", js::s(model)),
+            ],
+        );
+        let rendered = answer.get("rendered").as_str()?.to_string();
+        Some((rendered, answer.get("trace").clone()))
+    }
+
+    fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+        // Core's reasoner-trace op: appended only when the person opted in (the case's `reasoner.traces`), as
+        // chat.cjs builds the entry ({...trace, answerChars, timings: {...timings, answerMs}}).
+        if self.case.get("input").get("reasoner").get("traces") != &JValue::Bool(true) {
+            return;
+        }
+        let mut timings = trace.get("timings").clone();
+        js::set(&mut timings, "answerMs", js::n(answer_ms));
+        let mut entry = trace.clone();
+        js::set(&mut entry, "answerChars", js::n(answer_chars));
+        js::set(&mut entry, "timings", timings);
+        self.store("reasoningTraces.append", vec![("entry", entry)]);
+    }
+
     async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {
         // The recorder answers core's supervisor (step-supervision.cjs decide) with the case's verdicts.
         self.answer(
@@ -1221,7 +1258,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 149, "{ran:?}");
+    assert_eq!(ran.len(), 154, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
