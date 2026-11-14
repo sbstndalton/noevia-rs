@@ -381,12 +381,16 @@ impl Guard {
             },
         }
     }
-    /// Whether `path` is the private folder or inside it.
+    /// Whether `path` is the private folder or inside it. There are no Unicode normalisation
+    /// tables here, so a root with any non-ASCII character fails closed: it blocks every path with
+    /// a non-ASCII character (a composed and a decomposed spelling of the same name differ by
+    /// bytes). An ASCII root cannot equal a non-ASCII path, so it keeps the plain rule.
     fn blocks(&self, path: &str) -> bool {
         match self {
             Self::Open => false,
             Self::Closed => true,
-            Self::Private(root) => normalise(path).is_none_or(|p| inside(&p, root)),
+            Self::Private(root) => normalise(path)
+                .is_none_or(|p| (!root.is_ascii() && !p.is_ascii()) || inside(&p, root)),
         }
     }
 }
@@ -426,6 +430,13 @@ pub fn run(
     skip: Option<&str>,
 ) -> Result<String, ToolError> {
     let guard = Guard::new(skip, c.kind);
+    // A write never lands in the Diary folder, even when a host forgets `skip`: without one the
+    // connection's own Diary folder guards it.
+    let write_guard = match skip {
+        Some(_) => Guard::new(skip, c.kind),
+        None if c.corpus_root.trim().is_empty() => Guard::Open,
+        None => Guard::new(Some(&c.corpus_root), c.kind),
+    };
     match call {
         Call::List { path } => {
             if guard.blocks(path) {
@@ -460,11 +471,13 @@ pub fn run(
             content,
             mode,
         } => {
-            write_allowed(c, &guard, path)?;
+            write_allowed(c, &write_guard, path)?;
             write(c, t, path, content, *mode)
         }
+        // MKCOL's 405 means something exists at the path: a folder, or a FILE (also answered
+        // `existed: true`; nothing was changed either way).
         Call::CreateFolder { path } => {
-            write_allowed(c, &guard, path)?;
+            write_allowed(c, &write_guard, path)?;
             let folder = writes::create_folder(c, path, t)?;
             answer([
                 ("path", JValue::from(folder.path)),
@@ -472,12 +485,8 @@ pub fn run(
             ])
         }
         Call::DeleteFile { path } => {
-            write_allowed(c, &guard, path)?;
-            let missing = writes::delete_file(c, path, t)?;
-            answer([
-                ("path", JValue::from(shown(path))),
-                ("deleted", JValue::from(!missing)),
-            ])
+            write_allowed(c, &write_guard, path)?;
+            delete(c, t, path)
         }
     }
 }
@@ -497,8 +506,49 @@ fn write_allowed(c: &Connection, guard: &Guard, path: &str) -> Result<(), ToolEr
     Ok(())
 }
 
+/// `storage_delete_file`: only a file with a version to guard the DELETE (`If-Match`); a file
+/// without one could be replaced between the check and the delete.
+fn delete(c: &Connection, t: &mut impl Transport, path: &str) -> Result<String, ToolError> {
+    let name = shown(path);
+    match writes::file_version(c, path, t) {
+        Ok(Version::Missing) => {
+            return answer([
+                ("path", JValue::from(name)),
+                ("deleted", JValue::from(false)),
+            ]);
+        }
+        Ok(Version::Present(etag)) if etag.is_empty() => {
+            return Err(ToolError::new(format!(
+                "\"{name}\" has no version to guard the delete; nothing was deleted."
+            )));
+        }
+        Ok(Version::Present(_)) => {}
+        Err(error) if error.code == Some("folder") => {
+            return Err(ToolError::new(format!(
+                "\"{name}\" is a folder; nothing was deleted."
+            )));
+        }
+        Err(error) => return Err(error.into()),
+    }
+    let missing = writes::delete_file(c, path, t)?;
+    answer([
+        ("path", JValue::from(name)),
+        ("deleted", JValue::from(!missing)),
+    ])
+}
+
+/// What a create answers when the server did not confirm the file was new (200/204, not 201).
+pub const CREATE_UNCONFIRMED: &str =
+    "storage did not confirm the file was new; an existing file may have been replaced";
+
 /// `storage_write_file`: create under `If-None-Match: *`; replace only an existing file, under
 /// `If-Match` with the version it has now.
+///
+/// Replace guards only the window between its own PROPFIND and PUT, not a stale approval: a file
+/// changed after the person approved and before this runs is replaced. TODO(host, wiring slice):
+/// pass the version shown at approval and write under that instead (no API change in this slice).
+/// Create relies on the server honouring `If-None-Match`; one that ignores it answers 200/204,
+/// reported as a success with [`CREATE_UNCONFIRMED`] (the bytes were written).
 fn write(
     c: &Connection,
     t: &mut impl Transport,
@@ -530,6 +580,11 @@ fn write(
         },
     };
     match writes::write_file(c, path, content.as_bytes(), &condition, t) {
+        Ok(written) if mode == Mode::Create && !written.created => answer([
+            ("path", JValue::from(written.path)),
+            ("created", JValue::from(false)),
+            ("warning", JValue::from(CREATE_UNCONFIRMED)),
+        ]),
         Ok(written) => answer([
             ("path", JValue::from(written.path)),
             ("created", JValue::from(written.created)),

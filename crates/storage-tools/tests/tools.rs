@@ -14,9 +14,9 @@ use server_storage_reads::protocol::{
 use std::collections::{BTreeMap, BTreeSet};
 use std::time::Duration;
 use storage_tools::{
-    manifest_line, parse, private_refusal, run, Call, Mode, CREATE_FOLDER, DELETE_FILE, FIND_FILES,
-    LIST_FOLDER, MAX_CONTENT_BYTES, MAX_DEPTH, MAX_FOLDERS, MAX_MATCHES, PRIVATE_REFUSAL,
-    READ_FILE, TOOLS, WRITE_FILE, WRITE_UNSUPPORTED,
+    manifest_line, parse, private_refusal, run, Call, Mode, CREATE_FOLDER, CREATE_UNCONFIRMED,
+    DELETE_FILE, FIND_FILES, LIST_FOLDER, MAX_CONTENT_BYTES, MAX_DEPTH, MAX_FOLDERS, MAX_MATCHES,
+    PRIVATE_REFUSAL, READ_FILE, TOOLS, WRITE_FILE, WRITE_UNSUPPORTED,
 };
 use zeroize::Zeroizing;
 
@@ -50,6 +50,8 @@ struct Fake {
     headers: Vec<Vec<(String, String)>>,
     etag: String,
     stale: bool,
+    /// A server that ignores `If-None-Match` (answers an overwrite 204).
+    ignores_if_none_match: bool,
 }
 
 impl Fake {
@@ -66,6 +68,7 @@ impl Fake {
             headers: Vec::new(),
             etag: "\"qa-v1\"".into(),
             stale: false,
+            ignores_if_none_match: false,
         }
     }
     /// The folder listings (Depth 1 PROPFINDs) requested.
@@ -100,7 +103,7 @@ impl Fake {
     }
     fn put(&mut self, path: &str, headers: &[(String, String)], body: &[u8]) -> (u16, String) {
         let exists = self.tree.contains_key(path);
-        if header(headers, "If-None-Match") == Some("*") && exists {
+        if header(headers, "If-None-Match") == Some("*") && exists && !self.ignores_if_none_match {
             return (412, String::new());
         }
         if let Some(wanted) = header(headers, "If-Match") {
@@ -1139,9 +1142,14 @@ fn delete_file_reads_the_version_first_and_refuses_folders() {
     )
     .unwrap();
     assert_eq!(out, r#"{"path":"Notes/qa-list.txt","deleted":true}"#);
-    assert_eq!(methods(&fake), vec![Method::Propfind, Method::Delete]);
+    // This crate's version check, the engine's own, then the guarded DELETE.
+    assert_eq!(
+        methods(&fake),
+        vec![Method::Propfind, Method::Propfind, Method::Delete]
+    );
     assert_eq!(header(&fake.headers[0], "Depth"), Some("0"));
-    assert_eq!(header(&fake.headers[1], "If-Match"), Some("\"qa-v1\""));
+    assert_eq!(header(&fake.headers[1], "Depth"), Some("0"));
+    assert_eq!(header(&fake.headers[2], "If-Match"), Some("\"qa-v1\""));
     assert!(!fake.tree.contains_key("Notes/qa-list.txt"));
 
     let mut fake = tree();
@@ -1158,9 +1166,26 @@ fn delete_file_reads_the_version_first_and_refuses_folders() {
     let mut fake = tree();
     let error =
         write_run(&mut fake, DELETE_FILE, r#"{"path":"Notes"}"#, Some("Diary")).unwrap_err();
-    assert!(error.contains("it is a folder"), "{error}");
+    assert_eq!(error, "\"Notes\" is a folder; nothing was deleted.");
     assert_eq!(methods(&fake), vec![Method::Propfind]);
     assert_eq!(fake.tree.get("Notes"), Some(&None));
+
+    // No version to guard the DELETE with: refused, no DELETE sent.
+    let mut fake = tree();
+    fake.etag = String::new();
+    let error = write_run(
+        &mut fake,
+        DELETE_FILE,
+        r#"{"path":"Notes/qa-list.txt"}"#,
+        Some("Diary"),
+    )
+    .unwrap_err();
+    assert_eq!(
+        error,
+        "\"Notes/qa-list.txt\" has no version to guard the delete; nothing was deleted."
+    );
+    assert_eq!(methods(&fake), vec![Method::Propfind]);
+    assert!(fake.tree.contains_key("Notes/qa-list.txt"));
 }
 
 #[test]
@@ -1252,4 +1277,92 @@ fn writes_are_refused_on_s3_and_local_connections() {
             assert!(private_refusal(call, kind, "Diary").is_some());
         }
     }
+}
+
+#[test]
+fn writes_without_skip_are_guarded_by_the_connections_diary_folder() {
+    let calls = [
+        (
+            WRITE_FILE,
+            r#"{"path":"Diary/qa.md","content":"x","mode":"create"}"#,
+        ),
+        (CREATE_FOLDER, r#"{"path":"diary/qa-sub"}"#),
+        (DELETE_FILE, r#"{"path":"Diary/2026-11.md"}"#),
+    ];
+    for (tool, args) in calls {
+        let mut fake = tree();
+        let error = run(&parse(tool, args).unwrap(), &connection(), &mut fake, None).unwrap_err();
+        assert_eq!(error.message, PRIVATE_REFUSAL, "{args}");
+        assert!(fake.requests.is_empty());
+    }
+    // Outside it, a write without skip goes ahead; with no Diary folder set, nothing is guarded.
+    let mut fake = tree();
+    let out = write_run(
+        &mut fake,
+        CREATE_FOLDER,
+        r#"{"path":"Notes/qa-2026"}"#,
+        None,
+    )
+    .unwrap();
+    assert_eq!(out, r#"{"path":"Notes/qa-2026","existed":false}"#);
+    let mut c = connection();
+    c.corpus_root = String::new();
+    let mut fake = tree();
+    let call = parse(CREATE_FOLDER, r#"{"path":"Diary/qa-sub"}"#).unwrap();
+    assert!(run(&call, &c, &mut fake, None).is_ok());
+}
+
+#[test]
+fn create_on_a_server_that_ignores_if_none_match_warns() {
+    let mut fake = tree();
+    fake.ignores_if_none_match = true;
+    let out = write_run(
+        &mut fake,
+        WRITE_FILE,
+        r#"{"path":"Notes/qa-plan.md","content":"over","mode":"create"}"#,
+        Some("Diary"),
+    )
+    .unwrap();
+    let value = js_json::parse(&out).unwrap();
+    assert_eq!(value.get("path").as_str(), Some("Notes/qa-plan.md"));
+    assert_eq!(value.get("created").as_bool(), Some(false));
+    assert_eq!(value.get("warning").as_str(), Some(CREATE_UNCONFIRMED));
+    assert_eq!(header(&fake.headers[0], "If-None-Match"), Some("*"));
+    // A replace answering 204 is the expected answer: no warning.
+    let mut fake = tree();
+    let out = write_run(
+        &mut fake,
+        WRITE_FILE,
+        r#"{"path":"Notes/qa-plan.md","content":"new","mode":"replace"}"#,
+        Some("Diary"),
+    )
+    .unwrap();
+    assert!(!out.contains("warning"), "{out}");
+}
+
+#[test]
+fn a_non_ascii_diary_folder_fails_closed_for_non_ascii_paths() {
+    let list = |path: &str| Call::List { path: path.into() };
+    for path in [
+        "Tagebu\u{308}ch/x.md",
+        "Tagebüch/x.md",
+        "TAGEBÜCH",
+        "Notes/é.md",
+    ] {
+        assert!(
+            private_refusal(&list(path), Kind::WebDav, "Tagebüch").is_some(),
+            "{path}"
+        );
+    }
+    assert!(private_refusal(&list("Notes/x.md"), Kind::WebDav, "Tagebüch").is_none());
+    assert!(private_refusal(&list(""), Kind::WebDav, "Tagebüch").is_none());
+    assert!(private_refusal(&list("Notes/é.md"), Kind::WebDav, "Diary").is_none());
+    // The same guard covers the writes.
+    let mut c = connection();
+    c.corpus_root = "Tagebüch".into();
+    let mut fake = tree();
+    let call = parse(CREATE_FOLDER, r#"{"path":"Tagebu\u0308ch/qa"}"#).unwrap();
+    let error = run(&call, &c, &mut fake, None).unwrap_err();
+    assert_eq!(error.message, PRIVATE_REFUSAL);
+    assert!(fake.requests.is_empty());
 }
