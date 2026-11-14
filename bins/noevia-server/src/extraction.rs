@@ -569,7 +569,11 @@ impl Engine for HttpEngine {
 
     /// pdf-reduce.cjs: the OCR worker's `/reduce-pdf` (180 s); `None` without an OCR worker.
     fn reduce_pdf(&self, bytes: &[u8]) -> Option<Result<JValue, EngineError>> {
-        let (url, machine) = self.resolve("ocr")?;
+        // core's pdf-reduce.cjs: the machine store unreadable is its 503, not "no OCR worker".
+        let (url, machine) = match self.route("ocr") {
+            Err(()) => return Some(Err(machines_error())),
+            Ok(found) => found?,
+        };
         // The largest honest answer is a base64 PDF at 25 MiB plus a small JSON envelope.
         let cap = (25 * 1024 * 1024usize).div_ceil(3) * 4 + 64 * 1024;
         let req = self

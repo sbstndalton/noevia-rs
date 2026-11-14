@@ -131,7 +131,9 @@ pub trait Engine {
     /// Whether the workers' addresses cannot be known now: core's document-workers.cjs throws
     /// `machinesUnavailable` when the machine store cannot be read, so it reads nothing and changes no
     /// record (noevia#2614). Then [`extract_document_text`] stores a retryable failure without asking
-    /// any worker and [`complete_document`] returns the record as it is.
+    /// any worker and [`complete_document`] returns the record as it is. Named difference: the store
+    /// is opened again for each worker request, so one that becomes unreadable between this check and a
+    /// request fails that request as busy (core decides per lookup too, at each request).
     fn machines_unavailable(&self) -> bool {
         false
     }
