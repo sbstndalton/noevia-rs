@@ -1,0 +1,24 @@
+//! The provider call path of a native chat turn: what noevia-core `chat.cjs` does between the
+//! settled route and the first byte sent to the provider (lines ~1009-1440 and the call sites at
+//! ~1911/2116/2277), in Rust, for the turns `rust-chat-native.cjs` still refuses as `provider` and
+//! `provider-key`.
+//!
+//! - [`target`]: the upstream address (`upstreamUrl`), the member-own-provider rule and
+//!   `ssrf.cjs` `endpointApproved`, which fetch carries the call (direct, an Inference machine, the
+//!   sign-in broker), the bearer rule of `providerHeaders`, and the texts Node answers with.
+//! - [`binding`]: the turn-bound call binding (track R8 decision 19's design): what the cut pins
+//!   (user, provider, address, row fingerprint, model, chat key, expiry), a MAC'd token for it,
+//!   and the per-request re-check against the row as it is now (fail closed on a changed row).
+//! - [`envelope`]: the response headers that may cross a relay (an allowlist) and the upstream
+//!   status envelope, so a relay's own refusal is never read as the provider's.
+//! - [`refusal`]: the `provider`/`provider-key` checks of `refusal()` and what a front that runs
+//!   this path (a future `providers` caps token) may lift: external rows only, never machines,
+//!   the sign-in provider or a route target in this slice.
+//!
+//! Nothing calls this crate yet: production behaviour is unchanged until a front wires it behind
+//! a caps token core also understands.
+
+pub mod binding;
+pub mod envelope;
+pub mod refusal;
+pub mod target;
