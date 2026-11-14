@@ -140,6 +140,9 @@ pub struct Front {
     /// S4: this run's epoch for the embedding snapshot (handed to the child), and the owner.
     pub embedding_epoch: String,
     owner: OnceLock<Arc<crate::embedding_owner::Owner>>,
+    /// Shift 4, step 3 (DIARY_RUST_CONFIG=shadow): this process's own resolution of the start-up
+    /// config, compared with the child's when it arrives (Err: why it could not be resolved).
+    own_config: OnceLock<Result<serde_json::Value, String>>,
     http: Client<HttpConnector, Body>,
 }
 
@@ -164,8 +167,14 @@ impl Front {
             write_wait: WRITE_WAIT,
             embedding_epoch: random_hex(16).unwrap_or_default(),
             owner: OnceLock::new(),
+            own_config: OnceLock::new(),
             http,
         }
+    }
+
+    /// DIARY_RUST_CONFIG=shadow: keep this process's own resolution for the comparison.
+    pub fn set_own_config(&self, own: Result<serde_json::Value, String>) {
+        let _ = self.own_config.set(own);
     }
 
     /// How long a native write waits for the writer slot (tests shorten it).
@@ -637,6 +646,9 @@ pub async fn control(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
                 .body(Body::empty())
                 .unwrap_or_default();
         };
+        if let Some(own) = front.own_config.get() {
+            eprintln!("noevia-diary: {}", config_shadow_line(own, &bytes));
+        }
         let cfg = match std::str::from_utf8(&bytes)
             .map_err(|_| "start-up config is not UTF-8".to_string())
             .and_then(crate::config::parse)
@@ -670,6 +682,96 @@ pub async fn control(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             .status(503)
             .body(Body::empty())
             .unwrap_or_default(),
+    }
+}
+
+/// The switch DIARY_RUST_CONFIG (shift 4, step 3): `shadow` resolves the start-up config here
+/// too and compares it with the child's; unset (or anything else) changes nothing.
+pub const CONFIG_SWITCH: &str = "DIARY_RUST_CONFIG";
+
+/// Where Python's `load_config` finds config.yaml by default (agent/../config in the image).
+pub const CONFIG_DIR: &str = "/app/config";
+
+/// This process's own resolution of the child's start-up config (config.yaml and this process's
+/// environment, which the child inherits): diary_operator::server_config::main_mode with this
+/// run's control port and secrets. The error is reduced to its first clause (a YAML or value
+/// error may quote configuration text).
+pub fn own_config(front: &Front, control_port: u16) -> Result<serde_json::Value, String> {
+    let env: std::collections::BTreeMap<String, String> = std::env::vars_os()
+        .filter_map(|(k, v)| Some((k.into_string().ok()?, v.into_string().ok()?)))
+        .collect();
+    let start = diary_operator::server_config::Start {
+        port: control_port,
+        control_token: &front.control_token,
+        forward_secret: &front.secret,
+    };
+    diary_operator::config::load(None, std::path::Path::new(CONFIG_DIR), &env)
+        .and_then(|cfg| diary_operator::server_config::main_mode(&cfg.data, &env, &start))
+        .map_err(|e| {
+            e.split(':')
+                .next()
+                .unwrap_or("")
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == ' ' || *c == '(' || *c == ')')
+                .take(60)
+                .collect()
+        })
+}
+
+/// The one log line of the comparison: key paths only, never a value.
+pub fn config_shadow_line(own: &Result<serde_json::Value, String>, child: &[u8]) -> String {
+    let child = match serde_json::from_slice::<serde_json::Value>(child) {
+        Ok(v) => v,
+        Err(_) => return "start-up config shadow: the child's config is not JSON".into(),
+    };
+    match own {
+        Err(e) => format!("start-up config shadow: not resolved here ({e})"),
+        Ok(own) => {
+            let mut paths = Vec::new();
+            config_differences("", own, &child, &mut paths);
+            if paths.is_empty() {
+                "start-up config shadow: same as the child's".into()
+            } else {
+                format!(
+                    "start-up config shadow: differs from the child's at {}",
+                    paths.join(", ")
+                )
+            }
+        }
+    }
+}
+
+/// The key paths where two JSON values differ (objects key by key, anything else as a whole).
+pub fn config_differences(
+    at: &str,
+    a: &serde_json::Value,
+    b: &serde_json::Value,
+    out: &mut Vec<String>,
+) {
+    use serde_json::Value;
+    match (a, b) {
+        (Value::Object(x), Value::Object(y)) => {
+            let mut keys: Vec<&String> = x.keys().chain(y.keys()).collect();
+            keys.sort();
+            keys.dedup();
+            for k in keys {
+                let path = if at.is_empty() {
+                    k.clone()
+                } else {
+                    format!("{at}.{k}")
+                };
+                match (x.get(k), y.get(k)) {
+                    (Some(p), Some(q)) => config_differences(&path, p, q, out),
+                    _ => out.push(path),
+                }
+            }
+        }
+        _ if a == b => {}
+        _ => out.push(if at.is_empty() {
+            "(root)".into()
+        } else {
+            at.into()
+        }),
     }
 }
 
@@ -745,6 +847,12 @@ pub async fn run(args: Args) -> u8 {
         .local_addr()
         .map(|a| a.port())
         .unwrap_or(args.control_port);
+    if std::env::var(CONFIG_SWITCH)
+        .map(|v| v.trim().eq_ignore_ascii_case("shadow"))
+        .unwrap_or(false)
+    {
+        front.set_own_config(own_config(&front, control_port));
+    }
     let Some((program, rest)) = args.child.split_first() else {
         return 2;
     };
@@ -848,6 +956,29 @@ mod tests {
         assert!(parse_args(&s(&["--main"])).is_err());
         assert!(parse_args(&s(&["--main", "--port", "x", "--", "y"])).is_err());
         assert!(parse_args(&s(&["--main", "--what", "--", "y"])).is_err());
+    }
+
+    #[test]
+    fn config_shadow_names_paths_never_values() {
+        let own = serde_json::json!({"a": 1, "llm": {"main": {"api_key": "qa-one"}, "x": [1]}, "only_own": true});
+        let child =
+            br#"{"a": 1, "llm": {"main": {"api_key": "qa-two"}, "x": [1]}, "only_child": 0}"#;
+        let line = config_shadow_line(&Ok(own.clone()), child);
+        assert_eq!(
+            line,
+            "start-up config shadow: differs from the child's at llm.main.api_key, only_child, only_own"
+        );
+        assert!(!line.contains("qa-"));
+        let same = serde_json::to_vec(&own).unwrap();
+        assert_eq!(
+            config_shadow_line(&Ok(own), &same),
+            "start-up config shadow: same as the child's"
+        );
+        assert_eq!(
+            config_shadow_line(&Err("TypeError".into()), b"{}"),
+            "start-up config shadow: not resolved here (TypeError)"
+        );
+        assert!(config_shadow_line(&Err(String::new()), b"x").ends_with("is not JSON"));
     }
 
     #[test]
