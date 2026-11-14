@@ -30,7 +30,9 @@
 //!                                                 idle-unload-read, model-assignments, preset-read,
 //!                                                 autotune-clear, autotune-resume, autotune-cancel,
 //!                                                 autotune-untuned), or one of the route pairings
-//!                                                 (route_pairings::NAMES: project-storage, close-out,
+//!                                                 (route_pairings::NAMES: project-storage,
+//!                                                 tool-approvals, framing-suggest, toolbox-picker,
+//!                                                 close-out,
 //!                                                 decision-settings, storage-integrations,
 //!                                                 vault-mirror, storage-connection, providers,
 //!                                                 chatgpt-signin, mcp-credentials, mcp-views,
@@ -39,7 +41,7 @@
 //! release-assemble pairing NAME TREE VERDICTS     a route pairing with earlier verdicts the script has by
 //!                                                 then and this crate does not port yet: a comma list
 //!                                                 of auto-roles-write (close-out) and discovery
-//!                                                 (mcp-views), or empty
+//!                                                 (toolbox-picker, mcp-views), or empty
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 

@@ -1,5 +1,5 @@
 # Verbatim lines of noevia deploy/tools/assemble-release.sh at noevia origin/main f23eb731: the project storage write
-# pairing and the run of route pairings from the close-out routes to the evidence recheck (council p13). Each '#@<name>'
+# pairing, the tool approval, framing suggestion and toolbox picker pairings, and the run of route pairings from the close-out routes to the evidence recheck (council p13). Each '#@<name>'
 # section is a contiguous run of the script (tests/route_pairings.rs checks it when ASSEMBLE_RELEASE_SH is set).
 #@project_storage
 # A project's storage writes (sbstndalton/noevia#2191 round 3) move as one owner: Core's
@@ -26,6 +26,142 @@ fi
   || die "project storage write ownership pairing: Core and Rust must move together"
 if [ "$project_storage_rs_owner" = rust ] && [ "$project_lifecycle_rs_owner" != rust ]; then
   die "project storage write ownership pairing: needs the project create/delete pair"
+fi
+#@tool_approvals
+# Approval decisions (#2282): Rust owns public policy; before S9 Core keeps only the trusted pending-Promise bridge.
+ta_core_owner=""
+ta_rs_owner=""
+grep -qF "require('./rust-tool-approvals.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && ta_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-tool-approvals features; then ta_rs_owner=rust; fi
+[ "$ta_core_owner" = "$ta_rs_owner" ] || die "tool approval ownership pairing: Core and Rust must move together"
+# Port contract S9 (noevia-core#360, noevia-rs#455): the pending approvals and chat grants are the front's registry.
+# The new pair is Core's require('./rust-approval-registry.cjs') in index.cjs beside the front's rust-approval-registry
+# capability, with no rust-tool-approval-bridge.cjs or bridge mount; the old pair has neither marker and keeps
+# the bridge. A mix leaves every pending approval where the other side never looks.
+ar_core_owner=node
+code_lines "$tree/core/server/index.cjs" | grep -qF "require('./rust-approval-registry.cjs')" && ar_core_owner=rust
+ar_rs_owner=node
+move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-approval-registry features && ar_rs_owner=rust
+if [ "$ar_core_owner" = rust ] && [ "$ar_rs_owner" != rust ]; then
+  die "approval registry ownership pairing: Core requires rust-approval-registry.cjs (keeps no pending approvals) but the Rust front lacks the rust-approval-registry capability"
+fi
+if [ "$ar_rs_owner" = rust ] && [ "$ar_core_owner" != rust ]; then
+  die "approval registry ownership pairing: the Rust front has the rust-approval-registry capability but Core lacks require('./rust-approval-registry.cjs') (Core still holds the pending approvals)"
+fi
+if [ "$ar_rs_owner" = rust ] && [ "$ta_rs_owner" != rust ]; then
+  die "approval registry ownership pairing: the front's rust-approval-registry needs the tool approval pair (rust-tool-approvals and Core's rust-tool-approvals.cjs refusal)"
+fi
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  ta_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || ta_table=""
+  ta_rows="$(printf '%s\n' "$ta_table" | awk -F'\t' -v want="$ta_rs_owner" '
+    $1 == "/api/tool-approvals/{approvalId}" {
+      if (want == "rust") {
+        if ($2 != "rust" || $3 != "-") exit 1
+        n=split($4,m,/[^A-Z]+/); k=0
+        for(i=1;i<=n;i++) if(m[i]!="") { if(m[i]!="POST") exit 1; k++ }
+        if(k!=1) exit 1
+      } else if ($2 != "node") exit 1
+      print $1
+    }')" || die "tool approval ownership pairing: POST alone must be Rust's with the new pair and Node's with the old"
+  if [ "$ta_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$ta_rows" | wc -w | tr -d ' ')" = 1 ] || die "tool approval ownership pairing: missing route"
+    ta_refused="$( { project_routes_core "$tree/core/server/rust-tool-approvals.cjs" || true; } | sort | tr '\n' ' ')"
+    [ "$ta_refused" = 'POST /api/tool-approvals/{} ' ] || die "tool approval ownership pairing: Core must refuse exactly the approval POST"
+    [ ! -f "$tree/core/server/routes/approvals.cjs" ] || die "tool approval ownership pairing: Core still carries the public handler"
+    ta_index="$(code_lines "$tree/core/server/index.cjs")"
+    if [ "$ar_rs_owner" = rust ]; then
+      # S9: the front's registry holds the pending state; Core's bridge and its mount (with the bridge's secret) are gone.
+      [ -f "$tree/core/server/rust-approval-registry.cjs" ] || die "tool approval ownership pairing: Core (rust-approval-registry) is missing server/rust-approval-registry.cjs"
+      [ ! -e "$tree/core/server/rust-tool-approval-bridge.cjs" ] \
+        || die "tool approval ownership pairing: Core (rust-approval-registry) still carries the pending state bridge server/rust-tool-approval-bridge.cjs"
+      ! grep -qE 'toolApprovalBridge\(req, res\)|createToolApprovalBridge\(' <<<"$ta_index" \
+        || die "tool approval ownership pairing: Core (rust-approval-registry) still mounts the pending state bridge"
+    else
+      [ -f "$tree/core/server/rust-tool-approval-bridge.cjs" ] || die "tool approval ownership pairing: missing pending state bridge"
+      grep -qE 'toolApprovalBridge\(req, res\)' <<<"$ta_index" || die "tool approval ownership pairing: missing bridge mount"
+      ta_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$ta_index" | head -1)"
+      [ -n "$ta_secret" ] && awk -v c="$ta_secret" '
+        /createToolApprovalBridge\(\{/ { bridge = NR }
+        index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+        END { exit !ok }
+      ' <<<"$ta_index" || die "tool approval ownership pairing: missing captured front secret"
+    fi
+  fi
+fi
+#@framing_suggest
+# Chat port S4: the framing suggestion. The front owns every method of exactly /api/chat-framing/suggest
+# (capability rust-chat-framing-suggest); Core refuses exactly its POST (server/rust-chat-framing-suggest.cjs),
+# no longer makes a suggestion in routes/chat-framing.cjs, and serves the front's loopback
+# /internal/chat-framing/suggest with the captured front secret. Old/old stays valid; mixed pairs are refused.
+fs_core_owner=""; fs_rs_owner=""
+grep -qF "require('./rust-chat-framing-suggest.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && fs_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-chat-framing-suggest features; then fs_rs_owner=rust; fi
+[ "$fs_core_owner" = "$fs_rs_owner" ] || die "framing suggestion ownership pairing: Core and Rust must move together"
+if [ "$fs_rs_owner" != rust ] && [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # The old pair: Node answers the suggestion, so the route table must not give it to Rust.
+  fs_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || fs_table=""
+  printf '%s\n' "$fs_table" | awk -F'\t' '$1 == "/api/chat-framing/suggest" && $2 == "rust" { bad = 1 } END { exit bad }' \
+    || die "framing suggestion ownership pairing: an old pair cannot give the suggestion to Rust"
+fi
+if [ "$fs_rs_owner" = rust ]; then
+  [ -f "$tree/rs/contracts/http/routes.toml" ] || die "framing suggestion ownership pairing: missing route contract"
+  fs_rows="$(routes_toml "$tree/rs/contracts/http/routes.toml" | awk -F'\t' '
+    $1 == "/api/chat-framing/suggest" {
+      if ($2 != "rust" || $3 != "-" || $4 != "-") exit 1
+      print $1
+    }')" || die "framing suggestion ownership pairing: every method must belong to Rust"
+  [ "$fs_rows" = /api/chat-framing/suggest ] || die "framing suggestion ownership pairing: incomplete route ownership"
+  code_has "$tree/core/server/rust-chat-framing-suggest.cjs" "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'POST /api/chat-framing/suggest'[]][)][)];$" \
+    || die "framing suggestion ownership pairing: Core must refuse exactly this POST"
+  ! code_has "$tree/core/server/routes/chat-framing.cjs" 'framing[.]suggest[(]' \
+    || die "framing suggestion ownership pairing: Core still carries the public suggestion handler"
+  fs_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qE 'chatFramingSuggestBridge\(req, res\)' <<<"$fs_index" || die "framing suggestion ownership pairing: missing bridge mount"
+  fs_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$fs_index" | head -1)"
+  [ -n "$fs_secret" ] && awk -v c="$fs_secret" '
+    /createSuggestBridge\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$fs_index" || die "framing suggestion ownership pairing: missing captured front secret"
+fi
+#@toolbox_picker
+# #2281: the toolbox picker moves as one owner, with only raw discovery/prefill facts in Core.
+tp_core_owner=""; tp_rs_owner=""
+grep -qF "require('./rust-toolbox-picker.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && tp_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-toolbox-picker features; then tp_rs_owner=rust; fi
+[ "$tp_core_owner" = "$tp_rs_owner" ] || die "toolbox picker ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  tp_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || tp_table=""
+  tp_rows="$(printf '%s\n' "$tp_table" | awk -F'\t' -v want="$tp_rs_owner" '
+    $1 == "/api/toolboxes" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "toolbox picker ownership pairing: all methods must belong to the paired owner"
+fi
+if [ "$tp_rs_owner" = rust ]; then
+  [ "${tp_rows:-}" = /api/toolboxes ] || die "toolbox picker ownership pairing: incomplete route ownership"
+  tp_refused="$( { project_routes_core "$tree/core/server/rust-toolbox-picker.cjs" || true; } | tr '\n' ' ')"
+  [ "$tp_refused" = 'ALL /api/toolboxes ' ] || die "toolbox picker ownership pairing: Core must refuse exactly the picker"
+  [ ! -f "$tree/core/server/routes/toolboxes.cjs" ] && [ ! -f "$tree/core/server/mcp-status.cjs" ] \
+    || die "toolbox picker ownership pairing: Core still carries the public handler or status composition"
+  ! code_has "$tree/core/server/toolboxes.cjs" 'function toolboxSummaries' \
+    || die "toolbox picker ownership pairing: Core still carries picker summary composition"
+  if [ "$md_rs_owner" = rust ]; then
+    # Row T: the picker's facts are the front's own discovery plus the chat process's published toolbox facts; the
+    # bridge is gone (the MCP discovery guard above refuses a Core that still carries it).
+    :
+  else
+    [ -f "$tree/core/server/rust-toolbox-picker-facts.cjs" ] || die "toolbox picker ownership pairing: missing raw facts bridge"
+    tp_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qF 'toolboxPickerFacts(req, res)' <<<"$tp_index" || die "toolbox picker ownership pairing: missing facts mount"
+    tp_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$tp_index" | head -1)"
+    [ -n "$tp_secret" ] && awk -v c="$tp_secret" '
+      /createToolboxPickerFacts\(\{/ { bridge = NR }
+      index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+      END { exit !ok }
+    ' <<<"$tp_index" || die "toolbox picker ownership pairing: facts bridge needs the front captured secret"
+  fi
 fi
 #@close_out
 # The close-out routes: GET /api/health and GET /api/auto-roles (sbstndalton/noevia#2190) and GET

@@ -1,5 +1,6 @@
 //! The project storage write pairing and the run of route pairings from the close-out routes to the evidence
-//! recheck (`assemble-release.sh` at noevia f23eb731, lines 1101-1125 and 2726-3349), council p13.
+//! recheck (`assemble-release.sh` at noevia f23eb731, lines 1101-1125 and 2726-3349), and the tool approval, framing
+//! suggestion and toolbox picker pairings (1693-1825), council p13.
 //!
 //! Most of them have one shape: Core's refusal module (a fixed string, or an ERE through `code_has`, in
 //! `core/server/index.cjs`) and the front's FEATURES capability move together, and when they have moved,
@@ -20,7 +21,7 @@ use crate::guard::{
     code_lines, grep_fixed, move_capability, project_routes_core, read_file, routes_toml_file,
     tab_fields, MoveKind,
 };
-use crate::model_pairings::text_has;
+use crate::model_pairings::{text_has, text_has_fixed};
 use std::path::Path;
 
 const INDEX: &str = "core/server/index.cjs";
@@ -229,6 +230,222 @@ pub fn project_storage_pairing(tree: &Path, lifecycle_rs_owner: bool) -> Result<
         return Err(die(LABEL, "needs the project create/delete pair"));
     }
     Ok(rs)
+}
+
+// ---------------------------------------------------------------------------------------------------------
+// Tool approvals and the approval registry, the framing suggestion, the toolbox picker (1693-1825)
+
+/// Tool approval decisions (#2282) and the approval registry (port contract S9): the approval POST is Rust's
+/// with the new pair and Node's with the old; with the registry Core's pending-state bridge is gone, without
+/// it the bridge is there, mounted and handed the front's captured secret.
+pub fn tool_approval_pairings(tree: &Path) -> Result<(), String> {
+    const TA: &str = "tool approval ownership pairing";
+    const AR: &str = "approval registry ownership pairing";
+    let ta = owner(
+        tree,
+        TA,
+        Core::Fixed("require('./rust-tool-approvals.cjs')"),
+        "rust-tool-approvals",
+    )?;
+    let index = code_lines(read_file(&tree.join(INDEX)).as_deref());
+    let ar_core = text_has_fixed(&index, "require('./rust-approval-registry.cjs')");
+    let ar = front_has(tree, "rust-approval-registry");
+    if ar_core && !ar {
+        return Err(die(
+            AR,
+            "Core requires rust-approval-registry.cjs (keeps no pending approvals) but the Rust front lacks the rust-approval-registry capability",
+        ));
+    }
+    if ar && !ar_core {
+        return Err(die(
+            AR,
+            "the Rust front has the rust-approval-registry capability but Core lacks require('./rust-approval-registry.cjs') (Core still holds the pending approvals)",
+        ));
+    }
+    if ar && !ta {
+        return Err(die(
+            AR,
+            "the front's rust-approval-registry needs the tool approval pair (rust-tool-approvals and Core's rust-tool-approvals.cjs refusal)",
+        ));
+    }
+    if !tree.join(CONTRACT).is_file() {
+        return Ok(());
+    }
+    let rows = generation_rows(tree, &["/api/tool-approvals/{approvalId}"], ta, POST1).map_err(|()| {
+        die(
+            TA,
+            "POST alone must be Rust's with the new pair and Node's with the old",
+        )
+    })?;
+    if !ta {
+        return Ok(());
+    }
+    if rows.len() != 1 {
+        return Err(die(TA, "missing route"));
+    }
+    let refused = project_routes_core(
+        read_file(&tree.join("core/server/rust-tool-approvals.cjs")).as_deref(),
+        "OWNED_ROUTES",
+    );
+    if refused != [b"POST /api/tool-approvals/{}".to_vec()] {
+        return Err(die(TA, "Core must refuse exactly the approval POST"));
+    }
+    if tree.join("core/server/routes/approvals.cjs").is_file() {
+        return Err(die(TA, "Core still carries the public handler"));
+    }
+    if ar {
+        if !tree.join("core/server/rust-approval-registry.cjs").is_file() {
+            return Err(die(
+                TA,
+                "Core (rust-approval-registry) is missing server/rust-approval-registry.cjs",
+            ));
+        }
+        if tree.join("core/server/rust-tool-approval-bridge.cjs").exists() {
+            return Err(die(
+                TA,
+                "Core (rust-approval-registry) still carries the pending state bridge server/rust-tool-approval-bridge.cjs",
+            ));
+        }
+        if text_has(
+            &index,
+            r"toolApprovalBridge\(req, res\)|createToolApprovalBridge\(",
+        ) {
+            return Err(die(
+                TA,
+                "Core (rust-approval-registry) still mounts the pending state bridge",
+            ));
+        }
+    } else {
+        if !tree.join("core/server/rust-tool-approval-bridge.cjs").is_file() {
+            return Err(die(TA, "missing pending state bridge"));
+        }
+        if !text_has(&index, r"toolApprovalBridge\(req, res\)") {
+            return Err(die(TA, "missing bridge mount"));
+        }
+        if !secret_handed(tree, r"createToolApprovalBridge\(\{") {
+            return Err(die(TA, "missing captured front secret"));
+        }
+    }
+    Ok(())
+}
+
+const FRAMING_SUGGEST: &str = "/api/chat-framing/suggest";
+
+/// The framing suggestion (chat port S4): every method of the path is Rust's with the new pair and never
+/// Rust's with the old; a paired Core refuses exactly its POST, makes no suggestion itself and serves the
+/// front's bridge with the captured secret.
+pub fn framing_suggest_pairing(tree: &Path) -> Result<(), String> {
+    const LABEL: &str = "framing suggestion ownership pairing";
+    let rs = owner(
+        tree,
+        LABEL,
+        Core::Fixed("require('./rust-chat-framing-suggest.cjs')"),
+        "rust-chat-framing-suggest",
+    )?;
+    let contract = tree.join(CONTRACT);
+    if !rs && contract.is_file() {
+        let rt = routes_toml_file(&contract);
+        if rt.error.is_none()
+            && rt.routes.iter().any(|r| {
+                let [path, owner, _, _] = tab_fields(r);
+                path == FRAMING_SUGGEST.as_bytes() && owner == b"rust"
+            })
+        {
+            return Err(die(LABEL, "an old pair cannot give the suggestion to Rust"));
+        }
+    }
+    if !rs {
+        return Ok(());
+    }
+    routes(
+        tree,
+        &RoutePair {
+            label: LABEL,
+            core: Core::Fixed(""),
+            feature: "",
+            select: Select::Paths(&[(FRAMING_SUGGEST, Want::All)]),
+            rule_text: "every method must belong to Rust",
+            expected: &[FRAMING_SUGGEST],
+        },
+    )?;
+    if !file_has(
+        tree,
+        "core/server/rust-chat-framing-suggest.cjs",
+        "^const OWNED_ROUTES = Object[.]freeze[(]new Set[(][[]'POST /api/chat-framing/suggest'[]][)][)];$",
+    ) {
+        return Err(die(LABEL, "Core must refuse exactly this POST"));
+    }
+    if file_has(tree, "core/server/routes/chat-framing.cjs", "framing[.]suggest[(]") {
+        return Err(die(
+            LABEL,
+            "Core still carries the public suggestion handler",
+        ));
+    }
+    let index = code_lines(read_file(&tree.join(INDEX)).as_deref());
+    if !text_has(&index, r"chatFramingSuggestBridge\(req, res\)") {
+        return Err(die(LABEL, "missing bridge mount"));
+    }
+    if !secret_handed(tree, r"createSuggestBridge\(\{") {
+        return Err(die(LABEL, "missing captured front secret"));
+    }
+    Ok(())
+}
+
+/// The toolbox picker (#2281), with `discovery_rs_owner` the MCP discovery pairing's front verdict: with it
+/// the picker's facts are the front's own, without it Core serves the raw facts bridge.
+pub fn toolbox_picker_pairing(tree: &Path, discovery_rs_owner: bool) -> Result<(), String> {
+    const LABEL: &str = "toolbox picker ownership pairing";
+    let rs = owner(
+        tree,
+        LABEL,
+        Core::Fixed("require('./rust-toolbox-picker.cjs')"),
+        "rust-toolbox-picker",
+    )?;
+    // `tp_rows` stays unset (empty) without a contract.
+    let mut rows = Vec::new();
+    if tree.join(CONTRACT).is_file() {
+        rows = generation_rows(tree, &["/api/toolboxes"], rs, Want::All).map_err(|()| {
+            die(LABEL, "all methods must belong to the paired owner")
+        })?;
+    }
+    if !rs {
+        return Ok(());
+    }
+    if rows.len() != 1 {
+        return Err(die(LABEL, "incomplete route ownership"));
+    }
+    let refused = project_routes_core(
+        read_file(&tree.join("core/server/rust-toolbox-picker.cjs")).as_deref(),
+        "OWNED_ROUTES",
+    );
+    if refused != [b"ALL /api/toolboxes".to_vec()] {
+        return Err(die(LABEL, "Core must refuse exactly the picker"));
+    }
+    if tree.join("core/server/routes/toolboxes.cjs").is_file()
+        || tree.join("core/server/mcp-status.cjs").is_file()
+    {
+        return Err(die(
+            LABEL,
+            "Core still carries the public handler or status composition",
+        ));
+    }
+    if file_has(tree, "core/server/toolboxes.cjs", "function toolboxSummaries") {
+        return Err(die(LABEL, "Core still carries picker summary composition"));
+    }
+    if discovery_rs_owner {
+        return Ok(());
+    }
+    if !tree.join("core/server/rust-toolbox-picker-facts.cjs").is_file() {
+        return Err(die(LABEL, "missing raw facts bridge"));
+    }
+    let index = code_lines(read_file(&tree.join(INDEX)).as_deref());
+    if !text_has_fixed(&index, "toolboxPickerFacts(req, res)") {
+        return Err(die(LABEL, "missing facts mount"));
+    }
+    if !secret_handed(tree, r"createToolboxPickerFacts\(\{") {
+        return Err(die(LABEL, "facts bridge needs the front captured secret"));
+    }
+    Ok(())
 }
 
 // ---------------------------------------------------------------------------------------------------------
@@ -921,6 +1138,9 @@ pub fn model_evidence_pairings(tree: &Path) -> Result<(), String> {
 /// The CLI names of this module's pairings, in the script's order (`project-storage` first: line 1101).
 pub const NAMES: &[&str] = &[
     "project-storage",
+    "tool-approvals",
+    "framing-suggest",
+    "toolbox-picker",
     "close-out",
     "decision-settings",
     "storage-integrations",
@@ -951,6 +1171,9 @@ pub struct Earlier {
 pub fn by_name(tree: &Path, name: &str, earlier: Earlier) -> Option<Result<(), String>> {
     Some(match name {
         "project-storage" => project_storage_pairing(tree, earlier.lifecycle_rs_owner).map(|_| ()),
+        "tool-approvals" => tool_approval_pairings(tree),
+        "framing-suggest" => framing_suggest_pairing(tree),
+        "toolbox-picker" => toolbox_picker_pairing(tree, earlier.discovery_rs_owner),
         "close-out" => close_out_pairings(tree, earlier.auto_roles_write),
         "decision-settings" => route_pair(tree, &DECISION_SETTINGS).map(|_| ()),
         "storage-integrations" => route_pair(tree, &STORAGE_INTEGRATIONS).map(|_| ()),

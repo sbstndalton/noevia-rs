@@ -23,6 +23,9 @@ const MODEL: &str = include_str!("../fixtures/assemble-release-model-pairings-ex
 
 const SECTIONS: &[&str] = &[
     "project_storage",
+    "tool_approvals",
+    "framing_suggest",
+    "toolbox_picker",
     "close_out",
     "decision_settings",
     "storage_integrations",
@@ -1022,6 +1025,162 @@ fn model_evidence_pairings_match_the_shell() {
         min_verdicts: 8,
     };
     simple(&G, 0xe41d_0000_0000_0010, "model-evidence");
+}
+
+#[test]
+fn tool_approval_pairings_match_the_shell() {
+    const G: Group = Group {
+        section: "tool_approvals",
+        pairs: &[
+            Pair {
+                module: "rust-tool-approvals.cjs",
+                feature: "rust-tool-approvals",
+                rows: &[("/api/tool-approvals/{approvalId}", &["POST"])],
+            },
+            Pair {
+                module: "rust-approval-registry.cjs",
+                feature: "rust-approval-registry",
+                rows: &[],
+            },
+        ],
+        index: &[
+            SECRET_LINES,
+            &["const bridge = createToolApprovalBridge({", ""],
+            &["  secret: FRONT_SECRET,", "  secret: OTHER,"],
+            &["});"],
+            &[
+                "if (await toolApprovalBridge(req, res)) return;",
+                "// if (await toolApprovalBridge(req, res)) return;",
+                "",
+            ],
+        ],
+        lib: &[],
+        extras: &[
+            (
+                "core/server/rust-tool-approvals.cjs",
+                &[
+                    Some("const OWNED_ROUTES = Object.freeze(new Set(['POST /api/tool-approvals/{approvalId}']));\n"),
+                    Some("const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/tool-approvals/{approvalId}']));\n"),
+                    None,
+                ],
+            ),
+            (
+                "core/server/routes/approvals.cjs",
+                &[None, Some("'use strict';\n")],
+            ),
+            (
+                "core/server/rust-approval-registry.cjs",
+                &[Some("'use strict';\n"), None],
+            ),
+            (
+                "core/server/rust-tool-approval-bridge.cjs",
+                &[None, Some("'use strict';\n")],
+            ),
+        ],
+        near: &[],
+        min_verdicts: 7,
+    };
+    simple(&G, 0x7a9b_0000_0000_0011, "tool-approvals");
+}
+
+#[test]
+fn framing_suggest_pairing_matches_the_shell() {
+    const G: Group = Group {
+        section: "framing_suggest",
+        pairs: &[Pair {
+            module: "rust-chat-framing-suggest.cjs",
+            feature: "rust-chat-framing-suggest",
+            rows: &[("/api/chat-framing/suggest", &[])],
+        }],
+        index: &[
+            SECRET_LINES,
+            &["const s = createSuggestBridge({", "const s = createSuggestBridge ({"],
+            &["  secret: FRONT_SECRET,", "  secret: OTHER,"],
+            &["});"],
+            &[
+                "if (await chatFramingSuggestBridge(req, res)) return;",
+                "// if (await chatFramingSuggestBridge(req, res)) return;",
+            ],
+        ],
+        lib: &[],
+        extras: &[
+            (
+                "core/server/rust-chat-framing-suggest.cjs",
+                &[
+                    Some("const OWNED_ROUTES = Object.freeze(new Set(['POST /api/chat-framing/suggest']));\n"),
+                    Some("const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/chat-framing/suggest']));\n"),
+                    None,
+                ],
+            ),
+            (
+                "core/server/routes/chat-framing.cjs",
+                &[
+                    Some("router.get('/api/chat-framing', h);\n"),
+                    Some("const s = await framing.suggest(chat);\n"),
+                    Some("// const s = await framing.suggest(chat);\n"),
+                ],
+            ),
+        ],
+        near: &[],
+        min_verdicts: 7,
+    };
+    simple(&G, 0xf5a9_0000_0000_0012, "framing-suggest");
+}
+
+#[test]
+fn toolbox_picker_pairing_matches_the_shell() {
+    const G: Group = Group {
+        section: "toolbox_picker",
+        pairs: &[Pair {
+            module: "rust-toolbox-picker.cjs",
+            feature: "rust-toolbox-picker",
+            rows: &[("/api/toolboxes", &[])],
+        }],
+        index: &[
+            SECRET_LINES,
+            &["const f = createToolboxPickerFacts({", ""],
+            &["  secret: FRONT_SECRET,", "  secret: OTHER,"],
+            &["});"],
+            &[
+                "if (await toolboxPickerFacts(req, res)) return;",
+                "// if (await toolboxPickerFacts(req, res)) return;",
+            ],
+        ],
+        lib: &[],
+        extras: &[
+            (
+                "core/server/rust-toolbox-picker.cjs",
+                &[
+                    Some("const OWNED_ROUTES = Object.freeze(new Set(['ALL /api/toolboxes']));\n"),
+                    Some("const OWNED_ROUTES = Object.freeze(new Set(['GET /api/toolboxes']));\n"),
+                    None,
+                ],
+            ),
+            ("core/server/routes/toolboxes.cjs", &[None, Some("'use strict';\n")]),
+            ("core/server/mcp-status.cjs", &[None, Some("'use strict';\n")]),
+            (
+                "core/server/toolboxes.cjs",
+                &[
+                    Some("function toolboxFacts() {}\n"),
+                    Some("function toolboxSummaries() {}\n"),
+                    Some("// function toolboxSummaries() {}\n"),
+                ],
+            ),
+            (
+                "core/server/rust-toolbox-picker-facts.cjs",
+                &[Some("'use strict';\n"), None],
+            ),
+        ],
+        near: &[],
+        min_verdicts: 7,
+    };
+    compare(
+        &G,
+        0x7b0c_0000_0000_0013,
+        false,
+        &|md| format!("md_rs_owner={}\n", if md { "rust" } else { "" }),
+        &|t, md| route_pairings::toolbox_picker_pairing(t, md),
+    );
 }
 
 // ---------------------------------------------------------------------------------------------------------
