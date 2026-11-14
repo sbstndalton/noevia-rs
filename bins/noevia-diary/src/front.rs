@@ -149,6 +149,9 @@ pub struct Front {
     /// Shift 4, step 6 (DIARY_RUST_EXCHANGE=on): what the exchange reads of this process's own
     /// configuration, handed to the App at install. Unset: every exchange is the child's.
     exchange_setup: OnceLock<Arc<crate::exchange::Setup>>,
+    /// DIARY_RUST_CONFIG=on: this process installed its own start-up config; the child's POST is
+    /// compared and acknowledged, never installed.
+    own_installed: std::sync::atomic::AtomicBool,
     http: Client<HttpConnector, Body>,
 }
 
@@ -176,6 +179,7 @@ impl Front {
             own_config: OnceLock::new(),
             recovery_here: false,
             exchange_setup: OnceLock::new(),
+            own_installed: std::sync::atomic::AtomicBool::new(false),
             http,
         }
     }
@@ -769,6 +773,14 @@ pub async fn control(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         if let Some(own) = front.own_config.get() {
             eprintln!("noevia-diary: {}", config_shadow_line(own, &bytes));
         }
+        if front
+            .own_installed
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            // DIARY_RUST_CONFIG=on: the child is ready; its config is not needed.
+            eprintln!("noevia-diary: the child is ready (this process's own start-up config is installed)");
+            return Response::new(Body::from("ok"));
+        }
         let cfg = match std::str::from_utf8(&bytes)
             .map_err(|_| "start-up config is not UTF-8".to_string())
             .and_then(crate::config::parse)
@@ -806,7 +818,9 @@ pub async fn control(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
 }
 
 /// The switch DIARY_RUST_CONFIG (shift 4, step 3): `shadow` resolves the start-up config here
-/// too and compares it with the child's; unset (or anything else) changes nothing.
+/// too and compares it with the child's; `on` also installs it at start (the child's POST is then
+/// only compared and acknowledged; a resolution that fails waits for the child's as before);
+/// unset (or anything else) changes nothing.
 pub const CONFIG_SWITCH: &str = "DIARY_RUST_CONFIG";
 
 /// Where Python's `load_config` finds config.yaml by default: `agent/../config`, the app root's
@@ -1015,12 +1029,7 @@ pub async fn run(args: Args) -> u8 {
         .local_addr()
         .map(|a| a.port())
         .unwrap_or(args.control_port);
-    if std::env::var(CONFIG_SWITCH)
-        .map(|v| v.trim().eq_ignore_ascii_case("shadow"))
-        .unwrap_or(false)
-    {
-        front.set_own_config(own_config(&front, control_port));
-    }
+    // The exchange settings first: installing a config hands them to the App.
     if std::env::var(crate::exchange::SWITCH)
         .map(|v| v.trim().eq_ignore_ascii_case("on"))
         .unwrap_or(false)
@@ -1032,6 +1041,30 @@ pub async fn run(args: Args) -> u8 {
                 crate::exchange::SWITCH
             ),
         }
+    }
+    let config_mode = std::env::var(CONFIG_SWITCH)
+        .map(|v| v.trim().to_ascii_lowercase())
+        .unwrap_or_default();
+    if config_mode == "shadow" || config_mode == "on" {
+        let own = own_config(&front, control_port);
+        if config_mode == "on" {
+            let parsed = own
+                .clone()
+                .and_then(|v| crate::config::parse(&v.to_string()));
+            match parsed.map(|cfg| front.install(cfg).map_err(str::to_owned)) {
+                Ok(Ok(())) => {
+                    front
+                        .own_installed
+                        .store(true, std::sync::atomic::Ordering::SeqCst);
+                    eprintln!("noevia-diary: this process's own start-up config installed ({CONFIG_SWITCH}=on)");
+                }
+                Ok(Err(e)) | Err(e) => eprintln!(
+                    "noevia-diary: {CONFIG_SWITCH}=on: not installed here ({}); the child's config is awaited",
+                    first_clause(&e)
+                ),
+            }
+        }
+        front.set_own_config(own);
     }
     let Some((program, rest)) = args.child.split_first() else {
         return 2;

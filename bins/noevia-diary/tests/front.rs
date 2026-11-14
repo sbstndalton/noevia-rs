@@ -1141,3 +1141,81 @@ async fn a_writer_tenant_is_recovered_here_and_read_without_the_childs_stamp() {
     assert_eq!(applied(dir.path(), "qa-row-2"), 1);
     assert_eq!(log.lock().unwrap().len(), before);
 }
+
+/// A python3 child that serves only after a delay, then POSTs nothing but readiness: its
+/// config POST's answer goes to `marker`.
+const LATE_STUB: &str = r#"
+import json, os, signal, sys, time, urllib.request
+from http.server import BaseHTTPRequestHandler, HTTPServer
+hs = json.loads(sys.stdin.readline())
+port, marker = int(sys.argv[1]), sys.argv[2]
+class H(BaseHTTPRequestHandler):
+    def do_GET(self):
+        body = b"child"
+        self.send_response(200); self.send_header("content-length", str(len(body))); self.end_headers(); self.wfile.write(body)
+    def log_message(self, *a): pass
+signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
+time.sleep(3)
+cfg = {"control_token": hs["control_token"], "forward_secret": hs["parent_secret"]}
+req = urllib.request.Request("http://127.0.0.1:%d/internal/child/config" % hs["control_port"], data=json.dumps(cfg).encode(),
+                             headers={"x-noevia-diary-control": hs["control_token"]}, method="POST")
+open(marker, "w").write(urllib.request.urlopen(req, timeout=5).read().decode())
+HTTPServer(("127.0.0.1", port), H).serve_forever()
+"#;
+
+#[tokio::test]
+async fn with_diary_rust_config_on_the_parent_needs_no_config_from_its_child() {
+    // DIARY_RUST_CONFIG=on: the parent installs its own start-up config at start (config.yaml and
+    // its environment), so it answers before the child is up; the child's POST is acknowledged.
+    let dir = tempfile::tempdir().unwrap();
+    let yaml = format!(
+        "llm:\n  base_url: http://127.0.0.1:9/v1\n  chat_model: qa-chat\n  aux:\n    base_url: http://127.0.0.1:9/v1\n    model: qa-aux\nretrieval:\n  db_path: {}\nui:\n  auth_token: {TOKEN}\n",
+        dir.path().join("state").join("index.db").display()
+    );
+    std::fs::write(dir.path().join("config.yaml"), yaml).unwrap();
+    let (port, control, child) = (free_port(), free_port(), free_port());
+    let marker = dir.path().join("marker");
+    let mut p = std::process::Command::new(env!("CARGO_BIN_EXE_noevia-diary"))
+        .env("DIARY_RUST_CONFIG", "on")
+        .env("DIARY_CONFIG", dir.path().join("config.yaml"))
+        .args([
+            "--main",
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &port.to_string(),
+            "--control-port",
+            &control.to_string(),
+            "--child-port",
+            &child.to_string(),
+            "--",
+            "python3",
+            "-c",
+            LATE_STUB,
+            &child.to_string(),
+            marker.to_str().unwrap(),
+        ])
+        .spawn()
+        .unwrap();
+    // Before the child serves: forwarded and refused (the child is down), not "starting".
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    let first = loop {
+        if let Ok(r) = reqwest::get(format!("http://127.0.0.1:{port}/anything")).await {
+            break (r.status().as_u16(), r.bytes().await.unwrap().to_vec());
+        }
+        assert!(
+            std::time::Instant::now() < deadline,
+            "parent never listened"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(50)).await;
+    };
+    assert_eq!(first, (503, front::CHILD_DOWN.to_vec()));
+    assert_eq!(wait_child(port).await, "child");
+    assert_eq!(std::fs::read_to_string(&marker).unwrap(), "ok");
+    nix::sys::signal::kill(
+        nix::unistd::Pid::from_raw(i32::try_from(p.id()).unwrap()),
+        nix::sys::signal::Signal::SIGTERM,
+    )
+    .unwrap();
+    assert_eq!(wait_exit(&mut p), Some(0));
+}
