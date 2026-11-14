@@ -135,7 +135,13 @@ struct Upstream {
     handler: Arc<Mutex<Handler>>,
     /// Signalled whenever a request arrives: what the tests wait on instead of sleeping.
     hit: Arc<tokio::sync::Notify>,
+    /// Open unless a test called `hold`: a handler that answers `HELD` waits for it to open.
+    gate: Arc<tokio::sync::watch::Sender<bool>>,
 }
+
+/// A handler's delay meaning "answer when the test calls `release`", for a race whose other side
+/// must land while the exchange is in flight: no clock margin to outrun on a slow runner.
+const HELD: Duration = Duration::MAX;
 
 impl Upstream {
     /// Waits until the upstream has received `n` requests whose path starts with `path`: that
@@ -155,6 +161,13 @@ impl Upstream {
             .unwrap_or_else(|_| panic!("the upstream never saw request {n} of {path}"));
     }
 
+    /// Closes the gate: requests a handler answers with `HELD` stay unanswered until `release`.
+    fn hold(&self) {
+        self.gate.send_replace(false);
+    }
+    fn release(&self) {
+        self.gate.send_replace(true);
+    }
     fn set(&self, f: impl Fn(&Seen) -> (Duration, String) + Send + Sync + 'static) {
         *self.handler.lock().unwrap() = Arc::new(f);
     }
@@ -189,11 +202,13 @@ async fn upstream() -> Upstream {
         seen: Arc::new(Mutex::new(Vec::new())),
         handler: Arc::new(Mutex::new(Arc::new(|_: &Seen| reply("500 Oops", "")))),
         hit: Arc::new(tokio::sync::Notify::new()),
+        gate: Arc::new(tokio::sync::watch::channel(true).0),
     };
-    let (seen, handler, hit) = (
+    let (seen, handler, hit, gate) = (
         Arc::clone(&up.seen),
         Arc::clone(&up.handler),
         Arc::clone(&up.hit),
+        Arc::clone(&up.gate),
     );
     tokio::spawn(async move {
         loop {
@@ -201,6 +216,7 @@ async fn upstream() -> Upstream {
                 return;
             };
             let (seen, handler, hit) = (Arc::clone(&seen), Arc::clone(&handler), Arc::clone(&hit));
+            let mut open = gate.subscribe();
             tokio::spawn(async move {
                 let mut buf = Vec::new();
                 let mut chunk = [0u8; 4096];
@@ -245,7 +261,13 @@ async fn upstream() -> Upstream {
                 hit.notify_waiters();
                 let f = handler.lock().unwrap().clone();
                 let (delay, text) = f(&request);
-                tokio::time::sleep(delay).await;
+                if delay == HELD {
+                    // The deadline only ends a test that never released: it then fails on its own wait.
+                    let _ =
+                        tokio::time::timeout(Duration::from_secs(60), open.wait_for(|o| *o)).await;
+                } else {
+                    tokio::time::sleep(delay).await;
+                }
                 let _ = s.write_all(text.as_bytes()).await;
                 let _ = s.shutdown().await;
             });
@@ -1049,8 +1071,9 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
             "200 OK",
             r#"{"authorization_code":"synthetic-code","code_verifier":"synthetic-verifier"}"#,
         ),
+        // Held until `release`: the disconnect or the cancel lands while the exchange is in flight.
         "/oauth/token" => (
-            Duration::from_millis(700),
+            HELD,
             reply(
                 "200 OK",
                 &format!(r#"{{"access_token":"synthetic-access-9","refresh_token":"synthetic-refresh-9","id_token":"{id_token}","expires_in":3600}}"#),
@@ -1059,6 +1082,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
         ),
         _ => reply("404 Not Found", ""),
     });
+    up.hold();
 
     // A disconnect during an in-flight refresh wins at once; the refreshed tokens are not written.
     store_tokens(
@@ -1072,15 +1096,17 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     let (addr, u) = (f.store, user.clone());
     let refreshing = tokio::spawn(async move { store(addr, "session", STORE_TOKEN, &u).await });
     up.wait_for("/oauth/token", 1).await;
-    let t0 = std::time::Instant::now();
-    assert_eq!(
-        store(f.store, "disconnect", STORE_TOKEN, &user).await.0,
-        200
-    );
-    assert!(
-        t0.elapsed() < Duration::from_millis(400),
-        "the disconnect does not wait for the refresh"
-    );
+    // The refresh's exchange is held open, so a disconnect that waited for it would only return when
+    // the front gives the exchange up (its 15 s TIMEOUT): the deadline is under that.
+    let disconnected = tokio::time::timeout(
+        Duration::from_secs(10),
+        store(f.store, "disconnect", STORE_TOKEN, &user),
+    )
+    .await
+    .expect("the disconnect does not wait for the refresh");
+    assert_eq!(disconnected.0, 200);
+    assert!(!refreshing.is_finished(), "the refresh was still in flight");
+    up.release();
     let (s, got) = refreshing.await.unwrap();
     assert_eq!((s, got["code"].clone()), (401, j(r#""disconnected""#)));
     assert!(
@@ -1089,6 +1115,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     );
 
     // #454: a disconnect while the sign-in is being exchanged wins; nothing is stored.
+    up.hold();
     let body = started(f.addr, ADMIN).await;
     tokio::time::sleep(Duration::from_millis(1300)).await;
     let (addr, b) = (f.addr, body.clone());
@@ -1098,6 +1125,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
         store(f.store, "disconnect", STORE_TOKEN, &user).await.0,
         200
     );
+    up.release();
     assert_eq!(polling.await.unwrap(), (200, j(r#"{"state":"cancelled"}"#)));
     assert!(token_row(&db, A).is_none());
     assert!(
@@ -1105,6 +1133,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
         "no provider row for a sign-in the disconnect won"
     );
     // ... and so does a cancel.
+    up.hold();
     let body = started(f.addr, ADMIN).await;
     tokio::time::sleep(Duration::from_millis(1300)).await;
     let (addr, b) = (f.addr, body.clone());
@@ -1114,6 +1143,7 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
         post(f.addr, CANCEL, ADMIN, &body).await,
         (200, j(r#"{"ok":true}"#))
     );
+    up.release();
     assert_eq!(polling.await.unwrap(), (200, j(r#"{"state":"cancelled"}"#)));
     assert!(token_row(&db, A).is_none());
     assert_eq!(
@@ -1127,19 +1157,22 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     // At most three sign-ins pending per account: a fourth start drops the oldest.
     let first = started(f.addr, MEMBER).await;
     let second = started(f.addr, MEMBER).await;
-    started(f.addr, MEMBER).await;
-    started(f.addr, MEMBER).await;
+    let third = started(f.addr, MEMBER).await;
+    let fourth = started(f.addr, MEMBER).await;
     assert_eq!(
         post(f.addr, POLL, MEMBER, &first).await,
         (200, j(r#"{"state":"expired"}"#))
     );
-    // The second sign-in is kept. The synthetic upstream approves every poll, so once its 1 s interval
-    // has passed (a slow runner) the poll completes it; either live state proves it was not dropped.
-    let kept = post(f.addr, POLL, MEMBER, &second).await.1["state"].clone();
-    assert!(
-        kept == "pending" || kept == "connected",
-        "the second sign-in survives the cap: {kept}"
-    );
+    // The other three are kept. The synthetic upstream approves every poll, so once a sign-in's 1 s
+    // interval has passed (a slow runner) its poll completes it; either live state proves it was not
+    // dropped, and finishing one leaves the others' entries alone.
+    for (name, kept) in [("second", &second), ("third", &third), ("fourth", &fourth)] {
+        let state = post(f.addr, POLL, MEMBER, kept).await.1["state"].clone();
+        assert!(
+            state == "pending" || state == "connected",
+            "the {name} sign-in survives the cap: {state}"
+        );
+    }
 }
 
 #[tokio::test]

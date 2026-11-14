@@ -1071,33 +1071,88 @@ mod tests {
 
     #[test]
     fn a_late_write_racing_the_delete_never_resurrects_the_transcript() {
+        use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering::SeqCst};
+        use std::time::{Duration, Instant};
+        /// Waits for `cond` with a deadline, so a stuck writer or delete fails the test instead of hanging it.
+        fn wait_for(what: &str, cond: impl Fn() -> bool) {
+            let deadline = Instant::now() + Duration::from_secs(60);
+            while !cond() {
+                assert!(Instant::now() < deadline, "timed out waiting for {what}");
+                std::thread::yield_now();
+            }
+        }
+        /// Ends the writers even when the main thread panics, so the scope can join them.
+        struct Stop<'a>(&'a AtomicBool);
+        impl Drop for Stop<'_> {
+            fn drop(&mut self) {
+                self.0.store(true, SeqCst);
+            }
+        }
         for round in 0..20 {
             let (root, dir) = setup();
             seed_free(root.path(), &dir);
+            // The writers write in a loop until told to stop, and pause between writes while the delete
+            // is being called. Four writers that never paused could keep the delete from taking the
+            // user lock within its 3 s wait (the lock is polled, not queued, and every write fsyncs
+            // while holding it), and its Busy would fail the test for a reason that is not the property
+            // (#2271). Writes already waiting for the lock when the delete is called still race it; the
+            // ones started after the delete returned are late writes, and must each be refused.
+            let (stop, deleting, deleted) = (
+                AtomicBool::new(false),
+                AtomicBool::new(false),
+                AtomicBool::new(false),
+            );
+            let (landed, late) = (AtomicUsize::new(0), AtomicUsize::new(0));
             std::thread::scope(|s| {
+                let _end = Stop(&stop);
                 let writers: Vec<_> = (0..4)
                     .map(|i| {
                         let root = root.path();
+                        let (stop, deleting, deleted) = (&stop, &deleting, &deleted);
+                        let (landed, late) = (&landed, &late);
                         s.spawn(move || {
-                            for j in 0..25 {
-                                let h = vec![JValue::Num(f64::from(i * 100 + j))];
-                                let _ =
+                            let mut j = 0;
+                            while !stop.load(SeqCst) {
+                                wait_for("the delete call to return", || !deleting.load(SeqCst));
+                                let after = deleted.load(SeqCst);
+                                let h = vec![JValue::Num(f64::from(i * 100 + j % 100))];
+                                let saved =
                                     transcript::write(root, USER, "qa-c1", &h, &Base::Any, None);
-                                let _ = transcript::append_if_last(
+                                let appended = transcript::append_if_last(
                                     root,
                                     USER,
                                     "qa-c1",
                                     "qa",
                                     &JValue::Null,
                                 );
+                                if after {
+                                    assert!(
+                                        matches!(saved, Ok(Saved::Deleted)),
+                                        "round {round}: a write after the delete: {saved:?}"
+                                    );
+                                    assert!(
+                                        matches!(appended, Ok(Appended::Deleted)),
+                                        "round {round}: an append after the delete: {appended:?}"
+                                    );
+                                    late.fetch_add(1, SeqCst);
+                                }
+                                landed.fetch_add(1, SeqCst);
+                                j += 1;
                             }
                         })
                     })
                     .collect();
-                assert!(
-                    del(root.path(), "qa-c1", Kind::Free).unwrap().deleted,
-                    "{round}"
-                );
+                wait_for("the writers' first writes", || landed.load(SeqCst) >= 4);
+                deleting.store(true, SeqCst);
+                let outcome = del(root.path(), "qa-c1", Kind::Free);
+                deleted.store(true, SeqCst);
+                deleting.store(false, SeqCst);
+                assert!(outcome.unwrap().deleted, "{round}");
+                // A writer that has ended early panicked on a late write: join below reports it.
+                wait_for("a late write from every writer", || {
+                    late.load(SeqCst) >= 4 || writers.iter().any(|w| w.is_finished())
+                });
+                stop.store(true, SeqCst);
                 for w in writers {
                     w.join().unwrap();
                 }
