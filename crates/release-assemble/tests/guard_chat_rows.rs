@@ -5,7 +5,7 @@
 //! `RELEASE_ASSEMBLE_GUARD_ROUNDS` sets the number of trees (default 400). With `ASSEMBLE_RELEASE_SH` set, the
 //! excerpt must be whole consecutive lines of that script.
 #![cfg(unix)]
-#![allow(clippy::indexing_slicing, clippy::expect_used)]
+#![allow(clippy::indexing_slicing, clippy::expect_used, clippy::unwrap_used)]
 
 mod common;
 use release_assemble::chat_rows::{self, ChatRows};
