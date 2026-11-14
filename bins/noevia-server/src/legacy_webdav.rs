@@ -2,8 +2,9 @@
 //! account of a signed-in request, behind `NOEVIA_RUST_LEGACY_WEBDAV=1` (read once; unset = only
 //! Node's request gate runs it, as today).
 //!
-//! Core, at the start of every signed-in request it handles: an account whose own role is `admin`
-//! (the user's role, not a device token's), with the Diary add-on on, whose workspace holds
+//! Core, at the start of every signed-in request it handles: an account signed in as `admin`
+//! (`preAuth.user.role`: a device token signs in as a member, device-auth.cjs), with the Diary
+//! add-on on, whose workspace holds
 //! `migration.json` (a legacy single-user install migrated in), on a deployment with
 //! `CORPUS_BACKEND=webdav`, and whose storage is `local` (no row, or a local one) gets a WebDAV
 //! row from `WEBDAV_BASE_URL` (trailing slashes cut), `WEBDAV_USERNAME`, `WEBDAV_PASSWORD` and
@@ -12,13 +13,19 @@
 //! local one, checked inside the write ([`When::Local`]), so Node's gate and this one running for
 //! the same request write it once.
 //!
-//! Differences: an account whose row is configured (or was saved here) is not looked at again by
-//! this process (it cannot become `local` but by a save from Settings, which the user makes); the
-//! other accounts are looked at at most once a minute each, not on every request. The password is
-//! never logged; a failure is reported once a minute without detail.
+//! Differences: a request carrying any `Authorization: Bearer` header is skipped (a device token is
+//! a member in core; core's legacy bearer is not an account the front's upkeep names, so core's own
+//! gate still runs the setup for it). An account whose row is configured (or was saved here) is not
+//! looked at again by this process, also if Settings later saves it back to `local` (core would run
+//! the setup again on its next request; core's gate still does while it runs); the other accounts
+//! are looked at at most once a minute each, not on every request. Column values are read as core
+//! reads them (`!!diary_enabled`, `role === 'admin'`, a row of any kind but the string `local` is
+//! configured). The password is never logged; a failure is reported once a minute without detail.
 use std::collections::HashMap;
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
+
+use server_store::rusqlite::types::Value;
 
 use crate::storage_integration_routes::{write_row, Row, When};
 use crate::App;
@@ -65,6 +72,50 @@ fn settle(user: &str) {
     }
 }
 
+/// Whether the request carries an `Authorization: Bearer` credential (device-auth.cjs `bearerToken`'s
+/// header form): such a request is never an administrator's in core.
+pub fn bearer(authorization: Option<&[u8]>) -> bool {
+    authorization.is_some_and(|h| {
+        let h = String::from_utf8_lossy(h);
+        let h = h.trim_start();
+        h.get(..6).is_some_and(|p| p.eq_ignore_ascii_case("bearer"))
+            && h.get(6..)
+                .is_some_and(|r| r.starts_with(char::is_whitespace))
+    })
+}
+
+/// JS truthiness of a column value (`!!value`).
+fn truthy(v: &Value) -> bool {
+    match v {
+        Value::Null => false,
+        Value::Integer(i) => *i != 0,
+        Value::Real(f) => *f != 0.0 && !f.is_nan(),
+        Value::Text(t) => !t.is_empty(),
+        Value::Blob(_) => true,
+    }
+}
+
+fn text(v: &Value) -> Option<&str> {
+    match v {
+        Value::Text(t) => Some(t),
+        _ => None,
+    }
+}
+
+/// The facts as core reads them: `role === 'admin'`, `!!diary_enabled`, and the storage kind (`None`:
+/// no row; a row whose kind is not the string `local`, `null` included, counts as configured).
+pub fn facts(
+    role: Option<&Value>,
+    diary: Option<&Value>,
+    kind: Option<&Value>,
+) -> (bool, bool, Option<bool>) {
+    (
+        role.and_then(text) == Some("admin"),
+        diary.is_some_and(truthy),
+        kind.map(|k| text(k) == Some("local")),
+    )
+}
+
 /// What the account's facts say.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Verdict {
@@ -76,13 +127,13 @@ pub enum Verdict {
     Save,
 }
 
-/// The preconditions, from what was read: the user's role, the Diary add-on, whether
-/// `users/<id>/migration.json` exists, and the storage row's kind (`None`: no row).
-pub fn verdict(role: Option<&str>, diary: bool, migration: bool, kind: Option<&str>) -> Verdict {
-    if kind.is_some_and(|k| k != "local") {
+/// The preconditions, from [`facts`] and whether `users/<id>/migration.json` exists (`local`:
+/// `None` no row, `Some(true)` a local one, `Some(false)` a configured one).
+pub fn verdict(admin: bool, diary: bool, migration: bool, local: Option<bool>) -> Verdict {
+    if local == Some(false) {
         return Verdict::Configured;
     }
-    if role == Some("admin") && diary && migration {
+    if admin && diary && migration {
         Verdict::Save
     } else {
         Verdict::No
@@ -111,31 +162,21 @@ pub fn nudge(app: &App, user: &str) {
     let Ok(writer) = app.writes.writer() else {
         return warn();
     };
-    let facts = writer.read(|r| {
-        let role = r.row("SELECT role FROM users WHERE id=?1", [user], |row| {
-            row.get::<_, String>(0)
-        })?;
-        let diary = r
-            .row(
-                "SELECT diary_enabled FROM user_features WHERE user_id=?1",
-                [user],
-                |row| row.get::<_, Option<i64>>(0),
-            )?
-            .flatten()
-            .is_some_and(|v| v != 0);
-        let kind = r.row(
-            "SELECT kind FROM storage_connections WHERE user_id=?1",
-            [user],
-            |row| row.get::<_, String>(0),
-        )?;
-        Ok((role, diary, kind))
+    let read = writer.read(|r| {
+        let one = |sql: &str| r.row(sql, [user], |row| row.get::<_, Value>(0));
+        Ok((
+            one("SELECT role FROM users WHERE id=?1")?,
+            one("SELECT diary_enabled FROM user_features WHERE user_id=?1")?,
+            one("SELECT kind FROM storage_connections WHERE user_id=?1")?,
+        ))
     });
-    let Ok((role, diary, kind)) = facts else {
+    let Ok((role, diary, kind)) = read else {
         return warn();
     };
+    let (admin, diary, local) = facts(role.as_ref(), diary.as_ref(), kind.as_ref());
     let migration = server_projects::store::user_dir(&data_dir, user)
         .is_ok_and(|dir| dir.join("migration.json").exists());
-    match verdict(role.as_deref(), diary, migration, kind.as_deref()) {
+    match verdict(admin, diary, migration, local) {
         Verdict::No => {}
         Verdict::Configured => settle(user),
         Verdict::Save => {
@@ -174,22 +215,72 @@ mod tests {
     #[test]
     fn only_an_admin_with_the_diary_and_a_migration_on_local_storage_is_set_up() {
         use Verdict::*;
-        for (role, diary, migration, kind, want) in [
-            (Some("admin"), true, true, None, Save),
-            (Some("admin"), true, true, Some("local"), Save),
-            (Some("admin"), true, true, Some("webdav"), Configured),
-            (Some("member"), true, true, Some("nextcloud"), Configured),
-            (Some("member"), true, true, None, No),
-            (Some("admin"), false, true, None, No),
-            (Some("admin"), true, false, None, No),
-            (None, true, true, None, No),
-            (Some("Admin"), true, true, None, No),
+        let t = |s: &str| Value::Text(s.into());
+        for (role, diary, kind, migration, want) in [
+            (Some(t("admin")), Some(Value::Integer(1)), None, true, Save),
+            (
+                Some(t("admin")),
+                Some(Value::Integer(1)),
+                Some(t("local")),
+                true,
+                Save,
+            ),
+            (Some(t("admin")), Some(Value::Real(1.0)), None, true, Save),
+            (Some(t("admin")), Some(t("1")), None, true, Save),
+            (Some(t("admin")), Some(t("0")), None, true, Save),
+            (
+                Some(t("admin")),
+                Some(Value::Integer(1)),
+                Some(t("webdav")),
+                true,
+                Configured,
+            ),
+            (
+                Some(t("admin")),
+                Some(Value::Integer(1)),
+                Some(Value::Null),
+                true,
+                Configured,
+            ),
+            (
+                Some(t("member")),
+                Some(Value::Integer(1)),
+                Some(t("nextcloud")),
+                true,
+                Configured,
+            ),
+            (Some(t("member")), Some(Value::Integer(1)), None, true, No),
+            (Some(t("admin")), Some(Value::Integer(0)), None, true, No),
+            (Some(t("admin")), Some(Value::Real(0.0)), None, true, No),
+            (Some(t("admin")), Some(t("")), None, true, No),
+            (Some(t("admin")), Some(Value::Null), None, true, No),
+            (Some(t("admin")), None, None, true, No),
+            (Some(t("admin")), Some(Value::Integer(1)), None, false, No),
+            (None, Some(Value::Integer(1)), None, true, No),
+            (Some(Value::Null), Some(Value::Integer(1)), None, true, No),
+            (Some(t("Admin")), Some(Value::Integer(1)), None, true, No),
         ] {
+            let (admin, diary_on, local) = facts(role.as_ref(), diary.as_ref(), kind.as_ref());
             assert_eq!(
-                verdict(role, diary, migration, kind),
+                verdict(admin, diary_on, migration, local),
                 want,
-                "{role:?} {diary} {migration} {kind:?}"
+                "{role:?} {diary:?} {kind:?} {migration}"
             );
+        }
+    }
+
+    #[test]
+    fn a_bearer_request_is_never_an_administrators() {
+        for (h, want) in [
+            (Some(&b"Bearer nva_abc"[..]), true),
+            (Some(&b"bearer   nva_abc"[..]), true),
+            (Some(&b"  BEARER\tx"[..]), true),
+            (Some(&b"Bearer"[..]), false),
+            (Some(&b"Bearerx y"[..]), false),
+            (Some(&b"Basic abc"[..]), false),
+            (None, false),
+        ] {
+            assert_eq!(bearer(h), want, "{h:?}");
         }
     }
 
