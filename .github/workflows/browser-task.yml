@@ -1,0 +1,57 @@
+name: Native browser tasks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+# A newer push to a pull request cancels its superseded run; main runs are never cancelled (see mcp-discovery.yml).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+jobs:
+  changes:
+    uses: ./.github/workflows/changed-areas.yml
+  browser-task:
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.full != 'false') }}
+    name: Required native browser task contracts (track R5)
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Read the recording's core pin
+        # The core whose routes/browser.cjs, browser-service.cjs, browser-executor.cjs, browser-policy.cjs and jobs.cjs
+        # the crate was recorded from.
+        id: core
+        run: |
+          set -euo pipefail
+          ref=$(tr -d ' \n' < crates/browser-task/tests/fixtures/core-ref)
+          [[ "$ref" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$ref" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          repository: sbstndalton/noevia-core
+          ref: ${{ steps.core.outputs.sha }}
+          path: core
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.23.3
+      - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
+        with:
+          targets: wasm32-unknown-unknown
+      # browser-policy.cjs decides through the Rust port in dav-parse.wasm.
+      - name: Build dav-parse.wasm at the core's pinned noevia-rs ref
+        working-directory: core
+        run: |
+          set -euo pipefail
+          eval "$(grep -E '^(NOEVIA_RS_REF|NOEVIA_RS_SHA256|DAV_PARSE_WASM_SHA256)=[0-9a-f]+$' server/dav-parse.lock)"
+          [[ "$NOEVIA_RS_REF" =~ ^[0-9a-f]{40}$ ]]
+          curl -fsSL "https://codeload.github.com/sbstndalton/noevia-rs/tar.gz/$NOEVIA_RS_REF" -o "$RUNNER_TEMP/rs.tgz"
+          echo "$NOEVIA_RS_SHA256  $RUNNER_TEMP/rs.tgz" | sha256sum -c -
+          mkdir -p "$RUNNER_TEMP/rs-pin" && tar -xzf "$RUNNER_TEMP/rs.tgz" --strip-components=1 -C "$RUNNER_TEMP/rs-pin"
+          "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
+          echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
+      - name: The core's own browser routes and service reproduce the committed recording
+        # Synthetic QA pages behind a scripted fake browser, a fake egress proxy, a fixed clock and counted ids; no network.
+        run: node crates/browser-task/tools/gen-service-fixtures.cjs "$PWD/core/server" --check crates/browser-task/tests/fixtures/service-node.v1.json
