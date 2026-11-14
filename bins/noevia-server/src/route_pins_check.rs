@@ -38,14 +38,24 @@ fn unguarded(rec: &Recording) -> Vec<(String, String)> {
     let refused: BTreeSet<(String, String)> = rec
         .stubs
         .iter()
-        .flat_map(|s| s.refusals.iter().chain(s.switched.iter().flat_map(|w| w.refusals.iter())))
+        .flat_map(|s| {
+            s.refusals
+                .iter()
+                .chain(s.switched.iter().flat_map(|w| w.refusals.iter()))
+        })
         .map(|r| (r.method.clone(), r.path.clone()))
         .collect();
     let mut out = Vec::new();
-    for route in routes::ROUTES.iter().filter(|r| r.owner == routes::Owner::Rust && !r.catch_all) {
+    for route in routes::ROUTES
+        .iter()
+        .filter(|r| r.owner == routes::Owner::Rust && !r.catch_all)
+    {
         let path = fill(route.path);
-        let methods: Vec<&str> =
-            if route.methods.is_empty() { route_pins::METHODS.to_vec() } else { route.methods.to_vec() };
+        let methods: Vec<&str> = if route.methods.is_empty() {
+            route_pins::METHODS.to_vec()
+        } else {
+            route.methods.to_vec()
+        };
         for m in methods {
             if front_answers(m, &path) && !refused.contains(&(m.to_string(), path.clone())) {
                 out.push((m.to_string(), route.path.to_string()));
@@ -61,7 +71,9 @@ fn fill(pattern: &str) -> String {
     let mut rest = pattern;
     while let Some(start) = rest.find('{') {
         out.push_str(&rest[..start]);
-        let Some(end) = rest[start..].find('}') else { break };
+        let Some(end) = rest[start..].find('}') else {
+            break;
+        };
         let name = &rest[start + 1..start + end];
         out.push_str(match name {
             "*?" => "",
@@ -80,7 +92,11 @@ fn report() -> String {
     let mut out = delete_list(&rec, &list);
     let pins = PinTable::leaked(&rec, &front_answers);
     let _ = writeln!(out);
-    let _ = writeln!(out, "## Pin candidates: refusals the front still forwards to Node ({})", pins.len());
+    let _ = writeln!(
+        out,
+        "## Pin candidates: refusals the front still forwards to Node ({})",
+        pins.len()
+    );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
@@ -90,18 +106,33 @@ fn report() -> String {
     );
     let _ = writeln!(out);
     for (m, p, slash) in pins.keys() {
-        let _ = writeln!(out, "- `{m} {p}{}`", if *slash { " (trailing /)" } else { "" });
+        let _ = writeln!(
+            out,
+            "- `{m} {p}{}`",
+            if *slash { " (trailing /)" } else { "" }
+        );
     }
     if !pins.conflicts().is_empty() {
         let _ = writeln!(out);
-        let _ = writeln!(out, "Not pinnable (probes of one pattern answered differently):");
+        let _ = writeln!(
+            out,
+            "Not pinnable (probes of one pattern answered differently):"
+        );
         for (m, p, slash) in pins.conflicts() {
-            let _ = writeln!(out, "- `{m} {p}{}`", if *slash { " (trailing /)" } else { "" });
+            let _ = writeln!(
+                out,
+                "- `{m} {p}{}`",
+                if *slash { " (trailing /)" } else { "" }
+            );
         }
     }
     let unguarded = unguarded(&rec);
     let _ = writeln!(out);
-    let _ = writeln!(out, "## Rust-owned methods no Node stub refuses ({})", unguarded.len());
+    let _ = writeln!(
+        out,
+        "## Rust-owned methods no Node stub refuses ({})",
+        unguarded.len()
+    );
     let _ = writeln!(out);
     let _ = writeln!(
         out,
@@ -121,7 +152,11 @@ fn the_front_verdicts_match_the_golden_list() {
     let got = report();
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(GOLDEN);
     if std::env::var_os("ROUTE_PINS_WRITE").is_some() {
-        assert!(std::fs::write(&path, &got).is_ok(), "write {}", path.display());
+        assert!(
+            std::fs::write(&path, &got).is_ok(),
+            "write {}",
+            path.display()
+        );
         return;
     }
     let want = std::fs::read_to_string(&path).unwrap_or_default();
@@ -154,7 +189,12 @@ fn every_pin_key_uses_the_front_s_own_route_match() {
                     route.path
                 );
             }
-            assert!(!front_answers(&r.method, &r.path), "{} {} is pinned but answered natively", r.method, r.path);
+            assert!(
+                !front_answers(&r.method, &r.path),
+                "{} {} is pinned but answered natively",
+                r.method,
+                r.path
+            );
         }
     }
 }
@@ -163,14 +203,27 @@ fn every_pin_key_uses_the_front_s_own_route_match() {
 fn a_deletable_stub_refuses_only_requests_the_front_answers() {
     let rec = recording();
     for a in classify(&rec, &front_answers) {
-        if !matches!(a.verdict, Verdict::DeleteFile | Verdict::DeleteFunction { .. }) {
+        if !matches!(
+            a.verdict,
+            Verdict::DeleteFile | Verdict::DeleteFunction { .. }
+        ) {
             continue;
         }
-        let stub = rec.stubs.iter().find(|s| s.file == a.file && s.function == a.function).expect("assessed stub");
+        let stub = rec
+            .stubs
+            .iter()
+            .find(|s| s.file == a.file && s.function == a.function)
+            .expect("assessed stub");
         // Names of retired switches (a warning only) are allowed; a switch that changes the answer is not.
         assert!(stub.switched.is_empty(), "{}", a.file);
         for r in &stub.refusals {
-            assert!(front_answers(&r.method, &r.path), "{}: {} {}", a.file, r.method, r.path);
+            assert!(
+                front_answers(&r.method, &r.path),
+                "{}: {} {}",
+                a.file,
+                r.method,
+                r.path
+            );
         }
     }
 }
@@ -179,6 +232,9 @@ fn a_deletable_stub_refuses_only_requests_the_front_answers() {
 fn fill_matches_the_recorder() {
     assert_eq!(fill("/api/projects/{id}/files"), "/api/projects/qa-1/files");
     assert_eq!(fill("/api/mcp-keys/{*}"), "/api/mcp-keys/qa-seg/qa-rest");
-    assert_eq!(fill("/api/integrations/storage/files{*?}"), "/api/integrations/storage/files");
+    assert_eq!(
+        fill("/api/integrations/storage/files{*?}"),
+        "/api/integrations/storage/files"
+    );
     assert_eq!(fill("/api/health"), "/api/health");
 }

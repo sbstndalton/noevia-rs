@@ -178,7 +178,10 @@ pub struct Assessment {
 }
 
 fn is_test_file(f: &str) -> bool {
-    f.ends_with(".test.cjs") || f.starts_with("tests/") || f.contains("/fixtures/") || f.ends_with(".probe.cjs")
+    f.ends_with(".test.cjs")
+        || f.starts_with("tests/")
+        || f.contains("/fixtures/")
+        || f.ends_with(".probe.cjs")
 }
 
 /// Documentation and change notes: naming a file there does not keep it alive.
@@ -198,8 +201,12 @@ pub fn other_importers(stub: &Stub) -> Vec<String> {
         .collect();
     out.sort();
     out.dedup();
-    let extra: Vec<&str> =
-        stub.index_uses.iter().map(String::as_str).filter(|u| *u != stub.function).collect();
+    let extra: Vec<&str> = stub
+        .index_uses
+        .iter()
+        .map(String::as_str)
+        .filter(|u| *u != stub.function)
+        .collect();
     if !extra.is_empty() {
         out.insert(0, format!("server/index.cjs ({})", extra.join(", ")));
     }
@@ -240,7 +247,9 @@ pub fn classify(rec: &Recording, front: &dyn Front) -> Vec<Assessment> {
                 } else if is_dedicated(s) && others.is_empty() {
                     Verdict::DeleteFile
                 } else {
-                    Verdict::DeleteFunction { other_importers: others }
+                    Verdict::DeleteFunction {
+                        other_importers: others,
+                    }
                 }
             };
             Assessment {
@@ -295,8 +304,14 @@ impl PinTable {
                 if !taken.insert((r.method.clone(), r.path.clone())) {
                     continue;
                 }
-                let Some(pattern) = r.pattern.clone() else { continue };
-                let key = (r.method.clone(), pattern, r.path.len() > 1 && r.path.ends_with('/'));
+                let Some(pattern) = r.pattern.clone() else {
+                    continue;
+                };
+                let key = (
+                    r.method.clone(),
+                    pattern,
+                    r.path.len() > 1 && r.path.ends_with('/'),
+                );
                 let reply = reply_of(r);
                 if table.conflicts.contains(&key) {
                     continue;
@@ -317,7 +332,8 @@ impl PinTable {
     }
 
     pub fn lookup(&self, method: &str, pattern: &str, trailing_slash: bool) -> Option<&Reply> {
-        self.pins.get(&(method.to_string(), pattern.to_string(), trailing_slash))
+        self.pins
+            .get(&(method.to_string(), pattern.to_string(), trailing_slash))
     }
 
     pub fn len(&self) -> usize {
@@ -344,7 +360,15 @@ pub fn reply_of(r: &Refusal) -> Reply {
         Some(t) => t.as_bytes().to_vec(),
         None => serde_json::to_vec(&r.body).unwrap_or_default(),
     };
-    Reply { status: r.status, headers: r.headers.iter().map(|(k, v)| (k.clone(), v.clone())).collect(), body }
+    Reply {
+        status: r.status,
+        headers: r
+            .headers
+            .iter()
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect(),
+        body,
+    }
 }
 
 /// Totals for the report.
@@ -399,25 +423,43 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
          set). Delete nothing whose verdict is keep."
     );
     let _ = writeln!(out);
-    let _ = writeln!(out, "| Stub | Function | Lines | Refusals | Verdict | Pairing lines / why |");
+    let _ = writeln!(
+        out,
+        "| Stub | Function | Lines | Refusals | Verdict | Pairing lines / why |"
+    );
     let _ = writeln!(out, "|---|---|---:|---:|---|---|");
     for a in list {
         let why = match &a.verdict {
-            Verdict::DeleteFile if a.mentions.is_empty() => format!("pairing: {}", none_or(&a.pairing)),
+            Verdict::DeleteFile if a.mentions.is_empty() => {
+                format!("pairing: {}", none_or(&a.pairing))
+            }
             Verdict::DeleteFile => {
-                format!("pairing: {}; comments in: {}", none_or(&a.pairing), a.mentions.join(", "))
+                format!(
+                    "pairing: {}; comments in: {}",
+                    none_or(&a.pairing),
+                    a.mentions.join(", ")
+                )
             }
             Verdict::DeleteFunction { other_importers } if other_importers.is_empty() => {
                 format!("live file; pairing: {}", none_or(&a.pairing))
             }
             Verdict::DeleteFunction { other_importers } => {
-                format!("imported by {}; pairing: {}", other_importers.join(", "), none_or(&a.pairing))
+                format!(
+                    "imported by {}; pairing: {}",
+                    other_importers.join(", "),
+                    none_or(&a.pairing)
+                )
             }
             Verdict::SwitchGated => "reads a deployment switch".to_string(),
             Verdict::Live { leaks } => format!(
                 "front forwards {}: {}",
                 leaks.len(),
-                leaks.iter().take(4).map(|(m, p)| format!("{m} {p}")).collect::<Vec<_>>().join(", ")
+                leaks
+                    .iter()
+                    .take(4)
+                    .map(|(m, p)| format!("{m} {p}"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
             ),
             Verdict::Unrecorded => "nothing recorded".to_string(),
         };
