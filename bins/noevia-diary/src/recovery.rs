@@ -225,13 +225,7 @@ pub fn apply_pending(c: &Ctx<'_>, limit: i64) -> Result<usize, write::Error> {
 /// inside it before anything, and every mark re-checks that the reserved primary is still
 /// the file it holds.
 pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
-    c.journal.primary_reservation(|r| {
-        for path in r.outbox()? {
-            r.mark_dirty(&path)?;
-            r.transferred(&path)?;
-        }
-        Ok(())
-    })
+    crate::reindex::drain_outbox(&c.journal)
 }
 
 /// Native replay recovery; retrieval remains Python-owned. Dirty marks are retained

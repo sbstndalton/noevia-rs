@@ -245,7 +245,7 @@ pub(crate) fn reindex_held(
 }
 
 /// Python `drain_index_outbox` (workspace_import.py): every outbox path is marked dirty, then its
-/// row removed, inside one primary reservation (recovery.rs `drain_index_outbox`, the same body).
+/// row removed, inside one primary reservation (recovery's drain is this one).
 pub(crate) fn drain_outbox(journal: &Journal<'_>) -> Result<(), crate::write::Error> {
     journal.primary_reservation(|r| {
         for path in r.outbox()? {
@@ -270,7 +270,10 @@ pub(crate) fn drain_outbox(journal: &Journal<'_>) -> Result<(), crate::write::Er
 /// which Python's append does not, so after the plan is applied with nothing pending, for the
 /// target still active, the mark is cleared here (otherwise the tenant's native reads would
 /// decline until the next full pass). The outbox is drained before the apply, because this
-/// process's index publication refuses an undrained outbox where Python's does not.
+/// process's index publication refuses an undrained outbox where Python's does not. Without the
+/// vector extension, or with an index that still needs its legacy table adopted (a write), the
+/// run gives up before embedding ("background reindex failed", the mark stays) where Python
+/// would go on; `reindex_held` and the plan endpoint decline those cases the same way.
 pub(crate) fn reindex_today(
     app: Arc<App>,
     uid: String,
@@ -297,9 +300,9 @@ pub(crate) fn reindex_today(
     }
 }
 
-/// How one background re-index ended.
+/// How one background re-index ended (public for its tests).
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) enum Today {
+pub enum Today {
     /// The plan was written (the mark cleared when nothing is pending).
     Applied,
     /// The document no longer holds the embedded text: nothing written.
@@ -308,8 +311,8 @@ pub(crate) enum Today {
     Fenced,
 }
 
-/// The body of [`reindex_today`], in the calling thread.
-pub(crate) fn today(
+/// The body of [`reindex_today`], in the calling thread (public for its tests).
+pub fn today(
     app: &App,
     uid: &str,
     document: &str,

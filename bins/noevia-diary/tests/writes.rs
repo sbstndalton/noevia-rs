@@ -2002,7 +2002,10 @@ async fn stub_embeddings(
 
 /// `start` with this process owning the embedding configuration (main mode with
 /// DIARY_RUST_EMBEDDING=on sets `save_embedder`), the index schema in place.
-async fn start_owner(root: &Path, engine: &str) -> std::net::SocketAddr {
+async fn start_owner(
+    root: &Path,
+    engine: &str,
+) -> (std::net::SocketAddr, Arc<noevia_diary::server::App>) {
     let index = tenant_root(root).join("managed-index.db");
     drop(
         diary_retrieval::index::Retriever::open(
@@ -2031,8 +2034,9 @@ async fn start_owner(root: &Path, engine: &str) -> std::net::SocketAddr {
     ));
     let engine = diary_answer::model::Config {
         base_url: engine.to_string(),
-        timeout_s: 10.0,
-        max_retries: 0,
+        timeout_s: 60.0,
+        // The number of attempts (Python's range(max_retries)).
+        max_retries: 1,
         ..diary_answer::model::Config::default()
     };
     let embedder = diary_answer::embedder::HttpEmbedder::fixed(
@@ -2043,8 +2047,8 @@ async fn start_owner(root: &Path, engine: &str) -> std::net::SocketAddr {
     assert!(app.save_embedder.set(Arc::new(embedder)).is_ok());
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    tokio::spawn(noevia_diary::serve(listener, app));
-    addr
+    tokio::spawn(noevia_diary::serve(listener, app.clone()));
+    (addr, app)
 }
 
 fn chunk_bodies(root: &Path, file: &str) -> Vec<String> {
@@ -2075,7 +2079,7 @@ async fn a_native_append_reindexes_its_day_in_the_background_as_reindex_today() 
     managed_tenant(dir.path(), &[]);
     let hold = Arc::new(std::sync::atomic::AtomicBool::new(true));
     let (engine, received, answered) = stub_embeddings(hold.clone()).await;
-    let addr = start_owner(dir.path(), &engine).await;
+    let (addr, _app) = start_owner(dir.path(), &engine).await;
     let append = |rid: &str, text: &str| serde_json::json!({"text": text, "title": "walk", "requestId": rid, "entryTime": now_iso()});
 
     // The first run's embedding call is held: the reply does not wait for it.
@@ -2156,4 +2160,58 @@ async fn without_the_embedding_owner_an_append_leaves_its_mark_for_python() {
         .to_string();
     tokio::time::sleep(std::time::Duration::from_millis(300)).await;
     assert_eq!(dirty(dir.path()), vec![document]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_background_run_applies_only_the_text_it_embedded() {
+    // `today` directly: a document rewritten while its chunks were being embedded is skipped
+    // (nothing written, the mark kept for whichever write changed it); an unchanged one is
+    // applied and its mark cleared.
+    use std::sync::atomic::Ordering;
+    let doc = "Entries/2031/March/March 20, 2031.md";
+    let text = "## Thursday, March 20, 2031\n\n### 09:00 \u{2014} Morning\n\n**Me:** Synthetic QA canal walk.\n";
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[(doc, text)]);
+    index(dir.path())
+        .execute("INSERT INTO dirty_documents (document) VALUES (?)", [doc])
+        .unwrap();
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let (engine, received, _answered) = stub_embeddings(hold.clone()).await;
+    let (_addr, app) = start_owner(dir.path(), &engine).await;
+    let embedder = app.save_embedder.get().unwrap().clone();
+    let run = {
+        let (app, embedder) = (app.clone(), embedder.clone());
+        std::thread::spawn(move || noevia_diary::reindex::today(&app, UID, doc, &embedder))
+    };
+    wait_until("the embedding call", || {
+        received.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    // A write meanwhile (its own re-index is its business).
+    let changed = text.replace("canal walk", "kite flight");
+    rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db"))
+        .unwrap()
+        .execute(
+            "UPDATE files SET data=?, version=? WHERE path=?",
+            rusqlite::params![changed.as_bytes(), sha256(changed.as_bytes()), doc],
+        )
+        .unwrap();
+    hold.store(false, Ordering::SeqCst);
+    let outcome = tokio::task::spawn_blocking(move || run.join().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(outcome, Ok(noevia_diary::reindex::Today::Changed));
+    assert!(chunk_bodies(dir.path(), doc).is_empty(), "nothing written");
+    assert_eq!(dirty(dir.path()), vec![doc.to_string()], "the mark stays");
+    // Unchanged now: applied, the mark cleared.
+    let outcome = tokio::task::spawn_blocking(move || {
+        noevia_diary::reindex::today(&app, UID, doc, &embedder)
+    })
+    .await
+    .unwrap();
+    assert_eq!(outcome, Ok(noevia_diary::reindex::Today::Applied));
+    let bodies = chunk_bodies(dir.path(), doc);
+    assert_eq!(bodies.len(), 1, "{bodies:?}");
+    assert!(bodies[0].contains("kite flight"), "{bodies:?}");
+    assert!(dirty(dir.path()).is_empty());
 }
