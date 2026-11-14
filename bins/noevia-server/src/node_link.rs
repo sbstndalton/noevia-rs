@@ -229,8 +229,63 @@ mod tests {
         }
     }
 
-    /// Each file's code lines (relative path, line): comments dropped, and everything from the first
-    /// `#[cfg(...test...)]` on dropped (this crate keeps its unit tests at the end of a file).
+    /// Whether a line is a `#[cfg(...)]` that names `test`.
+    fn test_only(line: &str) -> bool {
+        let t = line.trim();
+        t.starts_with("#[cfg(") && t.contains("test")
+    }
+
+    /// `[` minus `]` on a line: an attribute continues while this sums above zero.
+    fn depth(line: &str) -> i64 {
+        line.chars()
+            .map(|c| match c {
+                '[' => 1,
+                ']' => -1,
+                _ => 0,
+            })
+            .sum()
+    }
+
+    /// The code lines of one file: comments dropped, the item under a test-only attribute dropped
+    /// when it is a single line, and everything from a test-only module on dropped (this crate keeps its
+    /// unit test modules at the end of a file). Attributes may span several lines.
+    fn code_lines(text: &str) -> Vec<String> {
+        let mut out = Vec::new();
+        let mut lines = text.lines();
+        while let Some(line) = lines.next() {
+            if !test_only(line) {
+                if !line.trim_start().starts_with("//") {
+                    out.push(line.to_owned());
+                }
+                continue;
+            }
+            // The rest of this attribute, then further attributes on the same item.
+            let mut open = depth(line);
+            let mut item = "";
+            for next in lines.by_ref() {
+                if open > 0 {
+                    open += depth(next);
+                    continue;
+                }
+                let t = next.trim_start();
+                if t.starts_with("#[") {
+                    open = depth(t);
+                    continue;
+                }
+                item = t;
+                break;
+            }
+            if ["mod ", "pub mod ", "pub(crate) mod "]
+                .iter()
+                .any(|m| item.starts_with(m))
+            {
+                break;
+            }
+        }
+        out
+    }
+
+    /// Each file's code lines (path relative to `src/`, [`code_lines`]).
     fn code() -> Vec<(String, Vec<String>)> {
         let root = src();
         let mut all = Vec::new();
@@ -242,22 +297,20 @@ mod tests {
                     .unwrap()
                     .to_string_lossy()
                     .replace('\\', "/");
-                let text = std::fs::read_to_string(p).unwrap();
-                let lines = text
-                    .lines()
-                    .take_while(|l| {
-                        let t = l.trim();
-                        !(t.starts_with("#[cfg(") && t.contains("test"))
-                    })
-                    .filter(|l| {
-                        let t = l.trim_start();
-                        !t.starts_with("//")
-                    })
-                    .map(str::to_owned)
-                    .collect();
-                (rel, lines)
+                (rel, code_lines(&std::fs::read_to_string(p).unwrap()))
             })
             .collect()
+    }
+
+    #[test]
+    fn the_scanner_keeps_code_and_drops_tests_and_comments() {
+        let text = "use a;\n#[cfg(test)]\nuse b;\n// \"/internal/x\"\nfn f() { \"/internal/y\" }\n\
+                    #[cfg(all(test, feature = \"z\"))]\n#[allow(dead_code)]\nconst C: u8 = 0;\nfn g() {}\n\
+                    #[cfg(test)]\n#[allow(\n    clippy::unwrap_used,\n)]\nmod tests {\n    const K: &str = \"/internal/z\";\n}\n";
+        assert_eq!(
+            code_lines(text),
+            ["use a;", "fn f() { \"/internal/y\" }", "fn g() {}"]
+        );
     }
 
     fn with(needle: &str) -> BTreeSet<String> {
