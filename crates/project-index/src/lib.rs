@@ -13,6 +13,7 @@
 //!   that decides which runs are superseded and which versions a search must filter by.
 //! - [`indexer`]: the process-level facade with the per-file queue, over a [`indexer::Host`].
 //! - [`embed`]: the batch rules of `embedFramed` (order by `index`, fall back to one text per call).
+//! - [`request`]: the JSON contract of the store route for Node's three writes (file, tail, delete).
 //! - [`http_embed`]: `embedOnce`'s `/v1/embeddings` request over the embedding worker's guarded HTTP.
 //!
 //! Nothing here is reachable from a server yet: it ships unused, and the wiring goes behind a switch
@@ -23,5 +24,6 @@ pub mod embed;
 pub mod http_embed;
 pub mod index;
 pub mod indexer;
+pub mod request;
 pub mod slots;
 pub mod state;

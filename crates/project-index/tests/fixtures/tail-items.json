@@ -1,0 +1,154 @@
+{
+ "note": "appendFileTailNow's reading of tail items: String(t?.body || ''), page only when Number.isInteger and > 0; node output recorded on the builder 2026-11-14 (council p4-2)",
+ "input": [
+  {
+   "body": "a"
+  },
+  {
+   "body": ""
+  },
+  {
+   "body": 0
+  },
+  {
+   "body": 5
+  },
+  {
+   "body": true
+  },
+  {
+   "body": false
+  },
+  {
+   "body": null
+  },
+  {},
+  {
+   "body": {
+    "x": 1
+   }
+  },
+  {
+   "body": [
+    1,
+    null,
+    "b"
+   ]
+  },
+  {
+   "body": 1.5
+  },
+  {
+   "body": -0.0
+  },
+  {
+   "body": [
+    [
+     2,
+     3
+    ],
+    4
+   ]
+  },
+  {
+   "body": "p",
+   "page": 3
+  },
+  {
+   "body": "p",
+   "page": 0
+  },
+  {
+   "body": "p",
+   "page": 2.5
+  },
+  {
+   "body": "p",
+   "page": "4"
+  },
+  {
+   "body": "p",
+   "page": -1
+  },
+  {
+   "body": "p",
+   "page": 3.0
+  },
+  {
+   "body": "p",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": true
+  }
+ ],
+ "node": [
+  {
+   "body": "a",
+   "page": null
+  },
+  null,
+  null,
+  {
+   "body": "5",
+   "page": null
+  },
+  {
+   "body": "true",
+   "page": null
+  },
+  null,
+  null,
+  null,
+  {
+   "body": "[object Object]",
+   "page": null
+  },
+  {
+   "body": "1,,b",
+   "page": null
+  },
+  {
+   "body": "1.5",
+   "page": null
+  },
+  null,
+  {
+   "body": "2,3,4",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": 3
+  },
+  {
+   "body": "p",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": 3
+  },
+  {
+   "body": "p",
+   "page": null
+  },
+  {
+   "body": "p",
+   "page": null
+  }
+ ]
+}

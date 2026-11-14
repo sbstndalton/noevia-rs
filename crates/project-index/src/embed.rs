@@ -61,12 +61,29 @@ pub(crate) fn js_number(v: &Value) -> f64 {
     }
 }
 
+/// `String(n)` for a JSON number: integers without a fraction (`1`, not `1.0`), others as Rust
+/// prints the shortest round-trip form (matches JavaScript for ordinary magnitudes).
+pub(crate) fn js_number_string(n: &serde_json::Number) -> String {
+    match n.as_f64() {
+        Some(f) => {
+            if f == 0.0 {
+                "0".into()
+            } else if f.fract() == 0.0 && f.abs() < 1e21 {
+                format!("{f:.0}")
+            } else {
+                f.to_string()
+            }
+        }
+        None => n.to_string(),
+    }
+}
+
 /// `String(v)` as an array element joins it (`null` is empty); None for a plain object.
 fn js_string(v: &Value) -> Option<String> {
     match v {
         Value::Null => Some(String::new()),
         Value::Bool(b) => Some(b.to_string()),
-        Value::Number(n) => Some(n.to_string()),
+        Value::Number(n) => Some(js_number_string(n)),
         Value::String(s) => Some(s.clone()),
         Value::Array(a) => a
             .iter()
