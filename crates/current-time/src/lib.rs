@@ -189,28 +189,26 @@ pub fn verified(zone: &str, now_ms: f64) -> bool {
     }
 }
 
-/// The process zones (`TZ`) the recording ran Node under; the answers without a `timezone`
-/// argument (`Date#toString`, V8's own zone name) are replayed for these only.
+/// The server zones the recording's Node processes resolved (`Intl.DateTimeFormat().resolvedOptions()
+/// .timeZone` under each `TZ` it ran with): the answers without a `timezone` argument
+/// (`Date#toString`, V8's own zone name) are replayed for these only.
 const RECORDED_SERVER_ZONES: &[&str] = &[
     "America/New_York",
     "America/Punta_Arenas",
-    "Asia/Kolkata",
+    "Asia/Calcutta",
     "Australia/Lord_Howe",
     "Europe/Berlin",
     "Europe/Moscow",
     "UTC",
 ];
 
-/// The server zone [`run`] needs for a call without a `timezone` argument, from the process's `TZ`
-/// environment value, when this port can be sure it is the one Node uses: one of the zone IDs the
-/// recording ran Node under, spelled exactly so (ICU treats some host IDs specially, such as a
-/// three- or four-letter ID whose raw offset differs from the system's). `None` otherwise (also for
-/// `TZ` unset, where ICU reads the system's zone file): a caller that must answer as Node does hands
-/// such calls to Node.
-pub fn server_zone_from_tz(tz: Option<&str>) -> Option<&str> {
-    let tz = tz?;
-    (RECORDED_SERVER_ZONES.contains(&tz) && matches!(lookup(tz), Some(Zone::Named(..))))
-        .then_some(tz)
+/// Whether `zone`, the server zone a Node process resolved (`Intl.DateTimeFormat().resolvedOptions()
+/// .timeZone`, as [`run`] takes it), is one the recording ran under. A caller that must answer as
+/// Node does hands calls without a `timezone` argument to Node for any other zone (ICU treats some
+/// host zones specially, such as a three- or four-letter ID whose raw offset differs from the
+/// system's, and an unknown `TZ` resolves to none).
+pub fn server_zone_recorded(zone: &str) -> bool {
+    RECORDED_SERVER_ZONES.contains(&zone) && matches!(lookup(zone), Some(Zone::Named(..)))
 }
 
 /// Whether a Node reporting these `process.versions` (`node`, `icu`, `tz`) has the recording's ICU
@@ -220,6 +218,12 @@ pub fn runtime_recorded(node: &str, icu: &str, tz: &str) -> bool {
     let (n, i, t) = zones::RECORDED_RUNTIME;
     let major = |v: &str| v.split('.').next().map(str::to_string);
     icu == i && tz == t && major(node) == major(n)
+}
+
+/// The recording's `process.versions` (node, icu, tz), for the tests.
+#[doc(hidden)]
+pub fn recorded_runtime() -> (&'static str, &'static str, &'static str) {
+    zones::RECORDED_RUNTIME
 }
 
 /// The recorded offsets (minutes) that have names for this zone ID, for the tests.
