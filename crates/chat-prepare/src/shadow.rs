@@ -49,6 +49,9 @@ pub struct ShadowTurn<'a> {
     /// The stored record of `body.projectId` (`getProject(id)`, the account's `projects.json`), when
     /// the request names one and the caller found it; a project turn without it is skipped.
     pub project: Option<&'a JValue>,
+    /// `autoRoles()`: the account's `auto-roles.json` (`None`: not read; an Automatic turn's model
+    /// is then not compared).
+    pub roles: Option<&'a JValue>,
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
     /// `features.enabled('chatFraming')` and `brainContext.enabled()` (`brainContext` and
@@ -91,7 +94,7 @@ pub struct Catalogue<'a> {
 /// Where the native frame first differs from core's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Diff {
-    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff` or `sampling`.
+    /// The frame field: `messages`, `chat`, `turn`, `effort`, `thinkingOff`, `sampling` or `model`.
     pub field: &'static str,
     /// The message index (`messages.len()` of the shorter list when one is a prefix of the other;
     /// 0 for `chat` and `turn`).
@@ -314,6 +317,9 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         if let Some(settings) = t.settings {
             fields.extend(route_fields(t, settings, project.unwrap_or(&JValue::Null)));
         }
+        if let Ok(model) = model_field(t, project) {
+            fields.push(("model", model));
+        }
         for (field, ours) in fields {
             let (a, b) = (text(&ours), text(t.frame.get(field)));
             if a != b {
@@ -330,6 +336,12 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
     if ours.len() == core.len() && t.settings.is_none() {
         // Everything compared is core's, but the effort and sampling fields could not be: not a match.
         return Verdict::Skip("settings");
+    }
+    if ours.len() == core.len() {
+        if let Err(reason) = model_field(t, project) {
+            // The same for the model: everything compared is core's, the model was not.
+            return Verdict::Skip(reason);
+        }
     }
     if ours.len() != core.len() {
         return Verdict::Diff(Diff {
@@ -485,6 +497,32 @@ fn new_chat_id(id: &JValue, started_at: &JValue) -> bool {
         && suffix
             .bytes()
             .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
+}
+
+/// The frame's `model` as chat.cjs picks it for a covered turn (P7d), or why it is not compared:
+/// an Automatic turn answers with its role's model (`autoRoles()[routedRole]`, the role being core's:
+/// the classification is a decision call); a Manual project turn with the project's own model
+/// (a handed-off turn passed the chat-model check). Not compared: a Manual turn without a project
+/// model (`manual-default`: chat.cjs then asks `lastLoadedModel()`, core's own state), a project
+/// with a context profile (`context-profile`: the long-context pick), an Automatic turn whose roles
+/// were not read or name no model for the role (`roles`).
+fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &'static str> {
+    if project.is_some_and(|p| p.get("contextProfile").truthy()) {
+        return Err("context-profile");
+    }
+    if t.frame.get("auto") == &JValue::Bool(true) {
+        let role = t.frame.get("role").as_str().ok_or("roles")?;
+        let model = t.roles.ok_or("roles")?.get(role);
+        return if model.truthy() {
+            Ok(model.clone())
+        } else {
+            Err("roles")
+        };
+    }
+    match project.map(|p| p.get("model")) {
+        Some(model) if model.truthy() => Ok(model.clone()),
+        _ => Err("manual-default"),
+    }
 }
 
 /// chat.cjs `createChatHandler`'s `streamIdleMs` default (index.cjs passes none).

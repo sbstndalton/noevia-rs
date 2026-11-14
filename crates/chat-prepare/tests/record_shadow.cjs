@@ -37,6 +37,7 @@
 //   settings     (left out: no settings database) the settings table's rows chat.cjs reads, key -> value (a missing
 //                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
 //   roles, pick  (left out: Manual) what autoRoles() answers and the classifier's verdict (an Automatic turn)
+//   models       (left out: none) more loaded models besides the default one (distinct role and project models)
 //   projects     (left out: none) the account's stored projects, what getProject(id) finds (P7c): no skills
 //   codeTasks    (left out: none) what codeTasksFor(project) answers (a project sharing into Chat)
 //   body         the POST /api/chat body (no skill, turnToolboxes or compactOnly; a projectId on the P7c cases)
@@ -146,7 +147,7 @@ function handlerFor(dir) {
   };
   return createChatHandler({
     modelManager: { enabled: true, baseUrl: ENGINE,
-      health: async () => ({ ok: true, body: { all_models_loaded: [{ model_name: MODEL, loaded: true, recipe_options: { ctx_size: 32768 } }] } }),
+      health: async () => ({ ok: true, body: { all_models_loaded: [MODEL, ...(S().models || [])].map((model_name) => ({ model_name, loaded: true, recipe_options: { ctx_size: 32768 } })) } }),
       acquireLease: async (model) => ({ model, headers: () => ({}), release: async () => {}, fetch: (base) => base }),
       props: async () => ({ ok: false }), inferenceBusy: () => false, load: async () => ({ ok: true }) },
     templateToolsGate: { allowsTools: async () => true, markUnsupported() {} }, toolGate: null, routingModes: { enabled: () => false },
@@ -185,7 +186,9 @@ function handlerFor(dir) {
     DIARY_BASE: 'http://qa-diary.invalid', TOOL_RESULT_CAP: 8000,
     json: (res, status, body) => { L().http = { status, body }; res.end(); },
     saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
-    lastLoadedModel: () => MODEL, modelsInstalled: async () => [{ name: MODEL, labels: [], loaded: true }], servedCatalogue: async () => [{ name: MODEL, labels: [], loaded: true }],
+    // The loaded models: the default one and the case's `models` (P7d: distinct role and project models).
+    lastLoadedModel: () => MODEL, modelsInstalled: async () => [MODEL, ...(S().models || [])].map((name) => ({ name, labels: [], loaded: true })),
+    servedCatalogue: async () => [MODEL, ...(S().models || [])].map((name) => ({ name, labels: [], loaded: true })),
     classifyFastOrSmart: async () => { if (!S().pick) throw new Error('QA: a Manual turn is not classified'); return S().pick; },
     missingRoles, staleRolesError,
     chatWideApproved: async () => null, recordUsage() {}, recordToolUse() {}, executeToolCall: async () => 'unused', awaitApproval: async () => 'deny',
@@ -229,7 +232,7 @@ async function addTurn(name, raw) {
   const input = { tz: spec.tz, nowMs: spec.nowMs, instructions: spec.instructions, memory: spec.memory,
     freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES,
     ...(spec.settings === undefined ? {} : { settings: spec.settings }),
-    ...(spec.roles === undefined ? {} : { roles: spec.roles, pick: spec.pick }),
+    ...(spec.roles === undefined ? {} : { roles: spec.roles, pick: spec.pick }), ...(spec.models === undefined ? {} : { models: spec.models }),
     ...(spec.projects === undefined ? {} : { projects: spec.projects }), ...(spec.codeTasks === undefined ? {} : { codeTasks: spec.codeTasks }),
     body: viaJson(spec.body) };
   const from = logged.length;
@@ -482,6 +485,17 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
   await addTurn('project_frame_scope', { chatFraming: true, projects: [project({ chats: [{ id: PCHAT, title: 'QA chat', frame: { ...FRAMES.find((f) => f && f.confirmed), projectId: PID } }] })], body: preq() });
   await addTurn('project_history', { projects: [project()], body: preq({ history: [user('QA q1'), assistant('QA a1'), applied('append_project_file', 'QA done', { target: 'notes.md', args: '{"path":"notes.md"}' }), toolResult('web_search', 'QA web')] }) });
   await addTurn('project_with_settings', { settings: { reasoning_effort_default: 'high', auto_sampling_presets_enabled: 'false' }, projects: [project()], body: preq({ message: 'Write a QA poem about the sea' }) });
+  // P7d: the role's own model.
+  const DISTINCT = { fast: 'qa-fast-4b', smart: 'qa-smart-12b', code: 'qa-code-7b' };
+  for (const pick of ['fast', 'smart']) {
+    await addTurn(`auto_distinct_${pick}`, { roles: DISTINCT, pick, models: Object.values(DISTINCT), body: req() });
+    await addTurn(`auto_distinct_${pick}_project`, { roles: DISTINCT, pick, models: Object.values(DISTINCT),
+      projects: [project()], body: preq() });
+  }
+  await addTurn('auto_distinct_unassigned', { roles: { fast: 'qa-fast-4b' }, pick: 'smart', models: ['qa-fast-4b'], body: req() });
+  await addTurn('project_own_model', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b' })], body: preq() });
+  await addTurn('project_own_model_default', { projects: [project({ model: MODEL })], body: preq() });
+  await addTurn('project_context_high_skipped', { models: ['qa-project-9b'], projects: [project({ model: 'qa-project-9b', contextProfile: 'high' })], body: preq() });
   // Not covered yet (the shadow skips them): knowledge files, a project sharing into Chat, attached images.
   await addTurn('project_files_skipped', { projects: [project({ files: [{ name: 'qa.md', content: 'QA text', attachment: { state: 'ready' } }] })], body: preq() });
   await addTurn('project_shared_context_skipped', { projects: [project({ sharedContext: { chat: true } })], codeTasks: [{ id: 'qa-task-1', title: 'QA task', status: 'done', updatedAt: 1794571000000 }], body: preq() });
