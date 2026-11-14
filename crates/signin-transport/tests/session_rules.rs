@@ -209,3 +209,33 @@ fn session_debug_never_prints_the_token() {
     let printed = format!("{:?}", session("secret-token-value", None));
     assert!(!printed.contains("secret-token-value"), "{printed}");
 }
+
+#[test]
+fn step_and_authorise_debug_never_print_the_token() {
+    let t = texts();
+    let mut a = Authorise::new();
+    let send = a.on_session(&t, BrokerAnswer::Ok(session("qa-access-token", None)));
+    let again = a.on_status(&t, 401);
+    assert_eq!(
+        again,
+        Step::AskBroker {
+            rejected_token: Some("qa-access-token".into())
+        }
+    );
+    let mut cache = SessionCache::default();
+    cache.store(
+        "qa-user",
+        &session("qa-access-token", None),
+        Some("s1"),
+        0.0,
+    );
+    for printed in [
+        format!("{send:?}"),
+        format!("{again:?}"),
+        format!("{a:?}"),
+        format!("{cache:?}"),
+    ] {
+        assert!(!printed.contains("qa-access-token"), "{printed}");
+    }
+    assert!(format!("{again:?}").contains("<redacted>"));
+}
