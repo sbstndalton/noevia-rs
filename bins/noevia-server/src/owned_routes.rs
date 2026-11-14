@@ -21,6 +21,13 @@
 //! and the exact-path owners in `routes::dispatch_under`, not a guard inside a handler, so a handler that forwards a
 //! method its row lists would be over-claimed here. tests::handlers_that_forward_by_method pins the handlers that
 //! guard on a method, with the methods their rows list, so a new guard of that kind fails a test until it is checked.
+//! The handler-level proof is tests/owned_routes_no_node.rs (run with `ROUTE_PINS_STRICT=1`, the deletion train's
+//! mode): signed in as the owner, every listed pair under both fillings must not come back from Node.
+//!
+//! Forwards that depend on runtime state rather than the method, checked by reading (council p10): mcp_directory_routes
+//! forwards when `app.mcp` is None, which `mcp_broker::Mcp::new` gives only without UI_DATA_DIR (a startup
+//! requirement, config.rs) or when the outbound client cannot be built, so its `{*}` rows stay listed;
+//! export_routes forwards when `rust_export` is false, which config.rs never sets today.
 
 use crate::{routes, static_files};
 use std::collections::BTreeSet;

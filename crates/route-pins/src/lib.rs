@@ -24,7 +24,14 @@
 //! [`Manifest`]: the front's own `noevia-server --owned-routes` list as a [`Front`], so the verdicts can be recomputed
 //! from the binary a train ships instead of from a test inside noevia-server.
 //!
-//! It has no I/O and no production caller: an inert leaf crate.
+//! Council p10 added [`recheck`]: the file facts (importers, string references, mentions, what index.cjs takes) are
+//! re-read from a newer core tree with the recorder's own rules and without Node, so a deletion train at a later core
+//! SHA sees what moved since the recording (`route-pins-recheck --core DIR`).
+//!
+//! The library has no I/O and no production caller: an inert leaf crate. The `route-pins-recheck` binary reads a
+//! core directory and prints Markdown; nothing ships or calls it.
+
+pub mod recheck;
 
 use serde::Deserialize;
 use std::collections::{BTreeMap, BTreeSet};
