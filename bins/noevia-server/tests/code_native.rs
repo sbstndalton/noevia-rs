@@ -1306,10 +1306,19 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
         // code-service.cjs's own refusals, as Node recorded them for the Code route, with the Cowork
         // route's `mode` beside them (routes/chat.cjs `{error: publicMessage, mode: 'cowork'}`).
         for (body, node) in [
-            (cowork(PROJECT, json!("elsewhere"), json!(RUN)), &refusals[1]),
+            (
+                cowork(PROJECT, json!("elsewhere"), json!(RUN)),
+                &refusals[1],
+            ),
             (cowork(PROJECT, json!(7), json!(RUN)), &refusals[2]),
-            (cowork(PROJECT, json!("qa-repo"), json!(" \u{2028}\u{feff} ")), &refusals[3]),
-            (cowork(PROJECT, json!("qa-repo"), json!("x".repeat(8001))), &refusals[4]),
+            (
+                cowork(PROJECT, json!("qa-repo"), json!(" \u{2028}\u{feff} ")),
+                &refusals[3],
+            ),
+            (
+                cowork(PROJECT, json!("qa-repo"), json!("x".repeat(8001))),
+                &refusals[4],
+            ),
         ] {
             assert_eq!(r.chat(body.clone()).await, with_mode(node), "{body}");
         }
@@ -1318,7 +1327,10 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
         silent.as_object_mut().unwrap().remove("message");
         assert_eq!(
             r.chat(silent).await,
-            (400, json!({"error": "Describe the task.", "mode": "cowork"}))
+            (
+                400,
+                json!({"error": "Describe the task.", "mode": "cowork"})
+            )
         );
         // index.cjs `getProject(String(body.projectId))`: no URI decoding (the Code route decodes).
         for project in ["qa-missing", "qa%2Dproject"] {
@@ -1328,7 +1340,11 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
                 "{project}"
             );
         }
-        assert_eq!(r.engine_asked(), 0, "every refusal came before the engine facts");
+        assert_eq!(
+            r.engine_asked(),
+            0,
+            "every refusal came before the engine facts"
+        );
 
         // The start: only `repository` and `message` reach the service (index.cjs passes
         // `{ repository, prompt: message }`), so the chat body's other fields change nothing: the
@@ -1353,7 +1369,8 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
 
         // One task per project, across the Code route and Cowork alike.
         assert_eq!(
-            r.chat(cowork(PROJECT, json!("qa-repo"), json!(GREET))).await,
+            r.chat(cowork(PROJECT, json!("qa-repo"), json!(GREET)))
+                .await,
             (
                 409,
                 json!({"error": "This project already has a task running.", "mode": "cowork"})
@@ -1364,7 +1381,10 @@ async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
             .await;
         assert_eq!(
             (status, second),
-            (409, json!({"error": "This project already has a task running."}))
+            (
+                409,
+                json!({"error": "This project already has a task running."})
+            )
         );
 
         // It is the front's task: the Code panel reads it, the harness ran it, its card waits.
