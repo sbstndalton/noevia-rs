@@ -1015,7 +1015,8 @@ mod contract {
                 legacy(port, "POST", "/reduce-pdf", Some(&length), None, &bytes)
             );
         }
-        let oversized = synthetic_pdfs::oversized_text_pdf().unwrap_or_else(|e| unreachable!("{e}"));
+        let oversized =
+            synthetic_pdfs::oversized_text_pdf().unwrap_or_else(|e| unreachable!("{e}"));
         std::fs::write(root.path().join("oversized.pdf"), oversized)
             .unwrap_or_else(|e| unreachable!("{e}"));
         let bytes = std::fs::read(root.path().join("oversized.pdf"))

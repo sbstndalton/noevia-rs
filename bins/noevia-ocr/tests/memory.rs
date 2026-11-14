@@ -29,7 +29,8 @@ fn peak_memory_of_a_90_mib_ranged_ocr_is_bounded() {
     let root = tempfile::tempdir().unwrap();
     let pdf = root.path().join("ninety.pdf");
     // Written in 1 MiB chunks by the native generator, so this test process stays small too.
-    synthetic_pdfs::write_ballast_pdf(&pdf, 90 * 1024 * 1024, synthetic_pdfs::BALLAST_CHUNK).unwrap();
+    synthetic_pdfs::write_ballast_pdf(&pdf, 90 * 1024 * 1024, synthetic_pdfs::BALLAST_CHUNK)
+        .unwrap();
     let size = std::fs::metadata(&pdf).unwrap().len();
     assert!(size > 90 * 1024 * 1024);
     let port = std::net::TcpListener::bind("127.0.0.1:0")
