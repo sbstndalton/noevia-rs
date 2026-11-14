@@ -149,7 +149,12 @@ fn selected_value(app: &App, feature: server_features::Feature) -> Option<bool> 
 /// registration can be read.
 fn registered_kiwix(app: &App) -> Option<bool> {
     let controller = app.feature_context.as_ref()?.controller();
-    let view = app.writes.writer().ok()?.read(|r| controller.view(r)).ok()?;
+    let view = app
+        .writes
+        .writer()
+        .ok()?
+        .read(|r| controller.view(r))
+        .ok()?;
     view.facts.restart.get(1).copied()
 }
 
