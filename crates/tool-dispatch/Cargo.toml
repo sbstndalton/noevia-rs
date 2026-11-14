@@ -12,6 +12,3 @@ workspace = true
 
 [dependencies]
 js-json = { path = "../js-json" }
-
-[dev-dependencies]
-serde_json = "1"
