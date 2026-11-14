@@ -11,9 +11,11 @@
 //! - [`policy`]: whether the reranker is on and whether embedding is off, the two decisions a
 //!   search makes before it embeds the query (`tests/generate_policy_fixtures.cjs`).
 //! - [`rerank`]: the optional reranker over the cosine pool (`tests/generate_rerank_fixtures.cjs`).
+//! - [`captions`]: the image captions an index caches (`readCaption`, `writeCaption`).
 //!
 //! Not here: embedding the query, the rerank client, image retrieval and any switch.
 
+pub mod captions;
 pub mod context;
 pub mod hits;
 pub mod names;
