@@ -13,6 +13,9 @@
 //! executors alike; when either drops the body (the client left, or the lease was lost), the native turn
 //! sees the client gone. [`chat_turn::after::Saving`] keeps what the turn leaves.
 //!
+//! Shadow (P7a): `NOEVIA_CHAT_PREPARE` (chat_prepare_shadow.rs) also prepares a handed-off turn natively and
+//! logs whether the messages are core's; the turn still runs from core's frame.
+//!
 //! Switch: `NOEVIA_CHAT_EXECUTOR` (config.rs): unset or `node` is today's relay; `native:<user id>,...`
 //! names accounts; `native` is everyone. The turn's cards use this front's approval registry (chat port S9,
 //! [`approvals`]); its chat-wide grants are core's to check, redeem and revoke (the tool bridges, D17).
@@ -348,7 +351,13 @@ async fn room(tx: &mpsc::UnboundedSender<Bytes>, queued: &Queued) -> bool {
 
 /// Relays the turn with the hand-off asked for, and runs it natively from the `prepared` frame.
 /// `extra` is what chat_turn.rs sends core (token, user, the gate's lease); `relay` sends it.
-pub(crate) async fn serve<F, Fut>(app: &Arc<App>, user: String, relay: F) -> Option<Response<Body>>
+/// `shadow`: the request body, when the turn is also prepared natively in shadow (chat_prepare_shadow.rs).
+pub(crate) async fn serve<F, Fut>(
+    app: &Arc<App>,
+    user: String,
+    shadow: Option<Bytes>,
+    relay: F,
+) -> Option<Response<Body>>
 where
     F: FnOnce(HeaderValue) -> Fut,
     Fut: std::future::Future<Output = Option<Response<Body>>>,
@@ -373,6 +382,7 @@ where
         tx,
         Arc::clone(&queued),
         approvals,
+        shadow,
     ));
     Some(Response::from_parts(parts, Body::new(Wire(rx, queued))))
 }
@@ -403,6 +413,7 @@ async fn drive(
     tx: mpsc::UnboundedSender<Bytes>,
     queued: Arc<Queued>,
     approvals: Arc<dyn Approvals>,
+    shadow: Option<Bytes>,
 ) {
     use http_body_util::BodyExt;
     let mut frames = Frames::new();
@@ -474,6 +485,10 @@ async fn drive(
     let Ok(user_dir) = server_projects::store::user_dir(&data_dir, &user) else {
         return failed(&tx);
     };
+    // Track R8 P7a: the same turn prepared natively beside core's frame, compared and logged only.
+    if let Some(body) = shadow {
+        crate::chat_prepare_shadow::spawn(Arc::clone(&app), user_dir.clone(), body, frame);
+    }
     let host = Arc::new(FrontHost {
         app: Arc::clone(&app),
         user,

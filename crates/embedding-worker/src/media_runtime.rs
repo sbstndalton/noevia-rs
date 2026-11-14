@@ -334,6 +334,11 @@ impl Worker<'_> {
         let engine = self.engine.clone();
         let control = self.control.clone();
         tokio::task::spawn_blocking(move || {
+            // core reads EXTRACTOR_VERSION per document: a store that turned unreadable after the pass
+            // chose this one makes it fail with no mark and no try (noevia#2614).
+            if !figures && engine.machines_unavailable() {
+                return Err(extract::MACHINES_UNAVAILABLE.to_string());
+            }
             let budget = extract::Budgeted {
                 inner: engine.as_ref(),
                 budget: extract::OcrBudget::new(pages),
@@ -564,7 +569,11 @@ impl Worker<'_> {
         unavailable
     }
     async fn figures(&mut self) {
-        if !enabled() || !extract::figures_on(self.engine.as_ref()) {
+        // core's figure-sweep.cjs on(): off when EXTRACTOR_VERSION throws (the machine store unreadable).
+        if !enabled()
+            || !extract::figures_on(self.engine.as_ref())
+            || self.engine.machines_unavailable()
+        {
             return;
         }
         let mut done = 0;
@@ -659,7 +668,14 @@ impl Worker<'_> {
             .min(per_hour.saturating_sub(self.spent.iter().map(|(_, n)| n).sum()));
         let mut uploads = 0;
         let mut uploads_held = false;
-        let extractor = extract::extractor_version(extract::figures_on(self.engine.as_ref()));
+        // core's backfill: `try { extractor = documents.EXTRACTOR_VERSION } catch { extractor = '' }`: while
+        // the machine store cannot be read no upload is a candidate and no completion try is counted
+        // (noevia#2614).
+        let extractor = if self.engine.machines_unavailable() {
+            String::new()
+        } else {
+            extract::extractor_version(extract::figures_on(self.engine.as_ref()))
+        };
         let mut budget_left = env_num("PROJECT_SYNC_OCR_PAGES", 40, 0, 100000) as usize;
         for snapshot in self.projects(&[]) {
             let files = snapshot.project["files"]
