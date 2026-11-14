@@ -77,6 +77,9 @@ jobs:
       - name: The off-box wire recording (P5d part 2) matches noevia-core
         # Synthetic QA routing settings, chat flags, sensitivity verdicts and choices and whole turns through server/chat.cjs and routing-modes.cjs with stub stores; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_offbox.cjs --check crates/chat-prepare/tests/fixtures/node-offbox.v1.json
+      - name: The pre-rules, cloud hold and router input recording (P5d part 3) matches noevia-core
+        # Synthetic QA texts (hand-made edges plus a seeded PRNG), chat.cjs's holdForCloud lines over stub logs; no network.
+        run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_prerules.cjs --check crates/chat-prepare/tests/fixtures/node-prerules.v1.json
       - name: The core's own image parts and vision pass of a turn reproduce the committed recording
         # Synthetic QA image bytes, projects, roles, describe answers, probe answers and whole turns through server/chat.cjs (the front's native executor asking for them), prompt-framing.cjs (dav-parse.wasm) and provider-egress.cjs with stub stores; no network.
         run: NOEVIA_CORE_CHECKOUT="$PWD/oracle-core" node crates/chat-prepare/tests/record_vision.cjs --check crates/chat-prepare/tests/fixtures/node-vision.v1.json
