@@ -109,6 +109,10 @@ pub struct Config {
     pub code_egress: Option<crate::code_egress::Settings>,
     /// Code mode's deployment configuration and the executor switch (code_routes.rs).
     pub code: crate::code_routes::Settings,
+    /// Browser tasks in the front (browser_routes.rs, `NOEVIA_RUST_BROWSER=1`).
+    pub browser: crate::browser_routes::Settings,
+    /// The Offline Wikipedia tools in the front (kiwix_tools.rs, `NOEVIA_RUST_KIWIX_TOOLS=1`).
+    pub kiwix: crate::kiwix_tools::Settings,
     /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
     pub model_writes: crate::model_writes_routes::Settings,
     /// Track R12, NOEVIA_RUST_SETTINGS_ROUTES=1: the front answers PUT /api/routing-default
@@ -500,6 +504,8 @@ impl Config {
             project_store,
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
+            browser: crate::browser_routes::Settings::from_lookup(&get),
+            kiwix: crate::kiwix_tools::Settings::from_lookup(&get),
             model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
             settings_routes: get(SETTINGS_ROUTES).as_deref() == Some("1"),
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),

@@ -14,6 +14,7 @@ pub mod autotune_resume_routes;
 pub mod autotune_runner;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
+pub mod browser_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
@@ -51,6 +52,7 @@ pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
 pub mod inference_machines;
+pub mod kiwix_tools;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod legacy_webdav;
@@ -688,6 +690,8 @@ pub struct App {
     pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// Code tasks, when the front runs them (code_routes.rs, NOEVIA_CODE_EXECUTOR=rust).
     pub code_service: std::sync::OnceLock<Arc<code_harness::service::Service>>,
+    /// Browser tasks, when the front runs them (browser_routes.rs, NOEVIA_RUST_BROWSER=1).
+    pub browser_service: std::sync::OnceLock<Arc<browser_task::service::Service>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -821,6 +825,7 @@ impl App {
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             code_egress: code_egress::Issuer::new(&config),
             code_service: std::sync::OnceLock::new(),
+            browser_service: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
@@ -978,6 +983,14 @@ async fn handle(
     if native.is_none() && app.config.code.executor {
         let at = whatwg.as_deref().unwrap_or(&path);
         if code_routes::parse(req.method().as_str(), at).is_some() {
+            native = Some(routes::Native::Projects);
+        }
+    }
+    // Track R5: with NOEVIA_RUST_BROWSER=1 the Browser task actions are the project routes' too
+    // (browser_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.browser.executor {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if browser_routes::owns(req.method().as_str(), at) {
             native = Some(routes::Native::Projects);
         }
     }
