@@ -68,6 +68,7 @@ fn kind_label(k: &SiteKind) -> &'static str {
         SiteKind::OwnerProbe => "owner probe",
         SiteKind::FileRead => "file read",
         SiteKind::TableRow => "table row",
+        SiteKind::PairCall => "pair call",
         SiteKind::Fixture => "fixture",
         SiteKind::Comment => "comment",
         SiteKind::Other => "other",

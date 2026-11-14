@@ -380,6 +380,16 @@ fn noevia_sites_are_classified_by_shape() {
         ),
         (
             "deploy/tools/assemble-release.sh",
+            "get_only_pair rust-tool-approvals.cjs rust-tool-approvals \"tool approvals\" /api/x",
+            SiteKind::PairCall,
+        ),
+        (
+            "deploy/tools/assemble-release.sh",
+            "marker=rust-tool-approvals.cjs",
+            SiteKind::Other,
+        ),
+        (
+            "deploy/tools/assemble-release.sh",
             "  die \"approval pairing: the front needs Core's rust-tool-approvals.cjs refusal\"",
             SiteKind::Other,
         ),
@@ -416,7 +426,7 @@ fn pairing_sites_read_build_and_deploy_only_and_whole_file_names() {
             Site {
                 path: "deploy/tools/assemble-release.sh".into(),
                 line: 1,
-                kind: SiteKind::Other,
+                kind: SiteKind::PairCall,
                 text: "get_only_pair rust-workspace.cjs rust-workspace \"workspace list\" /api/workspace"
                     .into()
             },

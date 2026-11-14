@@ -313,6 +313,9 @@ pub enum SiteKind {
     FileRead,
     /// A row of the supervisor's table (`rust-x.cjs rust-x words`).
     TableRow,
+    /// A call of a pairing helper with the file as its first argument (`get_only_pair rust-x.cjs rust-x …`): the
+    /// helper probes index.cjs for it, so this is an owner probe one call away.
+    PairCall,
     /// A line of deploy/tools/test-*.sh: a fixture of the block above; changes with it.
     Fixture,
     /// A shell comment.
@@ -341,6 +344,18 @@ fn names_file(text: &str, name: &str) -> bool {
     })
 }
 
+/// `helper NAME …`: a shell word (lower case, digits, `_`) and then exactly `name` as the second word.
+fn pair_call(t: &str, name: &str) -> bool {
+    let mut words = t.split_whitespace();
+    let helper = words.next().unwrap_or("");
+    !helper.is_empty()
+        && helper.starts_with(|c: char| c.is_ascii_lowercase() || c == '_')
+        && helper
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '_')
+        && words.next() == Some(name)
+}
+
 /// The kind of a noevia line `text` of `path` that names `name` (the stub's file name).
 pub fn site_kind(path: &str, text: &str, name: &str) -> SiteKind {
     let t = text.trim_start();
@@ -357,6 +372,8 @@ pub fn site_kind(path: &str, text: &str, name: &str) -> SiteKind {
         && !t.contains(['$', '(', '"', '\''])
     {
         SiteKind::TableRow
+    } else if pair_call(t, name) {
+        SiteKind::PairCall
     } else {
         SiteKind::Other
     }
@@ -389,6 +406,7 @@ fn site_counts(sites: &[Site]) -> String {
         (SiteKind::OwnerProbe, "probe"),
         (SiteKind::FileRead, "file read"),
         (SiteKind::TableRow, "table row"),
+        (SiteKind::PairCall, "pair call"),
         (SiteKind::Fixture, "fixture"),
         (SiteKind::Comment, "comment"),
         (SiteKind::Other, "other"),
