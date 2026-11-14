@@ -1115,3 +1115,36 @@ fn tracked_skill_remains_excluded_when_front_matter_is_removed() {
         0
     );
 }
+#[test]
+fn coverage_counts_embeddable_chunks_and_current_vectors() {
+    let (_tmp, store, index) = setup();
+    // Two embeddable chunks (the direct, image and lone-short ones are not), no slot yet.
+    assert_eq!(store.coverage(&index, &target("next")), Some((2, 0)));
+    let rows = store
+        .missing(&index, &target("next"), 4, &Default::default())
+        .unwrap()
+        .unwrap();
+    store
+        .publish(
+            &index,
+            &target("next"),
+            &rows[..1],
+            &[vec![1.0, 0.0]],
+            0,
+            &Control::default(),
+        )
+        .unwrap();
+    assert_eq!(store.coverage(&index, &target("next")), Some((2, 1)));
+    // A changed chunk's vector is no longer current.
+    let path = store.root.join("users").join(USER).join("rag/p.db");
+    open_vec_required(&path)
+        .unwrap()
+        .execute("UPDATE chunks SET content_hash='changed' WHERE id=1", [])
+        .unwrap();
+    assert_eq!(store.coverage(&index, &target("next")), Some((2, 0)));
+    let missing = Index {
+        user: Some(USER.into()),
+        project: "absent".into(),
+    };
+    assert_eq!(store.coverage(&missing, &target("next")), None);
+}

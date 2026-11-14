@@ -551,6 +551,25 @@ impl SqlStore {
         }
         Ok(())
     }
+    /// core `rag.indexCoverage(entry, target)` (vector-slots.cjs `coverage`): the embeddable chunks
+    /// and how many of them have a current vector in `target`'s slot; `None` when the index cannot
+    /// be read. A read-only, deferred read like [`FillStore::remaining`].
+    pub fn coverage(&self, index: &Index, target: &Target) -> Option<(usize, usize)> {
+        self.read_index(index, |db| {
+            let slot = self.read_slot(db, target)?;
+            let count = |sql: String| {
+                db.query_row(&format!("SELECT COUNT(*) FROM ({sql})"), [], |r| {
+                    r.get::<_, i64>(0)
+                })
+                .map_err(|_| fault())
+                .and_then(|n| usize::try_from(n).map_err(|_| fault()))
+            };
+            let chunks = count(read_missing_sql(db, None)?)?;
+            let missing = count(read_missing_sql(db, slot.as_ref())?)?;
+            Ok((chunks, chunks.saturating_sub(missing)))
+        })
+        .ok()
+    }
     pub fn drop_slot(&self, index: &Index, target: &Target) -> Result<(), String> {
         self.fenced(index, false, |db| {
             if let Some(slot) = find(db, target)? {

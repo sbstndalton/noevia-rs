@@ -223,6 +223,50 @@ impl Sidecar {
         }
     }
 
+    /// `fetchJson(url, { method, headers: serviceHeaders(), body? }, timeout)`: an instance-level
+    /// call with only `Content-Type` and the service bearer (core `diary.cjs` `serviceHeaders()`):
+    /// no tenant id, assertion or storage credential (routes/embedding.cjs; track R11).
+    pub async fn service_json(
+        &self,
+        method: reqwest::Method,
+        url: &str,
+        body: Option<Bytes>,
+        timeout: Duration,
+    ) -> Result<JsonReply, CallError> {
+        let url = Url::parse(url).map_err(|_| CallError::Config)?;
+        let deadline = Instant::now() + timeout;
+        let mut request = self
+            .http
+            .request(method, url)
+            .header("Content-Type", "application/json");
+        if !self.config.token().is_empty() {
+            request = request.header("Authorization", format!("Bearer {}", self.config.token()));
+        }
+        if let Some(body) = body {
+            request = request.body(body);
+        }
+        let mut response = timeout_at(deadline, request.send())
+            .await
+            .map_err(|_| CallError::Timeout)?
+            .map_err(map_error)?;
+        if response.status().is_redirection() {
+            return Err(CallError::Redirect);
+        }
+        let (status, ok) = (response.status().as_u16(), response.status().is_success());
+        Ok(match read_capped(&mut response, JSON_REPLY_CAP, deadline).await? {
+            Capped::Overflow => JsonReply {
+                ok: false,
+                status,
+                body: None,
+            },
+            Capped::Bytes(bytes) => JsonReply {
+                ok,
+                status,
+                body: Some(parse_or_text(&bytes)?),
+            },
+        })
+    }
+
     /// `fetchJson` with the tenant headers and the 428 retry (`diaryFetchJson`).
     pub async fn fetch_json(
         &self,

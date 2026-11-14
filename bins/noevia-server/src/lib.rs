@@ -39,6 +39,7 @@ pub mod delete_model;
 pub mod diary_backup;
 pub mod diary_routes;
 pub mod edit_target_native;
+pub mod embedding_admin_routes;
 pub mod embedding_background;
 pub mod export_routes;
 pub mod extraction;
@@ -747,6 +748,8 @@ pub struct App {
     pub extraction: Option<Arc<extraction::HttpEngine>>,
     /// GET /api/plugins/directory: its client and hour-long cache (#2190).
     pub plugin_directory: plugin_directory_routes::Directory,
+    /// `/api/embedding` under NOEVIA_RUST_EMBEDDING_ADMIN: its turn and service view (track R11).
+    pub embedding_admin: embedding_admin_routes::State,
 }
 
 impl App {
@@ -865,6 +868,7 @@ impl App {
             plugin_directory: plugin_directory_routes::Directory::new(
                 config.plugin_directory.clone(),
             ),
+            embedding_admin: embedding_admin_routes::State::default(),
             auto_roles: auto_roles_routes::Writer::default(),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
@@ -1101,6 +1105,12 @@ async fn handle(
         if let Some(kind) = fallback {
             return residual_fallback::serve(&app, req, p.to_string(), kind).await;
         }
+    }
+    // Track R11: with NOEVIA_RUST_EMBEDDING_ADMIN=rust the front answers /api/embedding, every
+    // method (embedding_admin_routes.rs); unset, the path stays Node's, as the routes file says.
+    if native.is_none() && app.config.embedding_admin.answers(whatwg.as_deref()) {
+        let p = whatwg.unwrap_or_default();
+        return embedding_admin_routes::serve(&app, req, p).await;
     }
     match native {
         Some(routes::Native::StorageMetadata) => {

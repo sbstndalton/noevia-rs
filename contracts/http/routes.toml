@@ -444,6 +444,9 @@ path = "/api/diary/workspace-import"
 owner = "rust"
 
 # The embedding role's settings (noevia-core routes/embedding.cjs), listed for the web client at web.ref.
+# Track R11: Node's unless NOEVIA_RUST_EMBEDDING_ADMIN=rust, when the front answers every method of
+# the exact path (bins/noevia-server embedding_admin_routes.rs, dispatched in lib.rs; ownership
+# switches in this file are retired, #1071) and core refuses it (core rust-embedding-admin.cjs).
 [[route]]
 path = "/api/embedding"
 owner = "node"

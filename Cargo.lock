@@ -2359,6 +2359,7 @@ dependencies = [
  "edit-target-lookup",
  "egress",
  "egress-issuer",
+ "embedding-migration",
  "embedding-worker",
  "engine-admission",
  "engine-facts",
