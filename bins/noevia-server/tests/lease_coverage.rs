@@ -348,7 +348,10 @@ async fn admission_counts_a_pending_recovery_only_with_the_switch() {
         .await
         .expect("lost at the margin point");
     run.release().await;
-    assert!(m.coverage.recoveries.pending(), "the run's release owes the settle");
+    assert!(
+        m.coverage.recoveries.pending(),
+        "the run's release owes the settle"
+    );
     script.silent.store(false, Ordering::SeqCst);
 
     let (m, _d) = maint(n, r, None).await;
