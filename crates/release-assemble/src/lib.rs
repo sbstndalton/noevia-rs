@@ -14,6 +14,7 @@
 //! Nothing in the release path calls this crate yet.
 
 pub mod digest;
+pub mod guard;
 pub mod lock;
 pub mod plan;
 pub mod source;
