@@ -12,11 +12,11 @@
 use js_json::JValue;
 use signin_transport::events::{parts_of, Part};
 use signin_transport::fetch::{self, Answer, Body, Call, Outgoing, Upstream, Wire};
-use std::sync::Mutex;
 use signin_transport::reply::error_body;
 use signin_transport::request::{self, Protocol, Refusal, Session};
 use signin_transport::session::{BrokerAnswer, SessionCache};
 use signin_transport::texts::Texts;
+use std::sync::Mutex;
 
 fn fixture() -> JValue {
     let text = std::fs::read_to_string(concat!(
@@ -295,7 +295,8 @@ fn block_on<F: std::future::Future>(f: F) -> F::Output {
 /// What the chat loop reads from the answer: TextDecoder over every byte (a leading mark dropped).
 fn decode_all(bytes: &[u8]) -> String {
     let text = String::from_utf8_lossy(bytes).into_owned();
-    text.strip_prefix('\u{FEFF}').map_or(text.clone(), str::to_string)
+    text.strip_prefix('\u{FEFF}')
+        .map_or(text.clone(), str::to_string)
 }
 
 fn refused(r: &Refusal) -> Run {
@@ -480,38 +481,94 @@ fn fetch_path_matches_core() {
             // cancels the already-failed body, the cancel rethrows, and the finished reply fails;
             // the port finishes it. Core's bytes are a prefix of the port's.
             late += 1;
-            let failed = want.get("readError").as_str().is_some() || want.get("thrown").as_str().is_some();
-            check(failed, format!("{name}: core no longer fails late ({})", json(want)));
-            check(got.thrown.is_none() && got.read_error.is_none(), format!("{name}: port failed {:?}", got.thrown.as_ref().or(got.read_error.as_ref())));
+            let failed =
+                want.get("readError").as_str().is_some() || want.get("thrown").as_str().is_some();
+            check(
+                failed,
+                format!("{name}: core no longer fails late ({})", json(want)),
+            );
+            check(
+                got.thrown.is_none() && got.read_error.is_none(),
+                format!(
+                    "{name}: port failed {:?}",
+                    got.thrown.as_ref().or(got.read_error.as_ref())
+                ),
+            );
             if let Some(prefix) = want.get("text").as_str() {
-                check(got.text.starts_with(prefix), format!("{name}: core's bytes are not a prefix"));
+                check(
+                    got.text.starts_with(prefix),
+                    format!("{name}: core's bytes are not a prefix"),
+                );
             }
             continue;
         }
         if let Some(thrown) = want.get("thrown").as_str() {
             if NAMED.iter().any(|(n, _)| *n == name) {
                 // core rejects with a TypeError; the port answers (pinned below).
-                check(got.thrown.is_none(), format!("{name}: the port answers ({thrown})"));
+                check(
+                    got.thrown.is_none(),
+                    format!("{name}: the port answers ({thrown})"),
+                );
                 named += 1;
                 continue;
             }
-            check(got.thrown.as_deref() == Some(thrown), format!("{name} thrown: {:?} vs {thrown}", got.thrown));
+            check(
+                got.thrown.as_deref() == Some(thrown),
+                format!("{name} thrown: {:?} vs {thrown}", got.thrown),
+            );
         } else {
-            check(got.thrown.is_none(), format!("{name}: port threw {:?}", got.thrown));
-            check(Some(f64::from(got.status)) == want.get("status").as_num(), format!("{name} status {} ({})", got.status, got.text));
-            check(got.content_type.as_deref() == want.get("contentType").as_str(), format!("{name} content-type {:?}", got.content_type));
-            check(got.provider_message.as_deref() == want.get("providerMessage").as_str(), format!("{name} provider-message"));
-            check(got.text == s(want.get("text")), format!("{name} text:\n port {}\n core {}", got.text, s(want.get("text"))));
-            check(got.read_error.as_deref() == want.get("readError").as_str(), format!("{name} read error {:?}", got.read_error));
+            check(
+                got.thrown.is_none(),
+                format!("{name}: port threw {:?}", got.thrown),
+            );
+            check(
+                Some(f64::from(got.status)) == want.get("status").as_num(),
+                format!("{name} status {} ({})", got.status, got.text),
+            );
+            check(
+                got.content_type.as_deref() == want.get("contentType").as_str(),
+                format!("{name} content-type {:?}", got.content_type),
+            );
+            check(
+                got.provider_message.as_deref() == want.get("providerMessage").as_str(),
+                format!("{name} provider-message"),
+            );
+            check(
+                got.text == s(want.get("text")),
+                format!(
+                    "{name} text:\n port {}\n core {}",
+                    got.text,
+                    s(want.get("text"))
+                ),
+            );
+            check(
+                got.read_error.as_deref() == want.get("readError").as_str(),
+                format!("{name} read error {:?}", got.read_error),
+            );
         }
-        check(json(&JValue::Arr(wire.sent)) == json(want.get("sent")), format!("{name} sent"));
-        check(json(&JValue::Arr(wire.broker_calls)) == json(want.get("brokerCalls")), format!("{name} broker calls"));
+        check(
+            json(&JValue::Arr(wire.sent)) == json(want.get("sent")),
+            format!("{name} sent"),
+        );
+        check(
+            json(&JValue::Arr(wire.broker_calls)) == json(want.get("brokerCalls")),
+            format!("{name} broker calls"),
+        );
         // A rejected sign-in leaves nothing cached (core deletes the user's entry on the second 401).
         if json(want.get("brokerCalls")).contains("\"reject\"") {
-            check(cache.is_empty(), format!("{name}: cache kept a rejected session"));
+            check(
+                cache.is_empty(),
+                format!("{name}: cache kept a rejected session"),
+            );
         }
     }
-    assert!(wrong.is_empty(), "{} of {} cases differ:\n{}", wrong.len(), cases.len(), wrong.join("\n"));
+    assert!(
+        wrong.is_empty(),
+        "{} of {} cases differ:\n{}",
+        wrong.len(),
+        cases.len(),
+        wrong.join("\n")
+    );
     assert_eq!(late, LATE.len());
     assert_eq!(checked, cases.len());
     assert_eq!(named, NAMED.len());

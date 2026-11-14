@@ -149,7 +149,8 @@ fn call<'a>(t: &'a Texts, p: &'a Protocol, user: &'a str, body: &'a str, now: f6
 }
 
 const BODY: &str = r#"{"model":"m","messages":[{"role":"user","content":"q"}]}"#;
-const STREAM_BODY: &str = r#"{"model":"m","stream":true,"messages":[{"role":"user","content":"q"}]}"#;
+const STREAM_BODY: &str =
+    r#"{"model":"m","stream":true,"messages":[{"role":"user","content":"q"}]}"#;
 
 fn status_of<B>(a: &Answer<B>) -> u16 {
     match a {
@@ -166,7 +167,11 @@ fn a_second_call_within_the_minute_reuses_the_session() {
     let cache = Mutex::new(SessionCache::default());
     let mut wire = Fake::new(Some("sig"), vec![session("tok-1", 1.0)], vec![]);
     for now in [NOW, NOW + 59_000.0] {
-        let a = block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "u1", BODY, now)));
+        let a = block_on(fetch::fetch(
+            &mut wire,
+            &cache,
+            &call(&t, &p, "u1", BODY, now),
+        ));
         assert_eq!(status_of(&a), 200);
     }
     assert_eq!(
@@ -193,9 +198,16 @@ fn a_changed_or_unreadable_signal_asks_the_broker_every_time() {
         vec![],
     );
     for _ in 0..2 {
-        block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "u1", BODY, NOW)));
+        block_on(fetch::fetch(
+            &mut wire,
+            &cache,
+            &call(&t, &p, "u1", BODY, NOW),
+        ));
     }
-    assert!(cache.lock().unwrap().is_empty(), "nothing is cached without a signal");
+    assert!(
+        cache.lock().unwrap().is_empty(),
+        "nothing is cached without a signal"
+    );
     assert_eq!(wire.log[2], "session u1 -");
 
     let mut wire = Fake::new(
@@ -204,9 +216,17 @@ fn a_changed_or_unreadable_signal_asks_the_broker_every_time() {
         vec![],
     );
     let cache = Mutex::new(SessionCache::default());
-    block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "u1", BODY, NOW)));
+    block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "u1", BODY, NOW),
+    ));
     wire.signal = Some("b".into());
-    block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "u1", BODY, NOW)));
+    block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "u1", BODY, NOW),
+    ));
     assert_eq!(wire.log[3], "send Bearer tok-2");
 }
 
@@ -220,9 +240,17 @@ fn a_401_skips_the_cache_and_the_second_forgets_the_session() {
         vec![session("tok-1", 1.0), session("tok-2", 2.0)],
         vec![200, 401, 401],
     );
-    block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "u1", BODY, NOW)));
+    block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "u1", BODY, NOW),
+    ));
     assert_eq!(cache.lock().unwrap().len(), 1);
-    let a = block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "u1", BODY, NOW)));
+    let a = block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "u1", BODY, NOW),
+    ));
     let Answer::Error(r) = a else { panic!() };
     assert_eq!((r.status, r.code.as_deref()), (401, Some("reconnect")));
     assert_eq!(
@@ -245,13 +273,29 @@ fn other_users_keep_their_sessions() {
     let cache = Mutex::new(SessionCache::default());
     let mut wire = Fake::new(
         Some("sig"),
-        vec![session("tok-a", 1.0), session("tok-b", 2.0), session("tok-b2", 3.0)],
+        vec![
+            session("tok-a", 1.0),
+            session("tok-b", 2.0),
+            session("tok-b2", 3.0),
+        ],
         vec![200, 401, 401],
     );
-    block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "a", BODY, NOW)));
-    block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "b", BODY, NOW)));
+    block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "a", BODY, NOW),
+    ));
+    block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "b", BODY, NOW),
+    ));
     assert_eq!(cache.lock().unwrap().len(), 1, "only a's session is left");
-    let a = block_on(fetch::fetch(&mut wire, &cache, &call(&t, &p, "a", BODY, NOW)));
+    let a = block_on(fetch::fetch(
+        &mut wire,
+        &cache,
+        &call(&t, &p, "a", BODY, NOW),
+    ));
     assert_eq!(status_of(&a), 200);
     assert_eq!(wire.log.last().unwrap(), "send Bearer tok-a");
 }
@@ -279,25 +323,44 @@ fn a_stream_reads_to_its_end_once() {
 #[test]
 fn the_capped_read_follows_core() {
     let cap = 8;
-    let read = |parts: Vec<Result<Vec<u8>, String>>| block_on(read_capped(&mut Chunks(parts.into()), cap));
+    let read =
+        |parts: Vec<Result<Vec<u8>, String>>| block_on(read_capped(&mut Chunks(parts.into()), cap));
     assert_eq!(read(vec![]).unwrap(), "");
-    assert_eq!(read(vec![Ok(b"abc".to_vec()), Ok(b"de".to_vec())]).unwrap(), "abcde");
+    assert_eq!(
+        read(vec![Ok(b"abc".to_vec()), Ok(b"de".to_vec())]).unwrap(),
+        "abcde"
+    );
     // Cut inside the chunk that crosses the cap.
-    assert_eq!(read(vec![Ok(b"abcdef".to_vec()), Ok(b"ghij".to_vec())]).unwrap(), "abcdefgh");
+    assert_eq!(
+        read(vec![Ok(b"abcdef".to_vec()), Ok(b"ghij".to_vec())]).unwrap(),
+        "abcdefgh"
+    );
     // A character cut at the cap is dropped; an invalid byte before it is kept as U+FFFD.
     assert_eq!(
         read(vec![Ok(b"\xffabcde".to_vec()), Ok(b"z\xc3\xa9".to_vec())]).unwrap(),
         "\u{FFFD}abcdez"
     );
     // Exactly at the cap with more on offer (even an empty chunk): capped, the cut mark dropped.
-    assert_eq!(read(vec![Ok(b"abcdefg\xc3".to_vec()), Ok(Vec::new())]).unwrap(), "abcdefg");
+    assert_eq!(
+        read(vec![Ok(b"abcdefg\xc3".to_vec()), Ok(Vec::new())]).unwrap(),
+        "abcdefg"
+    );
     // Exactly at the cap and then the end: not capped, the replacement stays.
-    assert_eq!(read(vec![Ok(b"abcdefg\xc3".to_vec())]).unwrap(), "abcdefg\u{FFFD}");
+    assert_eq!(
+        read(vec![Ok(b"abcdefg\xc3".to_vec())]).unwrap(),
+        "abcdefg\u{FFFD}"
+    );
     // A failed read before the cap fails the whole read; after the cap it does not matter.
     assert!(read(vec![Ok(b"ab".to_vec()), Err("reset".into())]).is_err());
-    assert_eq!(read(vec![Ok(b"abcdefgh".to_vec()), Err("reset".into())]).unwrap(), "abcdefgh");
+    assert_eq!(
+        read(vec![Ok(b"abcdefgh".to_vec()), Err("reset".into())]).unwrap(),
+        "abcdefgh"
+    );
     // A leading byte-order mark is text here (Buffer#toString keeps it).
-    assert_eq!(read(vec![Ok(b"\xef\xbb\xbfa".to_vec())]).unwrap(), "\u{FEFF}a");
+    assert_eq!(
+        read(vec![Ok(b"\xef\xbb\xbfa".to_vec())]).unwrap(),
+        "\u{FEFF}a"
+    );
 }
 
 #[test]
@@ -362,7 +425,10 @@ fn a_failed_stream_stays_failed() {
     let Answer::Stream(mut st) = a else { panic!() };
     assert_eq!(block_on(st.next()).unwrap().unwrap().len(), 2, "role + Hel");
     assert_eq!(block_on(st.next()).unwrap().unwrap_err(), "reset");
-    assert!(block_on(st.next()).is_none(), "no [DONE] after a failed read");
+    assert!(
+        block_on(st.next()).is_none(),
+        "no [DONE] after a failed read"
+    );
 }
 
 #[test]
