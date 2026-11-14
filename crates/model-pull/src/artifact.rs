@@ -20,7 +20,8 @@
 use crate::gguf;
 use crate::js;
 use js_json::{wtf16, JValue};
-use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard, PoisonError};
+use std::time::{Duration, Instant};
 
 /// How long a definite answer is reused.
 pub const CACHE_MS: f64 = 300_000.0;
@@ -163,7 +164,7 @@ pub enum Start {
     /// The answer, without a fetch (a refused selection, a cached answer, too many checks).
     Done(JValue),
     /// The same check is running: its answer is this one's too (core shares the promise).
-    Join(Key),
+    Join(Join),
     /// Run [`run`] for this key, then [`Artifacts::finish`].
     Run(Key),
 }
@@ -176,13 +177,86 @@ pub struct Ran {
     pub definite: bool,
 }
 
+/// Why a joined check gave no answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Failed {
+    /// The run ended without an answer (it panicked or was cancelled): core's rejected promise,
+    /// which the route answers 500 `Internal error`.
+    Abandoned,
+    /// The run did not end within [`JOIN_WAIT`].
+    TimedOut,
+}
+
+/// How long a joiner waits for the run it joined: the run's own fetch deadlines (10 s for the
+/// revision, 20 s for each of at most four prefixes) with room to spare.
+pub const JOIN_WAIT: Duration = Duration::from_secs(120);
+
+type Slot = (Mutex<Option<Result<JValue, Failed>>>, Condvar);
+
+/// A running check's outcome, set once (in the same critical section as [`Artifacts::finish`]
+/// or [`Artifacts::abandon`]) and kept, so a joiner that waits after it was set still sees it.
+#[derive(Debug, Clone, Default)]
+pub struct Completion(Arc<Slot>);
+
+impl PartialEq for Completion {
+    fn eq(&self, other: &Completion) -> bool {
+        Arc::ptr_eq(&self.0, &other.0)
+    }
+}
+
+impl Completion {
+    fn set(&self, outcome: Result<JValue, Failed>) {
+        let (slot, ready) = &*self.0;
+        let mut v = slot.lock().unwrap_or_else(PoisonError::into_inner);
+        if v.is_none() {
+            *v = Some(outcome);
+        }
+        ready.notify_all();
+    }
+
+    /// The outcome, if the run has ended.
+    pub fn peek(&self) -> Option<Result<JValue, Failed>> {
+        self.0
+             .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .clone()
+    }
+
+    /// Waits for the run's outcome, at most `deadline`.
+    pub fn wait(&self, deadline: Duration) -> Result<JValue, Failed> {
+        let (slot, ready) = &*self.0;
+        let started = Instant::now();
+        let mut v = slot.lock().unwrap_or_else(PoisonError::into_inner);
+        loop {
+            if let Some(outcome) = v.as_ref() {
+                return outcome.clone();
+            }
+            let Some(left) = deadline.checked_sub(started.elapsed()) else {
+                return Err(Failed::TimedOut);
+            };
+            v = match ready.wait_timeout(v, left) {
+                Ok((g, _)) => g,
+                Err(poisoned) => poisoned.into_inner().0,
+            };
+        }
+    }
+}
+
+/// A joined check: its key and the outcome its runner will deliver.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Join {
+    pub key: Key,
+    pub completion: Completion,
+}
+
 /// `mtp-artifact.cjs`'s module state: the answers of the last five minutes and the running
-/// checks. One per process, as core's.
+/// checks (each with the outcome its joiners wait for). One per process, as core's.
 #[derive(Debug, Clone, Default)]
 pub struct Artifacts {
     /// In insertion order: `(key, time, answer)`.
     cache: Vec<(Key, f64, JValue)>,
-    running: Vec<Key>,
+    running: Vec<(Key, Completion)>,
 }
 
 impl Artifacts {
@@ -191,8 +265,8 @@ impl Artifacts {
     }
 
     /// The checks running now.
-    pub fn running(&self) -> &[Key] {
-        &self.running
+    pub fn running(&self) -> Vec<Key> {
+        self.running.iter().map(|(k, _)| k.clone()).collect()
     }
 
     /// `check`'s synchronous part, at `now`.
@@ -206,21 +280,29 @@ impl Artifacts {
                 return Start::Done(answer.clone());
             }
         }
-        if self.running.contains(&key) {
-            return Start::Join(key);
+        if let Some((_, completion)) = self.running.iter().find(|(k, _)| *k == key) {
+            return Start::Join(Join {
+                key,
+                completion: completion.clone(),
+            });
         }
         if self.running.len() >= RUNNING {
             return Start::Done(unknown(BUSY, files, now));
         }
-        self.running.push(key.clone());
+        self.running.push((key.clone(), Completion::default()));
         Start::Run(key)
+    }
+
+    fn take_running(&mut self, key: &Key) -> Option<Completion> {
+        let at = self.running.iter().position(|(k, _)| k == key)?;
+        Some(self.running.remove(at).1)
     }
 
     /// The end of a run started here, at `now`: a definite answer is cached (when 100 are kept,
     /// the oldest is dropped first, even when this key's own expired entry is the one refreshed,
-    /// which keeps its place).
+    /// which keeps its place), and every joiner gets the answer, `unknown` included.
     pub fn finish(&mut self, key: &Key, ran: Ran, now: i64) -> JValue {
-        self.running.retain(|k| k != key);
+        let completion = self.take_running(key);
         if ran.definite {
             if self.cache.len() >= CACHE_ENTRIES && !self.cache.is_empty() {
                 self.cache.remove(0);
@@ -235,11 +317,23 @@ impl Artifacts {
                     .push((key.clone(), now as f64, ran.answer.clone())),
             }
         }
+        if let Some(c) = completion {
+            c.set(Ok(ran.answer.clone()));
+        }
         ran.answer
     }
 
-    /// `check(repo, files)` start to end over `host`. `None`: the same check is running elsewhere
-    /// ([`Start::Join`]), whose answer is this one's.
+    /// Ends a run without an answer (it panicked or was cancelled): the check no longer counts
+    /// as running, nothing is cached, and every joiner gets [`Failed::Abandoned`].
+    pub fn abandon(&mut self, key: &Key) {
+        if let Some(c) = self.take_running(key) {
+            c.set(Err(Failed::Abandoned));
+        }
+    }
+
+    /// `check(repo, files)` start to end over `host`, with exclusive access (so nothing else can
+    /// be running it). `None`: the same check is running elsewhere; use [`check_shared`], which
+    /// waits for it.
     pub fn check(&mut self, repo: &str, files: &JValue, host: &mut impl Fetcher) -> Option<JValue> {
         match self.start(repo, files, host.now_ms()) {
             Start::Done(answer) => Some(answer),
@@ -252,20 +346,14 @@ impl Artifacts {
     }
 }
 
-impl Artifacts {
-    /// Ends a run without an answer (it panicked or was cancelled): the check no longer counts
-    /// as running, and nothing is cached.
-    pub fn abandon(&mut self, key: &Key) {
-        self.running.retain(|k| k != key);
-    }
-}
-
 /// What a check over shared state gave.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Checked {
+    /// The answer (200), this request's own or the joined run's.
     Answer(JValue),
-    /// The same check is running in another request: its answer is this one's.
-    Join(Key),
+    /// The joined run gave none: the route answers 500 `Internal error`, as core answers a
+    /// rejected promise.
+    Failed(Failed),
 }
 
 fn lock(artifacts: &Mutex<Artifacts>) -> MutexGuard<'_, Artifacts> {
@@ -273,7 +361,8 @@ fn lock(artifacts: &Mutex<Artifacts>) -> MutexGuard<'_, Artifacts> {
 }
 
 /// A check this request runs, outside the lock. Dropping it without [`Running::finish`] (a
-/// panic, a cancelled future) abandons it, so it never stays counted as running.
+/// panic, a cancelled future) abandons it: it no longer counts as running, and its joiners get
+/// [`Failed::Abandoned`].
 #[derive(Debug)]
 pub struct Running<'a> {
     artifacts: &'a Mutex<Artifacts>,
@@ -285,7 +374,8 @@ impl Running<'_> {
         self.key.as_ref()
     }
 
-    /// The run's answer, cached when definite (the lock taken for this step only).
+    /// The run's answer, cached when definite and handed to the joiners (the lock taken for this
+    /// step only).
     pub fn finish(mut self, ran: Ran, now: i64) -> JValue {
         match self.key.take() {
             Some(key) => lock(self.artifacts).finish(&key, ran, now),
@@ -302,26 +392,36 @@ impl Drop for Running<'_> {
     }
 }
 
+/// What [`begin`] decided.
+#[derive(Debug)]
+pub enum Begin<'a> {
+    Answer(JValue),
+    /// Wait on [`Join::completion`] (outside the lock).
+    Join(Join),
+    Run(Running<'a>),
+}
+
 /// `check`'s synchronous part over shared state (the lock held for this step only): the answer
-/// at once, or the run this request must do.
+/// at once, the running check to wait for (its completion handed over under the same lock), or
+/// the run this request must do.
 pub fn begin<'a>(
     artifacts: &'a Mutex<Artifacts>,
     repo: &str,
     files: &JValue,
     now: i64,
-) -> Result<Running<'a>, Checked> {
+) -> Begin<'a> {
     match lock(artifacts).start(repo, files, now) {
-        Start::Done(answer) => Err(Checked::Answer(answer)),
-        Start::Join(key) => Err(Checked::Join(key)),
-        Start::Run(key) => Ok(Running {
+        Start::Done(answer) => Begin::Answer(answer),
+        Start::Join(join) => Begin::Join(join),
+        Start::Run(key) => Begin::Run(Running {
             artifacts,
             key: Some(key),
         }),
     }
 }
 
-/// `check(repo, files)` over shared state: the lock is taken to start and to finish, never
-/// while the fetches run.
+/// `check(repo, files)` over shared state: the lock is taken to start and to finish, never while
+/// the fetches run or a joiner waits; a joiner gets the runner's answer.
 pub fn check_shared(
     artifacts: &Mutex<Artifacts>,
     repo: &str,
@@ -329,11 +429,15 @@ pub fn check_shared(
     host: &mut impl Fetcher,
 ) -> Checked {
     match begin(artifacts, repo, files, host.now_ms()) {
-        Err(checked) => checked,
-        Ok(running) => {
+        Begin::Answer(answer) => Checked::Answer(answer),
+        Begin::Join(join) => match join.completion.wait(JOIN_WAIT) {
+            Ok(answer) => Checked::Answer(answer),
+            Err(failed) => Checked::Failed(failed),
+        },
+        Begin::Run(running) => {
             let ran = match running.key() {
                 Some(key) => run(key, host),
-                None => return Checked::Answer(JValue::Null),
+                None => return Checked::Failed(Failed::Abandoned),
             };
             Checked::Answer(running.finish(ran, host.now_ms()))
         }
@@ -495,8 +599,58 @@ pub fn run(key: &Key, host: &mut impl Fetcher) -> Ran {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
 mod tests {
     use super::*;
+
+    fn one() -> JValue {
+        JValue::Arr(vec![JValue::from("qa.gguf")])
+    }
+
+    #[test]
+    fn a_run_that_ends_before_its_joiner_waits_is_not_missed() {
+        let mut a = Artifacts::new();
+        let Start::Run(key) = a.start("qa/x", &one(), 0) else {
+            panic!()
+        };
+        let Start::Join(join) = a.start("qa/x", &one(), 0) else {
+            panic!()
+        };
+        // An unknown answer (never cached) reaches the joiner even though it ended first.
+        let answer = unknown(REVISION_UNAVAILABLE, &one(), 0);
+        a.finish(
+            &key,
+            Ran {
+                answer: answer.clone(),
+                definite: false,
+            },
+            0,
+        );
+        assert_eq!(join.completion.wait(Duration::ZERO), Ok(answer));
+        assert!(a.running().is_empty());
+        assert!(
+            matches!(a.start("qa/x", &one(), 1), Start::Run(_)),
+            "unknown is not cached"
+        );
+    }
+
+    #[test]
+    fn an_abandoned_run_fails_its_joiners() {
+        let mut a = Artifacts::new();
+        let Start::Run(key) = a.start("qa/x", &one(), 0) else {
+            panic!()
+        };
+        let Start::Join(join) = a.start("qa/x", &one(), 0) else {
+            panic!()
+        };
+        assert_eq!(join.completion.peek(), None);
+        a.abandon(&key);
+        assert_eq!(join.completion.wait(Duration::ZERO), Err(Failed::Abandoned));
+        assert_eq!(
+            Completion::default().wait(Duration::from_millis(1)),
+            Err(Failed::TimedOut)
+        );
+    }
 
     #[test]
     fn selections_are_validated_as_core_does() {

@@ -1,7 +1,7 @@
 //! The artifact check over shared state through `handle`: the lock is held only to start and to
-//! finish, so a request that arrives while a check runs (here: from inside that check's fetch)
-//! joins it, a third distinct check is refused while two run, and a run that panics does not stay
-//! counted as running.
+//! finish: a third distinct check is refused while two run (asked from inside a check's fetch), a
+//! request for a running check waits for that check's answer (`unknown` included) or gets core's
+//! rejection when it panicked, and a run that panics does not stay counted as running.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -13,7 +13,7 @@ use js_json::JValue;
 use model_pull::artifact::{self, Artifacts, FetchError, Fetched, Fetcher};
 use model_pull::manager::{Config, Kind, Reply, Request, Thrown};
 use model_pull::{handle, Call, Host, Outcome};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 
 fn config() -> Config {
     Config {
@@ -114,15 +114,12 @@ fn reason(out: &Outcome) -> &str {
 }
 
 #[test]
-fn a_running_check_is_joined_and_a_third_is_refused() {
+fn a_third_check_is_refused_while_two_run() {
     let artifacts = Mutex::new(Artifacts::new());
     let mut host = Nested {
         artifacts: &artifacts,
-        // While qa-one runs: qa-one again (joins), then qa-two (runs), and while that runs, qa-three.
-        nested: vec![
-            ("qa-one".into(), vec![]),
-            ("qa-two".into(), vec!["qa-three".into()]),
-        ],
+        // While qa-one runs: qa-two (runs), and while that runs, qa-three (refused).
+        nested: vec![("qa-two".into(), vec!["qa-three".into()])],
         seen: vec![],
         panic_in_fetch: false,
     };
@@ -130,13 +127,123 @@ fn a_running_check_is_joined_and_a_third_is_refused() {
     let out = handle(&config(), &artifacts, get(&query), &mut host);
     assert_eq!(reason(&out), artifact::REVISION_UNAVAILABLE);
     let seen: Vec<&str> = host.seen.iter().map(|(r, _)| r.as_str()).collect();
-    assert_eq!(seen, ["qa-one", "qa-two", "qa-three"]);
-    match &host.seen[0].1 {
-        Outcome::Join(key) => assert_eq!(key.repo, "qa-org/qa-one"),
-        other => panic!("{other:?}"),
+    assert_eq!(seen, ["qa-two", "qa-three"]);
+    assert_eq!(reason(&host.seen[0].1), artifact::REVISION_UNAVAILABLE);
+    assert_eq!(reason(&host.seen[1].1), artifact::BUSY);
+    assert!(artifacts.lock().unwrap().running().is_empty());
+}
+
+/// A host on its own thread: the runner's fetch waits for `release` (then answers 404 or
+/// panics); a joiner's fetch must never be called.
+struct Threaded {
+    release: Option<std::sync::mpsc::Receiver<()>>,
+    panic_after_release: bool,
+}
+
+impl Fetcher for Threaded {
+    fn fetch(&mut self, _: &artifact::Fetch) -> Result<Fetched, FetchError> {
+        let Some(release) = self.release.take() else {
+            panic!("a joiner fetched: it must wait for the running check instead");
+        };
+        release.recv().unwrap();
+        if self.panic_after_release {
+            panic!("qa: the runner's fetch panicked");
+        }
+        Ok(Fetched {
+            status: 404,
+            content_range: None,
+            body: Ok(Vec::new()),
+        })
     }
-    assert_eq!(reason(&host.seen[1].1), artifact::REVISION_UNAVAILABLE);
-    assert_eq!(reason(&host.seen[2].1), artifact::BUSY);
+    fn now_ms(&self) -> i64 {
+        1_794_744_000_000
+    }
+}
+
+impl Host for Threaded {
+    fn invalidate_model_reads(&mut self) {}
+    fn clear_model_scan(&mut self) {}
+    fn send(&mut self, r: &Request) -> Result<Reply, Thrown> {
+        let mut nested = Nested {
+            artifacts: &Mutex::new(Artifacts::new()),
+            nested: vec![],
+            seen: vec![],
+            panic_in_fetch: false,
+        };
+        nested.send(r)
+    }
+    fn enter(&mut self) -> Result<(), Thrown> {
+        Ok(())
+    }
+    fn leave(&mut self) {}
+    fn downloads_requested(&mut self, _: &JValue) {}
+    fn downloads_rejected(&mut self, _: &JValue) {}
+}
+
+/// The runner on one thread, a joiner on another (started once the runner is fetching, and
+/// given time to reach its wait), then the runner released: both answers.
+fn joined(
+    panic_after_release: bool,
+) -> (std::thread::Result<Outcome>, Outcome, Arc<Mutex<Artifacts>>) {
+    let artifacts = Arc::new(Mutex::new(Artifacts::new()));
+    let (release, gate) = std::sync::mpsc::channel();
+    let runner = {
+        let artifacts = Arc::clone(&artifacts);
+        std::thread::spawn(move || {
+            let mut host = Threaded {
+                release: Some(gate),
+                panic_after_release,
+            };
+            let query = call("qa-joined");
+            handle(&config(), &artifacts, get(&query), &mut host)
+        })
+    };
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(10);
+    while artifacts.lock().unwrap().running().is_empty() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the runner never started"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(5));
+    }
+    let joiner = {
+        let artifacts = Arc::clone(&artifacts);
+        std::thread::spawn(move || {
+            let mut host = Threaded {
+                release: None,
+                panic_after_release: false,
+            };
+            let query = call("qa-joined");
+            handle(&config(), &artifacts, get(&query), &mut host)
+        })
+    };
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    release.send(()).unwrap();
+    let ran = runner.join();
+    let waited = joiner.join().expect("the joiner does not panic");
+    (ran, waited, artifacts)
+}
+
+#[test]
+fn a_joiner_gets_the_runner_s_unknown_answer() {
+    let (ran, waited, artifacts) = joined(false);
+    let ran = ran.expect("the runner answers");
+    assert_eq!(reason(&ran), artifact::REVISION_UNAVAILABLE);
+    assert_eq!(waited, ran, "the same answer, checkedAt included");
+    assert!(artifacts.lock().unwrap().running().is_empty());
+}
+
+#[test]
+fn a_joiner_of_a_run_that_panicked_gets_the_rejection() {
+    let (ran, waited, artifacts) = joined(true);
+    assert!(ran.is_err());
+    assert_eq!(
+        waited,
+        Outcome::Answer {
+            status: 500,
+            body: JValue::obj([("error", JValue::from("Internal error"))]),
+        }
+    );
     assert!(artifacts.lock().unwrap().running().is_empty());
 }
 
