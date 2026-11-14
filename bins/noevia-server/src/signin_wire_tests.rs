@@ -1539,7 +1539,15 @@ async fn a_whole_turn_planned_and_run_by_signin_drive_streams_the_reply() {
     assert!(checks.load(std::sync::atomic::Ordering::SeqCst) >= 1);
     assert!(!stub.lock().unwrap().received.is_empty());
     let calls = inner.calls();
-    for c in ["request", "lease", "health", "load", "read", "text", "mtp_evidence"] {
+    for c in [
+        "request",
+        "lease",
+        "health",
+        "load",
+        "read",
+        "text",
+        "mtp_evidence",
+    ] {
         assert!(!calls.iter().any(|x| x == c), "{c} reached the inner host");
     }
 }

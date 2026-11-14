@@ -70,7 +70,10 @@ fn a_matching_cut_plans_the_bound_turn() {
     // No conversation (a turn without chat or space) stays none.
     let mut c = cut();
     c.conversation = None;
-    assert_eq!(plan(CAPS, USER, &c, &p, 5_000.0).unwrap().conversation, None);
+    assert_eq!(
+        plan(CAPS, USER, &c, &p, 5_000.0).unwrap().conversation,
+        None
+    );
 }
 
 #[test]
@@ -325,7 +328,10 @@ async fn an_inactive_account_ends_the_turn_before_the_broker_is_asked() {
     assert!(!broker.asked.load(Ordering::SeqCst));
     // The inner host's engine was never asked either.
     for c in ["request", "lease", "health", "load", "read", "text"] {
-        assert!(!inner.calls().iter().any(|x| x == c), "{c} reached the inner host");
+        assert!(
+            !inner.calls().iter().any(|x| x == c),
+            "{c} reached the inner host"
+        );
     }
 }
 

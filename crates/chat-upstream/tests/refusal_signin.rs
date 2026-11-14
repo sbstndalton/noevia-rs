@@ -106,7 +106,10 @@ fn only_both_tokens_together_change_an_answer() {
                 changed += 1;
                 // Only a sign-in row that is neither a machine nor a route target, and only with both.
                 assert!(providers && signin, "{header:?} {f:?}");
-                assert!(f.sign_in && !f.machine && !f.route_target, "{header:?} {f:?}");
+                assert!(
+                    f.sign_in && !f.machine && !f.route_target,
+                    "{header:?} {f:?}"
+                );
                 assert_eq!((was, now), (Some("provider"), None), "{header:?} {f:?}");
             }
         }
@@ -125,7 +128,11 @@ fn a_header_over_the_limit_names_neither_token() {
     let caps = refusal::caps(&header);
     assert!(caps.is_empty());
     for f in &every_facts() {
-        assert_eq!(refusal::with_caps(f, &caps), refusal::node_reason(f), "{f:?}");
+        assert_eq!(
+            refusal::with_caps(f, &caps),
+            refusal::node_reason(f),
+            "{f:?}"
+        );
     }
 }
 
