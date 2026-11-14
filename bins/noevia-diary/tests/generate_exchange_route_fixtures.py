@@ -145,6 +145,21 @@ os.environ.update({"PATH": "/usr/bin:/bin", "HOME": str(scratch / "home"), "TZ":
                    "DIARY_CORPUS_WRITE_IMPL": "python"})
 os.chdir(scratch)
 sys.path.insert(0, str(diary))
+# sqlite-vec 0.1.9 does not enable extension loading itself; allow it per connection only, as the
+# Diary's tests/conftest.py does (retrieval is on, as in the image).
+import sqlite_vec  # noqa: E402
+_plain_load = sqlite_vec.load
+
+
+def _load(conn):
+    conn.enable_load_extension(True)
+    try:
+        return _plain_load(conn)
+    finally:
+        conn.enable_load_extension(False)
+
+
+sqlite_vec.load = _load
 from fastapi.testclient import TestClient  # noqa: E402
 from agent import app as appmod  # noqa: E402
 from agent import tenant_writer  # noqa: E402
@@ -165,6 +180,22 @@ with tenant_writer.hold(UID):
     managed.activate({p: t.encode() for p, t in CORPUS.items()},
                      {"entry_layout": "daily", "month_file_template": "{year}-{month02}.md", "index_enabled": False})
 managed.close()
+# The background `_reindex_today` of each exchange is joined before the next case (it races the
+# next request otherwise; the Rust side re-indexes the saved day before its next exchange).
+_reindex_today = appmod._reindex_today
+_pending = []
+
+
+def _tracked(*args):
+    done = threading.Event()
+    _pending.append(done)
+    try:
+        _reindex_today(*args)
+    finally:
+        done.set()
+
+
+appmod._reindex_today = _tracked
 client = TestClient(appmod.app)
 HEADERS = {"Authorization": f"Bearer {TOKEN}", "X-Cowork-User-ID": UID}
 WHEN = "2026-01-06T09:15:00+00:00"
@@ -241,6 +272,9 @@ for label, request in CASES:
     else:
         r = client.post("/v1/chat/completions", json=request, headers=HEADERS)
         status, reply = r.status_code, {"json": masked(r.json())}
+    for done in _pending:
+        assert done.wait(30), "a background re-index did not finish"
+    _pending.clear()
     chat = [{"request": c["request"], "status": c["status"], "reply": c["reply"], "stream": c["stream"]}
             for c in CALLS[start:]]
     records.append({"case": label, "request": request, "status": status, **reply,

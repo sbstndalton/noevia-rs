@@ -463,32 +463,38 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
                 && bounded
                 && front.is_writer(&uid)
                 && app.save_embedder.get().is_some()
-                && server::storage_header_ok(&parts.headers)
+                && server::storage_header_ok(&app, &parts.headers, &uid)
             {
-                let (app2, uid2) = (app.clone(), uid.clone());
-                let recovered = tokio::task::spawn_blocking(move || {
-                    crate::recovery::recover_for_reads(&app2, &uid2)
-                })
-                .await
-                .unwrap_or(false);
-                if recovered {
-                    let bytes = match (buffered.take(), stream.take()) {
-                        (Some(b), _) => b,
-                        (None, Some(s)) => match tokio::time::timeout(
-                            BODY_DEADLINE,
-                            axum::body::to_bytes(s, server::MAX_BODY),
-                        )
-                        .await
-                        {
-                            Ok(Ok(b)) => b,
-                            Ok(Err(_)) => return raw(413, TOO_LARGE),
-                            Err(_) => return raw(408, BODY_TIMEOUT),
-                        },
-                        (None, None) => axum::body::Bytes::new(),
-                    };
-                    buffered = Some(bytes.clone());
-                    let trace = crate::exchange::trace_requested(&parts.headers);
-                    if let Some(parsed) = crate::exchange::parse(&bytes, trace) {
+                // The body first (no effect): what Python answers before `_tenant_state` (an
+                // unreadable body, no user message, a streamed request's bad entry time) never
+                // reaches the recovery.
+                let bytes = match (buffered.take(), stream.take()) {
+                    (Some(b), _) => b,
+                    (None, Some(s)) => match tokio::time::timeout(
+                        BODY_DEADLINE,
+                        axum::body::to_bytes(s, server::MAX_BODY),
+                    )
+                    .await
+                    {
+                        Ok(Ok(b)) => b,
+                        Ok(Err(_)) => return raw(413, TOO_LARGE),
+                        Err(_) => return raw(408, BODY_TIMEOUT),
+                    },
+                    (None, None) => axum::body::Bytes::new(),
+                };
+                buffered = Some(bytes.clone());
+                let trace = crate::exchange::trace_requested(&parts.headers);
+                if let Some(parsed) = crate::exchange::parse(&bytes, trace) {
+                    if let Some(resp) = parsed.before_tenant_state() {
+                        return resp;
+                    }
+                    let (app2, uid2) = (app.clone(), uid.clone());
+                    let recovered = tokio::task::spawn_blocking(move || {
+                        crate::recovery::recover_for_reads(&app2, &uid2)
+                    })
+                    .await
+                    .unwrap_or(false);
+                    if recovered {
                         if let Some(resp) = crate::exchange::serve(
                             app.clone(),
                             setup,

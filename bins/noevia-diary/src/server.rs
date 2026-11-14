@@ -293,15 +293,23 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
     }
 }
 
-/// The X-Cowork-Storage descriptor, when it decodes strictly (unpadded base64url, a JSON
-/// object). Err(()) means "Python's lenient decoder might read it differently": decline.
-/// The `X-Cowork-Storage` header `_tenant_state` accepts without its own answer (absent, or a
-/// descriptor within the size limit that parses as Python reads it).
-pub(crate) fn storage_header_ok(headers: &HeaderMap) -> bool {
+/// The `X-Cowork-Storage` header `_tenant_state` accepts without its own answer: absent, or a
+/// descriptor within the size limit that parses as Python reads it and that `_storage_credential`
+/// does not refuse.
+pub(crate) fn storage_header_ok(app: &App, headers: &HeaderMap, header_uid: &str) -> bool {
     let storage = header(headers, "x-cowork-storage");
-    storage.len() <= MAX_STORAGE_HEADER_LEN && strict_descriptor(&storage).is_ok()
+    if storage.len() > MAX_STORAGE_HEADER_LEN {
+        return false;
+    }
+    match strict_descriptor(&storage) {
+        Ok(None) => true,
+        Ok(Some(d)) => descriptor_ok(app, header_uid, &d),
+        Err(()) => false,
+    }
 }
 
+/// The X-Cowork-Storage descriptor, when it decodes strictly (unpadded base64url, a JSON
+/// object). Err(()) means "Python's lenient decoder might read it differently": decline.
 fn strict_descriptor(raw: &str) -> Result<Option<serde_json::Map<String, Value>>, ()> {
     if raw.is_empty() || raw.len() > MAX_STORAGE_HEADER_LEN {
         return Ok(None);
@@ -1181,49 +1189,56 @@ fn resolve_tenant(
         return Err(Box::new(internal_error()));
     };
     if let Some(d) = tenant.descriptor.as_ref() {
-        let remote = matches!(
-            d.get("kind").and_then(Value::as_str),
-            Some("nextcloud" | "webdav" | "s3")
-        );
-        if remote && d.contains_key("secretRef") {
-            let ok_ref = match d.get("secretRef") {
-                Some(Value::String(r)) => {
-                    r.is_empty()
-                        || (r.len() == 32
-                            && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
-                }
-                _ => false,
-            };
-            if !ok_ref {
-                return Err(Box::new(detail(400, "invalid storage descriptor")));
-            }
-            let reference = d.get("secretRef").and_then(Value::as_str).unwrap_or("");
-            let secret = d.get("secret").cloned().unwrap_or(Value::Null);
-            let secret_truthy = match &secret {
-                Value::Null => false,
-                Value::Bool(b) => *b,
-                Value::Number(n) => n.as_f64() != Some(0.0),
-                Value::String(s) => !s.is_empty(),
-                Value::Array(a) => !a.is_empty(),
-                Value::Object(o) => !o.is_empty(),
-            };
-            if secret_truthy && !app.tenant_key.is_empty() {
-                let matches = match &secret {
-                    Value::String(s) => tenant_assertion::secret_ref_matches(
-                        &app.tenant_key,
-                        &header_uid.to_ascii_lowercase(),
-                        s,
-                        reference,
-                    ),
-                    _ => false,
-                };
-                if !matches {
-                    return Err(Box::new(detail(400, "invalid storage descriptor")));
-                }
-            }
+        if !descriptor_ok(app, header_uid, d) {
+            return Err(Box::new(detail(400, "invalid storage descriptor")));
         }
     }
     Ok(tenant)
+}
+
+/// `_storage_credential`'s refusals of a descriptor (400 "invalid storage descriptor"): a remote
+/// descriptor's `secretRef` not a string of 32 lowercase hex digits (or empty), or, with a tenant
+/// key, a truthy `secret` that does not match it.
+fn descriptor_ok(app: &App, header_uid: &str, d: &serde_json::Map<String, Value>) -> bool {
+    let remote = matches!(
+        d.get("kind").and_then(Value::as_str),
+        Some("nextcloud" | "webdav" | "s3")
+    );
+    if !(remote && d.contains_key("secretRef")) {
+        return true;
+    }
+    let ok_ref = match d.get("secretRef") {
+        Some(Value::String(r)) => {
+            r.is_empty()
+                || (r.len() == 32 && r.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        }
+        _ => false,
+    };
+    if !ok_ref {
+        return false;
+    }
+    let reference = d.get("secretRef").and_then(Value::as_str).unwrap_or("");
+    let secret = d.get("secret").cloned().unwrap_or(Value::Null);
+    let secret_truthy = match &secret {
+        Value::Null => false,
+        Value::Bool(b) => *b,
+        Value::Number(n) => n.as_f64() != Some(0.0),
+        Value::String(s) => !s.is_empty(),
+        Value::Array(a) => !a.is_empty(),
+        Value::Object(o) => !o.is_empty(),
+    };
+    if secret_truthy && !app.tenant_key.is_empty() {
+        return match &secret {
+            Value::String(s) => tenant_assertion::secret_ref_matches(
+                &app.tenant_key,
+                &header_uid.to_ascii_lowercase(),
+                s,
+                reference,
+            ),
+            _ => false,
+        };
+    }
+    true
 }
 
 /// Python `api_external_sources` after `_tenant_state` (which only resolves the tenant): each

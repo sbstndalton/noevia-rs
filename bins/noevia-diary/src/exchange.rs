@@ -26,6 +26,12 @@
 //! - The served chat model is resolved once per exchange, before the context build (Python
 //!   resolves at the model call, through the same 60 s cache).
 //! - Stream frames are JSON-equal to Python's, not byte-equal (D5).
+//! - A streamed exchange of a tenant not yet recovered here waits for that recovery before the
+//!   stream opens (Python recovers inside the stream, under keep-alives); the web's reads before
+//!   an exchange normally recover the tenant first (D31). "Reading diary entries and memory…" is
+//!   sent after the dirty re-index, not before it.
+//! - A journal row this side cannot replay that appears between the recovery and the save fails
+//!   the save after the answer (Python would replay it).
 
 use std::collections::HashMap;
 use std::pin::Pin;
@@ -70,8 +76,36 @@ const INVALID_ENTRY: &str = "Invalid diary date/time; include a timezone offset"
 /// What the exchange reads of the configuration (this process's own reading, at start).
 pub struct Setup {
     pub settings: diary_operator::server_config::ExchangeSettings,
-    pub system_prompt: String,
+    pub system_prompt: Prompt,
     pub templates: Map<String, Value>,
+}
+
+/// The system prompt: ContextAssembler._system_prompt reads it at every build (an operator's edit
+/// applies to the next exchange).
+pub enum Prompt {
+    /// A fixed text (tests).
+    Text(String),
+    /// `prompts.system_path` when it exists, else the default prompt file.
+    Files {
+        custom: Option<std::path::PathBuf>,
+        default: std::path::PathBuf,
+    },
+}
+
+impl Prompt {
+    /// The prompt text now (Path.read_text: UTF-8, universal newlines), or None when it cannot be
+    /// read (Python's exchange fails then).
+    pub fn text(&self) -> Option<String> {
+        match self {
+            Prompt::Text(t) => Some(t.clone()),
+            Prompt::Files { custom, default } => {
+                let path = custom.as_ref().filter(|p| p.exists()).unwrap_or(default);
+                let bytes = std::fs::read(path).ok()?;
+                let text = String::from_utf8(bytes).ok()?;
+                Some(text.replace("\r\n", "\n").replace('\r', "\n"))
+            }
+        }
+    }
 }
 
 /// `config.yaml` (with the environment) and the prompt files, as the child reads them.
@@ -81,7 +115,18 @@ pub fn setup(
 ) -> Result<Setup, String> {
     Ok(Setup {
         settings: diary_operator::server_config::exchange_settings(data)?,
-        system_prompt: diary_operator::config::system_prompt(data, config_dir)?,
+        system_prompt: {
+            // Read once here so a prompt that cannot be read refuses the switch at start.
+            diary_operator::config::system_prompt(data, config_dir)?;
+            let custom = diary_operator::config::get(data, "prompts.system_path")
+                .filter(diary_operator::value::Value::truthy)
+                .and_then(|v| v.as_str())
+                .map(std::path::PathBuf::from);
+            Prompt::Files {
+                custom,
+                default: config_dir.join("prompts").join("system.md"),
+            }
+        },
         templates: diary_operator::server_config::logging_templates(config_dir)?,
     })
 }
@@ -198,6 +243,14 @@ pub struct Parsed {
     /// `optional_reference(body)`.
     pub extra: String,
     pub entry: EntryTarget,
+}
+
+impl Parsed {
+    /// The stream path runs `entry_target` before `_tenant_state`: its 400 comes first.
+    pub fn before_tenant_state(&self) -> Option<Response<Body>> {
+        (self.stream && matches!(self.entry, EntryTarget::Invalid))
+            .then(|| detail(400, INVALID_ENTRY))
+    }
 }
 
 /// `entry_target(body)`.
@@ -794,6 +847,10 @@ impl Run {
         emit: Option<&mut (dyn FnMut(Value) + Send)>,
     ) -> Result<Map<String, Value>, ExchangeError> {
         let root = self.app.data_root.join("users").join(&self.uid);
+        if self.app.writers.is_fenced(&self.uid) {
+            // Deleted meanwhile (Python's `_session` answers 410 under its tombstone).
+            return Err(ExchangeError::Model(LlmError::Llm("tenant deleted".into())));
+        }
         reindex_dirty(&self.app, &self.uid, &self.embedder);
         let session = self.sessions.get(&self.uid, &self.parsed.session_id);
         let mut turns = session.lock().unwrap_or_else(|e| e.into_inner()).clone();
@@ -815,11 +872,14 @@ impl Run {
             layout: &self.tenant.layout,
             memory: self.tenant.memory.clone(),
         };
+        let system_prompt = self.setup.system_prompt.text().ok_or_else(|| {
+            ExchangeError::Model(LlmError::Llm("system prompt unreadable".into()))
+        })?;
         let assembler = Assembler {
             store: &store,
             search: Some(&search),
             cfg: &self.setup.settings.cfg,
-            system_prompt: self.setup.system_prompt.clone(),
+            system_prompt,
             local_reference: String::new(),
         };
         let pipeline = Pipeline {
@@ -933,10 +993,14 @@ impl Run {
             // work(emit): _recover_state (done: the tenant is recovered here), the session seed.
             let session = self.sessions.get(&self.uid, &self.parsed.session_id);
             seed(&session, &self.parsed.prior);
-            let result = self.exchange(&worker, Some(&mut emit));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                self.exchange(&worker, Some(&mut emit))
+            }));
             let last = match &result {
-                Ok(r) => vec![streaming::result_event(r), streaming::done_event()],
-                Err(e) => vec![failure_event(e)],
+                Ok(Ok(r)) => vec![streaming::result_event(r), streaming::done_event()],
+                Ok(Err(e)) => vec![failure_event(e)],
+                // Python's `except Exception`: the generic error event.
+                Err(_) => vec![streaming::error_event(Failure::Other)],
             };
             for e in last {
                 let _ = events_tx.send(Some(e));

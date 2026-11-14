@@ -321,7 +321,9 @@ async fn exchanges_answer_as_the_python_route() {
     let templates = recorded["templates"].as_object().unwrap().clone();
     let setup = noevia_diary::exchange::Setup {
         settings,
-        system_prompt: recorded["system_prompt"].as_str().unwrap().to_string(),
+        system_prompt: noevia_diary::exchange::Prompt::Text(
+            recorded["system_prompt"].as_str().unwrap().to_string(),
+        ),
         templates,
     };
 
