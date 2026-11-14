@@ -1,7 +1,7 @@
 [package]
 name = "mcp-internal"
 version = "0.1.0"
-description = "noevia-core's server/mcp-internal.cjs in Rust: the in-app MCP server's capability tokens, single-use replay guard, catalogue and JSON-RPC handler (no listener, no tools; unused until wired)"
+description = "noevia-core's server/mcp-internal.cjs in Rust: the in-app MCP server's capability tokens, single-use replay guard, catalogue and JSON-RPC handler, project tools and loopback listener (unused until wired)"
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
@@ -11,5 +11,13 @@ publish.workspace = true
 workspace = true
 
 [dependencies]
+bytes = "1"
+http-body-util = "0.1"
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
 js-json = { path = "../js-json" }
 sha2 = "=0.10.9"
+tokio = { version = "1", features = ["macros", "net", "rt", "time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["io-util", "macros", "net", "rt-multi-thread", "time"] }

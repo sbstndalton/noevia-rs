@@ -1,9 +1,10 @@
 //! noevia-core's in-app MCP server (`server/mcp-internal.cjs`) in Rust: the capability tokens, the
 //! single-use replay guard for `tools/call`, the static catalogue and the JSON-RPC handler, plus the
-//! listener's request rule (POST to one path, a 256 KiB body, the bearer token). Nothing here binds a
-//! port or runs a tool: [`Handler::handle`] answers a request or hands back an [`Invoke`] for the caller
-//! to run, and [`Invoke::finish`] turns the tool's text or error into the reply core sends. Unused until
-//! a front wires it (behind its own switch); the Node module stays the production path.
+//! listener's request rule (POST to one path, a 256 KiB body, the bearer token). [`Handler::handle`]
+//! answers a request or hands back an [`Invoke`] for the caller to run, and [`Invoke::finish`] turns the
+//! tool's text or error into the reply core sends; [`listener`] is the loopback socket around it
+//! (`startInternalServer`). Unused until a front wires it (behind its own switch); the Node module stays
+//! the production path.
 //!
 //! The oracle is core's `server/mcp-internal.test.cjs` (ported in `tests/node_parity.rs`); the token
 //! bytes are the same as `mintToken`'s and the front's `mcp_call::mint_call_token`.
@@ -16,6 +17,7 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+pub mod listener;
 pub mod project_tools;
 
 /// `PROTOCOL_VERSION`.

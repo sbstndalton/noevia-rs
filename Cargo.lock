@@ -2105,8 +2105,13 @@ dependencies = [
 name = "mcp-internal"
 version = "0.1.0"
 dependencies = [
+ "bytes",
+ "http-body-util",
+ "hyper",
+ "hyper-util",
  "js-json",
  "sha2",
+ "tokio",
 ]
 
 [[package]]
