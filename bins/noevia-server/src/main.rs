@@ -77,6 +77,43 @@ fn legacy_claim_cli(args: impl Iterator<Item = OsString>) -> ExitCode {
         Err(_) => ExitCode::FAILURE,
     }
 }
+/// `--ensure-secrets-key`: `UI_DATA_DIR/secrets.key` made when it is missing, with Node's notice, and
+/// both keys then checked as Node's start checked them (an invalid `secrets.key` or retired key fails:
+/// Node refused to start then). `UI_DATA_DIR` is required (Node fell back to its own `server/ui-data`).
+/// The key is never printed.
+fn ensure_secrets_key_cli(data_dir: Option<OsString>, err: &mut impl Write) -> ExitCode {
+    use rand_core::{OsRng, RngCore};
+    use server_auth::secrets::{ensure_key, Ensured};
+    let Some(dir) = data_dir.filter(|d| !d.is_empty()).map(PathBuf::from) else {
+        let _ = writeln!(err, "noevia-server: UI_DATA_DIR is not set");
+        return ExitCode::FAILURE;
+    };
+    match ensure_key(&dir, |key| OsRng.fill_bytes(key)) {
+        Ok(Ensured::Created) => {
+            let _ = writeln!(
+                err,
+                "Generated credential-encryption key: {} (include this file in backups)",
+                dir.join("secrets.key").display()
+            );
+        }
+        Ok(Ensured::Existed) => {}
+        Err(e) => {
+            let _ = writeln!(err, "noevia-server: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    let previous = std::env::var("SECRETS_KEY_PREVIOUS")
+        .ok()
+        .map(zeroize::Zeroizing::new);
+    match server_auth::secrets::load_existing(&dir, previous.as_deref().map(String::as_str)) {
+        Ok(_) => ExitCode::SUCCESS,
+        Err(e) => {
+            let _ = writeln!(err, "noevia-server: {e}");
+            ExitCode::FAILURE
+        }
+    }
+}
+
 /// sbstndalton/noevia#2582: one invitation from the operator's shell (server_account::operator).
 /// Command line only; stdout carries the token and nothing else.
 fn operator_invitation_cli(
@@ -160,6 +197,11 @@ fn main() -> ExitCode {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |d| i64::try_from(d.as_millis()).unwrap_or(i64::MAX));
         return operator_invitation_cli(args, data_dir, now, &mut io::stdout().lock());
+    }
+    // Track R12: core secrets.cjs's first-start key, for the start-up once Node no longer runs first (the
+    // removal release calls it from the web supervisor). Before the runtime and any listener.
+    if command.as_deref() == Some(OsStr::new("--ensure-secrets-key")) {
+        return ensure_secrets_key_cli(std::env::var_os("UI_DATA_DIR"), &mut io::stderr().lock());
     }
     match tokio::runtime::Builder::new_multi_thread()
         .enable_all()
@@ -424,6 +466,33 @@ async fn server_main() -> ExitCode {
 #[allow(clippy::unwrap_used)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ensure_secrets_key_makes_one_key_and_keeps_it() {
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("ui-data");
+        let mut err = Vec::new();
+        assert_eq!(
+            ensure_secrets_key_cli(Some(data.clone().into_os_string()), &mut err),
+            ExitCode::SUCCESS
+        );
+        assert!(String::from_utf8(err)
+            .unwrap()
+            .starts_with("Generated credential-encryption key: "));
+        let key = std::fs::read(data.join("secrets.key")).unwrap();
+        assert_eq!(key.len(), 32);
+        let mut err = Vec::new();
+        assert_eq!(
+            ensure_secrets_key_cli(Some(data.clone().into_os_string()), &mut err),
+            ExitCode::SUCCESS
+        );
+        assert!(err.is_empty());
+        assert_eq!(std::fs::read(data.join("secrets.key")).unwrap(), key);
+        assert_eq!(
+            ensure_secrets_key_cli(None, &mut Vec::new()),
+            ExitCode::FAILURE
+        );
+    }
 
     #[derive(Default)]
     struct ProbeWriter {
