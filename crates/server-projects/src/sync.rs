@@ -1353,15 +1353,27 @@ mod tests {
 
     struct Rig {
         root: tempfile::TempDir,
+        /// This rig's own account (noevia#2654): the project's source lock is process-wide, keyed by
+        /// account and project, so rigs that shared one account waited on each other's syncs in a
+        /// parallel run and some answered 429 after the five-second wait.
+        user: &'static str,
         engine: FakeEngine,
         storage: FakeStorage,
+    }
+
+    /// A fresh account id per rig, in the shape of [`USER`].
+    fn rig_user() -> &'static str {
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(1);
+        let n = NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        Box::leak(format!("{}{n:012x}", &USER[..24]).into_boxed_str())
     }
 
     impl Rig {
         /// A project "proj-a" attaching the folder "docs" (its own folder is "root/proj-a").
         fn new(project: &str) -> Self {
             let root = tempfile::tempdir().unwrap();
-            let dir = root.path().join("users").join(USER);
+            let user = rig_user();
+            let dir = root.path().join("users").join(user);
             std::fs::create_dir_all(&dir).unwrap();
             std::fs::write(
                 dir.join(store::PROJECTS_FILE),
@@ -1370,6 +1382,7 @@ mod tests {
             .unwrap();
             Rig {
                 root,
+                user,
                 engine: FakeEngine {
                     docling: true,
                     ..Default::default()
@@ -1378,12 +1391,12 @@ mod tests {
             }
         }
         fn dir(&self) -> std::path::PathBuf {
-            self.root.path().join("users").join(USER)
+            self.root.path().join("users").join(self.user)
         }
         fn ctx(&self) -> Ctx<'_> {
             Ctx {
                 data_dir: self.root.path(),
-                user_id: USER,
+                user_id: self.user,
                 switch: server_store::RustProjects::owned(),
                 now_ms: 1_700_000_000_000,
             }
