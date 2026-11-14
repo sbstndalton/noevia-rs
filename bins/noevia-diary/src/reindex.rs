@@ -167,51 +167,16 @@ pub async fn internal(
             ..ClientConfig::default()
         };
         let embedder = Arc::new(HttpEmbedder::fixed(engine, active, handle));
-        let index_path = root.join("managed-index.db");
-        if !index_path.is_file() {
+        if !root.join("managed-index.db").is_file() {
             return crate::server::decline();
         }
         app2.writers
             // Main mode: Python asks under its lease (joined); otherwise its own lock is separate.
             .with_lock_as(&uid, lease, app2.write_wait, |held| {
-                let Ok(Some((store, _))) = managed::ready_for_write(&root, &uid, true) else {
-                    return crate::server::decline();
-                };
-                let Ok(journal) = Journal::open(&root.join("managed-index.db"), held) else {
-                    return crate::server::decline();
-                };
-                let Ok(documents) = journal.dirty_documents() else {
-                    return crate::server::decline();
-                };
-                // Adoption allowed: the writer lock is held (Python D5).
-                let Ok(mut retriever) =
-                    Retriever::open_existing(&index_path, Shared(embedder.clone()), Reserved(&journal), Options::default())
-                else {
-                    return crate::server::decline();
-                };
-                if !retriever.vec_available() {
-                    return crate::server::decline();
+                match reindex_held(&root, &uid, held, &embedder) {
+                    Some(out) => status(200, json!({"documents": out})),
+                    None => crate::server::decline(),
                 }
-                let mut out = Vec::new();
-                for document in documents {
-                    let text = match store.get_text(&document) {
-                        Ok(t) => t,
-                        Err(_) => {
-                            out.push(json!({"document": document, "embedded": 0, "pending": true, "error": "read"}));
-                            continue;
-                        }
-                    };
-                    match retriever.reindex_file(&document, text.as_deref()) {
-                        Ok(embedded) => {
-                            let pending = retriever.pending_embeddings();
-                            let cleared = pending || journal.clear_dirty(&document).is_ok();
-                            out.push(json!({"document": document, "embedded": embedded, "pending": pending,
-                                            "error": if cleared { Value::Null } else { json!("clear") }}));
-                        }
-                        Err(e) => out.push(json!({"document": document, "embedded": 0, "pending": true, "error": e.to_string()})),
-                    }
-                }
-                status(200, json!({"documents": out}))
             })
             .unwrap_or_else(|refused| match refused {
                 crate::write::Refused::Fenced => status(410, json!({"detail": "tenant deleted"})),
@@ -219,6 +184,81 @@ pub async fn internal(
             })
     });
     task.await.unwrap_or_else(|_| status(500, json!({})))
+}
+
+/// The re-index of a tenant's dirty documents while its writer slot is `held` (Python's
+/// `_reindex_dirty` body after the outbox drain): read each, `reindex_file`, clear the mark unless
+/// an embedding is still pending. None: nothing can be re-indexed here (no index file, not ready
+/// for a write, no vector extension), and every mark stays.
+pub(crate) fn reindex_held(
+    root: &std::path::Path,
+    uid: &str,
+    held: &crate::write::WriteGuard<'_>,
+    embedder: &Arc<HttpEmbedder>,
+) -> Option<Vec<Value>> {
+    let index_path = root.join("managed-index.db");
+    if !index_path.is_file() {
+        return None;
+    }
+    let Ok(Some((store, _))) = managed::ready_for_write(root, uid, true) else {
+        return None;
+    };
+    let journal = Journal::open(&index_path, held).ok()?;
+    let documents = journal.dirty_documents().ok()?;
+    // Adoption allowed: the writer lock is held (Python D5).
+    let mut retriever = Retriever::open_existing(
+        &index_path,
+        Shared(embedder.clone()),
+        Reserved(&journal),
+        Options::default(),
+    )
+    .ok()?;
+    if !retriever.vec_available() {
+        return None;
+    }
+    let mut out = Vec::new();
+    for document in documents {
+        let text = match store.get_text(&document) {
+            Ok(t) => t,
+            Err(_) => {
+                out.push(json!({"document": document, "embedded": 0, "pending": true, "error": "read"}));
+                continue;
+            }
+        };
+        match retriever.reindex_file(&document, text.as_deref()) {
+            Ok(embedded) => {
+                let pending = retriever.pending_embeddings();
+                let cleared = pending || journal.clear_dirty(&document).is_ok();
+                out.push(json!({"document": document, "embedded": embedded, "pending": pending,
+                                "error": if cleared { Value::Null } else { json!("clear") }}));
+            }
+            Err(e) => out.push(json!({"document": document, "embedded": 0, "pending": true, "error": e.to_string()})),
+        }
+    }
+    Some(out)
+}
+
+/// S6b (main mode, the embedding owner here): a native PUT /api/file or edit re-indexes the
+/// tenant's dirty documents under the slot it saved under, as Python's handlers run
+/// `_reindex_dirty` before they reply. A failure is logged as Python's "edit reindex pending"
+/// and never changes the save's reply; the marks stay for the next pass.
+pub(crate) fn after_save(
+    root: &std::path::Path,
+    uid: &str,
+    held: &crate::write::WriteGuard<'_>,
+    embedder: Arc<HttpEmbedder>,
+) {
+    match reindex_held(root, uid, held, &embedder) {
+        None => eprintln!("noevia-diary: edit reindex pending: the index cannot be re-indexed here"),
+        Some(out) => {
+            for d in out.iter().filter(|d| !d["error"].is_null()) {
+                eprintln!(
+                    "noevia-diary: edit reindex pending: {}",
+                    d["error"].as_str().unwrap_or("error")
+                );
+            }
+        }
+    }
 }
 
 /// The index shadow (`plan_only`): for each named document, what this side's re-index would write

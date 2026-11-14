@@ -230,8 +230,33 @@ pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
 }
 
 /// Native replay recovery; retrieval remains Python-owned. Dirty marks are retained
-/// until that owner's reindex pass, including all Markdown after an uncertain save.
+/// until that owner's reindex pass.
+///
+/// Every Markdown document is marked dirty once per process and tenant, as Python's
+/// `_recover_state` does once per tenant state (`dirty_on_recover`): what an earlier process
+/// may have written without re-indexing is unknown. Later native writes need no such sweep,
+/// because each marks its own document dirty before it writes anything (writes.rs), so a
+/// write lost at any point still leaves its invalidation behind. Replay and the outbox drain
+/// run every time.
 pub fn recover(c: &Ctx<'_>) -> Result<(), write::Error> {
+    let swept = c
+        .recovery
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .recovered;
+    if !swept {
+        mark_all_documents(c)?;
+    }
+    apply_pending(c, 100)?;
+    drain_index_outbox(c)?;
+    c.recovery
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .recovered = true;
+    Ok(())
+}
+
+fn mark_all_documents(c: &Ctx<'_>) -> Result<(), write::Error> {
     // Read first and release the primary, as _recover_state does: each mark then takes
     // its own primary reservation, never while this connection still reads it.
     let documents = {
@@ -243,12 +268,6 @@ pub fn recover(c: &Ctx<'_>) -> Result<(), write::Error> {
     for path in documents {
         c.journal.mark_dirty(&path)?;
     }
-    apply_pending(c, 100)?;
-    drain_index_outbox(c)?;
-    c.recovery
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .recovered = true;
     Ok(())
 }
 

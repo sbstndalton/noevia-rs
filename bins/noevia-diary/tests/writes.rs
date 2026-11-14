@@ -398,6 +398,32 @@ async fn append_journals_then_writes_once_and_is_idempotent() {
 }
 
 #[tokio::test]
+async fn every_document_is_swept_dirty_once_per_process_then_only_what_is_written() {
+    // Python's _recover_state sweeps every Markdown document once per tenant state; each later
+    // native write marks its own document before it writes, so it needs no sweep (S6b).
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[("a.md", "a"), ("b.md", "b"), ("c.txt", "c")]);
+    let addr = start(dir.path(), "python").await;
+    let put = |path: &str, content: &str, version: &str| {
+        serde_json::json!({"path": path, "content": content, "version": version})
+    };
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &put("a.md", "a2", &sha256(b"a"))).await;
+    assert_eq!(s, 200, "{body}");
+    assert_eq!(dirty(dir.path()), ["a.md", "b.md"]);
+    // The owner's re-index pass (Python's _reindex_dirty) clears them.
+    index(dir.path()).execute("DELETE FROM dirty_documents", []).unwrap();
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &put("b.md", "b2", &sha256(b"b"))).await;
+    assert_eq!(s, 200, "{body}");
+    assert_eq!(dirty(dir.path()), ["b.md"]);
+    // A new process sweeps again.
+    index(dir.path()).execute("DELETE FROM dirty_documents", []).unwrap();
+    let addr = start(dir.path(), "python").await;
+    let (s, _, body) = send(addr, "PUT", "/api/file", &writer(), &put("b.md", "b3", &sha256(b"b2"))).await;
+    assert_eq!(s, 200, "{body}");
+    assert_eq!(dirty(dir.path()), ["a.md", "b.md"]);
+}
+
+#[tokio::test]
 async fn append_invalidates_retrieval_before_it_writes() {
     // The process can be lost at any point after the corpus commit (before the journal row is
     // marked applied, before the reply). The retrieval invalidation must already be persisted:

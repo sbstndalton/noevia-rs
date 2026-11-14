@@ -93,6 +93,10 @@ pub struct App {
     /// Python child may hold it as a lease) before answering 503 BUSY, as Python's forwarder did.
     /// None (Python as the main process): without limit, as before.
     pub write_wait: Option<std::time::Duration>,
+    /// R9 main mode with the embedding owner here (embedding_owner.rs, S4): the embedder a native
+    /// save re-indexes with (S6b), following the owned configuration live as Python's retrievers
+    /// follow SharedEmbedding. Unset: native saves leave their documents dirty for Python.
+    pub save_embedder: std::sync::OnceLock<Arc<diary_answer::embedder::HttpEmbedder>>,
 }
 
 impl App {
@@ -123,6 +127,7 @@ impl App {
             llm_main: cfg.llm.main,
             external_sources: cfg.external_sources,
             write_wait: None,
+            save_embedder: std::sync::OnceLock::new(),
         }
     }
 }
@@ -943,12 +948,21 @@ async fn serve_write(
                     Err(e) if e.is_settlement_refusal() => return Reply::Busy,
                     Err(_) => return writes::internal(),
                 }
-                match &op {
+                let saved = match &op {
                     Op::File => writes::file_write(&ctx, &json),
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
+                };
+                // S6b: Python's PUT /api/file and edit run `_reindex_dirty` under the same lock
+                // before they reply (append re-indexes in a background thread: left to Python).
+                if matches!(op, Op::File | Op::Edit(_)) && matches!(saved, Reply::Json(200, _)) {
+                    if let Some(embedder) = app2.save_embedder.get() {
+                        drop(ctx);
+                        crate::reindex::after_save(&root, &uid, held, embedder.clone());
+                    }
                 }
+                saved
             })
             .unwrap_or_else(|refused| match refused {
                 crate::write::Refused::Busy => Reply::Busy,
