@@ -8,7 +8,12 @@
 //! remainder, environment filtering and the HOME fallback, cwd containment, every refusal, the
 //! connection cap and its release, the wall limit, exit and large output.
 
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, TcpStream};
@@ -62,7 +67,11 @@ impl Drop for Supervisor {
 }
 
 fn free_port() -> u16 {
-    std::net::TcpListener::bind("127.0.0.1:0").unwrap().local_addr().unwrap().port()
+    std::net::TcpListener::bind("127.0.0.1:0")
+        .unwrap()
+        .local_addr()
+        .unwrap()
+        .port()
 }
 
 fn launch(node: Option<&Path>, harness: &Path, root: &Path, extra: &[(&str, &str)]) -> Supervisor {
@@ -97,10 +106,16 @@ fn launch(node: Option<&Path>, harness: &Path, root: &Path, extra: &[(&str, &str
         // Keep draining the log so the supervisor never blocks on a full pipe.
         for _ in lines {}
     });
-    let banner = rx.recv_timeout(Duration::from_secs(20)).expect("supervisor did not start listening");
+    let banner = rx
+        .recv_timeout(Duration::from_secs(20))
+        .expect("supervisor did not start listening");
     // Both print the banner once the listener is bound. No probe connection: under a cap of one
     // a probe that Node has not yet seen close would take the only slot.
-    Supervisor { child, port, banner: banner.replace(&format!(":{port},"), ":PORT,") }
+    Supervisor {
+        child,
+        port,
+        banner: banner.replace(&format!(":{port},"), ":PORT,"),
+    }
 }
 
 fn connect(port: u16) -> TcpStream {
@@ -118,7 +133,13 @@ fn drain(mut s: TcpStream) -> String {
             Ok(0) => break "EOF",
             Ok(n) => out.extend_from_slice(&buf[..n]),
             Err(e) if e.kind() == std::io::ErrorKind::ConnectionReset => break "RESET",
-            Err(e) => break if e.kind() == std::io::ErrorKind::WouldBlock { "TIMEOUT" } else { "ERROR" },
+            Err(e) => {
+                break if e.kind() == std::io::ErrorKind::WouldBlock {
+                    "TIMEOUT"
+                } else {
+                    "ERROR"
+                }
+            }
         }
     };
     let text = String::from_utf8_lossy(&out);
@@ -132,7 +153,10 @@ fn drain(mut s: TcpStream) -> String {
 }
 
 fn start(cwd: &Path, env: &str) -> String {
-    format!(r#"{{"noevia":"start","cwd":{},"env":{env}}}"#, json_string(&cwd.display().to_string())) + "\n"
+    format!(
+        r#"{{"noevia":"start","cwd":{},"env":{env}}}"#,
+        json_string(&cwd.display().to_string())
+    ) + "\n"
 }
 
 fn json_string(s: &str) -> String {
@@ -176,7 +200,13 @@ fn layout() -> Layout {
     let outside = base.join("outside");
     std::fs::create_dir_all(&outside).unwrap();
     std::os::unix::fs::symlink(&outside, root.join("escape")).unwrap();
-    Layout { _tmp: tmp, harness, root, work, outside }
+    Layout {
+        _tmp: tmp,
+        harness,
+        root,
+        work,
+        outside,
+    }
 }
 
 /// The default-limit sessions, as (name, transcript).
@@ -195,17 +225,42 @@ fn default_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
             ) + "hello\n"),
         ),
     );
-    add("echo-home-fallback", one(p, &(start(&l.work, r#"{"LANG":"echo"}"#) + "a\n")));
-    add("echo-empty-home", one(p, &(start(&l.work, r#"{"LANG":"echo","HOME":""}"#) + "a\n")));
+    add(
+        "echo-home-fallback",
+        one(p, &(start(&l.work, r#"{"LANG":"echo"}"#) + "a\n")),
+    );
+    add(
+        "echo-empty-home",
+        one(p, &(start(&l.work, r#"{"LANG":"echo","HOME":""}"#) + "a\n")),
+    );
     add(
         "echo-long-and-nonstring-values",
-        one(p, &(start(&l.work, &format!(r#"{{"LANG":"echo","TMPDIR":"{long}","PATH":7,"FOO":null}}"#)) + "a\n")),
+        one(
+            p,
+            &(start(
+                &l.work,
+                &format!(r#"{{"LANG":"echo","TMPDIR":"{long}","PATH":7,"FOO":null}}"#),
+            ) + "a\n"),
+        ),
     );
-    add("echo-root-itself", one(p, &(start(&l.root, r#"{"LANG":"echo"}"#) + "r\n")));
-    add("echo-env-missing", one(p, &(format!(r#"{{"noevia":"start","cwd":{}}}"#, json_string(&l.work.display().to_string())) + "\nx\n")));
+    add(
+        "echo-root-itself",
+        one(p, &(start(&l.root, r#"{"LANG":"echo"}"#) + "r\n")),
+    );
+    add(
+        "echo-env-missing",
+        one(
+            p,
+            &(format!(
+                r#"{{"noevia":"start","cwd":{}}}"#,
+                json_string(&l.work.display().to_string())
+            ) + "\nx\n"),
+        ),
+    );
     {
         let mut s = connect(p);
-        s.write_all(start(&l.work, r#"{"LANG":"two"}"#).as_bytes()).unwrap();
+        s.write_all(start(&l.work, r#"{"LANG":"two"}"#).as_bytes())
+            .unwrap();
         std::thread::sleep(Duration::from_millis(200));
         s.write_all(b"first\n").unwrap();
         std::thread::sleep(Duration::from_millis(100));
@@ -226,11 +281,29 @@ fn default_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
     add("other-message", one(p, "{\"noevia\":\"other\"}\n"));
     add("json-array", one(p, "[1,2]\n"));
     add("json-null", one(p, "null\n"));
-    add("outside-root", one(p, &start(&l.outside, r#"{"LANG":"echo"}"#)));
-    add("symlink-escape", one(p, &start(&l.root.join("escape"), r#"{"LANG":"echo"}"#)));
-    add("missing-cwd", one(p, &start(&l.root.join("nope"), r#"{"LANG":"echo"}"#)));
-    add("empty-cwd", one(p, "{\"noevia\":\"start\",\"cwd\":\"\",\"env\":{}}\n"));
-    add("dotdot-cwd", one(p, &start(&l.work.join("../../outside"), r#"{"LANG":"echo"}"#)));
+    add(
+        "outside-root",
+        one(p, &start(&l.outside, r#"{"LANG":"echo"}"#)),
+    );
+    add(
+        "symlink-escape",
+        one(p, &start(&l.root.join("escape"), r#"{"LANG":"echo"}"#)),
+    );
+    add(
+        "missing-cwd",
+        one(p, &start(&l.root.join("nope"), r#"{"LANG":"echo"}"#)),
+    );
+    add(
+        "empty-cwd",
+        one(p, "{\"noevia\":\"start\",\"cwd\":\"\",\"env\":{}}\n"),
+    );
+    add(
+        "dotdot-cwd",
+        one(
+            p,
+            &start(&l.work.join("../../outside"), r#"{"LANG":"echo"}"#),
+        ),
+    );
     add("exit-code", one(p, &start(&l.work, r#"{"LANG":"exit3"}"#)));
     add("large-output", one(p, &start(&l.work, r#"{"LANG":"big"}"#)));
     add("oversize-start", one(p, &"a".repeat(70_000)));
@@ -240,7 +313,8 @@ fn default_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
 fn cap_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
     let p = sup.port;
     let mut held = connect(p);
-    held.write_all(start(&l.work, r#"{"LANG":"hold"}"#).as_bytes()).unwrap();
+    held.write_all(start(&l.work, r#"{"LANG":"hold"}"#).as_bytes())
+        .unwrap();
     let mut first = [0u8; 5];
     held.read_exact(&mut first).unwrap();
     assert_eq!(&first, b"held\n");
@@ -256,14 +330,20 @@ fn cap_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
         }
         std::thread::sleep(Duration::from_millis(50));
     };
-    vec![("cap-refusal".to_owned(), refused), ("cap-released".to_owned(), after)]
+    vec![
+        ("cap-refusal".to_owned(), refused),
+        ("cap-released".to_owned(), after),
+    ]
 }
 
 fn wall_sessions(sup: &Supervisor, l: &Layout) -> Vec<(String, String)> {
     let started = Instant::now();
     let t = one(sup.port, &start(&l.work, r#"{"LANG":"sleep"}"#));
     let took = started.elapsed();
-    assert!(took < Duration::from_secs(4), "wall limit did not stop the agent ({took:?})");
+    assert!(
+        took < Duration::from_secs(4),
+        "wall limit did not stop the agent ({took:?})"
+    );
     vec![("wall-limit".to_owned(), t)]
 }
 
@@ -272,10 +352,20 @@ fn run_all(node: Option<&Path>, l: &Layout) -> Vec<(String, String)> {
     let sup = launch(node, &l.harness, &l.root, &[]);
     out.extend(default_sessions(&sup, l));
     drop(sup);
-    let sup = launch(node, &l.harness, &l.root, &[("CODE_SANDBOX_MAX_CONNECTIONS", "1")]);
+    let sup = launch(
+        node,
+        &l.harness,
+        &l.root,
+        &[("CODE_SANDBOX_MAX_CONNECTIONS", "1")],
+    );
     out.extend(cap_sessions(&sup, l));
     drop(sup);
-    let sup = launch(node, &l.harness, &l.root, &[("CODE_SANDBOX_MAX_WALL_MS", "400")]);
+    let sup = launch(
+        node,
+        &l.harness,
+        &l.root,
+        &[("CODE_SANDBOX_MAX_WALL_MS", "400")],
+    );
     out.extend(wall_sessions(&sup, l));
     out
 }
@@ -288,7 +378,9 @@ fn transcripts_match_the_node_supervisor() {
             Ok("1"),
             "CODE_SANDBOX_SUPERVISOR_ORACLE is required here"
         );
-        eprintln!("SKIP node parity: set CODE_SANDBOX_SUPERVISOR_ORACLE to code-sandbox/supervisor.cjs");
+        eprintln!(
+            "SKIP node parity: set CODE_SANDBOX_SUPERVISOR_ORACLE to code-sandbox/supervisor.cjs"
+        );
         return;
     };
     let oracle = PathBuf::from(oracle);
@@ -305,10 +397,22 @@ fn transcripts_match_the_node_supervisor() {
         }
     }
     // The oracle must have exercised what it claims to.
-    let get = |name: &str| expected.iter().find(|(n, _)| n == name).map(|(_, t)| t.as_str()).unwrap_or("");
+    let get = |name: &str| {
+        expected
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, t)| t.as_str())
+            .unwrap_or("")
+    };
     assert!(get("echo-allowlist").contains("line=hello\n"));
     assert!(get("cap-refusal").contains("already running 1 agents"));
     assert!(get("wall-limit").contains("time limit"));
-    assert!(differ.is_empty(), "{} of {} sessions differ:\n{}", differ.len(), expected.len(), differ.join("\n"));
+    assert!(
+        differ.is_empty(),
+        "{} of {} sessions differ:\n{}",
+        differ.len(),
+        expected.len(),
+        differ.join("\n")
+    );
     eprintln!("node parity: {} sessions agree", expected.len());
 }

@@ -153,7 +153,12 @@ pub fn xref_points_at_objects(data: &[u8]) -> bool {
 }
 
 /// Preamble, (number, head, data) per object, trailer, xref entry count.
-pub type Semantic = (Vec<u8>, Vec<(u32, Vec<u8>, Option<Vec<u8>>)>, Vec<u8>, usize);
+pub type Semantic = (
+    Vec<u8>,
+    Vec<(u32, Vec<u8>, Option<Vec<u8>>)>,
+    Vec<u8>,
+    usize,
+);
 
 /// The view two encoders must agree on: everything except deflate bytes, their lengths and the
 /// offsets those lengths move.
