@@ -66,6 +66,27 @@ impl IniError {
     }
 }
 
+impl IniError {
+    /// Node's `publicMessage`: a settled Model Loader outcome, or the read-only refusal, written for
+    /// people, so a route may show it even on a 5xx. Every other failure (a read or write error of
+    /// the file itself) is an internal fault.
+    pub fn public(&self) -> bool {
+        [
+            UNCERTAIN,
+            NOT_SAVED,
+            THIRD_PARTY,
+            UNREADABLE,
+            MISSING,
+            REJECTED,
+            READ_ONLY,
+        ]
+        .contains(&self.message.as_str())
+            || self
+                .message
+                .starts_with("Model Loader rejected the preset file: ")
+    }
+}
+
 impl From<Thrown> for IniError {
     fn from(t: Thrown) -> IniError {
         IniError::new(t.status.unwrap_or(500), &t.message)

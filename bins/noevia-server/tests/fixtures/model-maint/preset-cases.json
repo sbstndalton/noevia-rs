@@ -47,6 +47,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 403,
     "body": "{\"error\":\"administrator required\"}",
@@ -103,6 +104,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 404,
     "body": "{\"error\":\"Native presets are unavailable\"}",
@@ -159,6 +161,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 501,
     "body": "{\"error\":\"Native preset editing; configure LLAMACPP_PRESET_PATH is not exposed by this llama.cpp adapter\"}",
@@ -215,6 +218,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"invalid JSON\"}",
@@ -271,6 +275,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 413,
     "body": "{\"error\":\"Request exceeds size limit\"}",
@@ -327,6 +332,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -383,6 +389,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -439,6 +446,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -495,6 +503,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -551,6 +560,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -607,6 +617,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -663,6 +674,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -719,6 +731,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Confirm that other clients and Diary background inference are stopped before reloading.\"}",
@@ -781,6 +794,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Inference is busy. Wait for requests to finish before changing native presets.\"}",
@@ -845,6 +859,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Inference is busy. Wait for requests to finish before changing native presets.\"}",
@@ -909,6 +924,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 403,
     "body": "{\"error\":\"The maintenance hold needs the gate's admin token.\"}",
@@ -967,6 +983,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 502,
     "body": "{\"error\":\"Internal error\"}",
@@ -1025,6 +1042,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -1090,6 +1108,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -1164,6 +1183,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"System routing model — not tuned\"}",
@@ -1225,6 +1245,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"System routing model — not tuned\"}",
@@ -1297,6 +1318,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"laya-qa\",\"revision\":\"831e35a9187ca3bdfe4621e2aa27b4a85f9faf6e1a64c5af3b2393a282b66a56\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -1363,6 +1385,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"System routing model — not tuned\"}",
@@ -1428,6 +1451,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -1494,6 +1518,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ctx-size must be a whole number (0 for the native context) (got \\\"lots\\\").\",\"code\":\"invalid_size\"}",
@@ -1555,6 +1580,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ctx-size must be a whole number (0 for the native context) (got \\\"-1\\\").\",\"code\":\"invalid_size\"}",
@@ -1616,6 +1642,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ctx-size must be a whole number (0 for the native context) (got \\\"1e400\\\").\",\"code\":\"invalid_size\"}",
@@ -1677,6 +1704,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"e32cbcc867e08736000ab530b0d2a0c76a22614b951ce1ae3c93a7478bfcc351\",\"exists\":true,\"options\":{\"ctx-size\":\"0\",\"temp\":\"0.7\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -1743,6 +1771,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"67350da13b1933966a9b69a03e9b7994bafee2bedcc23e5a308502a6c0894b07\",\"exists\":true,\"options\":{\"ctx-size\":\"+4096\",\"temp\":\"0.7\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -1809,6 +1838,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ctx-size must be a whole number (0 for the native context) (got \\\"9007199254740993\\\").\",\"code\":\"invalid_size\"}",
@@ -1870,6 +1900,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ctx-size must be a whole number (0 for the native context) (got \\\"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxé😀yyyyyyy\\\").\",\"code\":\"invalid_size\"}",
@@ -1931,6 +1962,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ubatch-size must be a positive whole number (got \\\"0\\\").\",\"code\":\"invalid_size\"}",
@@ -1992,6 +2024,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: batch-size must be a positive whole number (got \\\"-5\\\").\",\"code\":\"invalid_size\"}",
@@ -2053,6 +2086,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: batch-size must be a positive whole number (got \\\"big\\\").\",\"code\":\"invalid_size\"}",
@@ -2114,6 +2148,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Micro batch cannot exceed batch size\"}",
@@ -2176,6 +2211,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Micro batch cannot exceed batch size\"}",
@@ -2238,6 +2274,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Micro batch cannot exceed batch size\"}",
@@ -2300,6 +2337,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: ctx-size\"}",
@@ -2362,6 +2400,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: ubatch-size\"}",
@@ -2424,6 +2463,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Micro batch cannot exceed batch size\"}",
@@ -2486,6 +2526,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Micro batch cannot exceed batch size\"}",
@@ -2525,6 +2566,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 503,
     "body": "{\"error\":\"router down\"}",
@@ -2564,6 +2606,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 502,
     "body": "\"Bad Gateway\"",
@@ -2603,6 +2646,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"Internal error\"}",
@@ -2642,6 +2686,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"Internal error\"}",
@@ -2680,6 +2725,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"Internal error\"}",
@@ -2718,6 +2764,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"Internal error\"}",
@@ -2756,6 +2803,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"Internal error\"}",
@@ -2795,6 +2843,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.\"}",
@@ -2833,6 +2882,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"Internal error\"}",
@@ -2898,6 +2948,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 500,
     "body": "{\"error\":\"x\"}",
@@ -2949,6 +3000,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 404,
     "body": "{\"error\":\"Choose an installed model\"}",
@@ -3011,6 +3063,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.\"}",
@@ -3073,6 +3126,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.\"}",
@@ -3112,6 +3166,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.\"}",
@@ -3174,6 +3229,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: bogus\"}",
@@ -3236,6 +3292,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: ctx-size\"}",
@@ -3298,6 +3355,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: ctx-size\"}",
@@ -3360,6 +3418,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: 0\"}",
@@ -3422,6 +3481,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Preset options are required\"}",
@@ -3484,6 +3544,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Preset options are required\"}",
@@ -3546,6 +3607,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"No preset changes supplied\"}",
@@ -3619,6 +3681,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset model name\"}",
@@ -3681,6 +3744,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 404,
     "body": "{\"error\":\"Choose an installed model\"}",
@@ -3720,6 +3784,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset model name\"}",
@@ -3782,6 +3847,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Presets changed. Reload the profile before saving; your draft is retained.\"}",
@@ -3844,6 +3910,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Presets changed. Reload the profile before saving; your draft is retained.\"}",
@@ -3906,6 +3973,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Duplicate preset sections require operator repair\"}",
@@ -3968,6 +4036,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4034,6 +4103,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: c\"}",
@@ -4096,6 +4166,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"c2c80af79118bbb347db0ca512ac904d6cd1598f308b204c6fd77f328de70823\",\"exists\":true,\"options\":{},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4173,6 +4244,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"C\",\"revision\":\"518cb1a74d7b59f6524702877bf253c394e68088695124f6bce4fcc03b44552f\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4250,6 +4322,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"qa-embed\",\"revision\":\"59a22d7825d9718c96532eb5f4cef7f2a8eca6e23e266595a191a1407abbbb44\",\"exists\":true,\"options\":{\"ctx-size\":\"2048\",\"cache-ram\":\"0\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4316,6 +4389,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"c18f14c84085e44572211fd10dc1c5e9ab3b5ce28fdcdaaab0b79b162001cc02\",\"exists\":true,\"options\":{\"ctx-size\":\"4096\",\"cache-ram\":\"2048\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4382,6 +4456,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4479,6 +4554,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4548,6 +4624,7 @@
     "text": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
     "view": "[[\"A\",\"p-A\"],[\"B\",\"p-B\"]]"
    },
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4618,6 +4695,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 503,
     "body": "{\"error\":\"Reload failed or timed out. Previous preset file restored; check router health before retrying.\"}",
@@ -4688,6 +4766,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 503,
     "body": "{\"error\":\"Reload failed or timed out. Previous preset file restored; check router health before retrying.\"}",
@@ -4760,6 +4839,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 503,
     "body": "{\"error\":\"Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.\"}",
@@ -4826,6 +4906,7 @@
    "mount": null,
    "budget": null,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"A\",\"revision\":\"baf8c7c2122c42fe91e6f9eb217c31f216038634ccffa120815fd1a60a55973f\",\"exists\":true,\"options\":{\"ctx-size\":\"4096\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4883,6 +4964,7 @@
    },
    "budget": 64,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"Q\",\"revision\":\"fbea7c873ad8bf6dad21622661072646f96fda3ce5af977c161838223f4fea86\",\"exists\":true,\"options\":{\"cache-ram\":\"0\",\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -4941,6 +5023,7 @@
    },
    "budget": 3,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: with these settings Q needs about 9.64 GiB (weights 0, context 8.18 at 262,144 tokens, prompt cache 0, runtime 1), above the 3 GiB inference memory budget. Lower the context or prompt cache, or raise the budget.\",\"code\":\"inference_budget\",\"budgetGib\":3,\"estimate\":{\"ctx\":262144,\"modelGib\":0,\"kvGib\":8.18,\"extraGib\":1,\"cacheRamGib\":0,\"cacheRamUnbounded\":false,\"totalGib\":9.64,\"sizeable\":true}}",
@@ -4994,6 +5077,7 @@
    },
    "budget": 2.5,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: with these settings Q needs about 5.44 GiB (weights 0, context 4.18 at 131,072 tokens, prompt cache 0, runtime 1), above the 2.5 GiB inference memory budget. Lower the context or prompt cache, or raise the budget.\",\"code\":\"inference_budget\",\"budgetGib\":2.5,\"estimate\":{\"ctx\":131072,\"modelGib\":0,\"kvGib\":4.18,\"extraGib\":1,\"cacheRamGib\":0,\"cacheRamUnbounded\":false,\"totalGib\":5.44,\"sizeable\":true}}",
@@ -5047,6 +5131,7 @@
    },
    "budget": 3,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 400,
     "body": "{\"error\":\"Invalid preset option: ctx-size\"}",
@@ -5100,6 +5185,7 @@
    },
    "budget": 64,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"Q\",\"revision\":\"e4d6f1f13fa512d6083ca47580169226584f28d5ecc278dd356320c40e400ec8\",\"exists\":true,\"options\":{\"ctx-size\":\"4096\",\"cache-ram\":\"2048\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -5158,6 +5244,7 @@
    },
    "budget": 3,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: with these settings Q needs about 3.84 GiB (weights 0, context 2.18 at 65,536 tokens, prompt cache 0.5, runtime 1), above the 3 GiB inference memory budget. Lower the context or prompt cache, or raise the budget.\",\"code\":\"inference_budget\",\"budgetGib\":3,\"estimate\":{\"ctx\":65536,\"modelGib\":0,\"kvGib\":2.18,\"extraGib\":1,\"cacheRamGib\":0.5,\"cacheRamUnbounded\":false,\"totalGib\":3.84,\"sizeable\":true}}",
@@ -5211,6 +5298,7 @@
    },
    "budget": 3,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"Q\",\"revision\":\"72d600ce606cdfc9848c15e8e613d9225d5a39d2487d5b15098f50c6353c79b0\",\"exists\":true,\"options\":{\"cache-ram\":\"0\",\"ctx-size\":\"262144\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -5267,6 +5355,7 @@
    "mount": null,
    "budget": 3,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 200,
     "body": "{\"model\":\"Q\",\"revision\":\"e4c0cb6487218ebcfefe097913ea27f31953b25e2a52b09606b00484723027c0\",\"exists\":true,\"options\":{\"cache-ram\":\"0\",\"ctx-size\":\"262144\",\"cache-type-k\":\"f16\",\"cache-type-v\":\"f16\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
@@ -5324,6 +5413,7 @@
    },
    "budget": 3,
    "state": null,
+   "loader": null,
    "expect": {
     "status": 409,
     "body": "{\"error\":\"Not saved: ctx-size must be a whole number (0 for the native context) (got \\\"-2\\\").\",\"code\":\"invalid_size\"}",
@@ -5337,6 +5427,1241 @@
     "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = -2\ncache-ram = 0\n",
     "backups": [],
     "state": null
+   }
+  },
+  {
+   "name": "budget: no [*] cache-ram: the write adds the default cap",
+   "ini": "[Q]\nmodel = /models/q.gguf\nctx-size = 4096\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "Q",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-Q",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"Q\",\"baseRevision\":\"6fdb94a375ba74033ef72b3f5d2e07a18d453d235c8e3e5c84cd1491b56faf34\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"65536\"}}"
+   },
+   "roles": null,
+   "mount": {
+    "q.gguf": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000006000000000000007177656e333515000000000000007177656e33352e636f6e746578745f6c656e677468040000000000040017000000000000007177656e33352e656d62656464696e675f6c656e677468040000000010000012000000000000007177656e33352e626c6f636b5f636f756e7404000000200000001b000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e7404000000100000001e000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e745f6b7604000000040000001b000000000000007177656e33352e617474656e74696f6e2e6b65795f6c656e67746804000000000100001d000000000000007177656e33352e617474656e74696f6e2e76616c75655f6c656e67746804000000000100001e000000000000007177656e33352e66756c6c5f617474656e74696f6e5f696e74657276616c040000000400000015000000000000007177656e33352e73736d2e73746174655f73697a6504000000800000001700000000000000746f6b656e697a65722e636861745f74656d706c617465080000000e000000000000007b7b206d65737361676573207d7d"
+   },
+   "budget": 3,
+   "state": null,
+   "loader": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Not saved: with these settings Q needs about 4.34 GiB (weights 0, context 2.18 at 65,536 tokens, prompt cache 1, runtime 1), above the 3 GiB inference memory budget. Lower the context or prompt cache, or raise the budget.\",\"code\":\"inference_budget\",\"budgetGib\":3,\"estimate\":{\"ctx\":65536,\"modelGib\":0,\"kvGib\":2.18,\"extraGib\":1,\"cacheRamGib\":1,\"cacheRamUnbounded\":false,\"totalGib\":4.34,\"sizeable\":true}}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[Q]\nmodel = /models/q.gguf\nctx-size = 4096\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "budget: no [*] cache-ram, fits",
+   "ini": "[Q]\nmodel = /models/q.gguf\nctx-size = 4096\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "Q",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-Q",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"Q\",\"baseRevision\":\"6fdb94a375ba74033ef72b3f5d2e07a18d453d235c8e3e5c84cd1491b56faf34\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": {
+    "q.gguf": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000006000000000000007177656e333515000000000000007177656e33352e636f6e746578745f6c656e677468040000000000040017000000000000007177656e33352e656d62656464696e675f6c656e677468040000000010000012000000000000007177656e33352e626c6f636b5f636f756e7404000000200000001b000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e7404000000100000001e000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e745f6b7604000000040000001b000000000000007177656e33352e617474656e74696f6e2e6b65795f6c656e67746804000000000100001d000000000000007177656e33352e617474656e74696f6e2e76616c75655f6c656e67746804000000000100001e000000000000007177656e33352e66756c6c5f617474656e74696f6e5f696e74657276616c040000000400000015000000000000007177656e33352e73736d2e73746174655f73697a6504000000800000001700000000000000746f6b656e697a65722e636861745f74656d706c617465080000000e000000000000007b7b206d65737361676573207d7d"
+   },
+   "budget": 64,
+   "state": null,
+   "loader": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"model\":\"Q\",\"revision\":\"f93d633a96a0e7354dd30fba4252c7586c5d7a3210b3d54a489a384d7077e1b9\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\",\"cache-ram\":\"1024\"},\"defaults\":{},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[Q]\nmodel = /models/q.gguf\n\nctx-size = 8192\ncache-ram = 1024\n",
+    "backups": [
+     "models.ini.noevia-backup-6fdb94a375ba74033ef72b3f5d2e07a18d453d235c8e3e5c84cd1491b56faf34"
+    ],
+    "state": "{\"text\":\"[Q]\\nmodel = /models/q.gguf\\n\\nctx-size = 8192\\ncache-ram = 1024\\n\",\"view\":\"[[\\\"Q\\\",\\\"p-Q\\\"]]\"}"
+   }
+  },
+  {
+   "name": "budget: an empty section cache-ram asks whether the cache is free",
+   "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram =\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "Q",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-Q",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"Q\",\"baseRevision\":\"109f280e1ab9b412ee12d640e3e32d83917cdff1e7422b3b55e3871d0c133751\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"65536\"}}"
+   },
+   "roles": null,
+   "mount": {
+    "q.gguf": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000006000000000000007177656e333515000000000000007177656e33352e636f6e746578745f6c656e677468040000000000040017000000000000007177656e33352e656d62656464696e675f6c656e677468040000000010000012000000000000007177656e33352e626c6f636b5f636f756e7404000000200000001b000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e7404000000100000001e000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e745f6b7604000000040000001b000000000000007177656e33352e617474656e74696f6e2e6b65795f6c656e67746804000000000100001d000000000000007177656e33352e617474656e74696f6e2e76616c75655f6c656e67746804000000000100001e000000000000007177656e33352e66756c6c5f617474656e74696f6e5f696e74657276616c040000000400000015000000000000007177656e33352e73736d2e73746174655f73697a6504000000800000001700000000000000746f6b656e697a65722e636861745f74656d706c617465080000000e000000000000007b7b206d65737361676573207d7d"
+   },
+   "budget": 3,
+   "state": null,
+   "loader": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Not saved: with these settings Q needs about 4.34 GiB (weights 0, context 2.18 at 65,536 tokens, prompt cache 1, runtime 1), above the 3 GiB inference memory budget. Lower the context or prompt cache, or raise the budget.\",\"code\":\"inference_budget\",\"budgetGib\":3,\"estimate\":{\"ctx\":65536,\"modelGib\":0,\"kvGib\":2.18,\"extraGib\":1,\"cacheRamGib\":1,\"cacheRamUnbounded\":false,\"totalGib\":4.34,\"sizeable\":true}}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram =\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "budget: an empty section cache-ram, fits",
+   "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram =\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "Q",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-Q",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"Q\",\"baseRevision\":\"109f280e1ab9b412ee12d640e3e32d83917cdff1e7422b3b55e3871d0c133751\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": {
+    "q.gguf": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000006000000000000007177656e333515000000000000007177656e33352e636f6e746578745f6c656e677468040000000000040017000000000000007177656e33352e656d62656464696e675f6c656e677468040000000010000012000000000000007177656e33352e626c6f636b5f636f756e7404000000200000001b000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e7404000000100000001e000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e745f6b7604000000040000001b000000000000007177656e33352e617474656e74696f6e2e6b65795f6c656e67746804000000000100001d000000000000007177656e33352e617474656e74696f6e2e76616c75655f6c656e67746804000000000100001e000000000000007177656e33352e66756c6c5f617474656e74696f6e5f696e74657276616c040000000400000015000000000000007177656e33352e73736d2e73746174655f73697a6504000000800000001700000000000000746f6b656e697a65722e636861745f74656d706c617465080000000e000000000000007b7b206d65737361676573207d7d"
+   },
+   "budget": 64,
+   "state": null,
+   "loader": null,
+   "expect": {
+    "status": 200,
+    "body": "{\"model\":\"Q\",\"revision\":\"c32c41e758395264ca24b6bdc4db1e87ffe2ec0386807236e944986c73fa3c11\",\"exists\":true,\"options\":{\"cache-ram\":\"\",\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models hold",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\ncache-ram =\n\nctx-size = 8192\n",
+    "backups": [
+     "models.ini.noevia-backup-109f280e1ab9b412ee12d640e3e32d83917cdff1e7422b3b55e3871d0c133751"
+    ],
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[Q]\\nmodel = /models/q.gguf\\ncache-ram =\\n\\nctx-size = 8192\\n\",\"view\":\"[[\\\"Q\\\",\\\"p-Q\\\"]]\"}"
+   }
+  },
+  {
+   "name": "budget: the estimator refuses the model (load footprint)",
+   "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram = 0\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "Q",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-Q",
+         "args": [
+          "--model",
+          "/models/q.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"Q\",\"baseRevision\":\"198616e4bdf2ec7bc2707eb9dea4d79cd9912b064efdcac087179dee9ba15792\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": {
+    "q.gguf": "474755460300000000000000000000000b00000000000000140000000000000067656e6572616c2e6172636869746563747572650800000006000000000000007177656e333515000000000000007177656e33352e636f6e746578745f6c656e677468040000000000040017000000000000007177656e33352e656d62656464696e675f6c656e677468040000000010000012000000000000007177656e33352e626c6f636b5f636f756e7404000000200000001b000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e7404000000100000001e000000000000007177656e33352e617474656e74696f6e2e686561645f636f756e745f6b76090000000800000020000000000000002a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666662a000000000000003078666666666666666666666666666666666666666666666666666666666666666666666666666666661b000000000000007177656e33352e617474656e74696f6e2e6b65795f6c656e67746804000000000100001d000000000000007177656e33352e617474656e74696f6e2e76616c75655f6c656e67746804000000000100001e000000000000007177656e33352e66756c6c5f617474656e74696f6e5f696e74657276616c040000000400000015000000000000007177656e33352e73736d2e73746174655f73697a6504000000800000001700000000000000746f6b656e697a65722e636861745f74656d706c617465080000000e000000000000007b7b206d65737361676573207d7d"
+   },
+   "budget": 64,
+   "state": null,
+   "loader": null,
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Not saved: the memory estimate (load footprint) could not be confirmed by the Rust sizing port, and the JS estimate is not the larger one.\",\"code\":\"autoconfig_impl\",\"budgetGib\":64}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram = 0\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: saved",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "status": 200,
+     "text": "{\"ok\":true}"
+    }
+   ],
+   "expect": {
+    "status": 200,
+    "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\n\nctx-size = 8192\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "loader: an uncertain write that landed is reconciled",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "status": 500,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 200,
+    "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\n\nctx-size = 8192\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "loader: the connection drops after the write",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "drop": true
+    }
+   ],
+   "expect": {
+    "status": 200,
+    "body": "{\"model\":\"A\",\"revision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"exists\":true,\"options\":{\"ctx-size\":\"8192\"},\"defaults\":{\"cache-ram\":\"512\"},\"fields\":[\"ctx-size\",\"parallel\",\"n-gpu-layers\",\"cache-type-k\",\"cache-type-v\",\"flash-attn\",\"batch-size\",\"ubatch-size\",\"cache-ram\",\"image-max-tokens\",\"spec-type\",\"spec-draft-n-max\",\"spec-draft-p-min\",\"temp\",\"top-p\",\"top-k\",\"min-p\",\"repeat-penalty\"],\"applied\":true,\"qualification\":\"unqualified; load and test this profile before relying on its capacity\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "GET /models hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\n\nctx-size = 8192\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\",\"view\":\"[[\\\"A\\\",\\\"p-A\\\"],[\\\"B\\\",\\\"p-B\\\"]]\"}"
+   }
+  },
+  {
+   "name": "loader: an uncertain write that did not land",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": false,
+     "status": 502,
+     "text": "Bad Gateway"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Model Loader did not confirm the save, and models.ini still holds the previous settings, so the preset was not applied. Check that the model-loader service is running, then retry.\",\"retryable\":true}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: someone else wrote meanwhile",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "other",
+     "status": 500,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Model Loader did not confirm the save, and models.ini now holds changes from somewhere else. They were left untouched; reload the presets before retrying.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n; written elsewhere\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: a 409 at commit",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": false,
+     "status": 409,
+     "text": "{\"error\":\"stale\"}"
+    }
+   ],
+   "expect": {
+    "status": 409,
+    "body": "{\"error\":\"Presets changed while applying. Reload before retrying.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: the token is rejected",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": false,
+     "status": 401,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Model Loader rejected the token; check MODEL_LOADER_TOKEN. Nothing was changed.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: an old sidecar without the endpoint",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": false,
+     "status": 404,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Model Loader could not save models.ini; nothing was changed. Check that the model-loader service is running and up to date, then retry.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: the text is rejected",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ]
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": false,
+     "status": 400,
+     "text": "{\"detail\":\"line 3: bad key\"}"
+    }
+   ],
+   "expect": {
+    "status": 400,
+    "body": "{\"error\":\"Model Loader rejected the preset file: line 3: bad key\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": null
+   }
+  },
+  {
+   "name": "loader: the reload fails, restored",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "reload": {
+     "status": 500,
+     "text": "{\"error\":\"x\"}"
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "status": 200,
+     "text": "{\"ok\":true}"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Reload failed or timed out. Previous preset file restored; check router health before retrying.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{}"
+   }
+  },
+  {
+   "name": "loader: the reload fails, the restore did not land (RELOAD_STUCK)",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "reload": {
+     "status": 500,
+     "text": "{\"error\":\"x\"}"
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "status": 200,
+     "text": "{\"ok\":true}"
+    },
+    {
+     "write": false,
+     "status": 500,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Reload failed or timed out, and the previous preset file could not be restored: models.ini still holds the new settings. Check router and Model Loader health before retrying.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\n\nctx-size = 8192\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{}"
+   }
+  },
+  {
+   "name": "loader: the reload fails, the restore is refused (RELOAD_UNCONFIRMED)",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "reload": {
+     "status": 500,
+     "text": "{\"error\":\"x\"}"
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "status": 200,
+     "text": "{\"ok\":true}"
+    },
+    {
+     "write": false,
+     "status": 401,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Reload failed or timed out, and restoring the previous preset file could not be confirmed. Stop inference and inspect native presets before retrying.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\n\nctx-size = 8192\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{}"
+   }
+  },
+  {
+   "name": "loader: the reload fails, the restore conflicts",
+   "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n",
+   "kind": "llamacpp",
+   "presets": true,
+   "gateToken": true,
+   "gate": "grant",
+   "router": {
+    "listings": [
+     {
+      "status": 200,
+      "rows": [
+       {
+        "id": "A",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-A",
+         "args": [
+          "--model",
+          "/models/A.gguf"
+         ]
+        }
+       },
+       {
+        "id": "B",
+        "status": {
+         "value": "unloaded",
+         "preset": "p-B",
+         "args": [
+          "--model",
+          "/models/B.gguf"
+         ]
+        }
+       }
+      ]
+     }
+    ],
+    "reload": {
+     "status": 500,
+     "text": "{\"error\":\"x\"}"
+    }
+   },
+   "request": {
+    "role": "admin",
+    "body": "{\"model\":\"A\",\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"confirmReload\":true,\"options\":{\"ctx-size\":\"8192\"}}"
+   },
+   "roles": null,
+   "mount": null,
+   "budget": null,
+   "state": null,
+   "loader": [
+    {
+     "write": "body",
+     "status": 200,
+     "text": "{\"ok\":true}"
+    },
+    {
+     "write": false,
+     "status": 409,
+     "text": "{}"
+    }
+   ],
+   "expect": {
+    "status": 503,
+    "body": "{\"error\":\"Reload outcome is uncertain and the file changed again. Stop inference and inspect native presets before retrying.\"}",
+    "router": [
+     "GET /models hold",
+     "GET /models hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"c04bbbe9e992693093a924e52bad8111b927416db2347b1ec7e6aa3acb876898\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\n\\nctx-size = 8192\\n[B]\\nmodel = /models/b.gguf\\n\"}",
+     "GET /models?reload=1 hold",
+     "PUT /api/v1/models-ini {\"baseRevision\":\"7926606513f5af3d14aaf505670b7b59f5ff4c507b396f5c24c5ff8d19cde9cb\",\"text\":\"[*]\\ncache-ram = 512\\n\\n[A]\\nmodel = /models/a.gguf\\nctx-size = 4096\\n\\n[B]\\nmodel = /models/b.gguf\\n\"}"
+    ],
+    "gate": [
+     "POST /gate/v1/maintenance {\"reason\":\"\",\"wait_ms\":0}",
+     "DELETE /gate/v1/maintenance/T"
+    ],
+    "ini": "[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\n\nctx-size = 8192\n[B]\nmodel = /models/b.gguf\n",
+    "backups": [],
+    "state": "{}"
    }
   }
  ]

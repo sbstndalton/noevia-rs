@@ -24,6 +24,7 @@ const { createLlamaCppManager } = server('llamacpp-manager.cjs');
 const { createModelRoutes } = server('routes/models.cjs');
 const { fetchJson, readJson, errorResponse } = server('http.cjs');
 const { engineView } = server('preset-reload.cjs');
+const { createModelsIniWriter } = server('models-ini-writer.cjs');
 
 const sha = (text) => crypto.createHash('sha256').update(text).digest('hex');
 const INI = '[*]\ncache-ram = 512\n\n[A]\nmodel = /models/a.gguf\nctx-size = 4096\n\n[B]\nmodel = /models/b.gguf\n';
@@ -39,17 +40,26 @@ function gguf(kv) {
   const u32 = (n) => { const b = Buffer.alloc(4); b.writeUInt32LE(n); return b; };
   const u64 = (n) => { const b = Buffer.alloc(8); b.writeBigUInt64LE(BigInt(n)); return b; };
   const str = (s) => { const b = Buffer.from(s); return Buffer.concat([u64(b.length), b]); };
-  const val = (type, v) => (type === 4 ? u32(v) : type === 8 ? str(v) : (() => { throw Error('type'); })());
+  const one = (type, v) => (type === 4 ? u32(v) : type === 7 ? Buffer.from([v ? 1 : 0]) : type === 8 ? str(v) : (() => { throw Error('type'); })());
+  // 9: an array, [itemType, items].
+  const val = (type, v) => (type === 9 ? Buffer.concat([u32(v[0]), u64(v[1].length), ...v[1].map((x) => one(v[0], x))]) : one(type, v));
   return Buffer.concat([Buffer.from('GGUF'), u32(3), u64(0), u64(Object.keys(kv).length), ...Object.entries(kv).map(([k, [t, v]]) => Buffer.concat([str(k), u32(t), val(t, v)]))]);
 }
 const QA_HEADER = { 'general.architecture': [8, 'qwen35'], 'qwen35.context_length': [4, 262144], 'qwen35.embedding_length': [4, 4096], 'qwen35.block_count': [4, 32], 'qwen35.attention.head_count': [4, 16], 'qwen35.attention.head_count_kv': [4, 4], 'qwen35.attention.key_length': [4, 256], 'qwen35.attention.value_length': [4, 256], 'qwen35.full_attention_interval': [4, 4], 'qwen35.ssm.state_size': [4, 128], 'tokenizer.chat_template': [8, '{{ messages }}'] };
 const MOUNT = { 'q.gguf': gguf(QA_HEADER).toString('hex') };
+// Per-layer KV head counts the strict estimator cannot read as numbers exactly (a hex text past
+// 2^128): it refuses the estimate (the JS's AutoconfigImplError).
+const WIDE_HEADER = { ...QA_HEADER, 'qwen35.attention.head_count_kv': [9, [8, Array(32).fill('0x' + 'f'.repeat(40))]] };
+const WIDE_MOUNT = { 'q.gguf': gguf(WIDE_HEADER).toString('hex') };
 const INI_Q = '[*]\ncache-ram = 512\n\n[Q]\nmodel = /models/q.gguf\nctx-size = 4096\ncache-ram = 0\n';
 const Q_LISTED = { listings: [listing([row('Q', 'unloaded', '/models/q.gguf')])] };
 const saveQ = (options) => JSON.stringify({ model: 'Q', baseRevision: '$REV', confirmReload: true, options });
 
 const S = [];
-const add = (name, c) => S.push({ name, ini: INI, kind: 'llamacpp', presets: true, gateToken: true, gate: 'grant', router: LISTED, request: { role: 'admin', body: save({ 'ctx-size': '8192' }) }, roles: null, mount: null, budget: null, state: null, ...c });
+const add = (name, c) => S.push({ name, ini: INI, kind: 'llamacpp', presets: true, gateToken: true, gate: 'grant', router: LISTED, request: { role: 'admin', body: save({ 'ctx-size': '8192' }) }, roles: null, mount: null, budget: null, state: null, loader: null, ...c });
+// The model-loader's answers to its PUTs in turn (the last repeats): `write` 'body' applies the
+// sent text first, 'other' writes someone else's; `drop` closes the connection after that.
+const LOADED_OK = { write: 'body', status: 200, text: '{"ok":true}' };
 
 // Who may save, and what the route reads.
 add('a member is refused', { request: { role: 'member', body: save({ 'ctx-size': '8192' }) } });
@@ -161,6 +171,28 @@ add('budget: the model file is not on the mount', { ini: INI_Q.replace('/models/
 add('budget: no mount means no estimate', { ini: INI_Q, mount: null, budget: 3, router: Q_LISTED, request: { role: 'admin', body: saveQ({ 'ctx-size': '262144', 'cache-type-k': 'f16', 'cache-type-v': 'f16' }) } });
 add('budget: a size knob is refused before the estimate', { ini: INI_Q.replace('ctx-size = 4096', 'ctx-size = -2'), mount: MOUNT, budget: 3, router: Q_LISTED, request: { role: 'admin', body: saveQ({ temp: '0.7' }) } });
 
+add('budget: no [*] cache-ram: the write adds the default cap', { ini: '[Q]\nmodel = /models/q.gguf\nctx-size = 4096\n', mount: MOUNT, budget: 3, router: Q_LISTED, request: { role: 'admin', body: saveQ({ 'ctx-size': '65536' }) } });
+add('budget: no [*] cache-ram, fits', { ini: '[Q]\nmodel = /models/q.gguf\nctx-size = 4096\n', mount: MOUNT, budget: 64, router: Q_LISTED, request: { role: 'admin', body: saveQ({ 'ctx-size': '8192' }) } });
+add('budget: an empty section cache-ram asks whether the cache is free', { ini: INI_Q.replace('cache-ram = 0\n', 'cache-ram =\n'), mount: MOUNT, budget: 3, router: Q_LISTED, request: { role: 'admin', body: saveQ({ 'ctx-size': '65536' }) } });
+add('budget: an empty section cache-ram, fits', { ini: INI_Q.replace('cache-ram = 0\n', 'cache-ram =\n'), mount: MOUNT, budget: 64, router: Q_LISTED, request: { role: 'admin', body: saveQ({ 'ctx-size': '8192' }) } });
+add('budget: the estimator refuses the model (load footprint)', { ini: INI_Q, mount: WIDE_MOUNT, budget: 64, router: Q_LISTED, request: { role: 'admin', body: saveQ({ 'ctx-size': '8192' }) } });
+
+// The model-loader writer (MODELS_INI_WRITER=model-loader).
+add('loader: saved', { loader: [LOADED_OK] });
+add('loader: an uncertain write that landed is reconciled', { loader: [{ write: 'body', status: 500, text: '{}' }] });
+add('loader: the connection drops after the write', { loader: [{ write: 'body', drop: true }] });
+add('loader: an uncertain write that did not land', { loader: [{ write: false, status: 502, text: 'Bad Gateway' }] });
+add('loader: someone else wrote meanwhile', { loader: [{ write: 'other', status: 500, text: '{}' }] });
+add('loader: a 409 at commit', { loader: [{ write: false, status: 409, text: '{"error":"stale"}' }] });
+add('loader: the token is rejected', { loader: [{ write: false, status: 401, text: '{}' }] });
+add('loader: an old sidecar without the endpoint', { loader: [{ write: false, status: 404, text: '{}' }] });
+add('loader: the text is rejected', { loader: [{ write: false, status: 400, text: '{"detail":"line 3: bad key"}' }] });
+const FAILED_RELOAD = { ...LISTED, reload: { status: 500, text: '{"error":"x"}' } };
+add('loader: the reload fails, restored', { router: FAILED_RELOAD, loader: [LOADED_OK] });
+add('loader: the reload fails, the restore did not land (RELOAD_STUCK)', { router: FAILED_RELOAD, loader: [LOADED_OK, { write: false, status: 500, text: '{}' }] });
+add('loader: the reload fails, the restore is refused (RELOAD_UNCONFIRMED)', { router: FAILED_RELOAD, loader: [LOADED_OK, { write: false, status: 401, text: '{}' }] });
+add('loader: the reload fails, the restore conflicts', { router: FAILED_RELOAD, loader: [LOADED_OK, { write: false, status: 409, text: '{}' }] });
+
 async function runOne(c) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'preset-rec-'));
   const iniPath = path.join(dir, 'models.ini');
@@ -174,7 +206,7 @@ async function runOne(c) {
   const stateFile = path.join(dir, 'native-preset-reload-x.json');
   if (c.state !== null) fs.writeFileSync(stateFile, typeof c.state === 'string' ? c.state : JSON.stringify(c.state));
   const log = { router: [], gate: [] };
-  let listingCalls = 0;
+  let listingCalls = 0, loaderCalls = 0;
   const r = c.router || {};
   const srv = http.createServer((req, res) => {
     let body = '';
@@ -204,6 +236,14 @@ async function runOne(c) {
         if (l.drop) { req.socket.destroy(); return; }
         return send(l.status, l.text !== undefined ? l.text : JSON.stringify({ data: l.rows }));
       }
+      if (req.method === 'PUT' && url === '/api/v1/models-ini') {
+        log.router.push(`PUT /api/v1/models-ini ${body}`);
+        const l = c.loader[Math.min(loaderCalls++, c.loader.length - 1)];
+        if (l.write === 'body') fs.writeFileSync(iniPath, JSON.parse(body).text);
+        if (l.write === 'other') fs.writeFileSync(iniPath, c.ini + '; written elsewhere\n');
+        if (l.drop) { req.socket.destroy(); return; }
+        return send(l.status, l.text);
+      }
       if (req.method === 'GET' && url === '/models?reload=1') {
         log.router.push(`GET /models?reload=1 ${hold}`);
         if (r.iniAfterReload) fs.writeFileSync(iniPath, r.iniAfterReload);
@@ -224,6 +264,7 @@ async function runOne(c) {
       gateAdminToken: c.gateToken ? 'synthetic-admin-token' : null,
       autoconfig: { modelsPath: c.mount ? models : '', cacheRam: { capMib: 1024, hardMaxMib: 2048 } },
       inferenceBudget: { budgetGib: () => (c.budget === null ? 0 : c.budget) },
+      presetWriter: c.loader ? createModelsIniWriter({ mode: 'model-loader', url: `http://127.0.0.1:${port}`, token: null, fetchJson }) : null,
     })
     : { enabled: false, kind: 'none', capabilities: {} };
   const sent = [];
