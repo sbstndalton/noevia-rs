@@ -1049,9 +1049,11 @@ fn file_env_fail(f: &files::Failure) -> Fail {
 }
 
 impl Account {
-    /// Runs `f` with the report writer's environment, on the blocking pool.
+    /// Runs `f` with the report writer's environment, on the blocking pool. `catalogue`: whether `f`
+    /// reads the toolbox catalogue (a report write; a target lookup does not).
     async fn with_files<T: Send + 'static>(
         &self,
+        catalogue: bool,
         f: impl FnOnce(&files::Env<'_>) -> Result<T, files::Failure> + Send + 'static,
     ) -> Result<T, files::Failure> {
         let (app, authn, data_dir, user) = (
@@ -1060,8 +1062,14 @@ impl Account {
             self.data_dir.clone(),
             self.user.clone(),
         );
-        // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file).
-        let catalogue_source = crate::project_catalogue::Source::get(&app).await;
+        // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file), waited for
+        // as a create waits.
+        let catalogue_source = if catalogue {
+            crate::project_catalogue::Source::waiting(&app, std::time::Duration::from_secs(10))
+                .await
+        } else {
+            crate::project_catalogue::Source::unread()
+        };
         let done = tokio::task::spawn_blocking(move || {
             let Some(engine) = app.extraction.clone() else {
                 return Err(files::Failure {
@@ -1158,7 +1166,7 @@ impl Account {
                 };
                 let (p, n) = (project.to_owned(), name.clone());
                 let target = self
-                    .with_files(move |env| files::target(env, &p, &n))
+                    .with_files(false, move |env| files::target(env, &p, &n))
                     .await
                     .map_err(|f| file_env_fail(&f))?;
                 if Some(target.as_str()) != pending.get("target").and_then(Value::as_str) {
@@ -1166,7 +1174,7 @@ impl Account {
                 }
                 let (p, n, text) = (project.to_owned(), name.clone(), file.text.clone());
                 let wrote = self
-                    .with_files(move |env| files::write(env, &p, &n, &text, &target))
+                    .with_files(true, move |env| files::write(env, &p, &n, &text, &target))
                     .await;
                 if wrote.is_err() {
                     return Err(fail(500, format!("The save of \"{name}\" remains uncertain. Sync this project's Sources and review that file before trying again.")));
@@ -1240,7 +1248,7 @@ impl Account {
             let (hash, bytes) = (file.hash(), file.bytes());
             let (p, n) = (project.to_owned(), file.name.clone());
             let target = self
-                .with_files(move |env| files::target(env, &p, &n))
+                .with_files(false, move |env| files::target(env, &p, &n))
                 .await
                 .map_err(|f| file_env_fail(&f))?;
             let (p, i, r, n, h, t) = (
@@ -1269,7 +1277,7 @@ impl Account {
             .await?;
             let (p, n, text) = (project.to_owned(), file.name.clone(), file.text.clone());
             let wrote = self
-                .with_files(move |env| files::write(env, &p, &n, &text, &target))
+                .with_files(true, move |env| files::write(env, &p, &n, &text, &target))
                 .await;
             if let Err(f) = wrote {
                 if f.definitely_not_written {

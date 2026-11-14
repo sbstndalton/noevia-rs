@@ -14,7 +14,16 @@
 //! published yet, discovery has not answered), the native catalogue is `None`, which each reader
 //! answers as it answers a missing file today (a create waits up to its 10 s, then 503 "has not
 //! published"). The file is never consulted while the switch is on, so a stale file cannot hide a
-//! fault of the native composition.
+//! fault of the native composition. The readers that write a project (create, import, uploads, sync,
+//! a research report) wait up to 10 s for it, as a create waited for the file: a first upload made
+//! without a catalogue would never get the project documents default. A request that does not read
+//! the catalogue (a configuration patch without `icon`/`toolboxes`, a report's target lookup) does
+//! not compose it ([`Source::unread`]).
+//!
+//! Composing touches core's demand marker (`snapshot-demand`), as every reader of the chat facts in
+//! this process does: core then publishes its snapshots (chat facts, RAG status, auto roles) for the
+//! next minute. A background job or report save can therefore wake that publishing; it is the same
+//! cost core's own per-request catalogue publish had, and it ends with the demand.
 //!
 //! The icon ids are `Object.keys(contracts/project-icons.json)`: the file is core's, copied byte for
 //! byte into noevia-rs `contracts/project-icons.json` (its sha256 is checked against the recording).
@@ -84,20 +93,33 @@ impl Source {
     }
 
     /// [`Source::get`], waiting up to `wait` for a native catalogue that is not ready yet (what
-    /// [`Catalogue::read_waiting`] does for the file).
+    /// [`Catalogue::read_waiting`] does for the file). Each attempt is cut at the deadline, so the wait
+    /// never runs past `wait` by more than a poll.
     pub async fn waiting(app: &Arc<App>, wait: Duration) -> Source {
         if !native() {
             return Source::File;
         }
         let until = Instant::now() + wait;
         loop {
-            if let Some(c) = compose(app).await {
+            let left = until.saturating_duration_since(Instant::now());
+            if let Ok(Some(c)) = tokio::time::timeout(left, compose(app)).await {
                 return Source::Native(Some(c));
             }
-            if Instant::now() >= until {
+            let left = until.saturating_duration_since(Instant::now());
+            if left.is_zero() {
                 return Source::Native(None);
             }
-            tokio::time::sleep(Duration::from_millis(200)).await;
+            tokio::time::sleep(left.min(Duration::from_millis(200))).await;
+        }
+    }
+
+    /// The source for a request that does not read the catalogue: the file as today (switch unset;
+    /// nothing changes), nothing composed (switch on).
+    pub fn unread() -> Source {
+        if native() {
+            Source::Native(None)
+        } else {
+            Source::File
         }
     }
 

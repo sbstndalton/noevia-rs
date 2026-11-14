@@ -123,8 +123,13 @@ async fn run_config(work: Config) -> Response<Body> {
         _ => None,
     };
     let roles = crate::model_kind::roles_beside(app.config.sizing.presets_path());
-    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file).
-    let catalogue_source = crate::project_catalogue::Source::get(&app).await;
+    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file); composed only
+    // for a patch that reads it (icon, toolboxes).
+    let catalogue_source = if over || !server_projects::config::reads_catalogue(&bytes) {
+        crate::project_catalogue::Source::unread()
+    } else {
+        crate::project_catalogue::Source::get(&app).await
+    };
     let done = tokio::task::spawn_blocking(move || {
         if let Err(response) = regate.again(&data_dir, &user) {
             return *response;
