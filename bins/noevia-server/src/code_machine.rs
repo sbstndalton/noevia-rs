@@ -295,7 +295,8 @@ pub fn model_ids(body: &JValue) -> Vec<String> {
             }
         };
         if let Some(id) = id {
-            let ok = !id.trim().is_empty()
+            // JS `trim()`: its white space, not Rust's (U+FEFF is space to JS, U+0085 is not).
+            let ok = !chat_turn::js::trim(&id).is_empty()
                 && wtf16::len(&id) <= 200
                 && !id.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7f)
                 && !out.contains(&id);
@@ -316,22 +317,12 @@ pub fn props_context(body: &JValue) -> Option<f64> {
     (n.fract() == 0.0 && (CONTEXT_MIN..=CONTEXT_MAX).contains(&n)).then_some(n)
 }
 
-/// JS `Number(v)` for the values a JSON body can hold (`None`: NaN).
+/// JS `Number(v)` for the values a JSON body can hold (`None`: NaN): JS white space trimmed, the
+/// 0x/0o/0b forms and a one-element array as JS reads them (council p11: before, `"0x4000"` and
+/// `[16384]` were no context here and 16,384 in Node).
 fn js_number(v: &JValue) -> Option<f64> {
-    match v {
-        JValue::Num(n) => Some(*n),
-        JValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
-        JValue::Null => Some(0.0),
-        JValue::Str(s) => {
-            let t = s.trim();
-            if t.is_empty() {
-                Some(0.0)
-            } else {
-                t.parse::<f64>().ok().filter(|n| n.is_finite())
-            }
-        }
-        _ => None,
-    }
+    let n = chat_turn::js::to_number(v);
+    (!n.is_nan()).then_some(n)
 }
 
 /// What the relay needs of the machines, as chat-machines.cjs answers it.
@@ -951,9 +942,9 @@ pub fn front_machine_of(facts: &JValue) -> Option<(String, machines::Target)> {
 
 /// The role engine's `fetch` failure tags (its error is text only): [`FrontMachines::role_connect_error`]
 /// reads them back as Node's `connectError` reasons.
-const TAG_ADDRESS: &str = "machine: not on this network";
-const TAG_REDIRECT: &str = "machine: redirect";
-const TAG_TIMEOUT: &str = "machine: timeout";
+pub const TAG_ADDRESS: &str = "machine: not on this network";
+pub const TAG_REDIRECT: &str = "machine: redirect";
+pub const TAG_TIMEOUT: &str = "machine: timeout";
 
 /// undici's default `headersTimeout` (Node's `fetch`): a role call waits at most this long for the
 /// machine's answer headers, also when the request names no time limit of its own (the Planner and
@@ -1295,6 +1286,38 @@ mod tests {
             200
         );
         assert!(ids("null").is_empty());
+    }
+
+    /// Council p11: JS `Number()` and `trim()` where Rust's differ (the recorded oracle,
+    /// tools/record-relay.cjs `propsContext` / `modelIds`, pins the same cases against Node).
+    #[test]
+    fn props_context_and_model_ids_read_as_javascript_does() {
+        let ctx = |t: &str| props_context(&wtf16::parse(t).unwrap());
+        for (n_ctx, want) in [
+            (r#""0x4000""#, Some(16384.0)),
+            (r#""0b100000000000""#, Some(2048.0)),
+            (r#""0o20000""#, Some(8192.0)),
+            (r#"[16384]"#, Some(16384.0)),
+            (r#"["16384"]"#, Some(16384.0)),
+            (r#"[16384,1]"#, None),
+            (r#""8e3""#, Some(8000.0)),
+            (r#""+4096""#, Some(4096.0)),
+            (r#""\u00a04096\ufeff""#, Some(4096.0)),
+            (r#""4_096""#, None),
+            (r#""Infinity""#, None),
+            (r#""inf""#, None),
+            (r#"true"#, None),
+            (r#"{"v":1}"#, None),
+        ] {
+            let body = format!(r#"{{"default_generation_settings":{{"n_ctx":{n_ctx}}}}}"#);
+            assert_eq!(ctx(&body), want, "{n_ctx}");
+        }
+        let ids = |t: &str| model_ids(&wtf16::parse(t).unwrap());
+        // U+FEFF alone is blank to JS; U+0085 is not JS white space (and not a control below 0x20).
+        assert_eq!(
+            ids(r#"{"data":[{"id":"\ufeff"},{"id":"\u00a0"},{"id":"\u0085"},{"id":"qa"}]}"#),
+            ["\u{85}", "qa"]
+        );
     }
 
     #[test]
