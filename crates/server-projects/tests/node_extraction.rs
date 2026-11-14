@@ -7,8 +7,9 @@
 //!
 //! The scenarios marked `parity: false` are the ones core reads with its pdf.js reader; Rust has no
 //! in-process reader, so its documented answer is asserted there instead (extract.rs module docs).
-//! [`KNOWN`] lists the scenarios whose replay differs from core today, each with the reason; the test
-//! fails when any other scenario differs, and when a known one starts to match (so the list is kept).
+//! [`KNOWN`] lists the (scenario, field) pairs whose replay differs from core today, each with the
+//! reason; every other field of those scenarios is still compared. The test fails when anything else
+//! differs, and when a known pair starts to match (so the list is kept).
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -28,19 +29,39 @@ use std::time::Duration;
 const FIXTURE: &str = include_str!("fixtures/node-extraction.v1.json");
 const PROJECT: &str = "qa-proj-r13-extraction";
 
-/// Scenarios whose replay differs from core, and why (named differences; see noevia issues filed for them).
-const KNOWN: &[(&str, &str)] = &[
+/// (scenario, field, reason): the one field of that scenario that may differ from core. Every other
+/// field of the scenario is still compared.
+///
+/// Also a difference, recorded as `ingest-reopen-changes-nothing`: core's ingest tells a reopen apart by
+/// reference (`completed !== out`, document-sources.cjs), so a reopen pass whose output equals its input
+/// is rewritten and reported 'reopened' by core, while document_ingest.rs compares by value and reports
+/// 'unchanged' without a write. The stored file is the same bytes either way; only the outcome counter of
+/// the sync's log line differs.
+const KNOWN: &[(&str, &str, &str)] = &[
     (
         "ocr-reply-number-as-text",
+        "result",
         "core matches an OCR reply page by `r.number === p.number` (documents.cjs \
          retryIncompletePages), so a page numbered \"2\" is 'OCR returned nothing'; \
          extract.rs apply_retry coerces with Number() and recovers it",
     ),
     (
         "ingest-new-figures",
+        "resultFile",
+        "two figures of one reply with the same index: core gives each figure its own hash; \
+         extract.rs FigureBytes is keyed by index, so both get the last one's hash",
+    ),
+    (
+        "ingest-new-figures",
+        "files",
         "two figures of one reply with the same index: core writes the first one's bytes to \
-         <version>.fig<i> and gives each figure its own hash; extract.rs FigureBytes is keyed \
-         by index, so the last bytes win the file and both hashes",
+         <version>.fig<i>; with FigureBytes keyed by index Rust writes the last one's",
+    ),
+    (
+        "ingest-reopen-changes-nothing",
+        "outcome",
+        "core's ingest compares `completed !== out` by reference: 'reopened' (and a rewrite of \
+         the same bytes); document_ingest.rs compares by value: 'unchanged'",
     ),
 ];
 
@@ -392,6 +413,54 @@ fn replay(s: &JValue) -> Vec<Diff> {
             json(want.get("outcome")),
             json(&JValue::Str(got.outcome.into())),
         );
+        if s.get("again").truthy() {
+            // The same bytes read once more, the first read's record as `previous`.
+            let again = node.get("again");
+            let before = script.calls.borrow().len();
+            let second = document_ingest::ingest(
+                &user,
+                PROJECT,
+                name,
+                &bytes,
+                Some(&got.file),
+                engine,
+                &limits,
+            )
+            .expect("ingest again");
+            let calls: Vec<JValue> = script.calls.borrow_mut().split_off(before);
+            let stored =
+                std::fs::read_to_string(docs.join(format!("{version}.json"))).unwrap_or_default();
+            check(
+                &mut diffs,
+                "again.record",
+                again.get("record").as_str().unwrap().into(),
+                json(&second.file),
+            );
+            check(
+                &mut diffs,
+                "again.resultFile",
+                again.get("resultFile").as_str().unwrap().into(),
+                stored,
+            );
+            check(
+                &mut diffs,
+                "again.files",
+                json(again.get("files")),
+                json(&files_of(&docs)),
+            );
+            check(
+                &mut diffs,
+                "again.outcome",
+                json(again.get("outcome")),
+                json(&JValue::Str(second.outcome.into())),
+            );
+            check(
+                &mut diffs,
+                "again.calls",
+                json(again.get("calls")),
+                json(&JValue::Arr(calls)),
+            );
+        }
     } else {
         let mut figs = FigureBytes::new();
         let got = if kind == "extract" {
@@ -471,20 +540,30 @@ fn extraction_matches_core() {
             continue;
         }
         let diffs = replay(s);
-        let known = KNOWN.iter().any(|(k, _)| *k == name);
-        match (diffs.is_empty(), known) {
-            (true, false) => matched += 1,
-            (true, true) => report.push(format!("{name}: listed in KNOWN but now matches core")),
-            (false, true) => {}
-            (false, false) => {
-                for (what, node, rust) in diffs {
-                    report.push(format!(
-                        "{name} [{what}]\n  core: {}\n  rust: {}",
-                        short(&node),
-                        short(&rust)
-                    ));
-                }
+        for (k, field, _) in KNOWN.iter().filter(|(k, _, _)| *k == name) {
+            if !diffs.iter().any(|(what, _, _)| what.as_str() == *field) {
+                report.push(format!(
+                    "{k} [{field}]: listed in KNOWN but now matches core"
+                ));
             }
+        }
+        let mut unexpected = 0usize;
+        for (what, node, rust) in diffs {
+            if KNOWN
+                .iter()
+                .any(|(k, field, _)| *k == name && *field == what)
+            {
+                continue;
+            }
+            unexpected += 1;
+            report.push(format!(
+                "{name} [{what}]\n  core: {}\n  rust: {}",
+                short(&node),
+                short(&rust)
+            ));
+        }
+        if unexpected == 0 {
+            matched += 1;
         }
     }
     assert!(

@@ -6436,6 +6436,994 @@
     ],
     "budgetAfter": null
    }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-reopenable-still-too-large",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document e ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 26215424,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {}
+   },
+   "stored": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "ingest": {
+     "version": "c22b2d9bf1535e6491d4207987194719c0d9455f6e41e0a9813fe0c248a1ef90",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"document\":{\"version\":\"c22b2d9bf1535e6491d4207987194719c0d9455f6e41e0a9813fe0c248a1ef90\",\"byteHash\":\"e3e2e135fe9a1f95c2df6a6df00ebb8de95845d1259d3d92f94a3a5e93044ce0\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"c22b2d9bf1535e6491d4207987194719c0d9455f6e41e0a9813fe0c248a1ef90\",\"availableByteHash\":\"e3e2e135fe9a1f95c2df6a6df00ebb8de95845d1259d3d92f94a3a5e93044ce0\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"failed\",\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "c22b2d9bf1535e6491d4207987194719c0d9455f6e41e0a9813fe0c248a1ef90.json",
+       "length": 382,
+       "sha256": "3257dcad3be254e2bf63478af46e3b27fcd3c67178114e89dda85699c0a51707"
+      },
+      {
+       "name": "e3e2e135fe9a1f95c2df6a6df00ebb8de95845d1259d3d92f94a3a5e93044ce0.pdf",
+       "length": 26218496,
+       "sha256": "e3e2e135fe9a1f95c2df6a6df00ebb8de95845d1259d3d92f94a3a5e93044ce0"
+      }
+     ],
+     "outcome": "unchanged"
+    },
+    "calls": [
+     {
+      "fn": "caps"
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-reopenable-ocr-off",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document f ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": false,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": null,
+    "docling": {},
+    "ocr": {}
+   },
+   "stored": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "ingest": {
+     "version": "c9add0646e335fec0761f43692394b5c2ef2799a2745cb7cdd8d4e0aa5427433",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"document\":{\"version\":\"c9add0646e335fec0761f43692394b5c2ef2799a2745cb7cdd8d4e0aa5427433\",\"byteHash\":\"d0b26306d05eba7186f68d08e683f19869c50a7297bbd448464130fc40206610\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"c9add0646e335fec0761f43692394b5c2ef2799a2745cb7cdd8d4e0aa5427433\",\"availableByteHash\":\"d0b26306d05eba7186f68d08e683f19869c50a7297bbd448464130fc40206610\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"failed\",\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "c9add0646e335fec0761f43692394b5c2ef2799a2745cb7cdd8d4e0aa5427433.json",
+       "length": 382,
+       "sha256": "3257dcad3be254e2bf63478af46e3b27fcd3c67178114e89dda85699c0a51707"
+      },
+      {
+       "name": "d0b26306d05eba7186f68d08e683f19869c50a7297bbd448464130fc40206610.pdf",
+       "length": 26218496,
+       "sha256": "d0b26306d05eba7186f68d08e683f19869c50a7297bbd448464130fc40206610"
+      }
+     ],
+     "outcome": "unchanged"
+    },
+    "calls": [],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-reopenable-still-too-large",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document e ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 26215424,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {}
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-reopen-ocr-too-large-errorid",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document g ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two now the worker takes the file"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "stored": {
+    "text": "[Page 1]\nQA native one\n\n[Page 2]\n(ocr-needed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA native one",
+      "status": "native",
+      "method": "native"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "ocr-needed",
+      "method": "native"
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "error": "This PDF is larger than the OCR service accepts (25 MB), so its image-bearing pages were not sent to OCR; their own text layer was read.",
+    "errorId": "ocrTooLarge",
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "again": true,
+   "node": {
+    "ingest": {
+     "version": "75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA native one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"document\":{\"version\":\"75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f\",\"byteHash\":\"a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f\",\"availableByteHash\":\"a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA native one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA native one\",\"status\":\"native\",\"method\":\"native\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"status\":\"ocr\",\"method\":\"native+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"ocr-needed\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f.json",
+       "length": 557,
+       "sha256": "aafee315a572b24019f420b11ef7155629b62a6c40444708d2b9319ae969aaca"
+      },
+      {
+       "name": "a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647.pdf",
+       "length": 26218496,
+       "sha256": "a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647"
+      }
+     ],
+     "outcome": "reopened"
+    },
+    "again": {
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA native one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"document\":{\"version\":\"75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f\",\"byteHash\":\"a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"ready\",\"stale\":false,\"availableVersion\":\"75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f\",\"availableByteHash\":\"a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA native one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA native one\",\"status\":\"native\",\"method\":\"native\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"status\":\"ocr\",\"method\":\"native+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"ocr-needed\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "75adbd07a11feaa05e00426148abea43c510a78e5f5ed7f6e7f7ab96380f802f.json",
+       "length": 557,
+       "sha256": "aafee315a572b24019f420b11ef7155629b62a6c40444708d2b9319ae969aaca"
+      },
+      {
+       "name": "a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647.pdf",
+       "length": 26218496,
+       "sha256": "a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647"
+      }
+     ],
+     "outcome": "unchanged",
+     "calls": []
+    },
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-reopen-ocr-too-large-errorid",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document g ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two now the worker takes the file"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA native one\n\n[Page 2]\n(ocr-needed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA native one",
+      "status": "native",
+      "method": "native"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "ocr-needed",
+      "method": "native"
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "error": "This PDF is larger than the OCR service accepts (25 MB), so its image-bearing pages were not sent to OCR; their own text layer was read.",
+    "errorId": "ocrTooLarge",
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA native one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA native one\",\"status\":\"native\",\"method\":\"native\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two now the worker takes the file\",\"status\":\"ocr\",\"method\":\"native+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"ocr-needed\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "a94f3f817846baae8ca8b3a21da910c10edda6a2ee3e23658c99deb93dae9647"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-reopen-keeps-stop",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document h ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "stored": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 5,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": true,
+    "state": "partial",
+    "retryable": false,
+    "stoppedAt": {
+     "page": 2,
+     "limit": "error",
+     "error": "Document extraction is busy; refresh to retry."
+    },
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "ingest": {
+     "version": "3c0fc1f058e97b513bdb54455f3cba493ce71f6ea9c76602e3f6399641f24b60",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"document\":{\"version\":\"3c0fc1f058e97b513bdb54455f3cba493ce71f6ea9c76602e3f6399641f24b60\",\"byteHash\":\"992f31f5313ee3d5a6df12ef988df871398f8d38a3b3f4951c868d70c131a5b5\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"3c0fc1f058e97b513bdb54455f3cba493ce71f6ea9c76602e3f6399641f24b60\",\"availableByteHash\":\"992f31f5313ee3d5a6df12ef988df871398f8d38a3b3f4951c868d70c131a5b5\",\"pages\":5,\"truncated\":true,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}}],\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"Document extraction is busy; refresh to retry.\"},\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"},\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\",\"stoppedAt\":{\"page\":2,\"limit\":\"error\",\"error\":\"Document extraction is busy; refresh to retry.\"}}",
+     "files": [
+      {
+       "name": "3c0fc1f058e97b513bdb54455f3cba493ce71f6ea9c76602e3f6399641f24b60.json",
+       "length": 592,
+       "sha256": "e331ef436fc5d8b473ebad0de53c2a0a69ebf31c2e18824f64bf56cfa6d334ae"
+      },
+      {
+       "name": "992f31f5313ee3d5a6df12ef988df871398f8d38a3b3f4951c868d70c131a5b5.pdf",
+       "length": 26218496,
+       "sha256": "992f31f5313ee3d5a6df12ef988df871398f8d38a3b3f4951c868d70c131a5b5"
+      }
+     ],
+     "outcome": "reopened"
+    },
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ranges",
+      "bytes": 26218496
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "992f31f5313ee3d5a6df12ef988df871398f8d38a3b3f4951c868d70c131a5b5"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-reopen-keeps-stop",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document h ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": true,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "2@400": [
+      {
+       "ok": [
+        {
+         "number": 2,
+         "text": "QA two by OCR"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 5,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": true,
+    "state": "partial",
+    "retryable": false,
+    "stoppedAt": {
+     "page": 2,
+     "limit": "pages"
+    },
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"pages\":5,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"[OCR transcription — verify numbers against original]\\nQA two by OCR\",\"status\":\"ocr\",\"method\":\"docling+ocr\",\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"failed\"},\"truncated\":false}],\"truncated\":true,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\",\"stoppedAt\":{\"page\":2,\"limit\":\"pages\"}}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ranges",
+      "bytes": 26218496
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 26218496,
+       "sha256": "992f31f5313ee3d5a6df12ef988df871398f8d38a3b3f4951c868d70c131a5b5"
+      },
+      "pages": [
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "complete",
+   "name": "complete-no-ocr-text-cleared",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document complete-no-ocr-text-cleared\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "1@400": [
+      {
+       "ok": [
+        {
+         "number": 1,
+         "text": "QA one at 400 dpi"
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "input": {
+    "text": "",
+    "pages": 1,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "",
+      "status": "unreadable",
+      "method": "native",
+      "ocrSent": true
+     }
+    ],
+    "truncated": false,
+    "state": "failed",
+    "retryable": false,
+    "error": "No readable text was recovered by OCR; try a clearer scan or an unlocked original.",
+    "errorId": "noOcrText"
+   },
+   "node": {
+    "result": "{\"text\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one at 400 dpi\",\"pages\":1,\"pageTexts\":[{\"number\":1,\"text\":\"[OCR transcription — verify numbers against original]\\nQA one at 400 dpi\",\"status\":\"ocr\",\"method\":\"native+ocr\",\"ocrSent\":true,\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"unreadable\"}}],\"truncated\":false,\"state\":\"ready\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+    "figureBytes": [],
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 62,
+       "sha256": "bcc572e68ea23978b9399bd88d60dac3877e931bdee17b57b1a8d852b201f1f8"
+      },
+      "pages": [
+       1
+      ],
+      "dpi": 400,
+      "timeoutMs": 330000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-no-native-text-cleared",
+   "parity": true,
+   "file": {
+    "name": "QA-report.pdf",
+    "bytes": {
+     "text": "%PDF-1.7\n% QA synthetic document ingest-no-native-text-cleared\n"
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "dpis": [
+      300,
+      400
+     ]
+    },
+    "docling": {},
+    "ocr": {
+     "1,2@400": [
+      {
+       "ok": [
+        {
+         "number": 1,
+         "text": "QA one by OCR"
+        },
+        {
+         "number": 2,
+         "text": ""
+        }
+       ]
+      }
+     ]
+    }
+   },
+   "stored": {
+    "text": "",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "",
+      "status": "ocr-needed",
+      "method": "native"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "ocr-needed",
+      "method": "native"
+     }
+    ],
+    "truncated": false,
+    "state": "failed",
+    "retryable": false,
+    "error": "No readable native text. Scanned or image-based content needs OCR; OCR is not installed.",
+    "errorId": "noNativeText"
+   },
+   "node": {
+    "ingest": {
+     "version": "bd446bbbb4df68743a5b5828fc2365b3c0bd583ef35530a79d5769733cd82c0b",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-report.pdf\",\"content\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one by OCR\\n\\n[Page 2]\\n(ocr-needed)\",\"document\":{\"version\":\"bd446bbbb4df68743a5b5828fc2365b3c0bd583ef35530a79d5769733cd82c0b\",\"byteHash\":\"ead882122fc25f00d1f1e45cb2ff69b912c27a33d22bb80d6b40bfa822c1f265\",\"bytes\":63,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"bd446bbbb4df68743a5b5828fc2365b3c0bd583ef35530a79d5769733cd82c0b\",\"availableByteHash\":\"ead882122fc25f00d1f1e45cb2ff69b912c27a33d22bb80d6b40bfa822c1f265\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"ocr\",\"retry\":{\"outcome\":\"recovered\"}},{\"number\":2,\"status\":\"ocr-needed\",\"retry\":{\"outcome\":\"empty\"}}],\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\n[OCR transcription — verify numbers against original]\\nQA one by OCR\\n\\n[Page 2]\\n(ocr-needed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"[OCR transcription — verify numbers against original]\\nQA one by OCR\",\"status\":\"ocr\",\"method\":\"native+ocr\",\"truncated\":false,\"retry\":{\"outcome\":\"recovered\",\"dpi\":400,\"from\":\"ocr-needed\"}},{\"number\":2,\"text\":\"\",\"status\":\"ocr-needed\",\"method\":\"native\",\"retry\":{\"outcome\":\"empty\",\"dpi\":400}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "bd446bbbb4df68743a5b5828fc2365b3c0bd583ef35530a79d5769733cd82c0b.json",
+       "length": 541,
+       "sha256": "2a15feb13d7ef367583ab7671d07d3dcdf23f75630167135dadc479434085e60"
+      },
+      {
+       "name": "ead882122fc25f00d1f1e45cb2ff69b912c27a33d22bb80d6b40bfa822c1f265.pdf",
+       "length": 63,
+       "sha256": "ead882122fc25f00d1f1e45cb2ff69b912c27a33d22bb80d6b40bfa822c1f265"
+      }
+     ],
+     "outcome": "reopened"
+    },
+    "calls": [
+     {
+      "fn": "caps"
+     },
+     {
+      "fn": "ocr",
+      "bytes": {
+       "length": 63,
+       "sha256": "ead882122fc25f00d1f1e45cb2ff69b912c27a33d22bb80d6b40bfa822c1f265"
+      },
+      "pages": [
+       1,
+       2
+      ],
+      "dpi": 400,
+      "timeoutMs": 510000
+     }
+    ],
+    "budgetAfter": null
+   }
+  },
+  {
+   "kind": "ingest",
+   "name": "ingest-reopen-changes-nothing",
+   "parity": true,
+   "file": {
+    "name": "QA-large.pdf",
+    "bytes": {
+     "repeat": "%PDF-1.7 QA large synthetic document i ",
+     "length": 26218496
+    }
+   },
+   "flags": {
+    "docling": true,
+    "ocr": true,
+    "multimodal": false
+   },
+   "env": {},
+   "limits": {
+    "readBytes": 100663296,
+    "pages": 1000,
+    "text": 8000000,
+    "rangePages": 25,
+    "syncOcrPages": 40
+   },
+   "budget": null,
+   "script": {
+    "ranges": null,
+    "caps": {
+     "maxBytes": 67108864,
+     "dpis": [
+      300
+     ]
+    },
+    "docling": {},
+    "ocr": {}
+   },
+   "stored": {
+    "text": "[Page 1]\nQA one\n\n[Page 2]\n(failed)",
+    "pages": 2,
+    "pageTexts": [
+     {
+      "number": 1,
+      "text": "QA one",
+      "status": "native",
+      "method": "docling"
+     },
+     {
+      "number": 2,
+      "text": "",
+      "status": "failed",
+      "method": "docling",
+      "ocrSent": true,
+      "retry": {
+       "outcome": "failed",
+       "error": "the PDF is larger than the OCR service accepts (25 MB)"
+      }
+     }
+    ],
+    "truncated": false,
+    "state": "partial",
+    "retryable": false,
+    "error": "QA earlier note",
+    "errorId": "qaEarlier",
+    "completion": "ranges-ocr-retry-v1"
+   },
+   "node": {
+    "ingest": {
+     "version": "ffb6e7dc4bba5515ab55cedc4ee9d0318e820496c808661788edc42d57921d07",
+     "extractor": "docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback",
+     "record": "{\"name\":\"QA-large.pdf\",\"content\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"document\":{\"version\":\"ffb6e7dc4bba5515ab55cedc4ee9d0318e820496c808661788edc42d57921d07\",\"byteHash\":\"bb27954828c08484f1f3a739d8f48102179500f60c06e051e808bf07f2c1bb81\",\"bytes\":26218496,\"extractor\":\"docling-pages-v1:docling-2.129-layout-tableformer-tesseract-v3-native-fallback\",\"state\":\"partial\",\"stale\":false,\"availableVersion\":\"ffb6e7dc4bba5515ab55cedc4ee9d0318e820496c808661788edc42d57921d07\",\"availableByteHash\":\"bb27954828c08484f1f3a739d8f48102179500f60c06e051e808bf07f2c1bb81\",\"pages\":2,\"truncated\":false,\"pageStatus\":[{\"number\":1,\"status\":\"native\"},{\"number\":2,\"status\":\"failed\",\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"error\":\"QA earlier note\",\"errorId\":\"qaEarlier\",\"indexing\":\"pending\"}}",
+     "resultFile": "{\"text\":\"[Page 1]\\nQA one\\n\\n[Page 2]\\n(failed)\",\"pages\":2,\"pageTexts\":[{\"number\":1,\"text\":\"QA one\",\"status\":\"native\",\"method\":\"docling\"},{\"number\":2,\"text\":\"\",\"status\":\"failed\",\"method\":\"docling\",\"ocrSent\":true,\"retry\":{\"outcome\":\"failed\",\"error\":\"the PDF is larger than the OCR service accepts (25 MB)\"}}],\"truncated\":false,\"state\":\"partial\",\"retryable\":false,\"error\":\"QA earlier note\",\"errorId\":\"qaEarlier\",\"completion\":\"ranges-ocr-retry-v1\"}",
+     "files": [
+      {
+       "name": "bb27954828c08484f1f3a739d8f48102179500f60c06e051e808bf07f2c1bb81.pdf",
+       "length": 26218496,
+       "sha256": "bb27954828c08484f1f3a739d8f48102179500f60c06e051e808bf07f2c1bb81"
+      },
+      {
+       "name": "ffb6e7dc4bba5515ab55cedc4ee9d0318e820496c808661788edc42d57921d07.json",
+       "length": 445,
+       "sha256": "bcd290b1581d03d0ae5d7174c22c64ce85bbe6bd1ea5c2d0a70149b20cc8634c"
+      }
+     ],
+     "outcome": "reopened"
+    },
+    "calls": [
+     {
+      "fn": "caps"
+     }
+    ],
+    "budgetAfter": null
+   }
   }
  ]
 }

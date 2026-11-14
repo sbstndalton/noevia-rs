@@ -23,7 +23,8 @@
 //   ingest    document-sources.ingest(workspace, projectId, name, bytes, previous, { ocrBudget, onOutcome }) with
 //             docling.cjs / ocr.cjs module functions replaced by the script and the flags set in process.env; a
 //             `stored` result is written first at its version path. No busy (503) replies here: ingest cannot
-//             shorten the busy waits.
+//             shorten the busy waits. `again: true` reads the same bytes once more with the first read's
+//             record as `previous` (recorded as node.again, its calls apart).
 // Recorded per scenario: Node's result as JSON text (figure bytes taken out and listed as figureBytes, length and
 // sha256 in order), or what it threw; the ordered engine calls (bytes as length + sha256); the budget after; for
 // ingest the returned source record, the stored result file and every file in the project's document folder.
@@ -258,6 +259,47 @@ add('ingest', 'ingest-size-blocked-reopened', { file: { name: 'QA-large.pdf', by
   stored: rec([page(1, 'QA one'), page(2, '', 'failed', { retry: { outcome: 'failed', error: 'the PDF is larger than the OCR service accepts (25 MB)' } })], 2, { completion: 'ranges-ocr-retry-v1' }),
   script: { caps: { maxBytes: 64 * MiB, dpis: [400] }, ocr: { '2@400': [ocrOk([{ number: 2, text: 'QA two now the worker takes it' }])] } } });
 
+// #1867 reopen paths (review of the reopen fix): a size-refused record the worker still cannot take, with
+// OCR off, a reopen through errorId 'ocrTooLarge' alone (read twice: the second read is not reopened), a
+// reopen of a record that stopped short (no range reads, the stop kept), and a "no text" error cleared by
+// a retry. `again: true` reads the same bytes a second time (previous = the first read's record).
+const sizeBlockedRetry = { outcome: 'failed', error: 'the PDF is larger than the OCR service accepts (25 MB)' };
+const OCR_TOO_LARGE = 'This PDF is larger than the OCR service accepts (25 MB), so its image-bearing pages were not sent to OCR; their own text layer was read.';
+const COMPLETED = { completion: 'ranges-ocr-retry-v1' };
+add('ingest', 'ingest-reopenable-still-too-large', { file: { name: 'QA-large.pdf', bytes: large('e') },
+  stored: rec([page(1, 'QA one'), page(2, '', 'failed', { retry: sizeBlockedRetry })], 2, COMPLETED),
+  script: { caps: { maxBytes: 25 * MiB + 1024, dpis: [400] }, ocr: {} } });
+add('ingest', 'ingest-reopenable-ocr-off', { flags: { docling: true, ocr: false, multimodal: false }, file: { name: 'QA-large.pdf', bytes: large('f') },
+  stored: rec([page(1, 'QA one'), page(2, '', 'failed', { retry: sizeBlockedRetry })], 2, COMPLETED) });
+add('complete', 'complete-reopenable-still-too-large', { file: { name: 'QA-large.pdf', bytes: large('e') },
+  input: rec([page(1, 'QA one'), page(2, '', 'failed', { retry: sizeBlockedRetry })], 2, COMPLETED), script: { caps: { maxBytes: 25 * MiB + 1024, dpis: [400] } } });
+add('ingest', 'ingest-reopen-ocr-too-large-errorid', { again: true, file: { name: 'QA-large.pdf', bytes: large('g') },
+  stored: rec([{ number: 1, text: 'QA native one', status: 'native', method: 'native' }, { number: 2, text: '', status: 'ocr-needed', method: 'native' }], 2,
+    { error: OCR_TOO_LARGE, errorId: 'ocrTooLarge', ...COMPLETED }),
+  script: { caps: { maxBytes: 64 * MiB, dpis: [400] }, ocr: { '2@400': [ocrOk([{ number: 2, text: 'QA two now the worker takes the file' }])] } } });
+add('complete', 'complete-reopen-ocr-too-large-errorid', { file: { name: 'QA-large.pdf', bytes: large('g') },
+  input: rec([{ number: 1, text: 'QA native one', status: 'native', method: 'native' }, { number: 2, text: '', status: 'ocr-needed', method: 'native' }], 2,
+    { error: OCR_TOO_LARGE, errorId: 'ocrTooLarge', ...COMPLETED }),
+  script: { caps: { maxBytes: 64 * MiB, dpis: [400] }, ocr: { '2@400': [ocrOk([{ number: 2, text: 'QA two now the worker takes the file' }])] } } });
+add('ingest', 'ingest-reopen-keeps-stop', { file: { name: 'QA-large.pdf', bytes: large('h') },
+  stored: rec([page(1, 'QA one'), page(2, '', 'failed', { retry: sizeBlockedRetry })], 5, { stoppedAt: { page: 2, limit: 'error', error: 'Document extraction is busy; refresh to retry.' }, ...COMPLETED }),
+  script: { ranges: true, caps: { maxBytes: 64 * MiB, dpis: [400] }, ocr: { '2@400': [ocrOk([{ number: 2, text: 'QA two by OCR' }])] } } });
+add('complete', 'complete-reopen-keeps-stop', { file: { name: 'QA-large.pdf', bytes: large('h') },
+  input: rec([page(1, 'QA one'), page(2, '', 'failed', { retry: sizeBlockedRetry })], 5, { stoppedAt: { page: 2, limit: 'pages' }, ...COMPLETED }),
+  script: { ranges: true, caps: { maxBytes: 64 * MiB, dpis: [400] }, ocr: { '2@400': [ocrOk([{ number: 2, text: 'QA two by OCR' }])] } } });
+add('complete', 'complete-no-ocr-text-cleared', { input: { ...rec([{ number: 1, text: '', status: 'unreadable', method: 'native', ocrSent: true }], 1), state: 'failed', text: '',
+  error: 'No readable text was recovered by OCR; try a clearer scan or an unlocked original.', errorId: 'noOcrText' },
+  script: { caps: DPI, ocr: { '1@400': [ocrOk([{ number: 1, text: 'QA one at 400 dpi' }])] } } });
+add('ingest', 'ingest-no-native-text-cleared', { stored: { ...rec([{ number: 1, text: '', status: 'ocr-needed', method: 'native' }, { number: 2, text: '', status: 'ocr-needed', method: 'native' }], 2),
+  state: 'failed', text: '', error: 'No readable native text. Scanned or image-based content needs OCR; OCR is not installed.', errorId: 'noNativeText' },
+  script: { caps: DPI, ocr: { '1,2@400': [ocrOk([{ number: 1, text: 'QA one by OCR' }, { number: 2, text: '' }])] } } });
+// Core's ingest tells a reopen apart by reference (`completed !== out`), Rust's by value: a reopen pass that
+// changes nothing (its one size-refused page was already sent to OCR, and the worker does not render finer)
+// is rewritten and counted 'reopened' by core, 'unchanged' by Rust; the stored bytes are the same.
+add('ingest', 'ingest-reopen-changes-nothing', { file: { name: 'QA-large.pdf', bytes: large('i') },
+  stored: rec([page(1, 'QA one'), page(2, '', 'failed', { ocrSent: true, retry: sizeBlockedRetry })], 2, { error: 'QA earlier note', errorId: 'qaEarlier', ...COMPLETED }),
+  script: { caps: { maxBytes: 64 * MiB, dpis: [300] } } });
+
 // ── the scripted engine ──────────────────────────────────────────────────
 const byteRef = (b) => ({ length: b.length, sha256: sha(b) });
 function toError(e) {
@@ -345,18 +387,26 @@ async function run(s) {
         fs.writeFileSync(path.join(docDir, `${version}.json`), JSON.stringify(s.stored));
       }
       if (s.previous === 'same-version') s.previous = { name: s.file.name, content: 'QA earlier text', document: { version, byteHash: sha(bytes), state: 'ready', availableVersion: version, availableByteHash: sha(bytes), indexing: 'indexed' } };
-      let outcome = null;
-      const record = await ds.ingest(workspace, PROJECT, s.file.name, bytes, clone(s.previous) ?? undefined, { ...(budget ? { ocrBudget: budget } : {}), onOutcome: (k) => { outcome = k; } });
-      node.ingest = { version, extractor: documents.EXTRACTOR_VERSION, record: JSON.stringify(record), resultFile: fs.readFileSync(path.join(docDir, `${version}.json`), 'utf8'),
-        files: listFiles(docDir), outcome };
+      const read = async (previous) => {
+        let outcome = null;
+        const record = await ds.ingest(workspace, PROJECT, s.file.name, bytes, previous, { ...(budget ? { ocrBudget: budget } : {}), onOutcome: (k) => { outcome = k; } });
+        return { record, view: { record: JSON.stringify(record), resultFile: fs.readFileSync(path.join(docDir, `${version}.json`), 'utf8'), files: listFiles(docDir), outcome } };
+      };
+      const first = await read(clone(s.previous) ?? undefined);
+      node.ingest = { version, extractor: documents.EXTRACTOR_VERSION, ...first.view };
+      if (s.again) {
+        const before = calls.length;
+        const second = await read(clone(first.record));
+        node.again = { ...second.view, calls: calls.splice(before) };
+      }
     } finally { Object.assign(docling, { extractDocument: saved.extractDocument, rangesSupported: saved.rangesSupported }); Object.assign(ocr, { extractPages: saved.extractPages, capabilities: saved.capabilities }); }
     for (const k of ENV_KEYS) delete process.env[k];
   }
   node.calls = calls;
   node.budgetAfter = budgetAfter(budget);
-  const { kind, name, parity, file, flags, env, budget: b, script, input, previous, stored } = s;
+  const { kind, name, parity, file, flags, env, budget: b, script, input, previous, stored, again } = s;
   return { kind, name, parity, file, flags, env, limits, budget: b, script, ...(input ? { input } : {}), ...(previous ? { previous } : {}),
-    ...(stored ? { stored } : {}), node };
+    ...(stored ? { stored } : {}), ...(again ? { again } : {}), node };
 }
 
 (async () => {
