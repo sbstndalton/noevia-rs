@@ -943,8 +943,9 @@ fn a_dropped_connection_fails_every_wait() {
         error.message,
         "Target page, context or browser has been closed"
     );
+    // The reader marks the page closed, then runs its close hooks.
     let deadline = Instant::now() + Duration::from_secs(5);
-    while !page.is_closed() && Instant::now() < deadline {
+    while closed.load(Ordering::SeqCst) == 0 && Instant::now() < deadline {
         std::thread::sleep(Duration::from_millis(10));
     }
     assert!(page.is_closed());
