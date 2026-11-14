@@ -4,6 +4,8 @@
 use base64::Engine as _;
 use sha1::{Digest, Sha1};
 use std::io::{self, Read, Write};
+use std::net::TcpStream;
+use std::time::{Duration, Instant};
 
 /// The largest message (or frame) accepted from the browser.
 pub(crate) const MAX_MESSAGE: usize = 64 << 20;
@@ -38,7 +40,7 @@ pub(crate) fn random<const N: usize>() -> io::Result<[u8; N]> {
 /// One final client frame, masked with `mask`.
 pub(crate) fn encode(opcode: u8, payload: &[u8], mask: [u8; 4]) -> Vec<u8> {
     let len = payload.len();
-    let mut out = Vec::with_capacity(len + 14);
+    let mut out = Vec::with_capacity(len.saturating_add(14));
     out.push(0x80 | opcode);
     if len < 126 {
         out.push(0x80 | len as u8);
@@ -60,9 +62,12 @@ pub(crate) struct Frame {
     pub opcode: u8,
     pub masked: bool,
     pub payload: Vec<u8>,
+    /// Longer than the cap: its payload was read and dropped.
+    pub oversize: bool,
 }
 
-/// One frame (unmasked if it was masked), refusing one longer than `max`.
+/// One frame (unmasked if it was masked). A data frame longer than `max` is read and dropped
+/// (`oversize`), so the connection stays in step.
 pub(crate) fn read_frame(r: &mut impl Read, max: usize) -> io::Result<Frame> {
     let mut head = [0u8; 2];
     r.read_exact(&mut head)?;
@@ -84,10 +89,6 @@ pub(crate) fn read_frame(r: &mut impl Read, max: usize) -> io::Result<Frame> {
         }
         n => u64::from(n),
     };
-    let len = usize::try_from(len)
-        .ok()
-        .filter(|l| *l <= max)
-        .ok_or_else(|| bad("WebSocket message too large"))?;
     if opcode >= CLOSE && (len > 125 || !fin) {
         return Err(bad("Malformed WebSocket control frame"));
     }
@@ -95,6 +96,19 @@ pub(crate) fn read_frame(r: &mut impl Read, max: usize) -> io::Result<Frame> {
     if masked {
         r.read_exact(&mut mask)?;
     }
+    let Some(len) = usize::try_from(len).ok().filter(|l| *l <= max) else {
+        let dropped = io::copy(&mut r.take(len), &mut io::sink())?;
+        if dropped < len {
+            return Err(io::ErrorKind::UnexpectedEof.into());
+        }
+        return Ok(Frame {
+            fin,
+            opcode,
+            masked,
+            payload: Vec::new(),
+            oversize: true,
+        });
+    };
     let mut payload = vec![0u8; len];
     r.read_exact(&mut payload)?;
     if masked {
@@ -107,6 +121,7 @@ pub(crate) fn read_frame(r: &mut impl Read, max: usize) -> io::Result<Frame> {
         opcode,
         masked,
         payload,
+        oversize: false,
     })
 }
 
@@ -116,12 +131,16 @@ pub(crate) enum Incoming {
     Text(String),
     Ping(Vec<u8>),
     Close,
+    /// A message over the cap, read and dropped (its caller, if any, meets its deadline).
+    Oversize,
 }
 
 /// Reassembles fragmented messages; control frames may arrive between fragments.
 #[derive(Default)]
 pub(crate) struct MessageReader {
     partial: Option<(u8, Vec<u8>)>,
+    /// Dropping the rest of an oversize fragmented message.
+    skipping: bool,
 }
 
 impl MessageReader {
@@ -135,14 +154,34 @@ impl MessageReader {
                 PING => return Ok(Incoming::Ping(frame.payload)),
                 PONG => continue,
                 CLOSE => return Ok(Incoming::Close),
-                TEXT | BINARY if self.partial.is_none() => (frame.opcode, frame.payload),
+                TEXT | BINARY if self.partial.is_none() && !self.skipping => {
+                    if frame.oversize {
+                        self.skipping = !frame.fin;
+                        if frame.fin {
+                            return Ok(Incoming::Oversize);
+                        }
+                        continue;
+                    }
+                    (frame.opcode, frame.payload)
+                }
+                CONTINUATION if self.skipping => {
+                    if frame.fin {
+                        self.skipping = false;
+                        return Ok(Incoming::Oversize);
+                    }
+                    continue;
+                }
                 CONTINUATION => {
                     let (opcode, mut acc) = self
                         .partial
                         .take()
                         .ok_or_else(|| bad("Unexpected continuation frame"))?;
-                    if acc.len() + frame.payload.len() > max {
-                        return Err(bad("WebSocket message too large"));
+                    if frame.oversize || acc.len().saturating_add(frame.payload.len()) > max {
+                        self.skipping = !frame.fin;
+                        if frame.fin {
+                            return Ok(Incoming::Oversize);
+                        }
+                        continue;
                     }
                     acc.extend_from_slice(&frame.payload);
                     (opcode, acc)
@@ -158,6 +197,45 @@ impl MessageReader {
             }
             // A whole binary message: the protocol never sends one; skip it.
         }
+    }
+}
+
+/// A stream whose reads and writes all end by one deadline (the handshake, `/json/version`).
+pub(crate) struct Bounded<'a> {
+    pub stream: &'a mut TcpStream,
+    pub until: Instant,
+}
+
+impl Bounded<'_> {
+    fn left(&self) -> io::Result<Duration> {
+        let left = self.until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the browser engine did not answer in time",
+            ));
+        }
+        Ok(left)
+    }
+}
+
+impl Read for Bounded<'_> {
+    fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        let left = self.left()?;
+        self.stream.set_read_timeout(Some(left))?;
+        self.stream.read(buf)
+    }
+}
+
+impl Write for Bounded<'_> {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let left = self.left()?;
+        self.stream.set_write_timeout(Some(left))?;
+        self.stream.write(buf)
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        self.stream.flush()
     }
 }
 
@@ -273,11 +351,20 @@ mod tests {
                 Incoming::Text("x".repeat(len))
             );
         }
-        let big = server_frame(true, TEXT, &[b'x'; 200]);
-        assert!(read_frame(&mut big.as_slice(), 100).is_err());
-        // A declared 64-bit length past the cap is refused before anything is allocated.
+        // An oversize message is read past and dropped; the next one arrives intact.
+        let mut bytes = server_frame(true, TEXT, &[b'x'; 200]);
+        bytes.extend(server_frame(true, TEXT, b"after"));
+        let mut r = bytes.as_slice();
+        let mut reader = MessageReader::default();
+        assert_eq!(reader.next(&mut r, 100).unwrap(), Incoming::Oversize);
+        assert_eq!(
+            reader.next(&mut r, 100).unwrap(),
+            Incoming::Text("after".into())
+        );
+        // A declared 64-bit length past the cap allocates nothing; the stream ends inside it.
         let mut huge = vec![0x81, 127];
         huge.extend_from_slice(&u64::MAX.to_be_bytes());
+        huge.extend_from_slice(b"some");
         assert!(read_frame(&mut huge.as_slice(), MAX_MESSAGE).is_err());
     }
 
@@ -300,12 +387,26 @@ mod tests {
             Incoming::Text("{\"id\":1,\"result\":{}}".into())
         );
         assert_eq!(reader.next(&mut r, MAX_MESSAGE).unwrap(), Incoming::Close);
-        // Fragments together past the cap are refused.
-        let mut two = server_frame(false, TEXT, &[b'a'; 60]);
-        two.extend(server_frame(true, CONTINUATION, &[b'a'; 60]));
-        assert!(MessageReader::default()
-            .next(&mut two.as_slice(), 100)
-            .is_err());
+        // Fragments together past the cap are dropped, whichever fragment crosses it.
+        let mut bytes = server_frame(false, TEXT, &[b'a'; 60]);
+        bytes.extend(server_frame(false, CONTINUATION, &[b'a'; 60]));
+        bytes.extend(server_frame(true, CONTINUATION, &[b'a'; 60]));
+        bytes.extend(server_frame(false, TEXT, &[b'b'; 200]));
+        bytes.extend(server_frame(true, PING, b""));
+        bytes.extend(server_frame(true, CONTINUATION, b"b"));
+        bytes.extend(server_frame(true, TEXT, b"next"));
+        let mut r = bytes.as_slice();
+        let mut reader = MessageReader::default();
+        assert_eq!(reader.next(&mut r, 100).unwrap(), Incoming::Oversize);
+        assert_eq!(
+            reader.next(&mut r, 100).unwrap(),
+            Incoming::Ping(Vec::new())
+        );
+        assert_eq!(reader.next(&mut r, 100).unwrap(), Incoming::Oversize);
+        assert_eq!(
+            reader.next(&mut r, 100).unwrap(),
+            Incoming::Text("next".into())
+        );
     }
 
     #[test]

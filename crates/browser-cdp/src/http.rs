@@ -5,7 +5,7 @@
 use crate::ws;
 use std::io::{self, Read, Write};
 use std::net::{IpAddr, SocketAddr, TcpStream, ToSocketAddrs};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 const MAX_BODY: usize = 1 << 20;
 
@@ -97,9 +97,9 @@ pub(crate) fn parse_response(raw: &[u8], eof: bool) -> Result<Option<(u16, Vec<u
             Ok(None)
         };
     };
-    let head = std::str::from_utf8(raw.get(..end + 4).unwrap_or_default())
+    let head = std::str::from_utf8(raw.get(..end.saturating_add(4)).unwrap_or_default())
         .map_err(|_| "Malformed HTTP head.")?;
-    let body = raw.get(end + 4..).unwrap_or_default();
+    let body = raw.get(end.saturating_add(4)..).unwrap_or_default();
     let status = ws::status(head).ok_or("Malformed HTTP status line.")?;
     if ws::header(head, "transfer-encoding")
         .is_some_and(|t| t.to_ascii_lowercase().contains("chunked"))
@@ -132,18 +132,22 @@ fn dechunk(mut rest: &[u8]) -> Result<Option<Vec<u8>>, String> {
             .map_err(|_| "Malformed chunk size.")?;
         let size = usize::from_str_radix(line.split(';').next().unwrap_or("").trim(), 16)
             .map_err(|_| "Malformed chunk size.")?;
-        rest = rest.get(line_end + 2..).unwrap_or_default();
+        rest = rest.get(line_end.saturating_add(2)..).unwrap_or_default();
         if size == 0 {
             return Ok(Some(out));
         }
-        let (Some(chunk), Some(after)) = (rest.get(..size), rest.get(size..size + 2)) else {
+        let end = size
+            .checked_add(2)
+            .filter(|e| *e <= MAX_BODY)
+            .ok_or("Chunk too large.")?;
+        let (Some(chunk), Some(after)) = (rest.get(..size), rest.get(size..end)) else {
             return Ok(None);
         };
         if after != b"\r\n" {
             return Err("Malformed chunk.".into());
         }
         out.extend_from_slice(chunk);
-        rest = rest.get(size + 2..).unwrap_or_default();
+        rest = rest.get(end..).unwrap_or_default();
     }
 }
 
@@ -152,11 +156,16 @@ pub(crate) fn get(
     addr: SocketAddr,
     host: &str,
     path: &str,
-    timeout: Duration,
+    until: Instant,
 ) -> io::Result<(u16, Vec<u8>)> {
-    let mut stream = TcpStream::connect_timeout(&addr, timeout)?;
-    stream.set_read_timeout(Some(timeout))?;
-    stream.set_write_timeout(Some(timeout))?;
+    let left = until
+        .saturating_duration_since(Instant::now())
+        .max(Duration::from_millis(1));
+    let mut tcp = TcpStream::connect_timeout(&addr, left)?;
+    let mut stream = ws::Bounded {
+        stream: &mut tcp,
+        until,
+    };
     stream.write_all(format!("GET {path} HTTP/1.1\r\nHost: {host}\r\nAccept: application/json\r\nConnection: close\r\n\r\n").as_bytes())?;
     let mut raw = Vec::new();
     let mut buf = [0u8; 8192];
@@ -252,6 +261,11 @@ mod tests {
             Some((200, b"Wikipedia ".to_vec()))
         );
         assert_eq!(parse_response(&chunked[..60], false).unwrap(), None);
+        assert!(parse_response(
+            b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nffffffffffffffff\r\nx",
+            false
+        )
+        .is_err());
         assert!(parse_response(
             b"HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\nzz\r\n",
             false

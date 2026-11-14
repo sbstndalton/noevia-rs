@@ -517,7 +517,10 @@ fn drives_a_session_and_sends_the_expected_protocol() {
     let refused = page
         .goto("http://blocked.invalid/", Duration::from_secs(5))
         .unwrap_err();
-    assert_eq!(refused.message, "net::ERR_BLOCKED_BY_CLIENT");
+    assert_eq!(
+        refused.message,
+        "net::ERR_BLOCKED_BY_CLIENT at http://blocked.invalid/"
+    );
     let asked: Vec<(String, bool)> = seen
         .lock()
         .unwrap()
@@ -579,7 +582,8 @@ fn drives_a_session_and_sends_the_expected_protocol() {
         "Browser.setDownloadBehavior",
         "Target.createTarget",
         "Page.enable",
-        "Runtime.enable",
+        "Network.enable",
+        "Network.setBypassServiceWorker",
         "Fetch.enable",
         "Target.setAutoAttach",
         "Page.getFrameTree",
@@ -611,7 +615,7 @@ fn drives_a_session_and_sends_the_expected_protocol() {
     assert_eq!(sid(0), None);
     assert_eq!(
         json(&p(1)),
-        r#"{"disposeOnDetach":true,"proxyServer":"http://egress.qa.test:3128"}"#
+        r#"{"disposeOnDetach":true,"proxyServer":"http://egress.qa.test:3128","proxyBypassList":"<-loopback>"}"#
     );
     assert_eq!(
         json(&p(2)),
@@ -621,33 +625,34 @@ fn drives_a_session_and_sends_the_expected_protocol() {
         json(&p(3)),
         r#"{"url":"about:blank","browserContextId":"CTX1"}"#
     );
-    for (i, method) in methods.iter().enumerate().take(10).skip(4) {
+    for (i, method) in methods.iter().enumerate().take(11).skip(4) {
         assert_eq!(sid(i).as_deref(), Some("S1"), "{method}");
     }
+    assert_eq!(json(&p(6)), r#"{"bypass":true}"#);
     assert_eq!(
-        json(&p(6)),
+        json(&p(7)),
         r#"{"patterns":[{"urlPattern":"*","requestStage":"Request"}],"handleAuthRequests":true}"#
     );
     assert_eq!(
-        json(&p(7)),
+        json(&p(8)),
         r#"{"autoAttach":true,"waitForDebuggerOnStart":true,"flatten":true}"#
     );
-    assert_eq!(json(&p(10)), r#"{"url":"http://qa.test/"}"#);
-    assert_eq!(json(&p(11)), r#"{"requestId":"R1"}"#);
+    assert_eq!(json(&p(11)), r#"{"url":"http://qa.test/"}"#);
+    assert_eq!(json(&p(12)), r#"{"requestId":"R1"}"#);
     assert_eq!(
-        json(&p(12)),
+        json(&p(13)),
         r#"{"requestId":"R2","errorReason":"BlockedByClient"}"#
     );
     assert_eq!(
-        json(&p(14)),
+        json(&p(15)),
         r#"{"requestId":"R3","errorReason":"BlockedByClient"}"#
     );
     assert_eq!(
-        p(15).get("expression").as_str(),
+        p(16).get("expression").as_str(),
         Some(r#"document.querySelector("form > button[type=\"submit\"]")"#)
     );
-    assert_eq!(p(15).get("returnByValue").as_bool(), Some(false));
-    let describe = p(17);
+    assert_eq!(p(16).get("returnByValue").as_bool(), Some(false));
+    let describe = p(18);
     assert!(describe
         .get("functionDeclaration")
         .as_str()
@@ -656,27 +661,27 @@ fn drives_a_session_and_sends_the_expected_protocol() {
     assert_eq!(describe.get("objectId").as_str(), Some("O1"));
     assert_eq!(json(describe.get("arguments")), r#"[{"objectId":"O1"}]"#);
     assert_eq!(describe.get("returnByValue").as_bool(), Some(true));
-    assert!(p(18)
+    assert!(p(19)
         .get("functionDeclaration")
         .as_str()
         .unwrap()
         .contains("scrollIntoView({ block: 'center', inline: 'center'"));
     assert_eq!(
-        json(&p(19)),
+        json(&p(20)),
         r#"{"type":"mouseMoved","x":60,"y":30,"button":"none","buttons":0,"modifiers":0}"#
     );
     assert_eq!(
-        json(&p(20)),
+        json(&p(21)),
         r#"{"type":"mousePressed","x":60,"y":30,"button":"left","buttons":1,"modifiers":0,"clickCount":1}"#
     );
     assert_eq!(
-        json(&p(21)),
+        json(&p(22)),
         r#"{"type":"mouseReleased","x":60,"y":30,"button":"left","buttons":0,"modifiers":0,"clickCount":1}"#
     );
-    assert_eq!(json(&p(22)), r#"{"format":"png"}"#);
-    assert_eq!(json(&p(23)), r#"{"objectId":"O1"}"#);
-    assert_eq!(json(&p(24)), r#"{"browserContextId":"CTX1"}"#);
-    assert_eq!(sid(24), None);
+    assert_eq!(json(&p(23)), r#"{"format":"png"}"#);
+    assert_eq!(json(&p(24)), r#"{"objectId":"O1"}"#);
+    assert_eq!(json(&p(25)), r#"{"browserContextId":"CTX1"}"#);
+    assert_eq!(sid(25), None);
     // /json/version first, then the upgrade to the path it named, on the configured host.
     let heads = stub.heads.lock().unwrap().clone();
     assert!(
@@ -794,7 +799,8 @@ fn proxy_auth_popups_and_foreign_pages() {
         on("S2"),
         [
             "Page.enable",
-            "Runtime.enable",
+            "Network.enable",
+            "Network.setBypassServiceWorker",
             "Fetch.enable",
             "Target.setAutoAttach",
             "Page.getFrameTree",
@@ -887,13 +893,20 @@ fn a_detached_page_is_closed() {
     page.on_close(Arc::new(move || {
         c.fetch_add(1, Ordering::SeqCst);
     }));
+    // The session detached: its waiting call fails then, before any answer.
     let error = page.screenshot().unwrap_err();
     assert_eq!(
         error.message,
-        "Protocol error (Page.captureScreenshot): Session with given id not found."
+        "Target page, context or browser has been closed"
     );
     assert!(page.is_closed());
     assert_eq!(closed.load(Ordering::SeqCst), 1);
+    // A hook registered once the page is closed (a popup closing early) still fires.
+    let late = closed.clone();
+    page.on_close(Arc::new(move || {
+        late.fetch_add(10, Ordering::SeqCst);
+    }));
+    assert_eq!(closed.load(Ordering::SeqCst), 11);
     assert!(context.pages().is_empty());
     assert_eq!(
         page.body_text(Duration::from_secs(5)).unwrap_err().message,
@@ -1072,7 +1085,10 @@ fn engine_errors() {
         "Element is not an <input>, <textarea> or [contenteditable] element"
     );
     assert_eq!(
-        handle.click(Duration::from_secs(5)).unwrap_err().message,
+        handle
+            .click(Duration::from_millis(300))
+            .unwrap_err()
+            .message,
         "Element is not visible"
     );
     assert_eq!(
@@ -1094,6 +1110,7 @@ fn engine_errors() {
     let before = stub.methods().len();
     page.keyboard_press("Enter").unwrap();
     page.wheel(-250.0).unwrap();
+    page.keyboard_press("Control+a").unwrap();
     let log = stub.messages();
     let sent: Vec<String> = log[before..]
         .iter()
@@ -1105,6 +1122,10 @@ fn engine_errors() {
             r#"{"type":"keyDown","modifiers":0,"windowsVirtualKeyCode":13,"code":"Enter","key":"Enter","autoRepeat":false,"location":0,"isKeypad":false,"text":"\r","unmodifiedText":"\r"}"#,
             r#"{"type":"keyUp","modifiers":0,"windowsVirtualKeyCode":13,"code":"Enter","key":"Enter","location":0}"#,
             r#"{"type":"mouseWheel","x":400,"y":300,"deltaX":0,"deltaY":-250}"#,
+            r#"{"type":"rawKeyDown","modifiers":2,"windowsVirtualKeyCode":17,"code":"ControlLeft","key":"Control","autoRepeat":false,"location":1,"isKeypad":false}"#,
+            r#"{"type":"rawKeyDown","modifiers":2,"windowsVirtualKeyCode":65,"code":"KeyA","key":"a","autoRepeat":false,"location":0,"isKeypad":false}"#,
+            r#"{"type":"keyUp","modifiers":2,"windowsVirtualKeyCode":65,"code":"KeyA","key":"a","location":0}"#,
+            r#"{"type":"keyUp","modifiers":0,"windowsVirtualKeyCode":17,"code":"ControlLeft","key":"Control","location":1}"#,
         ]
     );
     browser.close().unwrap();
@@ -1135,4 +1156,410 @@ fn refuses_tls_and_unreachable_engines() {
         .err()
         .unwrap();
     assert!(error.message.contains("unreachable"), "{}", error.message);
+}
+
+fn error_reply(msg: &JValue, out: &mut Out, text: &str) {
+    let mut items = vec![
+        ("id", msg.get("id").clone()),
+        (
+            "error",
+            obj(vec![("code", JValue::Num(-32000.0)), ("message", s(text))]),
+        ),
+    ];
+    if let Some(sid) = msg.get("sessionId").as_str() {
+        items.push(("sessionId", s(sid)));
+    }
+    out.messages.push(json(&obj(items)));
+}
+
+fn child(
+    session: &str,
+    target: &str,
+    kind: &str,
+    context: Option<&str>,
+    subtype: Option<&str>,
+) -> JValue {
+    let mut info = vec![
+        ("targetId", s(target)),
+        ("type", s(kind)),
+        ("url", s("http://qa.test/w")),
+    ];
+    if let Some(c) = context {
+        info.push(("browserContextId", s(c)));
+    }
+    if let Some(st) = subtype {
+        info.push(("subtype", s(st)));
+    }
+    obj(vec![
+        ("sessionId", s(session)),
+        ("targetInfo", obj(info)),
+        ("waitingForDebugger", JValue::Bool(true)),
+    ])
+}
+
+/// Each child target is gated before it runs, and one that cannot be gated is never run.
+#[test]
+fn children_are_gated_before_they_run() {
+    let stub = Stub::start(Box::new(move |msg, out| {
+        let sid = msg.get("sessionId").as_str();
+        let method = msg.get("method").as_str().unwrap();
+        match (method, sid) {
+            ("Runtime.runIfWaitingForDebugger", Some("S1")) => {
+                out.reply(msg, obj(vec![]));
+                // A popup, a frame and a browser-level service worker whose Fetch fails; a
+                // worker, a shared worker and a prerendered page whose Fetch works.
+                out.event(
+                    None,
+                    "Target.attachedToTarget",
+                    attached("S2", "T2", "CTX1"),
+                );
+                out.event(
+                    sid,
+                    "Target.attachedToTarget",
+                    child("S4", "FR4", "iframe", None, None),
+                );
+                out.event(
+                    None,
+                    "Target.attachedToTarget",
+                    child("S8", "SW8", "service_worker", Some("CTX1"), None),
+                );
+                out.event(
+                    sid,
+                    "Target.attachedToTarget",
+                    child("S5", "W5", "worker", None, None),
+                );
+                out.event(
+                    None,
+                    "Target.attachedToTarget",
+                    child("S6", "SH6", "shared_worker", Some("CTX1"), None),
+                );
+                out.event(
+                    sid,
+                    "Target.attachedToTarget",
+                    child("S7", "P7", "page", Some("CTX1"), Some("prerender")),
+                );
+            }
+            ("Fetch.enable", Some("S2" | "S4" | "S8")) => {
+                error_reply(msg, out, "QA: Fetch refused")
+            }
+            ("Runtime.runIfWaitingForDebugger", Some("S5")) => {
+                out.reply(msg, obj(vec![]));
+                let request = obj(vec![
+                    ("url", s("http://blocked.invalid/w.js")),
+                    ("method", s("GET")),
+                ]);
+                out.event(
+                    sid,
+                    "Fetch.requestPaused",
+                    obj(vec![
+                        ("requestId", s("W1")),
+                        ("request", request),
+                        ("resourceType", s("Script")),
+                    ]),
+                );
+            }
+            _ => common(msg, out),
+        }
+    }));
+    let browser = CdpLaunch::new(format!(
+        "ws://127.0.0.1:{}/devtools/browser/qa-1",
+        stub.port
+    ))
+    .launch()
+    .unwrap();
+    let context = browser.new_context(None).unwrap();
+    let seen: Seen = Arc::default();
+    context.route(gate(&seen)).unwrap();
+    let hooked = Arc::new(AtomicUsize::new(0));
+    let h = hooked.clone();
+    context.on_page(Arc::new(move |_: Arc<dyn Page>| {
+        h.fetch_add(1, Ordering::SeqCst);
+    }));
+    let _page = context.new_page().unwrap();
+    stub.wait_for("Target.closeTarget", 2);
+    stub.wait_for("Fetch.failRequest", 1);
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while stub.sent("Runtime.runIfWaitingForDebugger").len() < 4 && Instant::now() < deadline {
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    let on = |session: &str| -> Vec<String> {
+        stub.messages()
+            .iter()
+            .filter(|m| m.get("sessionId").as_str() == Some(session))
+            .map(|m| m.get("method").as_str().unwrap().to_string())
+            .collect()
+    };
+    // The popup: never run, closed, never handed to the executor.
+    assert_eq!(
+        on("S2"),
+        [
+            "Page.enable",
+            "Network.enable",
+            "Network.setBypassServiceWorker",
+            "Fetch.enable"
+        ]
+    );
+    // The frame: never run; its page is closed.
+    assert_eq!(on("S4"), ["Fetch.enable"]);
+    let mut closed: Vec<String> = stub
+        .sent("Target.closeTarget")
+        .iter()
+        .map(|m| json(m.get("params")))
+        .collect();
+    closed.sort();
+    assert_eq!(closed, [r#"{"targetId":"T1"}"#, r#"{"targetId":"T2"}"#]);
+    assert!(stub
+        .sent("Target.closeTarget")
+        .iter()
+        .all(|m| m.get("sessionId").is_nullish()));
+    // A browser-level worker that cannot be gated stays paused.
+    assert_eq!(on("S8"), ["Fetch.enable"]);
+    // Workers: Fetch before they run; their requests go to the gate, never as a navigation.
+    assert_eq!(
+        on("S5"),
+        [
+            "Fetch.enable",
+            "Runtime.runIfWaitingForDebugger",
+            "Fetch.failRequest"
+        ]
+    );
+    assert_eq!(
+        on("S6"),
+        ["Fetch.enable", "Runtime.runIfWaitingForDebugger"]
+    );
+    let asked: Vec<(String, bool)> = seen
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|r| (r.url.clone(), r.main_frame_navigation))
+        .collect();
+    assert_eq!(asked, [("http://blocked.invalid/w.js".to_string(), false)]);
+    // A prerendered page is routed like a frame, and is not a page of the context.
+    assert_eq!(
+        on("S7"),
+        [
+            "Fetch.enable",
+            "Page.enable",
+            "Network.enable",
+            "Network.setBypassServiceWorker",
+            "Target.setAutoAttach",
+            "Runtime.runIfWaitingForDebugger"
+        ]
+    );
+    assert_eq!(hooked.load(Ordering::SeqCst), 1);
+    assert_eq!(context.pages().len(), 1);
+    browser.close().unwrap();
+    stub.join();
+}
+
+fn point(hit: &str) -> JValue {
+    obj(vec![(
+        "result",
+        obj(vec![(
+            "value",
+            obj(vec![
+                ("x", JValue::Num(60.0)),
+                ("y", JValue::Num(30.0)),
+                ("width", JValue::Num(100.0)),
+                ("height", JValue::Num(40.0)),
+                ("hit", s(hit)),
+            ]),
+        )]),
+    )])
+}
+
+#[test]
+fn click_waits_for_the_hit_target() {
+    let mut measured = 0;
+    let stub = Stub::start(Box::new(move |msg, out| {
+        let params = msg.get("params");
+        match msg.get("method").as_str().unwrap() {
+            "Runtime.evaluate" => {
+                let id = if params
+                    .get("expression")
+                    .as_str()
+                    .unwrap()
+                    .contains("#covered")
+                {
+                    "O2"
+                } else {
+                    "O1"
+                };
+                let node = obj(vec![
+                    ("type", s("object")),
+                    ("subtype", s("node")),
+                    ("objectId", s(id)),
+                ]);
+                out.reply(msg, obj(vec![("result", node)]));
+            }
+            "Runtime.callFunctionOn" => {
+                measured += 1;
+                // O1 is covered for its first two looks; O2 always.
+                let covered = params.get("objectId").as_str() == Some("O2") || measured <= 2;
+                out.reply(
+                    msg,
+                    point(if covered {
+                        "<div id=\"cover\">\u{2026}</div>"
+                    } else {
+                        ""
+                    }),
+                );
+            }
+            _ => common(msg, out),
+        }
+    }));
+    let browser = CdpLaunch::new(format!(
+        "ws://127.0.0.1:{}/devtools/browser/qa-1",
+        stub.port
+    ))
+    .launch()
+    .unwrap();
+    let context = browser.new_context(None).unwrap();
+    let page = context.new_page().unwrap();
+    let button = page
+        .locate("#send", Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+    let started = Instant::now();
+    button.click(Duration::from_secs(5)).unwrap();
+    assert!(
+        started.elapsed() >= Duration::from_millis(200),
+        "retried every 100 ms"
+    );
+    assert_eq!(stub.sent("Runtime.callFunctionOn").len(), 3);
+    assert_eq!(stub.sent("Input.dispatchMouseEvent").len(), 3);
+    let covered = page
+        .locate("#covered", Duration::from_secs(5))
+        .unwrap()
+        .unwrap();
+    let error = covered.click(Duration::from_millis(300)).unwrap_err();
+    assert_eq!(
+        error.message,
+        "<div id=\"cover\">\u{2026}</div> intercepts pointer events"
+    );
+    assert_eq!(
+        covered.hover(Duration::from_millis(0)).unwrap_err().message,
+        error.message
+    );
+    assert_eq!(
+        stub.sent("Input.dispatchMouseEvent").len(),
+        3,
+        "nothing pressed on the cover"
+    );
+    assert_eq!(
+        button
+            .set_input_files(std::path::Path::new("/tmp/qa.txt"), Duration::from_secs(5))
+            .unwrap_err()
+            .message,
+        "Uploads need a directory shared with the browser engine; none is configured."
+    );
+    assert!(stub.sent("DOM.setFileInputFiles").is_empty());
+    browser.close().unwrap();
+    stub.join();
+}
+
+/// A document that replaces itself before its load (`location.replace`, a meta refresh) is waited
+/// through to the load of the one that stays; a huge timeout does not overflow the clock.
+#[test]
+fn goto_waits_through_a_replacing_document() {
+    let stub = Stub::start(Box::new(move |msg, out| {
+        let sid = msg.get("sessionId").as_str();
+        match msg.get("method").as_str().unwrap() {
+            "Page.navigate" => {
+                let frame = |loader: &str, url: &str| {
+                    obj(vec![
+                        (
+                            "frame",
+                            obj(vec![
+                                ("id", s("F1")),
+                                ("loaderId", s(loader)),
+                                ("url", s(url)),
+                            ]),
+                        ),
+                        ("type", s("Navigation")),
+                    ])
+                };
+                out.event(
+                    sid,
+                    "Page.frameNavigated",
+                    frame("L1", "http://qa.test/hop"),
+                );
+                out.reply(msg, obj(vec![("frameId", s("F1")), ("loaderId", s("L1"))]));
+                out.event(
+                    sid,
+                    "Page.frameStartedLoading",
+                    obj(vec![("frameId", s("F1"))]),
+                );
+                out.event(
+                    sid,
+                    "Page.frameNavigated",
+                    frame("L2", "http://qa.test/stay"),
+                );
+                out.event(
+                    sid,
+                    "Page.loadEventFired",
+                    obj(vec![("timestamp", JValue::Num(2.0))]),
+                );
+            }
+            "Runtime.evaluate" => {
+                let value = obj(vec![("type", s("string")), ("value", s("complete"))]);
+                out.reply(msg, obj(vec![("result", value)]));
+            }
+            _ => common(msg, out),
+        }
+    }));
+    let browser = CdpLaunch::new(format!(
+        "ws://127.0.0.1:{}/devtools/browser/qa-1",
+        stub.port
+    ))
+    .launch()
+    .unwrap();
+    let context = browser.new_context(None).unwrap();
+    let page = context.new_page().unwrap();
+    let started = Instant::now();
+    page.goto("http://qa.test/hop", Duration::MAX).unwrap();
+    assert!(started.elapsed() < Duration::from_secs(2));
+    assert_eq!(page.url(), "http://qa.test/stay");
+    page.wait_for_load_state(Duration::MAX).unwrap();
+    browser.close().unwrap();
+    stub.join();
+}
+
+/// A message over the cap is read past and dropped; the connection stays up.
+#[test]
+fn an_oversize_message_is_dropped() {
+    let stub = Stub::start(Box::new(move |msg, out| {
+        if msg.get("method").as_str() == Some("Page.navigate") {
+            out.messages.push(" ".repeat((64 << 20) + 1));
+            return;
+        }
+        if msg.get("method").as_str() == Some("Page.captureScreenshot") {
+            out.reply(
+                msg,
+                obj(vec![(
+                    "data",
+                    s(&base64::engine::general_purpose::STANDARD.encode(PNG)),
+                )]),
+            );
+            return;
+        }
+        common(msg, out)
+    }));
+    let browser = CdpLaunch::new(format!(
+        "ws://127.0.0.1:{}/devtools/browser/qa-1",
+        stub.port
+    ))
+    .launch()
+    .unwrap();
+    let context = browser.new_context(None).unwrap();
+    let page = context.new_page().unwrap();
+    let error = page
+        .goto("http://qa.test/", Duration::from_millis(500))
+        .unwrap_err();
+    assert_eq!(error.message, "Timeout 500ms exceeded.");
+    assert!(!page.is_closed());
+    assert_eq!(&page.screenshot().unwrap(), PNG);
+    browser.close().unwrap();
+    stub.join();
 }
