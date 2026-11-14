@@ -30,7 +30,10 @@ fn chunk_text_matches_node() {
             .as_array()
             .unwrap()
             .iter()
-            .map(|c| c.as_array().unwrap().iter().map(|u| u.as_u64().unwrap() as u16).collect())
+            .map(|c| match c.as_str() {
+                Some(text) => units(text),
+                None => c.as_array().unwrap().iter().map(|u| u.as_u64().unwrap() as u16).collect(),
+            })
             .collect();
         let got = chunk_text(&units(case["text"].as_str().unwrap()));
         assert_eq!(got, want, "case {}", case["name"]);
@@ -117,7 +120,11 @@ fn dump(path: &Path) -> Value {
 /// Numbers compared by value (Node prints 1 where Rust holds 1.0).
 fn same(a: &Value, b: &Value) -> bool {
     match (a, b) {
-        (Value::Number(x), Value::Number(y)) => x.as_f64() == y.as_f64(),
+        // serde_json's default float parse may be one f64 ulp off; the stored vectors are f32.
+        (Value::Number(x), Value::Number(y)) => {
+            let (x, y) = (x.as_f64().unwrap(), y.as_f64().unwrap());
+            x == y || (x as f32) == (y as f32)
+        }
         (Value::Array(x), Value::Array(y)) => x.len() == y.len() && x.iter().zip(y).all(|(p, q)| same(p, q)),
         (Value::Object(x), Value::Object(y)) => {
             x.len() == y.len() && x.iter().all(|(k, v)| y.get(k).is_some_and(|w| same(v, w)))

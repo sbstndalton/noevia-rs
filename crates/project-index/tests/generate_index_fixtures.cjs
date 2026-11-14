@@ -55,9 +55,10 @@ const texts = {
   inline_marker: 'intro\n[Page 2]\n' + prose(30, 9),
   dupes: ('same paragraph. '.repeat(100) + '\n\n').repeat(4),
 };
-// Chunks as UTF-16 code units: a chunk may end inside a surrogate pair, which JSON cannot carry as text.
+// A chunk that ends inside a surrogate pair is written as UTF-16 code units (JSON cannot carry it as text).
 const codeUnits = (s) => Array.from({ length: s.length }, (_, i) => s.charCodeAt(i));
-const chunkFixture = { sources, cases: Object.entries(texts).map(([name, text]) => ({ name, text, chunks: rag.chunkText(text).map(codeUnits) })) };
+const wellFormed = (c) => !/[\ud800-\udbff](?![\udc00-\udfff])|(?<![\ud800-\udbff])[\udc00-\udfff]/.test(c);
+const chunkFixture = { sources, cases: Object.entries(texts).map(([name, text]) => ({ name, text, chunks: rag.chunkText(text).map((c) => (wellFormed(c) ? c : codeUnits(c))) })) };
 
 // ---- index steps ----
 function bodyOf(t) { return String(t).replace(/^title: [^|]*\| text: /, ''); }

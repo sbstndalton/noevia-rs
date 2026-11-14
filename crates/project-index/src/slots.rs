@@ -133,7 +133,7 @@ pub fn adopt_legacy(db: &Connection, active: &Target) -> Res<()> {
     }
     // Number(meta('dim')): a missing or unreadable width leaves the table unclaimed.
     let dim = meta(db, "dim")?.and_then(|d| js_number(&d)).unwrap_or(f64::NAN);
-    if !(dim > 0.0) || !table_exists(db, LEGACY_TABLE)? || legacy_claimed(db)? {
+    if dim.is_nan() || dim <= 0.0 || !table_exists(db, LEGACY_TABLE)? || legacy_claimed(db)? {
         return Ok(());
     }
     let id = slot_id(active);

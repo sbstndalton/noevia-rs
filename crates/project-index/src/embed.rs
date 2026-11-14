@@ -75,6 +75,7 @@ pub fn embed_framed(call: &mut dyn EmbedOnce, input: &[String]) -> Result<Vec<Ve
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
     use serde_json::json;

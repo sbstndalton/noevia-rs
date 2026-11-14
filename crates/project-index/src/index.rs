@@ -196,14 +196,17 @@ impl IndexOutcome {
         if !self.ok {
             return json!({ "ok": false, "reason": self.reason });
         }
-        let mut v = json!({ "ok": true, "stored": self.stored, "embedded": self.embedded });
+        let mut v = serde_json::Map::new();
+        v.insert("ok".into(), json!(true));
+        v.insert("stored".into(), json!(self.stored));
+        v.insert("embedded".into(), json!(self.embedded));
         if self.direct {
-            v["direct"] = json!(true);
+            v.insert("direct".into(), json!(true));
         }
         if self.superseded {
-            v["superseded"] = json!(true);
+            v.insert("superseded".into(), json!(true));
         }
-        v
+        Value::Object(v)
     }
 }
 
@@ -351,26 +354,27 @@ impl TailOutcome {
 
     /// The outcome as Node returns it.
     pub fn to_json(&self) -> Value {
-        let mut v = json!({ "ok": self.ok });
+        let mut v = serde_json::Map::new();
+        v.insert("ok".into(), json!(self.ok));
         if let Some(r) = &self.reason {
-            v["reason"] = json!(r);
+            v.insert("reason".into(), json!(r));
         }
         if let Some(e) = &self.error {
-            v["error"] = json!(e);
+            v.insert("error".into(), json!(e));
         }
         if self.yielded {
-            v["yielded"] = json!(true);
+            v.insert("yielded".into(), json!(true));
         }
-        v["embedded"] = json!(self.embedded);
-        v["inserted"] = json!(self.inserted);
-        v["attempted"] = json!(self.attempted);
-        v["pending"] = json!(self.pending);
-        v["searchableTo"] = json!(self.searchable_to);
+        v.insert("embedded".into(), json!(self.embedded));
+        v.insert("inserted".into(), json!(self.inserted));
+        v.insert("attempted".into(), json!(self.attempted));
+        v.insert("pending".into(), json!(self.pending));
+        v.insert("searchableTo".into(), json!(self.searchable_to));
         if let Some(w) = self.window_done {
-            v["windowDone"] = json!(w);
+            v.insert("windowDone".into(), json!(w));
         }
-        v["complete"] = json!(self.complete);
-        v
+        v.insert("complete".into(), json!(self.complete));
+        Value::Object(v)
     }
 }
 

@@ -166,7 +166,7 @@ fn chunk_part(text: &[u16], page_part: bool) -> Vec<Vec<u16>> {
                 Some(para) if para > half => end = start + para + 1,
                 _ => {
                     let best = (half..window.len()).rev().find(|&i| {
-                        window.get(i).is_some_and(|u| [b'.', b'!', b'?', b'\n'].iter().any(|c| u16::from(*c) == *u))
+                        window.get(i).is_some_and(|u| b".!?\n".iter().any(|c| u16::from(*c) == *u))
                     });
                     if let Some(best) = best.filter(|b| *b > 0) {
                         end = start + best + 1;
@@ -187,6 +187,7 @@ fn chunk_part(text: &[u16], page_part: bool) -> Vec<Vec<u16>> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
 
