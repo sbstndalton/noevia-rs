@@ -38,6 +38,15 @@ fn switch_on(value: Option<&str>) -> bool {
     value == Some("1")
 }
 
+/// core's bridge cap on the tool name (`rust-chat-native.cjs` `text(body?.name, 200)`).
+pub const NAME_CAP: usize = 200;
+
+/// Whether core's bridge takes the name: a non-empty string within [`NAME_CAP`] UTF-16 units. Any
+/// other name is core's 400 (noevia#2711 item 1), so the front does not answer the call.
+fn name_taken(name: &str) -> bool {
+    !name.is_empty() && js_json::wtf16::len(name) <= NAME_CAP
+}
+
 /// What the offer alone settles for this call, before the bridge checks.
 pub fn settled(run: &ToolRun) -> Decision {
     let allowed: HashSet<String> = run.allowed.iter().cloned().collect();
@@ -56,7 +65,7 @@ pub fn answer(
     run: &ToolRun,
     active: impl FnOnce(&str) -> bool,
 ) -> Option<(String, bool)> {
-    if !bridge_takes(run) {
+    if !bridge_takes(run) || !name_taken(&run.name) {
         return None;
     }
     let Decision::Route(Route::Refused(text)) = settled(run) else {
@@ -177,6 +186,16 @@ mod tests {
         let mut r = refused.clone();
         r.exchange_key = "k".repeat(201);
         assert_eq!(answer(dir.path(), USER, &r, |_| true), None);
+        // An empty name or one over the bridge's 200 units: core's 400 (noevia#2711 item 1), even
+        // though the offer alone would refuse it as not enabled.
+        assert_eq!(answer(dir.path(), USER, &run("", "{}"), |_| true), None);
+        let long = "q".repeat(NAME_CAP + 1);
+        assert_eq!(answer(dir.path(), USER, &run(&long, "{}"), |_| true), None);
+        // 200 units is taken; a pair counts as two units (199 + one emoji = 201 is not).
+        let at_cap = "q".repeat(NAME_CAP);
+        assert!(answer(dir.path(), USER, &run(&at_cap, "{}"), |_| true).is_some());
+        let pair = format!("{}\u{1F600}", "q".repeat(NAME_CAP - 1));
+        assert_eq!(answer(dir.path(), USER, &run(&pair, "{}"), |_| true), None);
         // No account folder: core's.
         let empty = tempfile::tempdir().unwrap();
         assert_eq!(answer(empty.path(), USER, &refused, |_| true), None);
