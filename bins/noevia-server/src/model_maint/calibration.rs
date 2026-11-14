@@ -514,6 +514,10 @@ pub enum Applied {
     Refused(Option<String>),
     /// The write threw: inside a step the size failed; at the end the run failed with this text.
     Threw(String),
+    /// Written, but its re-read failed with the hold no longer excluding everyone: nothing more ran
+    /// on the lost lease (llamacpp-manager.cjs applyUnlocked's loss branch, #2550). Putting back
+    /// `before` while models.ini is still at `revision` is owed to a recovery under a fresh hold.
+    LeaseLost { revision: String, before: String },
 }
 
 const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
@@ -541,7 +545,9 @@ impl Maint {
 
     /// [`Maint::apply_unlocked`] with the HTTP status Node's `applyUnlocked` answers (200 written,
     /// 404 not installed, 409 something loaded, 503 a reload or restore failure; a thrown write is
-    /// 500): the native auto-tune runner treats a 409 as fatal, as Node's does. `(status, error)`.
+    /// 500): the native auto-tune runner treats a 409 as fatal, as Node's does. `Ok((status,
+    /// error))`; `Err((revision, before))` when the lease was lost after the write
+    /// ([`Applied::LeaseLost`]).
     pub async fn apply_unlocked_reply(
         &self,
         holding: &super::Hold,
@@ -549,11 +555,12 @@ impl Maint {
         base_revision: &str,
         options: &[(String, Option<String>)],
         backup: bool,
-    ) -> (u16, Option<String>) {
+    ) -> Result<(u16, Option<String>), (String, String)> {
         let (applied, status) = self
             .apply_unlocked_with_status(holding, model, base_revision, options, backup)
             .await;
-        match applied {
+        Ok(match applied {
+            Applied::LeaseLost { revision, before } => return Err((revision, before)),
             Applied::Ok => (200, None),
             Applied::Refused(e) => (
                 status,
@@ -562,7 +569,7 @@ impl Maint {
                 })),
             ),
             Applied::Threw(e) => (500, Some(e)),
-        }
+        })
     }
 
     async fn apply_unlocked_with_status(
@@ -649,6 +656,16 @@ impl Maint {
             if reply.ok {
                 return (Applied::Ok, 200);
             }
+        }
+        // The lease was lost after the write: nothing more runs on it, not even the restore.
+        if !holding.excluded() {
+            return (
+                Applied::LeaseLost {
+                    revision: super::ini::sha(&candidate.text),
+                    before: candidate.before,
+                },
+                503,
+            );
         }
         // Restore only our own version; never overwrite an operator's later edit.
         let restore = super::ini::Candidate {

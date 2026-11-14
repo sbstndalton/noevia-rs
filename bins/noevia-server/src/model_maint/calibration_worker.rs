@@ -1821,6 +1821,8 @@ impl Worker {
                 ))
             }
             Applied::Threw(e) => return Err(Thrown::Other(e)),
+            // The run's own recovery puts its original profile back under a fresh hold.
+            Applied::LeaseLost { .. } => return Err(Thrown::Fatal(LEASE_LOST.into())),
         }
         let revision = self
             .current_revision()
@@ -3084,6 +3086,8 @@ impl Worker {
                 })))
             }
             Applied::Threw(e) => return Err(Thrown::Other(e)),
+            // The run's own recovery puts its original profile back under a fresh hold.
+            Applied::LeaseLost { .. } => return Err(Thrown::Fatal(LEASE_LOST.into())),
         }
         let revision = self
             .current_revision()
@@ -6286,5 +6290,109 @@ mod tests {
         assert_eq!(engine_loads(&seen), 0);
         assert_eq!(load_asks(&seen), 0);
         assert_eq!(w.job().get("status").as_str(), Some("interrupted"));
+    }
+
+    async fn until_lost(hold: &super::super::Hold) {
+        tokio::time::timeout(WATCHDOG, async {
+            while hold.excluded() {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .expect("the lease watch saw the lease end");
+    }
+
+    /// #2550 (llamacpp-manager.cjs applyUnlocked's loss branch): a write whose lease was lost
+    /// before its re-read puts nothing back on the lost lease; the write's revision and the text
+    /// before it come back for a recovery under a fresh hold.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_write_whose_lease_is_lost_restores_nothing_on_the_lost_lease() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, seen) = synthetic_engine(ini.clone(), false).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let hold = w
+            .maint
+            .acquire_for_run("synthetic apply", Duration::from_secs(600))
+            .await
+            .unwrap();
+        ended.store(true, Ordering::Release);
+        until_lost(&hold).await;
+        let options = vec![("ctx-size".to_owned(), Some("8192".to_owned()))];
+        let reply = w
+            .maint
+            .apply_unlocked_reply(&hold, "synthetic", &super::super::ini::sha(INI), &options, true)
+            .await;
+        let written = std::fs::read_to_string(&ini).unwrap();
+        assert!(written.contains("ctx-size = 8192"), "{written}");
+        assert_eq!(
+            reply,
+            Err((super::super::ini::sha(&written), INI.to_owned()))
+        );
+        assert!(
+            !seen.lock().unwrap().iter().any(|r| r.contains("reload")),
+            "nothing was re-read on the lost lease"
+        );
+        hold.release().await;
+    }
+
+    /// #2550: the owed `apply:<revision>` repair of the native auto-tune runner, under a fresh
+    /// hold: the text before the write goes back while models.ini is still at the write's
+    /// revision, never over a later edit, and the router re-reads the file either way.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_owed_apply_restore_puts_back_only_its_own_write() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        let lost = format!("{INI}# the lost write\n");
+        std::fs::write(&ini, &lost).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, seen) = synthetic_engine(ini.clone(), false).await;
+        let (lease, _) = lease_stub(None, Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let facts: super::super::autotune_deps::ReadFacts =
+            Arc::new(|| Box::pin(async { (0.0, None) }));
+        let deps = super::super::autotune_deps::FrontDeps::new(
+            Arc::clone(&w.maint),
+            d.path().join("native-autotune-synthetic.json"),
+            facts,
+            tx,
+            &|_: &str| None,
+        );
+        let revision = super::super::ini::sha(&lost);
+        deps.owe_apply_restore("apply:a", &revision, INI);
+        assert_eq!(deps.restore_apply("calibration:other").await, None);
+        let hold = Arc::new(
+            w.maint
+                .acquire_for_run("synthetic repair", Duration::from_secs(600))
+                .await
+                .unwrap(),
+        );
+        deps.cover_with(Some(Arc::clone(&hold)));
+        let reloads = |seen: &RequestLog| {
+            seen.lock()
+                .unwrap()
+                .iter()
+                .filter(|r| r.contains("reload=1"))
+                .count()
+        };
+        assert_eq!(deps.restore_apply("apply:a").await, Some(true));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        assert_eq!(reloads(&seen), 1);
+        assert_eq!(deps.restore_apply("apply:a").await, None, "settled once");
+        let operator = format!("{INI}# an operator's later edit\n");
+        std::fs::write(&ini, &operator).unwrap();
+        deps.owe_apply_restore("apply:b", &revision, INI);
+        assert_eq!(deps.restore_apply("apply:b").await, Some(true));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), operator);
+        assert_eq!(reloads(&seen), 2);
+        deps.cover_with(None);
+        if let Ok(hold) = Arc::try_unwrap(hold) {
+            hold.release().await;
+        }
     }
 }

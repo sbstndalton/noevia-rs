@@ -274,6 +274,12 @@ pub async fn serve(
 }
 
 const BRIDGE: &str = "/internal/auto-roles/";
+/// Core's `invalidateModelReads` (its installed-list and scan reads, and the auto-roles
+/// republish), which Core ran for every non-GET `/api/models/*` request it served (#2550).
+pub async fn invalidate_model_reads(app: &App) -> bool {
+    node(app, "invalidate", &serde_json::json!({})).await.is_some()
+}
+
 async fn node(app: &App, op: &str, ask: &serde_json::Value) -> Option<JValue> {
     let (status, bytes) = app
         .config
