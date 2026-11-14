@@ -18,6 +18,8 @@
 //! deeper than 128 levels).
 #![forbid(unsafe_code)]
 
+pub mod inapp;
+
 use js_json::{wtf16, JValue};
 use project_edit_target::{plan, Attachment, File, Refused, Request, Work};
 use sha2::{Digest, Sha256};
@@ -268,19 +270,19 @@ pub fn resolve_edit_target(
 }
 
 /// `planEdit(project, raw, { storageAccount })` as resolveEditTarget answers it.
-fn plan_edit(
+fn plan_file(
     project: &JValue,
     raw: &JValue,
     account: Option<&str>,
     content: &dyn Fn(&JValue) -> String,
-) -> Result<Lookup, ()> {
+) -> Result<Result<EditPlan, String>, ()> {
     let files: &[JValue] = match project.get("files") {
         JValue::Arr(items) => items,
         _ => &[],
     };
     let at = match resolve_file(files, raw)? {
         Ok(at) => at,
-        Err(message) => return Ok(Lookup::Refused(message)),
+        Err(message) => return Ok(Err(message)),
     };
     let Some(file) = files.get(at) else {
         return Err(());
@@ -311,7 +313,7 @@ fn plan_edit(
     };
     let answer = plan(&request, &mut Work::new(u64::MAX)).map_err(|_| ())?;
     let q = format!("\"{name}\"");
-    let refused = |m: String| Ok(Lookup::Refused(m));
+    let refused = |m: String| Ok(Err(m));
     let folder = request
         .folder
         .as_deref()
@@ -319,10 +321,13 @@ fn plan_edit(
         .map(from_units)
         .unwrap_or_default();
     match answer {
-        Ok(p) => Ok(Lookup::Target {
-            path: from_units(&p.target),
+        Ok(p) => Ok(Ok(EditPlan {
+            index: at,
+            write_name: from_units(&p.write),
+            target: from_units(&p.target),
+            adopt: p.adopt,
             account: if p.adopt { account.map(str::to_owned) } else { None },
-        }),
+        })),
         Err(Refused::UploadPath) => refused(format!("{q} is not stored where this project's uploads are kept, so it cannot be edited in place. Nothing was changed.")),
         Err(Refused::Synced) => {
             let source = file.get("source").as_str().unwrap_or_default();
@@ -351,4 +356,47 @@ fn plan_edit(
         }
         Err(Refused::Partial) => refused(format!("{q} was only read in part or in another encoding, so writing it back would lose content. Nothing was changed.")),
     }
+}
+
+/// `planEdit(project, raw, { storageAccount })` as resolveEditTarget answers it.
+fn plan_edit(
+    project: &JValue,
+    raw: &JValue,
+    account: Option<&str>,
+    content: &dyn Fn(&JValue) -> String,
+) -> Result<Lookup, ()> {
+    Ok(match plan_file(project, raw, account, content)? {
+        Ok(p) => Lookup::Target {
+            path: p.target,
+            account: p.account,
+        },
+        Err(message) => Lookup::Refused(message),
+    })
+}
+
+/// project-edit-target.cjs `planEdit`'s plan: the file (its index in `project.files`), the plain
+/// name the write path is handed, the stored path the edit writes, and for a move into the project
+/// folder (#687) the storage account it is bound to.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct EditPlan {
+    pub index: usize,
+    pub write_name: String,
+    pub target: String,
+    pub adopt: bool,
+    pub account: Option<String>,
+}
+
+/// A project or argument shape core never stores: the caller asks core.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Unsupported;
+
+/// `planEdit(project, raw, { storageAccount })`: the plan, or the error it throws (its message);
+/// [`Unsupported`] for a shape core never stores (ask core).
+pub fn plan_edit_file(
+    project: &JValue,
+    raw: &JValue,
+    account: Option<&str>,
+    content: &dyn Fn(&JValue) -> String,
+) -> Result<Result<EditPlan, String>, Unsupported> {
+    plan_file(project, raw, account, content).map_err(|()| Unsupported)
 }

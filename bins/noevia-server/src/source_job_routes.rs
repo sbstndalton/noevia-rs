@@ -186,6 +186,9 @@ fn lock_wait(foreground: bool, upload: bool, plain: bool) -> Duration {
     }
 }
 
+/// How long an operation waits for a native toolbox catalogue that is not ready (a create's wait).
+const CATALOGUE_WAIT: Duration = Duration::from_secs(10);
+
 /// Runs one operation to its answer (blocking): the synchronous routes and every job. `progress` is told
 /// each stage; `check_hold` is false for a job, whose start already took the hold's probe.
 pub fn execute(
@@ -193,6 +196,7 @@ pub fn execute(
     authn: &server_auth::Identity,
     account: &Account,
     work: &Work,
+    catalogue: &crate::project_catalogue::Source,
     check_hold: bool,
     progress: &dyn Fn(&str),
 ) -> server_projects::Reply {
@@ -205,7 +209,7 @@ pub fn execute(
     };
     let ctx = account.ctx();
     let limits = server_projects::extract::Limits::from_env();
-    let catalogue = lifecycle::Catalogue::read(&account.data_dir);
+    let catalogue = catalogue.read(&account.data_dir);
     let root = lifecycle::project_root_folder();
     let lock_wait = lock_wait(check_hold, work.kind == Kind::Upload, work.plain);
     with_storage(app, authn, |storage| match work.kind {
@@ -371,8 +375,11 @@ async fn run_sync_task(
         None => (None, false),
     };
     let work = Work { plain, ..work };
+    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file). Waited for as a
+    // create waits: a first upload made without it would never get the project documents default.
+    let catalogue = crate::project_catalogue::Source::waiting(&app, CATALOGUE_WAIT).await;
     let answer = within(bound, move || {
-        execute(&app, &authn, &account, &work, true, &|_| {})
+        execute(&app, &authn, &account, &work, &catalogue, true, &|_| {})
     })
     .await;
     let (reply, ok) = match answer {
@@ -508,13 +515,18 @@ async fn operate(
     let _ = reply.send(respond(work::accepted(&job)));
     let work = Work { plain, ..work };
     let bound = work::bound(work.kind == Kind::Upload);
+    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file, read when the job
+    // runs); waited for as in the synchronous form.
+    let catalogue = crate::project_catalogue::Source::waiting(&app, CATALOGUE_WAIT).await;
     run_job(
         account.clone(),
         owner,
         job,
         op,
         bound,
-        move |progress: &dyn Fn(&str)| execute(&app, &authn, &account, &work, false, progress),
+        move |progress: &dyn Fn(&str)| {
+            execute(&app, &authn, &account, &work, &catalogue, false, progress)
+        },
     )
     .await;
 }

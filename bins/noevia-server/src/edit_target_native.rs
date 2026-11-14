@@ -158,7 +158,7 @@ fn account_digest(row: Option<server_storage_reads::connection_row::Account>) ->
 /// core `editStorageAccount(user)`: `Ok(None)` for no row or a local one, `Err` when the row
 /// cannot be read.
 #[cfg(feature = "rust-storage-reads")]
-fn storage_account(app: &App, user: &str) -> Result<Option<String>, ()> {
+pub(crate) fn storage_account(app: &App, user: &str) -> Result<Option<String>, ()> {
     let store = app.identity.store_blocking().map_err(|_| ())?;
     let row = server_storage_reads::connection_row::account(&store, user).map_err(|_| ())?;
     Ok(account_digest(row))
