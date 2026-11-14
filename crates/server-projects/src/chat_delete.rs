@@ -1094,10 +1094,17 @@ mod tests {
                         })
                     })
                     .collect();
-                assert!(
-                    del(root.path(), "qa-c1", Kind::Free).unwrap().deleted,
-                    "{round}"
-                );
+                // noevia#2271: the lock is taken by polling, so four writers in a tight loop can
+                // keep the delete out past its wait. That is Busy (a 429 the client retries) and
+                // changes nothing; the delete is retried as a client would, and the race below
+                // still has to leave no transcript.
+                let deleted = loop {
+                    match del(root.path(), "qa-c1", Kind::Free) {
+                        Err(DeleteError::Store(StoreError::Busy)) => continue,
+                        other => break other.unwrap().deleted,
+                    }
+                };
+                assert!(deleted, "{round}");
                 for w in writers {
                     w.join().unwrap();
                 }
