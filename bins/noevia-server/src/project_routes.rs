@@ -176,6 +176,8 @@ pub enum Route {
     Tasks(crate::task_routes::Target),
     /// A Code task action, only while the front runs Code tasks (code_routes.rs).
     Code(crate::code_routes::Action),
+    /// A Browser task action (browser_routes.rs), when the front owns them.
+    Browser,
 }
 
 /// Node's matchers, `^\/api\/projects\/([^/]+)\/assets$`, `...\/assets\/([^/]+)$` and
@@ -496,6 +498,10 @@ pub async fn serve(
             .then(|| crate::code_routes::parse(parts.method.as_str(), &path))
             .flatten()
             .map(Route::Code)
+    })
+    .or_else(|| {
+        (app.config.browser.executor && crate::browser_routes::owns(parts.method.as_str(), &path))
+            .then_some(Route::Browser)
     });
     let Some(route) = route else {
         return app
@@ -550,6 +556,10 @@ pub async fn serve(
     if let Route::Code(action) = route {
         return crate::code_routes::serve(app, authn, data_dir, action, body).await;
     }
+    if let Route::Browser = route {
+        let method = parts.method.as_str().to_string();
+        return crate::browser_routes::serve(app, authn, data_dir, method, path, body).await;
+    }
     if let Route::Research { project, shape } = &route {
         return crate::research_routes::serve(
             app,
@@ -570,7 +580,7 @@ pub async fn serve(
         .await;
     }
     let limit = match &route {
-        Route::Research { .. } | Route::Tasks(_) | Route::Code(_) => None,
+        Route::Research { .. } | Route::Tasks(_) | Route::Code(_) | Route::Browser => None,
         Route::Upload { .. } => Some(assets::BODY_LIMIT),
         Route::SaveChats { .. } | Route::SaveFreeChats => Some(chats::BODY_LIMIT),
         Route::SaveHistory { .. } => Some(history::BODY_LIMIT),
@@ -1041,7 +1051,8 @@ pub async fn serve(
                 | Route::SkillInstall { .. }
                 | Route::Research { .. }
                 | Route::Tasks(_)
-                | Route::Code(_),
+                | Route::Code(_)
+                | Route::Browser,
                 _,
             ) => Reply::internal(),
             // Answered above (source_job_routes).

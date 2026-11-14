@@ -30,6 +30,7 @@ pub mod chatgpt_oauth_routes;
 pub mod chatgpt_status_routes;
 pub mod code_egress;
 pub mod code_net;
+pub mod browser_routes;
 pub mod code_routes;
 pub mod config;
 pub mod connector_routes;
@@ -675,6 +676,8 @@ pub struct App {
     pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// Code tasks, when the front runs them (code_routes.rs, NOEVIA_CODE_EXECUTOR=rust).
     pub code_service: std::sync::OnceLock<Arc<code_harness::service::Service>>,
+    /// Browser tasks, when the front runs them (browser_routes.rs, NOEVIA_RUST_BROWSER=1).
+    pub browser_service: std::sync::OnceLock<Arc<browser_task::service::Service>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -808,6 +811,7 @@ impl App {
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             code_egress: code_egress::Issuer::new(&config),
             code_service: std::sync::OnceLock::new(),
+            browser_service: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
@@ -965,6 +969,14 @@ async fn handle(
     if native.is_none() && app.config.code.executor {
         let at = whatwg.as_deref().unwrap_or(&path);
         if code_routes::parse(req.method().as_str(), at).is_some() {
+            native = Some(routes::Native::Projects);
+        }
+    }
+    // Track R5: with NOEVIA_RUST_BROWSER=1 the Browser task actions are the project routes' too
+    // (browser_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.browser.executor {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if browser_routes::owns(req.method().as_str(), at) {
             native = Some(routes::Native::Projects);
         }
     }

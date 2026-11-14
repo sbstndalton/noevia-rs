@@ -117,6 +117,7 @@ http-body-util = "0.1"
 hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
 code-acp = { path = "../../crates/code-acp" }
+browser-task = { path = "../../crates/browser-task" }
 code-harness = { path = "../../crates/code-harness" }
 code-pipeline = { path = "../../crates/code-pipeline" }
 code-verify = { path = "../../crates/code-verify" }
