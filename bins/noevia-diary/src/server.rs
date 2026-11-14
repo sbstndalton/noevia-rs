@@ -917,6 +917,7 @@ fn json_body(headers: &HeaderMap, bytes: &[u8]) -> Option<serde_json::Map<String
 struct WriteBody {
     json: serde_json::Map<String, Value>,
     edit: Option<writes::EditReq>,
+    import: Option<writes::ImportReq>,
 }
 
 fn write_body(r: Route, headers: &HeaderMap, body: &[u8]) -> Option<WriteBody> {
@@ -926,7 +927,13 @@ fn write_body(r: Route, headers: &HeaderMap, body: &[u8]) -> Option<WriteBody> {
     } else {
         None
     };
-    Some(WriteBody { json, edit })
+    // ImportRequest, validated by FastAPI before the handler (422: Python's).
+    let import = if matches!(r, Route::ExternalImport) {
+        Some(writes::import_model(&json)?)
+    } else {
+        None
+    };
+    Some(WriteBody { json, edit, import })
 }
 
 /// The D5 write routes, in app.py's order: FastAPI reads the body first (422 → decline, in
@@ -941,7 +948,7 @@ async fn serve_write(
     tenant: Option<Tenant>,
     write: Option<WriteBody>,
 ) -> Response<Body> {
-    let Some(WriteBody { json, edit }) = write else {
+    let Some(WriteBody { json, edit, import }) = write else {
         return decline();
     };
     enum Op {
@@ -958,9 +965,8 @@ async fn serve_write(
             Ok(req) => Op::Append(req),
             Err(resp) => return reply(resp),
         },
-        Route::ExternalImport => match writes::import_model(&json) {
+        Route::ExternalImport => match import {
             Some(req) => Op::Import(req),
-            // FastAPI's 422 (or a body this side does not read as pydantic does).
             None => return decline(),
         },
         Route::Edit => {

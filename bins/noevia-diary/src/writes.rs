@@ -899,65 +899,6 @@ pub fn edit(c: &Ctx<'_>, req: &EditReq) -> Reply {
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn marker_regex_matches_python() {
-        assert!(has_any_marker("a <!-- xid:abc --> b"));
-        assert!(has_any_marker("<!--xid:abc-->"));
-        assert!(has_any_marker("<!--\u{1c}xid:a-b\u{3000}-->"));
-        assert!(!has_any_marker("<!-- xid: -->"));
-        assert!(!has_any_marker("<!-- xid:zz -->"));
-        assert!(!has_any_marker("<!-- xid:abc ->"));
-    }
-
-    #[test]
-    fn heading_regex_matches_python() {
-        assert!(has_heading("# x"));
-        assert!(has_heading("a\n  \u{a0}# x"));
-        assert!(!has_heading("a # b"));
-    }
-
-    #[test]
-    fn entry_time_forms() {
-        assert!(matches!(
-            parse_entry_time("2026-11-04T10:15:00+01:00"),
-            EntryTime::At(_)
-        ));
-        assert!(matches!(
-            parse_entry_time("2026-11-04T10:15:00.123Z"),
-            EntryTime::At(_)
-        ));
-        assert!(matches!(
-            parse_entry_time("2026-11-04T10:15"),
-            EntryTime::Invalid
-        ));
-        assert!(matches!(
-            parse_entry_time("2026-02-30T10:15:00Z"),
-            EntryTime::Invalid
-        ));
-        assert!(matches!(
-            parse_entry_time("2026-11-04 10:15:00Z"),
-            EntryTime::Unsure
-        ));
-        assert!(matches!(parse_entry_time("tomorrow"), EntryTime::Unsure));
-    }
-
-    #[test]
-    fn month_ids() {
-        assert_eq!(month_id_ok("2026-11"), Some(true));
-        assert_eq!(month_id_ok("2026-13"), Some(false));
-        assert_eq!(month_id_ok("2026-11\n"), None);
-        assert_eq!(month_id_ok("0000-05"), None);
-        assert_eq!(month_id_ok("0000-13"), Some(false));
-        assert_eq!(month_id_ok("0001-01"), Some(true));
-        assert_eq!(month_id_ok("9999-12"), Some(true));
-        assert_eq!(month_id_ok("٢٠٢٦-11"), None);
-    }
-}
-
 // ------------------------------------------------------------------ POST /api/external-sources/import
 
 /// The ImportRequest model (pydantic: two `str` fields; other keys are ignored). None: FastAPI's
@@ -1053,5 +994,64 @@ pub fn external_import(
             detail(502, "import failed; check the Diary service log"),
             None,
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn marker_regex_matches_python() {
+        assert!(has_any_marker("a <!-- xid:abc --> b"));
+        assert!(has_any_marker("<!--xid:abc-->"));
+        assert!(has_any_marker("<!--\u{1c}xid:a-b\u{3000}-->"));
+        assert!(!has_any_marker("<!-- xid: -->"));
+        assert!(!has_any_marker("<!-- xid:zz -->"));
+        assert!(!has_any_marker("<!-- xid:abc ->"));
+    }
+
+    #[test]
+    fn heading_regex_matches_python() {
+        assert!(has_heading("# x"));
+        assert!(has_heading("a\n  \u{a0}# x"));
+        assert!(!has_heading("a # b"));
+    }
+
+    #[test]
+    fn entry_time_forms() {
+        assert!(matches!(
+            parse_entry_time("2026-11-04T10:15:00+01:00"),
+            EntryTime::At(_)
+        ));
+        assert!(matches!(
+            parse_entry_time("2026-11-04T10:15:00.123Z"),
+            EntryTime::At(_)
+        ));
+        assert!(matches!(
+            parse_entry_time("2026-11-04T10:15"),
+            EntryTime::Invalid
+        ));
+        assert!(matches!(
+            parse_entry_time("2026-02-30T10:15:00Z"),
+            EntryTime::Invalid
+        ));
+        assert!(matches!(
+            parse_entry_time("2026-11-04 10:15:00Z"),
+            EntryTime::Unsure
+        ));
+        assert!(matches!(parse_entry_time("tomorrow"), EntryTime::Unsure));
+    }
+
+    #[test]
+    fn month_ids() {
+        assert_eq!(month_id_ok("2026-11"), Some(true));
+        assert_eq!(month_id_ok("2026-13"), Some(false));
+        assert_eq!(month_id_ok("2026-11\n"), None);
+        assert_eq!(month_id_ok("0000-05"), None);
+        assert_eq!(month_id_ok("0000-13"), Some(false));
+        assert_eq!(month_id_ok("0001-01"), Some(true));
+        assert_eq!(month_id_ok("9999-12"), Some(true));
+        assert_eq!(month_id_ok("٢٠٢٦-11"), None);
     }
 }

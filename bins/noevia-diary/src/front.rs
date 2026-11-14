@@ -235,11 +235,17 @@ impl Front {
             let _ = app.exchange.set(setup.clone());
         }
         let app = Arc::new(app);
-        self.app
-            .set(app.clone())
-            .map_err(|_| "start-up config already installed")?;
+        if self.app.get().is_some() {
+            return Err("start-up config already installed");
+        }
+        // The owner first: a config whose owner cannot start is not installed (DIARY_RUST_CONFIG=on
+        // then awaits the child's, as it says).
         if let Some(e) = embedding {
-            match crate::embedding_owner::Owner::start(app, &e, self.embedding_epoch.clone()) {
+            match crate::embedding_owner::Owner::start(
+                app.clone(),
+                &e,
+                self.embedding_epoch.clone(),
+            ) {
                 Ok(owner) => {
                     let _ = self.owner.set(owner);
                 }
@@ -251,6 +257,9 @@ impl Front {
                 }
             }
         }
+        self.app
+            .set(app)
+            .map_err(|_| "start-up config already installed")?;
         let _ = self.native_writers.set(writers);
         self.native_routes
             .set(routes)
@@ -783,7 +792,17 @@ pub async fn control(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             .own_installed
             .load(std::sync::atomic::Ordering::SeqCst)
         {
-            // DIARY_RUST_CONFIG=on: the child is ready; its config is not needed.
+            // DIARY_RUST_CONFIG=on: the child is ready; its config is not needed, but it must agree
+            // on what decides the child's own behaviour (its writer leases, the routes it leaves
+            // to this process, the embedding it follows, the write transform): otherwise the start
+            // is refused (the child then exits, and this process with it).
+            if !child_agrees(front.own_config.get(), &bytes) {
+                eprintln!("noevia-diary: the child's start-up config disagrees with this process's own; refused");
+                return Response::builder()
+                    .status(409)
+                    .body(Body::empty())
+                    .unwrap_or_default();
+            }
             eprintln!("noevia-diary: the child is ready (this process's own start-up config is installed)");
             return Response::new(Body::from("ok"));
         }
@@ -923,6 +942,27 @@ const CONFIG_OBJECTS: &[&str] = &[
     "embedding.llm",
     "embedding.retrieval",
 ];
+
+/// DIARY_RUST_CONFIG=on: does the child's posted config agree with this process's own on the
+/// facts the child acts on itself?
+pub fn child_agrees(own: Option<&Result<serde_json::Value, String>>, child: &[u8]) -> bool {
+    let (Some(Ok(own)), Ok(child)) = (own, serde_json::from_slice::<serde_json::Value>(child))
+    else {
+        return false;
+    };
+    let mut paths = Vec::new();
+    config_differences("", own, &child, &mut paths);
+    !paths.iter().any(|p| {
+        [
+            "native_writers",
+            "native_routes",
+            "embedding",
+            "corpus_write_impl",
+        ]
+        .iter()
+        .any(|k| p == k || p.starts_with(&format!("{k}.")))
+    })
+}
 
 /// The key paths where two JSON values differ (the config's own objects key by key, anything
 /// else as a whole).
@@ -1199,6 +1239,23 @@ mod tests {
             "start-up config shadow: not resolved here (TypeError)"
         );
         assert!(config_shadow_line(&Err(String::new()), b"x").ends_with("is not JSON"));
+    }
+
+    #[test]
+    fn the_child_must_agree_on_what_it_acts_on() {
+        let own = Ok(
+            serde_json::json!({"native_writers": ["a"], "native_routes": [], "auth_token": "x",
+                                         "embedding": {"llm": {"embed_model": "m"}}}),
+        );
+        let same = br#"{"native_writers": ["a"], "native_routes": [], "auth_token": "other",
+                        "embedding": {"llm": {"embed_model": "m"}}}"#;
+        assert!(child_agrees(Some(&own), same));
+        let writers = br#"{"native_writers": [], "native_routes": [], "embedding": {"llm": {"embed_model": "m"}}}"#;
+        assert!(!child_agrees(Some(&own), writers));
+        let embedding = br#"{"native_writers": ["a"], "native_routes": [], "embedding": {"llm": {"embed_model": "n"}}}"#;
+        assert!(!child_agrees(Some(&own), embedding));
+        assert!(!child_agrees(None, same));
+        assert!(!child_agrees(Some(&own), b"x"));
     }
 
     #[test]

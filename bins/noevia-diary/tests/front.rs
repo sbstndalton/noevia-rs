@@ -1156,7 +1156,8 @@ class H(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 signal.signal(signal.SIGTERM, lambda *_: os._exit(0))
 time.sleep(3)
-cfg = {"control_token": hs["control_token"], "forward_secret": hs["parent_secret"]}
+cfg = {"control_token": hs["control_token"], "forward_secret": hs["parent_secret"],
+       "native_routes": [], "native_writers": [], "corpus_write_impl": "python"}
 req = urllib.request.Request("http://127.0.0.1:%d/internal/child/config" % hs["control_port"], data=json.dumps(cfg).encode(),
                              headers={"x-noevia-diary-control": hs["control_token"]}, method="POST")
 open(marker, "w").write(urllib.request.urlopen(req, timeout=5).read().decode())
