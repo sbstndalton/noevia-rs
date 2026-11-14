@@ -446,18 +446,34 @@ async fn a_client_that_leaves_the_queue_starts_no_switch() {
         ("LLAMACPP_PRESET_PATH".to_owned(), ini.display().to_string()),
     ];
     let (addr, _stop) = start(d.path(), &env).await;
-    let gone = tokio::time::timeout(
-        Duration::from_millis(600),
-        call(
-            addr,
-            "POST",
-            "/api/models/load",
-            Some(ADMIN),
-            br#"{"name":"qa-model-a"}"#,
-        ),
-    )
-    .await;
-    assert!(gone.is_err(), "the call was still waiting in the queue");
+    let waiting = tokio::spawn(call(
+        addr,
+        "POST",
+        "/api/models/load",
+        Some(ADMIN),
+        br#"{"name":"qa-model-a"}"#,
+    ));
+    // noevia#2563: the client leaves once the call is waiting in the gate's queue (the stub saw
+    // the lease request), not after a fixed time a loaded runner may not reach it in.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while !seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.target == "/gate/v1/leases")
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the load never asked the gate for a lease"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert!(
+        !waiting.is_finished(),
+        "the call was still waiting in the queue"
+    );
+    waiting.abort();
+    let _ = waiting.await;
     tokio::time::sleep(Duration::from_secs(3)).await;
     let log = seen.lock().unwrap().clone();
     assert!(log.iter().any(|r| r.target == "/gate/v1/leases"));
