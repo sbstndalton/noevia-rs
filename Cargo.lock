@@ -391,6 +391,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-task"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "browser-policy",
+ "js-json",
+ "server-projects",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "bumpalo"
 version = "3.20.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1046,6 +1058,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-read"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "libc",
+ "sha2",
+]
+
+[[package]]
 name = "docx-text"
 version = "0.1.0"
 dependencies = [
@@ -1107,6 +1128,17 @@ dependencies = [
  "sha2",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "edit-target-lookup"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "project-edit-target",
+ "project-file-names",
+ "prompt-framing",
+ "sha2",
 ]
 
 [[package]]
@@ -1214,6 +1246,18 @@ dependencies = [
  "reqwest",
  "serde_json",
  "tokio",
+]
+
+[[package]]
+name = "engine-facts"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+ "prompt-framing",
+ "provider-egress",
+ "serde_json",
+ "url",
 ]
 
 [[package]]
@@ -2294,6 +2338,7 @@ dependencies = [
  "context-fit",
  "dav-parse",
  "drive-tools",
+ "edit-target-lookup",
  "egress",
  "egress-issuer",
  "embedding-worker",
@@ -3568,16 +3613,19 @@ dependencies = [
 name = "server-reasoning-settings"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "serde_json",
  "server-store",
  "tempfile",
+ "url",
 ]
 
 [[package]]
 name = "server-routing-default"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "rustix",
  "serde_json",

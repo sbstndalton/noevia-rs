@@ -245,6 +245,17 @@ impl AttemptCounter {
         self.counts.get(key).map_or(0, |&(_, n)| n) < self.max
     }
 
+    /// `allowed` and `record` as one step: Node checks and records with no await between them, so a
+    /// caller that awaits between the two (the engine-busy bridge) must re-check under its lock with
+    /// this, or two turns of one chat could both pass the last allowed attempt.
+    pub fn try_record(&mut self, key: &str) -> bool {
+        if !self.allowed(key) {
+            return false;
+        }
+        self.record(key);
+        true
+    }
+
     /// One more request for `key`; returns how many it now has.
     pub fn record(&mut self, key: &str) -> u32 {
         let n = self.counts.remove(key).map_or(0, |(stamp, n)| {

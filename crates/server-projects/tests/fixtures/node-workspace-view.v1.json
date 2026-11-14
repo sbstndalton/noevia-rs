@@ -1,0 +1,3093 @@
+{
+  "version": 1,
+  "generator": "tools/gen-workspace-view-fixtures.cjs",
+  "defaultProvider": "local",
+  "sources": {
+    "qa-proj-a": [
+      "QA note: the synthetic project text."
+    ],
+    "qa-skill-proj": [
+      "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+    ],
+    "qa-skill-done": [
+      "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+    ],
+    "qa-surr": [
+      "QA lone \ud83d surrogate and astral 😀"
+    ]
+  },
+  "sourcesRead": {
+    "contracts/project-limits.json": "aa1ed3fcfcaae2986da726d9c18aaf5e7ff0e160a28dcd4f4a289218fac06248",
+    "server/instruction-skills.cjs": "5ba01387704a3b74d73a4a6659e594404e0183ce49c2343293059e67e47930ba",
+    "server/legacy-claim.cjs": "97d4ab523bb534560a2c782373b0af106957cf251715e2912719679b0d49875e",
+    "server/project-modes.cjs": "ad64e5e26765afd520b1c5a610fbcfd8a641deb2f73da4ebfd90e1dec3e64c92",
+    "server/project-store-client.cjs": "63161bfe879931ab99c822b33bcff7fae82c60fda1bd58f0053f1d69c37aeaa9",
+    "server/projects.cjs": "c8151c41f7b0d15a4a0fa549ffdc65e56aba51d73d5992158957016c953b5e46",
+    "server/rust-projects.cjs": "9b498d8054a5b817ddfd4f1457acc7d5bebd22cf98276276ea8ce3ab1cb28dc8",
+    "server/rust-source-ops.cjs": "4d95f4e9bb5f645fea3c2ec8f283b33bb9837ff18b93068b736ea73b254c64d0",
+    "server/shared-reread.cjs": "dbccb6c1121b19155390bd39ba5db4232e2090bb4af6e2b2a938a0bfb26079e8",
+    "server/source-text.cjs": "12a21719f48822f2b24d8b259b6ea064c197ec2f8ada5572ceb5c5adb38a340d",
+    "server/workspace.cjs": "3234a0dced9d8929b8f86d2f3847b87d9a7b97978da93c78064c91106b5672b6"
+  },
+  "cases": [
+    {
+      "name": "full",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-proj-a\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"local\",\n      \"routing\": \"auto\",\n      \"chats\": [\n        {\n          \"id\": \"qa-c1\",\n          \"title\": \"QA one\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"files\": [\n        {\n          \"name\": \"notes.md\",\n          \"textRef\": \"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\n          \"chars\": 36\n        },\n        null,\n        7,\n        \"x\",\n        {\n          \"name\": \"gone.md\",\n          \"textRef\": \"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-proj-b\",\n      \"name\": \"QA Beta\",\n      \"modes\": [\n        \"cowork\"\n      ],\n      \"provider\": \"lemonade\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"qa-proj-c\",\n      \"name\": \"QA Gamma\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"bad-ref.txt\",\n          \"textRef\": \"nothex\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"no-ref.txt\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-heal\",\n      \"name\": \"Chat attachments qa-heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-bare\",\n      \"name\": \"Chat attachments qa-bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-chosen\",\n      \"name\": \"Chat attachments qa-chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"qa-skill-proj\",\n      \"name\": \"QA skills\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-skill-done\",\n      \"name\": \"QA skills done\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"qa-surr\",\n      \"name\": \"QA lone \\ud83d surrogate and astral 😀\",\n      \"modes\": [\n        \"chat\",\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"surr.md\",\n          \"textRef\": \"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\n          \"chars\": 33\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-archived\",\n      \"name\": \"QA archived\",\n      \"modes\": [\n        \"code\",\n        \"chat\"\n      ],\n      \"archived\": true,\n      \"provider\": \"qa-cloud\",\n      \"files\": \"not a list\",\n      \"chats\": []\n    }\n  ]\n}",
+        "free-chats.json": "[{\"id\":\"qa-free-1\",\"title\":\"QA free\",\"updatedAt\":3},\"stray\",null]",
+        "preferences.json": "{\"defaultRouting\":\"auto\",\"qa\":1}",
+        "auto-roles.json": "{\"chat\":\"qa-model\"}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}]},{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[]},{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"]},{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[],\"instructionSkills\":{}},{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[]},{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}},{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}]},{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}},{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}]},{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[]}]",
+        "texts": [
+          [
+            0,
+            0,
+            "QA note: the synthetic project text."
+          ],
+          [
+            0,
+            1,
+            ""
+          ],
+          [
+            2,
+            0,
+            ""
+          ],
+          [
+            2,
+            1,
+            "5"
+          ],
+          [
+            2,
+            2,
+            ""
+          ],
+          [
+            6,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            7,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            8,
+            0,
+            "QA lone � surrogate and astral 😀"
+          ]
+        ],
+        "freeChats": "[{\"id\":\"qa-free-1\",\"title\":\"QA free\",\"updatedAt\":3},\"stray\",null]",
+        "preferences": "{\"defaultRouting\":\"auto\",\"qa\":1}",
+        "autoRoles": "{\"chat\":\"qa-model\"}",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": "{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": "{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": "{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": "{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": true,
+            "written": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}"
+          },
+          {
+            "id": "qa-skill-done",
+            "project": "{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": "{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": "{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "absent-dir",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": true,
+      "files": {},
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "empty-dir",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {},
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-not-json",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\"projects\": ["
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-null",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "null"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-field-null",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\"projects\":null}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-field-object",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\"projects\":{\"a\":1}}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-number",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "5"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-array-doc",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "[{\"id\":\"qa-x\"}]"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "projects-empty",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\"projects\":[]}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "null-project",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-proj-a\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"local\",\n      \"routing\": \"auto\",\n      \"chats\": [\n        {\n          \"id\": \"qa-c1\",\n          \"title\": \"QA one\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"files\": [\n        {\n          \"name\": \"notes.md\",\n          \"textRef\": \"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\n          \"chars\": 36\n        },\n        null,\n        7,\n        \"x\",\n        {\n          \"name\": \"gone.md\",\n          \"textRef\": \"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"\n        }\n      ]\n    },\n    null,\n    {\n      \"id\": \"qa-proj-b\",\n      \"name\": \"QA Beta\",\n      \"modes\": [\n        \"cowork\"\n      ],\n      \"provider\": \"lemonade\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"qa-proj-c\",\n      \"name\": \"QA Gamma\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"bad-ref.txt\",\n          \"textRef\": \"nothex\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"no-ref.txt\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-heal\",\n      \"name\": \"Chat attachments qa-heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-bare\",\n      \"name\": \"Chat attachments qa-bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-chosen\",\n      \"name\": \"Chat attachments qa-chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"qa-skill-proj\",\n      \"name\": \"QA skills\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-skill-done\",\n      \"name\": \"QA skills done\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"qa-surr\",\n      \"name\": \"QA lone \\ud83d surrogate and astral 😀\",\n      \"modes\": [\n        \"chat\",\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"surr.md\",\n          \"textRef\": \"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\n          \"chars\": 33\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-archived\",\n      \"name\": \"QA archived\",\n      \"modes\": [\n        \"code\",\n        \"chat\"\n      ],\n      \"archived\": true,\n      \"provider\": \"qa-cloud\",\n      \"files\": \"not a list\",\n      \"chats\": []\n    }\n  ]\n}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "threw": "Cannot read properties of null (reading 'provider')"
+      }
+    },
+    {
+      "name": "number-project",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-proj-a\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"local\",\n      \"routing\": \"auto\",\n      \"chats\": [\n        {\n          \"id\": \"qa-c1\",\n          \"title\": \"QA one\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"files\": [\n        {\n          \"name\": \"notes.md\",\n          \"textRef\": \"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\n          \"chars\": 36\n        },\n        null,\n        7,\n        \"x\",\n        {\n          \"name\": \"gone.md\",\n          \"textRef\": \"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-proj-b\",\n      \"name\": \"QA Beta\",\n      \"modes\": [\n        \"cowork\"\n      ],\n      \"provider\": \"lemonade\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"qa-proj-c\",\n      \"name\": \"QA Gamma\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"bad-ref.txt\",\n          \"textRef\": \"nothex\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"no-ref.txt\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-heal\",\n      \"name\": \"Chat attachments qa-heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-bare\",\n      \"name\": \"Chat attachments qa-bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-chosen\",\n      \"name\": \"Chat attachments qa-chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"qa-skill-proj\",\n      \"name\": \"QA skills\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-skill-done\",\n      \"name\": \"QA skills done\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"qa-surr\",\n      \"name\": \"QA lone \\ud83d surrogate and astral 😀\",\n      \"modes\": [\n        \"chat\",\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"surr.md\",\n          \"textRef\": \"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\n          \"chars\": 33\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-archived\",\n      \"name\": \"QA archived\",\n      \"modes\": [\n        \"code\",\n        \"chat\"\n      ],\n      \"archived\": true,\n      \"provider\": \"qa-cloud\",\n      \"files\": \"not a list\",\n      \"chats\": []\n    },\n    4\n  ]\n}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}]},{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[]},{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"]},{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[],\"instructionSkills\":{}},{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[]},{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}},{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}]},{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}},{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}]},{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[]},4]",
+        "texts": [
+          [
+            0,
+            0,
+            "QA note: the synthetic project text."
+          ],
+          [
+            0,
+            1,
+            ""
+          ],
+          [
+            2,
+            0,
+            ""
+          ],
+          [
+            2,
+            1,
+            "5"
+          ],
+          [
+            2,
+            2,
+            ""
+          ],
+          [
+            6,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            7,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            8,
+            0,
+            "QA lone � surrogate and astral 😀"
+          ]
+        ],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": "{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": "{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": "{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": "{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": true,
+            "written": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}"
+          },
+          {
+            "id": "qa-skill-done",
+            "project": "{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": "{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": "{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "string-project",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-proj-a\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"local\",\n      \"routing\": \"auto\",\n      \"chats\": [\n        {\n          \"id\": \"qa-c1\",\n          \"title\": \"QA one\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"files\": [\n        {\n          \"name\": \"notes.md\",\n          \"textRef\": \"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\n          \"chars\": 36\n        },\n        null,\n        7,\n        \"x\",\n        {\n          \"name\": \"gone.md\",\n          \"textRef\": \"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-proj-b\",\n      \"name\": \"QA Beta\",\n      \"modes\": [\n        \"cowork\"\n      ],\n      \"provider\": \"lemonade\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"qa-proj-c\",\n      \"name\": \"QA Gamma\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"bad-ref.txt\",\n          \"textRef\": \"nothex\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"no-ref.txt\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-heal\",\n      \"name\": \"Chat attachments qa-heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-bare\",\n      \"name\": \"Chat attachments qa-bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-chosen\",\n      \"name\": \"Chat attachments qa-chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"qa-skill-proj\",\n      \"name\": \"QA skills\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-skill-done\",\n      \"name\": \"QA skills done\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"qa-surr\",\n      \"name\": \"QA lone \\ud83d surrogate and astral 😀\",\n      \"modes\": [\n        \"chat\",\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"surr.md\",\n          \"textRef\": \"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\n          \"chars\": 33\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-archived\",\n      \"name\": \"QA archived\",\n      \"modes\": [\n        \"code\",\n        \"chat\"\n      ],\n      \"archived\": true,\n      \"provider\": \"qa-cloud\",\n      \"files\": \"not a list\",\n      \"chats\": []\n    },\n    \"qa\"\n  ]\n}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}]},{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[]},{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"]},{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[],\"instructionSkills\":{}},{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[]},{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}},{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}]},{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}},{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}]},{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[]},\"qa\"]",
+        "texts": [
+          [
+            0,
+            0,
+            "QA note: the synthetic project text."
+          ],
+          [
+            0,
+            1,
+            ""
+          ],
+          [
+            2,
+            0,
+            ""
+          ],
+          [
+            2,
+            1,
+            "5"
+          ],
+          [
+            2,
+            2,
+            ""
+          ],
+          [
+            6,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            7,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            8,
+            0,
+            "QA lone � surrogate and astral 😀"
+          ]
+        ],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": "{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": "{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": "{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": "{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": true,
+            "written": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}"
+          },
+          {
+            "id": "qa-skill-done",
+            "project": "{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": "{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": "{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "free-object",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-proj-a\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"local\",\n      \"routing\": \"auto\",\n      \"chats\": [\n        {\n          \"id\": \"qa-c1\",\n          \"title\": \"QA one\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"files\": [\n        {\n          \"name\": \"notes.md\",\n          \"textRef\": \"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\n          \"chars\": 36\n        },\n        null,\n        7,\n        \"x\",\n        {\n          \"name\": \"gone.md\",\n          \"textRef\": \"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-proj-b\",\n      \"name\": \"QA Beta\",\n      \"modes\": [\n        \"cowork\"\n      ],\n      \"provider\": \"lemonade\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"qa-proj-c\",\n      \"name\": \"QA Gamma\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"bad-ref.txt\",\n          \"textRef\": \"nothex\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"no-ref.txt\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-heal\",\n      \"name\": \"Chat attachments qa-heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-bare\",\n      \"name\": \"Chat attachments qa-bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-chosen\",\n      \"name\": \"Chat attachments qa-chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"qa-skill-proj\",\n      \"name\": \"QA skills\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-skill-done\",\n      \"name\": \"QA skills done\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"qa-surr\",\n      \"name\": \"QA lone \\ud83d surrogate and astral 😀\",\n      \"modes\": [\n        \"chat\",\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"surr.md\",\n          \"textRef\": \"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\n          \"chars\": 33\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-archived\",\n      \"name\": \"QA archived\",\n      \"modes\": [\n        \"code\",\n        \"chat\"\n      ],\n      \"archived\": true,\n      \"provider\": \"qa-cloud\",\n      \"files\": \"not a list\",\n      \"chats\": []\n    }\n  ]\n}",
+        "free-chats.json": "{\"chats\":[]}"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}]},{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[]},{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"]},{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[],\"instructionSkills\":{}},{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[]},{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}},{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}]},{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}},{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}]},{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[]}]",
+        "texts": [
+          [
+            0,
+            0,
+            "QA note: the synthetic project text."
+          ],
+          [
+            0,
+            1,
+            ""
+          ],
+          [
+            2,
+            0,
+            ""
+          ],
+          [
+            2,
+            1,
+            "5"
+          ],
+          [
+            2,
+            2,
+            ""
+          ],
+          [
+            6,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            7,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            8,
+            0,
+            "QA lone � surrogate and astral 😀"
+          ]
+        ],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": "{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": "{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": "{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": "{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": true,
+            "written": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}"
+          },
+          {
+            "id": "qa-skill-done",
+            "project": "{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": "{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": "{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "free-not-json",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-proj-a\",\n      \"name\": \"QA Alpha\",\n      \"modes\": [\n        \"chat\",\n        \"code\"\n      ],\n      \"provider\": \"local\",\n      \"routing\": \"auto\",\n      \"chats\": [\n        {\n          \"id\": \"qa-c1\",\n          \"title\": \"QA one\",\n          \"updatedAt\": 5\n        }\n      ],\n      \"files\": [\n        {\n          \"name\": \"notes.md\",\n          \"textRef\": \"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\n          \"chars\": 36\n        },\n        null,\n        7,\n        \"x\",\n        {\n          \"name\": \"gone.md\",\n          \"textRef\": \"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-proj-b\",\n      \"name\": \"QA Beta\",\n      \"modes\": [\n        \"cowork\"\n      ],\n      \"provider\": \"lemonade\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"qa-proj-c\",\n      \"name\": \"QA Gamma\",\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"bad-ref.txt\",\n          \"textRef\": \"nothex\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"no-ref.txt\"\n        }\n      ]\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-heal\",\n      \"name\": \"Chat attachments qa-heal\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-bare\",\n      \"name\": \"Chat attachments qa-bare\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"chats\": []\n    },\n    {\n      \"id\": \"cowork-chat-context-qa-chosen\",\n      \"name\": \"Chat attachments qa-chosen\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"routing\": \"manual\",\n      \"routingChosen\": true,\n      \"chats\": [],\n      \"instructionSkills\": {}\n    },\n    {\n      \"id\": \"qa-skill-proj\",\n      \"name\": \"QA skills\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-skill-done\",\n      \"name\": \"QA skills done\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"docs/SKILL.md\",\n          \"textRef\": \"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\n          \"chars\": 60,\n          \"skillHeader\": true\n        }\n      ],\n      \"instructionSkills\": {\n        \"docs/SKILL.md\": {\n          \"enabled\": false,\n          \"reviewedHash\": null\n        }\n      }\n    },\n    {\n      \"id\": \"qa-surr\",\n      \"name\": \"QA lone \\ud83d surrogate and astral 😀\",\n      \"modes\": [\n        \"chat\",\n        \"chat\"\n      ],\n      \"chats\": [],\n      \"files\": [\n        {\n          \"name\": \"surr.md\",\n          \"textRef\": \"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\n          \"chars\": 33\n        }\n      ]\n    },\n    {\n      \"id\": \"qa-archived\",\n      \"name\": \"QA archived\",\n      \"modes\": [\n        \"code\",\n        \"chat\"\n      ],\n      \"archived\": true,\n      \"provider\": \"qa-cloud\",\n      \"files\": \"not a list\",\n      \"chats\": []\n    }\n  ]\n}",
+        "free-chats.json": "[{"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}]},{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[]},{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"]},{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[],\"instructionSkills\":{}},{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"chats\":[]},{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}},{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}]},{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}},{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}]},{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[]}]",
+        "texts": [
+          [
+            0,
+            0,
+            "QA note: the synthetic project text."
+          ],
+          [
+            0,
+            1,
+            ""
+          ],
+          [
+            2,
+            0,
+            ""
+          ],
+          [
+            2,
+            1,
+            "5"
+          ],
+          [
+            2,
+            2,
+            ""
+          ],
+          [
+            6,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            7,
+            0,
+            "---\nname: qa-skill\ndescription: a QA skill\n---\nQA skill body"
+          ],
+          [
+            8,
+            0,
+            "QA lone � surrogate and astral 😀"
+          ]
+        ],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": "{\"id\":\"qa-proj-a\",\"name\":\"QA Alpha\",\"modes\":[\"chat\",\"code\"],\"provider\":\"local\",\"routing\":\"auto\",\"chats\":[{\"id\":\"qa-c1\",\"title\":\"QA one\",\"updatedAt\":5}],\"files\":[{\"name\":\"notes.md\",\"textRef\":\"f0b01bd1da863ac7ac78a0b575d80f4affd0b66bf24e4b9e08f1d4282ddfcd36\",\"chars\":36},{\"name\":\"gone.md\",\"textRef\":\"01ec0a9e461d54e85f7ee7151bf319eb1a612169223e1fd205b679bbbc6b4747\"}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": "{\"id\":\"qa-proj-b\",\"name\":\"QA Beta\",\"modes\":[\"chat\",\"cowork\"],\"provider\":\"local\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": "{\"id\":\"qa-proj-c\",\"name\":\"QA Gamma\",\"chats\":[],\"files\":[{\"name\":\"bad-ref.txt\",\"textRef\":\"nothex\"},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"no-ref.txt\"}],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-heal\",\"name\":\"Chat attachments qa-heal\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": true,
+            "written": "{\"id\":\"cowork-chat-context-qa-bare\",\"name\":\"Chat attachments qa-bare\",\"modes\":[\"chat\"],\"routing\":\"auto\",\"chats\":[],\"instructionSkills\":{}}"
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": "{\"id\":\"cowork-chat-context-qa-chosen\",\"name\":\"Chat attachments qa-chosen\",\"modes\":[\"chat\"],\"routing\":\"manual\",\"routingChosen\":true,\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": true,
+            "written": "{\"id\":\"qa-skill-proj\",\"name\":\"QA skills\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}"
+          },
+          {
+            "id": "qa-skill-done",
+            "project": "{\"id\":\"qa-skill-done\",\"name\":\"QA skills done\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"docs/SKILL.md\",\"textRef\":\"10f44605ee66343cb6993a6d71f64d509fb63ebb70f559a9ba2614e6437258a0\",\"chars\":60,\"skillHeader\":true}],\"instructionSkills\":{\"docs/SKILL.md\":{\"enabled\":false,\"reviewedHash\":null}}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": "{\"id\":\"qa-surr\",\"name\":\"QA lone \\ud83d surrogate and astral 😀\",\"modes\":[\"chat\"],\"chats\":[],\"files\":[{\"name\":\"surr.md\",\"textRef\":\"ed5f40d3a2642e62d4923c19b19c507a7d890c01a30cba780c7cd9db441120c5\",\"chars\":33}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": "{\"id\":\"qa-archived\",\"name\":\"QA archived\",\"modes\":[\"chat\",\"code\"],\"archived\":true,\"provider\":\"qa-cloud\",\"files\":\"not a list\",\"chats\":[],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "free-null",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "free-chats.json": "null"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefs-null",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "preferences.json": "null"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefs-false",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "preferences.json": "false"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefs-zero",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "preferences.json": "0"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefs-array",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "preferences.json": "[1,2]"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "[1,2]",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefs-string",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "preferences.json": "\"qa\""
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "\"qa\"",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "prefs-not-json",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "preferences.json": "{"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "roles-not-json",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "auto-roles.json": "{x"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "roles-null",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "auto-roles.json": "null"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "roles-list",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "auto-roles.json": "[{\"role\":\"qa\"}]"
+      },
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "[{\"role\":\"qa\"}]",
+        "queries": [
+          {
+            "id": "qa-proj-a",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-b",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-proj-c",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-heal",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-bare",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "cowork-chat-context-qa-chosen",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-proj",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-skill-done",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-dup",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-surr",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-archived",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-none",
+            "project": null,
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "",
+            "project": null,
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "modes-variants",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-m1\",\n      \"modes\": []\n    },\n    {\n      \"id\": \"qa-m2\",\n      \"modes\": \"chat\"\n    },\n    {\n      \"id\": \"qa-m3\",\n      \"modes\": [\n        \"chat\"\n      ]\n    },\n    {\n      \"id\": \"qa-m4\",\n      \"modes\": [\n        \"code\",\n        \"cowork\"\n      ]\n    },\n    {\n      \"id\": \"qa-m5\"\n    },\n    {\n      \"id\": \"qa-m6\",\n      \"modes\": [\n        \"chat\",\n        \"other\"\n      ]\n    },\n    {\n      \"id\": \"qa-m7\",\n      \"modes\": null\n    },\n    {\n      \"id\": \"qa-m8\",\n      \"modes\": [\n        \"chat\",\n        \"cowork\",\n        \"code\"\n      ]\n    },\n    {\n      \"id\": \"qa-m9\",\n      \"provider\": \"lemonade\",\n      \"files\": []\n    },\n    {\n      \"id\": \"qa-m10\",\n      \"provider\": \"local\",\n      \"files\": [\n        [],\n        {},\n        false,\n        0\n      ]\n    }\n  ]\n}"
+      },
+      "queries": [
+        "qa-m1",
+        "qa-m4",
+        "qa-m9",
+        "qa-m10"
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-m1\",\"modes\":[\"chat\"]},{\"id\":\"qa-m2\",\"modes\":[\"chat\"]},{\"id\":\"qa-m3\",\"modes\":[\"chat\"]},{\"id\":\"qa-m4\",\"modes\":[\"chat\",\"cowork\",\"code\"]},{\"id\":\"qa-m5\",\"modes\":[\"chat\"]},{\"id\":\"qa-m6\",\"modes\":[\"chat\"]},{\"id\":\"qa-m7\",\"modes\":[\"chat\"]},{\"id\":\"qa-m8\",\"modes\":[\"chat\",\"cowork\",\"code\"]},{\"id\":\"qa-m9\",\"provider\":\"local\",\"files\":[],\"modes\":[\"chat\"]},{\"id\":\"qa-m10\",\"provider\":\"local\",\"files\":[[],{}],\"modes\":[\"chat\"]}]",
+        "texts": [
+          [
+            9,
+            0,
+            ""
+          ],
+          [
+            9,
+            1,
+            ""
+          ]
+        ],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-m1",
+            "project": "{\"id\":\"qa-m1\",\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-m4",
+            "project": "{\"id\":\"qa-m4\",\"modes\":[\"chat\",\"cowork\",\"code\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-m9",
+            "project": "{\"id\":\"qa-m9\",\"provider\":\"local\",\"files\":[],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          },
+          {
+            "id": "qa-m10",
+            "project": "{\"id\":\"qa-m10\",\"provider\":\"local\",\"files\":[[],{}],\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "invalid-user",
+      "user": "not-a-user",
+      "absent": false,
+      "files": {},
+      "queries": [
+        "qa-proj-a",
+        "qa-proj-b",
+        "qa-proj-c",
+        "cowork-chat-context-qa-heal",
+        "cowork-chat-context-qa-bare",
+        "cowork-chat-context-qa-chosen",
+        "qa-skill-proj",
+        "qa-skill-done",
+        "qa-dup",
+        "qa-surr",
+        "qa-archived",
+        "qa-none",
+        ""
+      ],
+      "node": {
+        "threw": "invalid user id"
+      }
+    },
+    {
+      "name": "duplicate-ids",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-dup\",\n      \"name\": \"QA first of two\",\n      \"modes\": [\n        \"chat\"\n      ]\n    },\n    {\n      \"id\": \"qa-dup\",\n      \"name\": \"QA second of two\",\n      \"modes\": [\n        \"chat\"\n      ]\n    }\n  ]\n}"
+      },
+      "queries": [
+        "qa-dup"
+      ],
+      "node": {
+        "loadWrites": 0,
+        "projects": "[{\"id\":\"qa-dup\",\"name\":\"QA first of two\",\"modes\":[\"chat\"]},{\"id\":\"qa-dup\",\"name\":\"QA second of two\",\"modes\":[\"chat\"]}]",
+        "texts": [],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-dup",
+            "project": "{\"id\":\"qa-dup\",\"name\":\"QA first of two\",\"modes\":[\"chat\"],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    },
+    {
+      "name": "inline-text",
+      "user": "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+      "absent": false,
+      "files": {
+        "projects.json": "{\n  \"projects\": [\n    {\n      \"id\": \"qa-inline\",\n      \"modes\": [\n        \"chat\"\n      ],\n      \"files\": [\n        {\n          \"name\": \"inline.txt\",\n          \"content\": \"QA inline text\"\n        },\n        {\n          \"name\": \"num.txt\",\n          \"content\": 5\n        },\n        {\n          \"name\": \"obj.txt\",\n          \"content\": {\n            \"a\": 1\n          }\n        },\n        {\n          \"name\": \"list.txt\",\n          \"content\": [\n            1,\n            null,\n            \"x\"\n          ]\n        },\n        {\n          \"name\": \"zero.txt\",\n          \"content\": 0\n        }\n      ]\n    }\n  ]\n}"
+      },
+      "queries": [
+        "qa-inline"
+      ],
+      "node": {
+        "loadWrites": 1,
+        "projects": "[{\"id\":\"qa-inline\",\"modes\":[\"chat\"],\"files\":[{\"name\":\"inline.txt\",\"textRef\":\"c56b13ff64d0823e1c529be113f019a27ffc1bdd7532f15ed62bed2d62e47a31\",\"chars\":14},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"obj.txt\",\"content\":{\"a\":1}},{\"name\":\"list.txt\",\"content\":[1,null,\"x\"]},{\"name\":\"zero.txt\",\"content\":0}]}]",
+        "texts": [
+          [
+            0,
+            0,
+            "QA inline text"
+          ],
+          [
+            0,
+            1,
+            "5"
+          ],
+          [
+            0,
+            2,
+            "[object Object]"
+          ],
+          [
+            0,
+            3,
+            "1,,x"
+          ],
+          [
+            0,
+            4,
+            ""
+          ]
+        ],
+        "freeChats": "[]",
+        "preferences": "{}",
+        "autoRoles": "null",
+        "queries": [
+          {
+            "id": "qa-inline",
+            "project": "{\"id\":\"qa-inline\",\"modes\":[\"chat\"],\"files\":[{\"name\":\"inline.txt\",\"textRef\":\"c56b13ff64d0823e1c529be113f019a27ffc1bdd7532f15ed62bed2d62e47a31\",\"chars\":14},{\"name\":\"num.txt\",\"content\":5},{\"name\":\"obj.txt\",\"content\":{\"a\":1}},{\"name\":\"list.txt\",\"content\":[1,null,\"x\"]},{\"name\":\"zero.txt\",\"content\":0}],\"instructionSkills\":{}}",
+            "saved": false,
+            "written": null
+          }
+        ]
+      }
+    }
+  ]
+}

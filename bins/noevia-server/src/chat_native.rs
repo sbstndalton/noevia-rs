@@ -1092,6 +1092,15 @@ impl Host for FrontHost {
     }
 
     async fn edit_target(&self, project_id: Option<&str>, name: &str, args: &str) -> EditTarget {
+        // Track R14: the front's own lookup when NOEVIA_RUST_EDIT_TARGET=1 (None: core's bridge).
+        if crate::edit_target_native::enabled() {
+            if let Some(found) =
+                crate::edit_target_native::lookup(&self.app, &self.user, project_id, name, args)
+                    .await
+            {
+                return found;
+            }
+        }
         let body = js::obj([
             ("user", js::s(self.user.clone())),
             ("projectId", project_id.map_or(JValue::Null, js::s)),
