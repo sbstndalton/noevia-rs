@@ -118,7 +118,9 @@ async fn stub(route: impl Fn(&str) -> Answer + Send + Sync + 'static) -> (u16, S
                 let mut buf = Vec::new();
                 let mut chunk = [0u8; 8192];
                 let head = loop {
-                    let Ok(n) = c.read(&mut chunk).await else { return };
+                    let Ok(n) = c.read(&mut chunk).await else {
+                        return;
+                    };
                     if n == 0 {
                         return;
                     }
@@ -136,7 +138,10 @@ async fn stub(route: impl Fn(&str) -> Answer + Send + Sync + 'static) -> (u16, S
                 for (k, v) in &a.headers {
                     out.push_str(&format!("{k}: {v}\r\n"));
                 }
-                out.push_str(&format!("Content-Length: {}\r\nConnection: close\r\n\r\n", a.body.len()));
+                out.push_str(&format!(
+                    "Content-Length: {}\r\nConnection: close\r\n\r\n",
+                    a.body.len()
+                ));
                 let mut bytes = out.into_bytes();
                 bytes.extend_from_slice(&a.body);
                 let _ = c.write_all(&bytes).await;
@@ -162,7 +167,10 @@ async fn front(dir: &Path, node: u16, hub: u16, on: bool) -> (SocketAddr, Arc<Ap
         ("PUBLIC_ORIGIN", format!("http://{addr}")),
         ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
         ("MODEL_MANAGER_KIND", "llamacpp".to_owned()),
-        ("MODEL_MANAGER_BASE_URL", format!("http://127.0.0.1:{router}")),
+        (
+            "MODEL_MANAGER_BASE_URL",
+            format!("http://127.0.0.1:{router}"),
+        ),
     ]
     .into_iter()
     .map(|(k, v)| (k.to_owned(), v))
@@ -209,7 +217,10 @@ fn gguf(tensors: &[&str]) -> Vec<u8> {
 fn ranged(bytes: Vec<u8>) -> Answer {
     Answer {
         status: 206,
-        headers: vec![("Content-Range".into(), format!("bytes 0-{}/99999999", bytes.len() - 1))],
+        headers: vec![(
+            "Content-Range".into(),
+            format!("bytes 0-{}/99999999", bytes.len() - 1),
+        )],
         body: bytes,
         delay_ms: 0,
     }
@@ -276,7 +287,13 @@ fn recorded(o: &JValue) -> Answer {
 
 fn without_time(v: &JValue) -> JValue {
     match v {
-        JValue::Obj(items) => JValue::Obj(items.iter().filter(|(k, _)| k != "checkedAt").cloned().collect()),
+        JValue::Obj(items) => JValue::Obj(
+            items
+                .iter()
+                .filter(|(k, _)| k != "checkedAt")
+                .cloned()
+                .collect(),
+        ),
         other => other.clone(),
     }
 }
@@ -289,9 +306,26 @@ async fn switch_unset_the_check_and_the_pull_stay_node_s() {
     let (node_port, relayed) = node().await;
     let (hub, hub_seen) = stub(|_| meta()).await;
     let (addr, _) = front(dir.path(), node_port, hub, false).await;
-    let (status, body) = call(addr, "GET", "/api/models/mtp-artifact?repo=qa-org/qa-model&variant=Q8_0", ADMIN, "").await;
-    assert_eq!((status, body), (202, JValue::obj([("relayed", JValue::Bool(true))])));
-    let (status, _) = call(addr, "POST", "/api/models/pull", ADMIN, r#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
+    let (status, body) = call(
+        addr,
+        "GET",
+        "/api/models/mtp-artifact?repo=qa-org/qa-model&variant=Q8_0",
+        ADMIN,
+        "",
+    )
+    .await;
+    assert_eq!(
+        (status, body),
+        (202, JValue::obj([("relayed", JValue::Bool(true))]))
+    );
+    let (status, _) = call(
+        addr,
+        "POST",
+        "/api/models/pull",
+        ADMIN,
+        r#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#,
+    )
+    .await;
     assert_eq!(status, 202);
     assert_eq!(relayed.lock().unwrap().len(), 2);
     assert!(hub_seen.lock().unwrap().is_empty());
@@ -303,20 +337,54 @@ async fn switch_on_the_pull_is_still_relayed_and_a_member_is_refused() {
     let (node_port, relayed) = node().await;
     let (hub, hub_seen) = stub(|_| meta()).await;
     let (addr, app) = front(dir.path(), node_port, hub, true).await;
-    let (status, body) = call(addr, "GET", "/api/models/mtp-artifact?repo=qa-org/qa-model&variant=Q8_0", MEMBER, "").await;
+    let (status, body) = call(
+        addr,
+        "GET",
+        "/api/models/mtp-artifact?repo=qa-org/qa-model&variant=Q8_0",
+        MEMBER,
+        "",
+    )
+    .await;
     assert_eq!(
         (status, body),
-        (403, JValue::obj([("error", JValue::from("administrator required"))]))
+        (
+            403,
+            JValue::obj([("error", JValue::from("administrator required"))])
+        )
     );
     assert!(hub_seen.lock().unwrap().is_empty());
-    let (status, _) = call(addr, "POST", "/api/models/pull", ADMIN, r#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
+    let (status, _) = call(
+        addr,
+        "POST",
+        "/api/models/pull",
+        ADMIN,
+        r#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#,
+    )
+    .await;
     assert_eq!(status, 202);
     let heads = relayed.lock().unwrap().clone();
-    assert!(heads.iter().any(|h| h.starts_with("POST /api/models/pull ")), "{heads:?}");
+    assert!(
+        heads
+            .iter()
+            .any(|h| h.starts_with("POST /api/models/pull ")),
+        "{heads:?}"
+    );
     assert!(!heads.iter().any(|h| h.contains("mtp-artifact")));
-    // Other methods on the check's path stay Node's.
-    let (status, _) = call(addr, "POST", "/api/models/mtp-artifact", ADMIN, "{}").await;
-    assert_eq!(status, 202);
+    // Other methods on the check's path are not Node's either way (residual_fallback.rs relays
+    // only its GET): the front's 404, nothing relayed, nothing fetched.
+    let (status, body) = call(addr, "POST", "/api/models/mtp-artifact", ADMIN, "{}").await;
+    assert_eq!(
+        status,
+        404,
+        "{}",
+        wtf16::stringify(&body).unwrap_or_default()
+    );
+    assert!(!relayed
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|h| h.contains("mtp-artifact")));
+    assert!(hub_seen.lock().unwrap().is_empty());
     assert_eq!(app.mtp_artifact.scan_clears(), 0);
 }
 
@@ -326,7 +394,9 @@ async fn the_front_answers_the_recorded_llamacpp_scenarios_as_node_did() {
         "../../../crates/model-pull/tests/fixtures/node-model-pull.v1.json"
     ))
     .unwrap();
-    let JValue::Arr(scenarios) = fixture.get("mtp") else { panic!() };
+    let JValue::Arr(scenarios) = fixture.get("mtp") else {
+        panic!()
+    };
     let mut statuses = Vec::new();
     for s in scenarios {
         let name = s.get("name").as_str().unwrap();
@@ -368,10 +438,26 @@ async fn the_front_answers_the_recorded_llamacpp_scenarios_as_node_did() {
         let (node_port, relayed) = node().await;
         let (addr, app) = front(dir.path(), node_port, hub, true).await;
         let query = r.get("query").as_str().unwrap();
-        let (status, body) = call(addr, "GET", &format!("/api/models/mtp-artifact?{query}"), ADMIN, "").await;
+        let (status, body) = call(
+            addr,
+            "GET",
+            &format!("/api/models/mtp-artifact?{query}"),
+            ADMIN,
+            "",
+        )
+        .await;
         assert_eq!(JValue::Num(f64::from(status)), *r.get("status"), "{name}");
-        assert_eq!(without_time(&body), without_time(r.get("body")), "{name}: {}", wtf16::stringify(&body).unwrap());
-        assert!(relayed.lock().unwrap().iter().all(|h| !h.contains("mtp-artifact")));
+        assert_eq!(
+            without_time(&body),
+            without_time(r.get("body")),
+            "{name}: {}",
+            wtf16::stringify(&body).unwrap()
+        );
+        assert!(relayed
+            .lock()
+            .unwrap()
+            .iter()
+            .all(|h| !h.contains("mtp-artifact")));
         assert_eq!(app.mtp_artifact.scan_clears(), 0);
         statuses.push(body.get("status").as_str().unwrap_or("").to_owned());
     }
@@ -387,14 +473,20 @@ async fn hub_for(delay_ms: u64, elsewhere: u16) -> (u16, Seen) {
     stub(move |target| {
         if let Some(rest) = target.strip_prefix("/api/models/qa-org/") {
             if let Some(repo) = rest.strip_suffix("?blobs=true") {
-                return json(200, &format!(r#"{{"siblings":[{{"rfilename":"{repo}-Q8_0.gguf"}}]}}"#));
+                return json(
+                    200,
+                    &format!(r#"{{"siblings":[{{"rfilename":"{repo}-Q8_0.gguf"}}]}}"#),
+                );
             }
             return Answer { delay_ms, ..meta() };
         }
         if target.contains("qa-moved-Q8_0") {
             return Answer {
                 status: 302,
-                headers: vec![("Location".into(), format!("http://127.0.0.1:{elsewhere}/stolen"))],
+                headers: vec![(
+                    "Location".into(),
+                    format!("http://127.0.0.1:{elsewhere}/stolen"),
+                )],
                 body: Vec::new(),
                 delay_ms: 0,
             };
@@ -408,7 +500,10 @@ async fn hub_for(delay_ms: u64, elsewhere: u16) -> (u16, Seen) {
             };
         }
         if target.contains("qa-present") || target == "/cdn/qa-hop" {
-            return ranged(gguf(&["blk.0.attn_q.weight", "blk.40.nextn.eh_proj.weight"]));
+            return ranged(gguf(&[
+                "blk.0.attn_q.weight",
+                "blk.40.nextn.eh_proj.weight",
+            ]));
         }
         ranged(gguf(&["blk.0.attn_q.weight"]))
     })
@@ -428,7 +523,12 @@ async fn the_cache_answers_a_second_request_without_a_fetch() {
     let (addr, _) = front(dir.path(), node_port, hub, true).await;
     let (status, first) = call(addr, "GET", &query("qa-present"), ADMIN, "").await;
     assert_eq!(status, 200);
-    assert_eq!(first.get("status").as_str(), Some("present"), "{}", wtf16::stringify(&first).unwrap());
+    assert_eq!(
+        first.get("status").as_str(),
+        Some("present"),
+        "{}",
+        wtf16::stringify(&first).unwrap()
+    );
     assert_eq!(first.get("revision").as_str(), Some(REV));
     let fetched = seen.lock().unwrap().len();
     assert_eq!(fetched, 3, "the file list, the revision, the prefix");
@@ -437,11 +537,18 @@ async fn the_cache_answers_a_second_request_without_a_fetch() {
     // The file list is asked again (core asks it on every request); nothing else is.
     assert_eq!(seen.lock().unwrap().len(), fetched + 1);
     let heads = seen.lock().unwrap().clone();
-    let prefix = heads.iter().find(|h| h.contains("/resolve/")).unwrap().to_ascii_lowercase();
+    let prefix = heads
+        .iter()
+        .find(|h| h.contains("/resolve/"))
+        .unwrap()
+        .to_ascii_lowercase();
     assert!(prefix.contains("range: bytes=0-16777215"), "{prefix}");
     for h in &heads {
         let h = h.to_ascii_lowercase();
-        assert!(!h.contains("authorization") && !h.contains("x-noevia-maintenance"), "{h}");
+        assert!(
+            !h.contains("authorization") && !h.contains("x-noevia-maintenance"),
+            "{h}"
+        );
     }
 }
 
@@ -466,7 +573,12 @@ async fn a_third_check_is_refused_while_two_run() {
     for done in [one, two] {
         let (status, body) = done.await.unwrap();
         assert_eq!(status, 200);
-        assert_eq!(body.get("status").as_str(), Some("absent"), "{}", wtf16::stringify(&body).unwrap());
+        assert_eq!(
+            body.get("status").as_str(),
+            Some("absent"),
+            "{}",
+            wtf16::stringify(&body).unwrap()
+        );
     }
     // Both finished: the permits are back.
     let (_, again) = call(addr, "GET", &query("qa-three"), ADMIN, "").await;
@@ -484,7 +596,15 @@ async fn a_redirect_off_the_hub_is_refused_and_one_on_it_followed() {
     assert_eq!(status, 200);
     assert_eq!(body.get("status").as_str(), Some("unknown"));
     assert_eq!(body.get("reason").as_str(), Some("fetch failed"));
-    assert!(elsewhere_seen.lock().unwrap().is_empty(), "nothing reached the other host");
+    assert!(
+        elsewhere_seen.lock().unwrap().is_empty(),
+        "nothing reached the other host"
+    );
     let (_, body) = call(addr, "GET", &query("qa-hop"), ADMIN, "").await;
-    assert_eq!(body.get("status").as_str(), Some("present"), "{}", wtf16::stringify(&body).unwrap());
+    assert_eq!(
+        body.get("status").as_str(),
+        Some("present"),
+        "{}",
+        wtf16::stringify(&body).unwrap()
+    );
 }

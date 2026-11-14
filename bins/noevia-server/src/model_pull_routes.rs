@@ -116,7 +116,9 @@ impl Hub {
 
     fn rewrite(&self, url: &str) -> String {
         match url.strip_prefix(PUBLIC_HUB) {
-            Some(rest) if rest.is_empty() || rest.starts_with('/') => format!("{}{rest}", self.origin),
+            Some(rest) if rest.is_empty() || rest.starts_with('/') => {
+                format!("{}{rest}", self.origin)
+            }
             _ => url.to_string(),
         }
     }
@@ -149,7 +151,9 @@ pub struct State {
 
 impl std::fmt::Debug for State {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("State").field("hub", &self.hub).finish_non_exhaustive()
+        f.debug_struct("State")
+            .field("hub", &self.hub)
+            .finish_non_exhaustive()
     }
 }
 
@@ -332,7 +336,10 @@ fn answer(status: u16, body: &JValue) -> Response<Body> {
 }
 
 fn internal() -> (u16, JValue) {
-    (500, JValue::obj([("error", JValue::from("Internal error"))]))
+    (
+        500,
+        JValue::obj([("error", JValue::from("Internal error"))]),
+    )
 }
 
 fn busy(files: JValue) -> JValue {
@@ -377,14 +384,22 @@ struct JoinEntry<'a> {
 impl Drop for JoinEntry<'_> {
     fn drop(&mut self) {
         let mut joins = lock(&self.state.joins);
-        if joins.get(&self.key).is_some_and(|r| r.same_channel(&self.rx)) {
+        if joins
+            .get(&self.key)
+            .is_some_and(|r| r.same_channel(&self.rx))
+        {
             joins.remove(&self.key);
         }
     }
 }
 
 /// The variants lookup and the check, on a blocking thread.
-fn check(state: Arc<State>, rt: tokio::runtime::Handle, config: &manager::Config, query: &str) -> (u16, JValue) {
+fn check(
+    state: Arc<State>,
+    rt: tokio::runtime::Handle,
+    config: &manager::Config,
+    query: &str,
+) -> (u16, JValue) {
     let mut host = FrontHub {
         state: Arc::clone(&state),
         rt: rt.clone(),
@@ -444,14 +459,18 @@ pub async fn serve(
     let creds = identity::creds_of(&parts);
     let layer = Arc::clone(&app.identity);
     let now = identity::now_ms();
-    let id = match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &path, now)).await {
-        Ok(Ok(id)) => id,
-        Ok(Err(rejection)) => return rejection.into_response(),
-        Err(_) => return identity::Rejection::Unavailable.into_response(),
-    };
+    let id =
+        match tokio::task::spawn_blocking(move || layer.gate_blocking(&creds, &path, now)).await {
+            Ok(Ok(id)) => id,
+            Ok(Err(rejection)) => return rejection.into_response(),
+            Err(_) => return identity::Rejection::Unavailable.into_response(),
+        };
     // Named difference admin-only.
     if id.user.role != server_auth::Role::Admin {
-        return answer(403, &JValue::obj([("error", JValue::from("administrator required"))]));
+        return answer(
+            403,
+            &JValue::obj([("error", JValue::from("administrator required"))]),
+        );
     }
     let state = Arc::clone(&app.mtp_artifact);
     // Named difference busy-before-variants.
@@ -518,9 +537,18 @@ mod tests {
     #[test]
     fn only_the_hub_prefix_is_rewritten_for_tests() {
         let hub = Hub::for_tests("http://127.0.0.1:9");
-        assert_eq!(hub.rewrite("https://huggingface.co/api/x"), "http://127.0.0.1:9/api/x");
-        assert_eq!(hub.rewrite("https://huggingface.co.evil.example/x"), "https://huggingface.co.evil.example/x");
-        assert_eq!(Hub::default().rewrite("https://huggingface.co/api/x"), "https://huggingface.co/api/x");
+        assert_eq!(
+            hub.rewrite("https://huggingface.co/api/x"),
+            "http://127.0.0.1:9/api/x"
+        );
+        assert_eq!(
+            hub.rewrite("https://huggingface.co.evil.example/x"),
+            "https://huggingface.co.evil.example/x"
+        );
+        assert_eq!(
+            Hub::default().rewrite("https://huggingface.co/api/x"),
+            "https://huggingface.co/api/x"
+        );
         let local = reqwest::Url::parse("http://127.0.0.1:9/x").unwrap();
         assert!(hub.allows(&local));
         assert!(!Hub::default().allows(&local));

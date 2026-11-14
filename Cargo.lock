@@ -2358,6 +2358,7 @@ dependencies = [
  "mcp-frame",
  "mcp-servers",
  "model-manager-proxy",
+ "model-pull",
  "model-stream",
  "model-writes",
  "offsite-backup-format",
