@@ -29,6 +29,7 @@ pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
 pub mod code_egress;
+pub mod code_facts;
 pub mod code_net;
 pub mod code_routes;
 pub mod config;
@@ -84,6 +85,7 @@ pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
+pub mod model_writes_routes;
 pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
@@ -95,6 +97,8 @@ pub mod offsite_store;
 pub mod plugin_directory_routes;
 pub mod preset_read_routes;
 pub mod project_config_routes;
+// Track R13: the chat's read_project_file in the front (NOEVIA_RUST_READ_FILE).
+pub mod project_file_read;
 pub mod project_routes;
 #[cfg(feature = "rust-storage-browse")]
 pub mod project_storage_io;
@@ -120,6 +124,8 @@ pub mod routes;
 pub mod routing_default_routes;
 pub mod routing_mode_routes;
 pub mod sampling_settings_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod secrets_rotate_routes;
 pub mod serve;
 pub mod snapshot;
 pub mod source_job_routes;
@@ -137,6 +143,8 @@ pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
 pub mod task_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod text_write_op;
 pub mod tool_approval_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_picker;
@@ -971,6 +979,14 @@ async fn handle(
             native = Some(routes::Native::Projects);
         }
     }
+    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget and idle unload PUTs are
+    // the models routes' too (model_writes_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.model_writes.on {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if app.config.model_writes.answers(req.method(), at) {
+            native = Some(routes::Native::Models);
+        }
+    }
     // Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the front answers PUT /api/routing-default
     // (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs);
     // unset, both stay Node's, as the routes file says.
@@ -982,6 +998,16 @@ async fn handle(
         if req.method() == axum::http::Method::GET && at == reasoning_settings_routes::ROUTE {
             native = Some(routes::Native::ReasoningSettings);
         }
+    }
+    // Track R12: with NOEVIA_RUST_SECRETS_ROTATE=1 the front answers POST /api/admin/secrets/rotate
+    // (secrets_rotate_routes.rs, no routes-file row); unset, the rotation stays Node's.
+    #[cfg(feature = "rust-storage-reads")]
+    if native.is_none()
+        && app.config.secrets_rotate
+        && req.method() == axum::http::Method::POST
+        && whatwg.as_deref().unwrap_or(&path) == secrets_rotate_routes::ROUTE
+    {
+        return secrets_rotate_routes::serve(&app, req).await;
     }
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,

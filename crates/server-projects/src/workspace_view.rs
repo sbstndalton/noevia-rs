@@ -172,19 +172,23 @@ impl View {
         }))
     }
 
-    /// A source's text as core's turn reads it: `String(file.content || '')` (`''` when its file
-    /// cannot be read; `None` for an inline value `String()` throws on, an object with its own
-    /// `toString`).
+    /// A source's text as core's turn reads it: [`source_text`].
     pub fn text(&self, project_id: &str, file: &JValue) -> Option<String> {
-        if let JValue::Obj(items) = file {
-            if let Some((_, content)) = items.iter().find(|(k, _)| k == "content") {
-                return match content {
-                    JValue::Str(s) => Some(s.clone()),
-                    v if !v.truthy() => Some(String::new()),
-                    v => js_json::to_js_string(v).ok(),
-                };
-            }
-        }
-        Some(sources::text(&self.dir, project_id, file).unwrap_or_default())
+        source_text(&self.dir, project_id, file)
     }
+}
+
+/// A source's text as core's turn reads it: `String(file.content || '')` (`''` when its file cannot
+/// be read; `None` for an inline value `String()` throws on, an object with its own `toString`).
+pub fn source_text(dir: &Path, project_id: &str, file: &JValue) -> Option<String> {
+    if let JValue::Obj(items) = file {
+        if let Some((_, content)) = items.iter().find(|(k, _)| k == "content") {
+            return match content {
+                JValue::Str(s) => Some(s.clone()),
+                v if !v.truthy() => Some(String::new()),
+                v => js_json::to_js_string(v).ok(),
+            };
+        }
+    }
+    Some(sources::text(dir, project_id, file).unwrap_or_default())
 }

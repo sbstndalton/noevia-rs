@@ -2164,6 +2164,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-writes"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+ "serde_json",
+]
+
+[[package]]
 name = "nix"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2190,8 +2199,11 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "futures-util",
  "http-body",
  "http-body-util",
+ "hyper-util",
+ "nix",
  "regex",
  "reqwest",
  "rusqlite",
@@ -2341,6 +2353,7 @@ dependencies = [
  "egress-issuer",
  "embedding-worker",
  "engine-admission",
+ "engine-facts",
  "flate2",
  "futures-util",
  "gguf",
@@ -2356,6 +2369,7 @@ dependencies = [
  "mcp-frame",
  "mcp-servers",
  "model-stream",
+ "model-writes",
  "offsite-backup-format",
  "policy-leaves",
  "preset-reload",
@@ -2371,6 +2385,7 @@ dependencies = [
  "rustls",
  "s3-sign",
  "secret-envelope",
+ "secrets-rotate",
  "serde",
  "serde_json",
  "server-account",
@@ -3325,6 +3340,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "secrets-rotate"
+version = "0.1.0"
+dependencies = [
+ "google-token-seal",
+ "js-json",
+ "secret-envelope",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
 name = "semver"
 version = "1.0.28"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3586,8 +3612,10 @@ name = "server-projects"
 version = "0.1.0"
 dependencies = [
  "completeness-report",
+ "document-read",
  "js-json",
  "libc",
+ "project-file-names",
  "prompt-framing",
  "proptest",
  "rand_core 0.6.4",
