@@ -474,8 +474,8 @@ impl Registry {
     }
 
     /// The questions still waiting for an answer that `user`'s own turns asked in `chat`, soonest
-    /// expiry first (#2580: a second tab, or a reloaded one while the turn still runs, learns that
-    /// a card is open). Another account's questions are never listed, whatever the chat; an
+    /// expiry first (#2580: another tab of the chat, while the turn still runs, learns that a card
+    /// is open). Another account's questions are never listed, whatever the chat; an
     /// answered, timed-out or withdrawn question is gone.
     pub fn open_in(&self, user: &str, chat: &str) -> Result<Vec<OpenQuestion>, DecideError> {
         let s = self.state.lock().map_err(|_| DecideError::Unavailable)?;

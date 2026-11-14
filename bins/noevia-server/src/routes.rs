@@ -656,7 +656,8 @@ pub fn dispatch_under(method: &str, path: &str, switches: Switches) -> Option<Na
         || route.path == crate::model_manager_scan::PATH
         || route.path == crate::model_downloads_read::PATH
         || route.path == crate::preset_read_routes::PATH
-        || route.path == crate::reranker_routes::PATH)
+        || route.path == crate::reranker_routes::PATH
+        || route.path == crate::tool_approval_routes::LIST)
         && path != route.path
     {
         return None;
@@ -1660,6 +1661,11 @@ mod tests {
         for method in ["HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"] {
             assert_eq!(dispatch(method, "/api/tool-approvals"), None, "{method}");
         }
+        assert_eq!(
+            dispatch("GET", "/api/tool-approvals/"),
+            None,
+            "exact path only"
+        );
         assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
         assert!(crate::FEATURES.contains(&"rust-approval-registry"));
         assert!(crate::FEATURES.contains(&crate::approval_registry::PROTOCOL));

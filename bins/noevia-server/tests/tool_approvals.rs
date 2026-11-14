@@ -905,10 +905,12 @@ async fn the_open_question_read_is_the_owners_and_refuses_before_reading() {
     );
     let theirs = json!({"user":STRANGER,"id":"ap-theirs","kind":"write","chat":"qa-chat"});
     assert_eq!(f.op("approvals/open", theirs).await.0, 200);
-    // Signed out: refused before anything is read.
-    let (status, body) = list(&f, "?chat=qa-chat", false).await;
-    assert_eq!(status, 401, "{body}");
-    assert!(body.get("pending").is_none());
+    // Signed out: refused before anything is read, the chat id included.
+    for query in ["?chat=qa-chat", "?chat=qa%20chat", ""] {
+        let (status, body) = list(&f, query, false).await;
+        assert_eq!(status, 401, "{query}: {body}");
+        assert!(body.get("pending").is_none());
+    }
     // A chat id is required and must be a plain id.
     for query in [
         "",

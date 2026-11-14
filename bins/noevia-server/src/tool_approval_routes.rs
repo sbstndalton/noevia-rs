@@ -11,8 +11,8 @@ use server_account::tool_approvals as policy;
 use std::{sync::Arc, time::Duration};
 const UNAVAILABLE: &str = "Tool approval state is unavailable right now. Try again shortly.";
 /// GET /api/tool-approvals?chat=<chatId> (#2580): the signed-in account's own open questions in
-/// that chat, so a second tab (or a reloaded one, while the turn that asked still runs) knows a
-/// card is waiting. Only ids, kinds and expiry: the card's content stays in the asking tab's
+/// that chat, so another tab of that chat, while the turn that asked still runs, knows a card is
+/// waiting. Only ids, kinds and expiry: the card's content stays in the asking tab's
 /// stream, and answering still takes POST /api/tool-approvals/{id} with the owner's session.
 pub const LIST: &str = "/api/tool-approvals";
 /// The longest chat id the read accepts.
