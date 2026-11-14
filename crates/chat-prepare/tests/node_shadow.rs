@@ -545,3 +545,46 @@ fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
         }
     }
 }
+
+/// P7d-2: a Manual turn without a project model is compared with the front's own last-loaded model;
+/// another name than core's is a `model` diff, none known is not compared.
+#[test]
+fn a_manual_default_model_is_the_front_s_last_loaded_one() {
+    let f = fixture();
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("name").as_str() == Some("project_minimal"))
+        .unwrap();
+    let input = t.get("input");
+    let project = items(input, "projects").first().unwrap();
+    let empty = JValue::Arr(Vec::new());
+    let check = |last_loaded: Option<&str>| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame: t.get("prepared"),
+            instructions: None,
+            memory: None,
+            free_chats: Some(&empty),
+            project: Some(project),
+            roles: None,
+            last_loaded,
+            time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
+            history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: Some(Settings {
+                effort_default: &JValue::Undefined,
+                sampling_presets: &JValue::Undefined,
+            }),
+            catalogue: None,
+        })
+    };
+    assert_eq!(check(input.get("lastLoaded").as_str()), Verdict::Match);
+    match check(Some("qa-other-model")) {
+        Verdict::Diff(d) => assert_eq!(d.field, "model"),
+        other => panic!("{other:?}"),
+    }
+    assert_eq!(check(None), Verdict::Skip("manual-default"));
+}

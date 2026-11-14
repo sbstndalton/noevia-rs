@@ -104,6 +104,8 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
         eprintln!("chat prepare shadow: skip busy");
         return;
     }
+    // What native preparation would answer a Manual turn with: the front's own copy, at hand-off.
+    let last_loaded = app.config.maint.last_loaded();
     drop(tokio::spawn(async move {
         let _ = tokio::task::spawn_blocking(move || {
             // allToolboxes(), as the front's catalogue stands (None: not current).
@@ -118,8 +120,6 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
             };
             let boxes = catalogue.map(|c| toolboxes(&c.boxes));
             let settings = settings_rows(&app);
-            // What native preparation would answer a Manual turn with: the front's own copy.
-            let last_loaded = app.config.maint.last_loaded();
             let zone = server_time_zone();
             let facts = Facts {
                 time_zone: &zone,
