@@ -193,6 +193,7 @@ pub fn execute(
     authn: &server_auth::Identity,
     account: &Account,
     work: &Work,
+    catalogue: &crate::project_catalogue::Source,
     check_hold: bool,
     progress: &dyn Fn(&str),
 ) -> server_projects::Reply {
@@ -205,7 +206,7 @@ pub fn execute(
     };
     let ctx = account.ctx();
     let limits = server_projects::extract::Limits::from_env();
-    let catalogue = lifecycle::Catalogue::read(&account.data_dir);
+    let catalogue = catalogue.read(&account.data_dir);
     let root = lifecycle::project_root_folder();
     let lock_wait = lock_wait(check_hold, work.kind == Kind::Upload, work.plain);
     with_storage(app, authn, |storage| match work.kind {
@@ -371,8 +372,10 @@ async fn run_sync_task(
         None => (None, false),
     };
     let work = Work { plain, ..work };
+    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file).
+    let catalogue = crate::project_catalogue::Source::get(&app).await;
     let answer = within(bound, move || {
-        execute(&app, &authn, &account, &work, true, &|_| {})
+        execute(&app, &authn, &account, &work, &catalogue, true, &|_| {})
     })
     .await;
     let (reply, ok) = match answer {
@@ -508,13 +511,17 @@ async fn operate(
     let _ = reply.send(respond(work::accepted(&job)));
     let work = Work { plain, ..work };
     let bound = work::bound(work.kind == Kind::Upload);
+    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file, read when the job runs).
+    let catalogue = crate::project_catalogue::Source::get(&app).await;
     run_job(
         account.clone(),
         owner,
         job,
         op,
         bound,
-        move |progress: &dyn Fn(&str)| execute(&app, &authn, &account, &work, false, progress),
+        move |progress: &dyn Fn(&str)| {
+            execute(&app, &authn, &account, &work, &catalogue, false, progress)
+        },
     )
     .await;
 }

@@ -22,7 +22,6 @@ use crate::reply;
 use crate::App;
 use axum::body::Body;
 use axum::http::{Response, StatusCode};
-use server_projects::lifecycle::Catalogue;
 use server_projects::{provider_rows, Ctx, Reply};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -124,11 +123,13 @@ async fn run_config(work: Config) -> Response<Body> {
         _ => None,
     };
     let roles = crate::model_kind::roles_beside(app.config.sizing.presets_path());
+    // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file).
+    let catalogue_source = crate::project_catalogue::Source::get(&app).await;
     let done = tokio::task::spawn_blocking(move || {
         if let Err(response) = regate.again(&data_dir, &user) {
             return *response;
         }
-        let catalogue = Catalogue::read(&data_dir);
+        let catalogue = catalogue_source.read(&data_dir);
         // core index.cjs `DEFAULT_PROVIDER_ID` (provider_test_routes.rs needs a feature this route does not).
         let default_provider = std::env::var("DEFAULT_PROVIDER_ID")
             .ok()

@@ -1060,6 +1060,8 @@ impl Account {
             self.data_dir.clone(),
             self.user.clone(),
         );
+        // Track R14 step 4: NOEVIA_RUST_PROJECT_CATALOGUE (unset = core's published file).
+        let catalogue_source = crate::project_catalogue::Source::get(&app).await;
         let done = tokio::task::spawn_blocking(move || {
             let Some(engine) = app.extraction.clone() else {
                 return Err(files::Failure {
@@ -1075,7 +1077,7 @@ impl Account {
                 now_ms: crate::identity::now_ms(),
             };
             let limits = server_projects::extract::Limits::from_env();
-            let catalogue = server_projects::lifecycle::Catalogue::read(&data_dir);
+            let catalogue = catalogue_source.read(&data_dir);
             let root = server_projects::lifecycle::project_root_folder();
             crate::source_job_routes::with_storage(&app, &authn, |storage| {
                 f(&files::Env {
