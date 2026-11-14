@@ -17,7 +17,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
 use bytes::Bytes;
-use chat_prepare::shadow::{compare, ShadowTurn, Verdict};
+use chat_prepare::shadow::{compare, Catalogue, ShadowTurn, Verdict};
+use chat_prepare::toolboxes::Toolbox;
+use chat_prepare::tools_mode::{is_public_tool_name, PRIVATE_CORE_TOOLS};
 use js_json::{wtf16, JValue};
 use server_features::Feature;
 
@@ -102,19 +104,62 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
         eprintln!("chat prepare shadow: skip busy");
         return;
     }
-    drop(tokio::task::spawn_blocking(move || {
-        // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
-        let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
-        let flags = Flags {
-            chat_framing: Some(framing),
-            brain_context: Some(
-                framing && crate::code_routes::feature(&app, Feature::BrainContext),
-            ),
-        };
-        let verdict = run(&user_dir, &body, &frame, &server_time_zone(), flags);
-        drop(slot);
-        eprintln!("chat prepare shadow: {}", verdict.line());
+    drop(tokio::spawn(async move {
+        // allToolboxes(), as the front's toolbox catalogue holds it (None: not ready).
+        let catalogue = crate::mcp_discovery::read(&app).await;
+        let _ = tokio::task::spawn_blocking(move || {
+            // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
+            let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
+            let flags = Flags {
+                chat_framing: Some(framing),
+                brain_context: Some(
+                    framing && crate::code_routes::feature(&app, Feature::BrainContext),
+                ),
+            };
+            let boxes = catalogue.map(|c| toolboxes(&c.boxes));
+            let verdict = run(
+                &user_dir,
+                &body,
+                &frame,
+                &server_time_zone(),
+                flags,
+                boxes.as_deref(),
+            );
+            drop(slot);
+            eprintln!("chat prepare shadow: {}", verdict.line());
+        })
+        .await;
     }));
+}
+
+/// The catalogue's boxes as the replay's tool questions read them: each box's id and its tools
+/// (`{ type: 'function', function: { name } }`). The catalogue keeps at most 500 tools of a box and
+/// 128 units of a name; past that a tool is missed, which can only show as a diff.
+fn toolboxes(boxes: &[crate::mcp_discovery::BoxInfo]) -> Vec<Toolbox> {
+    boxes
+        .iter()
+        .map(|b| Toolbox {
+            id: b.id.clone(),
+            label: String::new(),
+            source: String::new(),
+            in_app: false,
+            server: None,
+            tools: b
+                .tools
+                .iter()
+                .map(|t| {
+                    js_json::JValue::Obj(vec![
+                        ("type".into(), JValue::from("function")),
+                        (
+                            "function".into(),
+                            JValue::Obj(vec![("name".into(), JValue::from(t.name.as_str()))]),
+                        ),
+                    ])
+                })
+                .collect(),
+            reads: Vec::new(),
+        })
+        .collect()
 }
 
 /// The feature flags the preparation reads (`None`: unknown).
@@ -125,7 +170,15 @@ pub struct Flags {
 }
 
 /// One shadow preparation: the account's files read as core reads them.
-pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags: Flags) -> Verdict {
+/// `boxes`: `allToolboxes()` (`None`: unknown, so a history that needs it is skipped).
+pub fn run(
+    user_dir: &Path,
+    body: &[u8],
+    frame: &JValue,
+    time_zone: &str,
+    flags: Flags,
+    boxes: Option<&[Toolbox]>,
+) -> Verdict {
     let Some(body) = std::str::from_utf8(body)
         .ok()
         .and_then(|t| wtf16::parse(t).ok())
@@ -142,6 +195,13 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags:
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(JValue::Arr(Vec::new())),
         Err(_) => None,
     };
+    // chat.cjs replayOptions: knownTool (a tool some box registers, the project reader always) and
+    // carryOrphanTool (tools-mode.cjs isPublicToolName).
+    let known = |name: &str| {
+        PRIVATE_CORE_TOOLS.contains(&name)
+            || boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
+    };
+    let carry = |name: &str| is_public_tool_name(Some(name), boxes.unwrap_or_default());
     compare(&ShadowTurn {
         body: &body,
         frame,
@@ -154,7 +214,10 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags:
         history_cap: HISTORY_CAP,
         titles: true,
         workspace: true,
-        catalogue: None,
+        catalogue: boxes.map(|_| Catalogue {
+            known_tool: &known,
+            carry_orphan_tool: &carry,
+        }),
     })
 }
 
@@ -319,11 +382,11 @@ mod tests {
         let frame = JValue::Null;
         let flags = Flags::default();
         assert_eq!(
-            run(&dir, b"{not json", &frame, "UTC", flags),
+            run(&dir, b"{not json", &frame, "UTC", flags, None),
             Verdict::Skip("body")
         );
         assert_eq!(
-            run(&dir, b"{}", &frame, "UTC", flags),
+            run(&dir, b"{}", &frame, "UTC", flags, None),
             Verdict::Skip("frame")
         );
     }
@@ -378,19 +441,51 @@ mod tests {
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
             };
-            let verdict = run(
-                &dir,
-                body.as_bytes(),
-                frame,
-                input.get("tz").as_str().unwrap(),
-                flags,
+            // The recorded allToolboxes() (ids and tool names), as the catalogue gives them.
+            let boxes: Vec<Toolbox> = match input.get("toolboxes") {
+                JValue::Arr(list) => list
+                    .iter()
+                    .map(|b| Toolbox {
+                        id: b.get("id").as_str().unwrap().to_string(),
+                        label: String::new(),
+                        source: String::new(),
+                        in_app: false,
+                        server: None,
+                        tools: match b.get("tools") {
+                            JValue::Arr(names) => names
+                                .iter()
+                                .map(|n| {
+                                    JValue::Obj(vec![
+                                        ("type".into(), JValue::from("function")),
+                                        (
+                                            "function".into(),
+                                            JValue::Obj(vec![("name".into(), n.clone())]),
+                                        ),
+                                    ])
+                                })
+                                .collect(),
+                            _ => Vec::new(),
+                        },
+                        reads: Vec::new(),
+                    })
+                    .collect(),
+                _ => Vec::new(),
+            };
+            let tz = input.get("tz").as_str().unwrap();
+            let verdict = run(&dir, body.as_bytes(), frame, tz, flags, Some(&boxes));
+            assert_eq!(
+                verdict,
+                Verdict::Match,
+                "{}",
+                t.get("name").as_str().unwrap_or_default()
             );
-            // The front has no toolbox catalogue: a history that needs it is skipped.
+            // Without the catalogue (not ready yet): a history that needs it is skipped.
+            let without = run(&dir, body.as_bytes(), frame, tz, flags, None);
             assert!(
-                matches!(verdict, Verdict::Match | Verdict::Skip("tool-history")),
+                matches!(without, Verdict::Match | Verdict::Skip("tool-history")),
                 "{}: {}",
                 t.get("name").as_str().unwrap_or_default(),
-                verdict.line()
+                without.line()
             );
             if verdict == Verdict::Match {
                 matched += 1;
