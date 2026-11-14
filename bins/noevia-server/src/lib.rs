@@ -131,6 +131,8 @@ pub mod sampling_settings_routes;
 pub mod secrets_rotate_routes;
 pub mod serve;
 #[cfg(feature = "rust-chatgpt-status")]
+pub mod signin_drive;
+#[cfg(feature = "rust-chatgpt-status")]
 pub mod signin_host;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod signin_turn;

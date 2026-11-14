@@ -1473,3 +1473,73 @@ async fn a_whole_native_turn_on_the_signin_row_streams_the_reply() {
         assert!(!calls.iter().any(|x| x == c), "{c} reached the inner host");
     }
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_whole_turn_planned_and_run_by_signin_drive_streams_the_reply() {
+    use crate::signin_drive::{self, SigninCut};
+    use chat_turn::native::{Ended, Helpers, Process};
+    let f = fixture();
+    let (base, stub) = stub(StubState {
+        default: Some(Scripted::of(&JValue::obj([
+            ("status", JValue::Num(200.0)),
+            ("chunks", f.get("streams").get("text").get("chunks").clone()),
+        ]))),
+        ..StubState::default()
+    })
+    .await;
+    let p = chat_turn::prepared::Prepared::read(&signin_frame()).unwrap();
+    let cut = SigninCut {
+        owner: "qa-user",
+        conversation: Some("chat-qa"),
+        url: "http://x/v1/chat/completions",
+    };
+    let planned =
+        signin_drive::plan("skills,signin-transport-v1", "qa-user", &cut, &p, 1.0e15).unwrap();
+    let inner = crate::signin_host::tests::FakeInner::new(1_000.0);
+    let checks = std::sync::atomic::AtomicUsize::new(0);
+    let check = signin_drive::account_check(
+        |u: &str| {
+            checks.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+            Ok(u == "qa-user")
+        },
+        "qa-user".to_owned(),
+    );
+    let helpers = Helpers {
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
+        reduce_tool_result: &|t, cap| chat_turn::reduce::reduce_tool_result(t, cap).text,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let process = Process::default();
+    let ended = tokio::time::timeout(
+        DEADLINE,
+        signin_drive::run(
+            &inner,
+            qa_engine(&base, Arc::new(qa_accounts(4))),
+            planned,
+            check,
+            &process,
+            &helpers,
+            &p,
+        ),
+    )
+    .await
+    .unwrap()
+    .unwrap();
+    let events = inner.events.lock().unwrap().clone();
+    assert_eq!(ended, Ended::Done, "{events:#?}");
+    let all = events.join("\n");
+    let hel = all.find("Hel").unwrap_or_else(|| panic!("{all}"));
+    assert!(all[hel..].contains("lo"), "{all}");
+    // The account was re-checked before the request, and the request went to the sign-in backend.
+    assert!(checks.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+    assert!(!stub.lock().unwrap().received.is_empty());
+    let calls = inner.calls();
+    for c in ["request", "lease", "health", "load", "read", "text", "mtp_evidence"] {
+        assert!(!calls.iter().any(|x| x == c), "{c} reached the inner host");
+    }
+}
