@@ -16,6 +16,8 @@ use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
+pub mod project_tools;
+
 /// `PROTOCOL_VERSION`.
 pub const PROTOCOL_VERSION: &str = "2025-06-18";
 /// `SERVER_INFO.name` / `.version`.
