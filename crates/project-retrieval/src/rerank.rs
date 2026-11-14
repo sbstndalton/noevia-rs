@@ -48,7 +48,7 @@ pub struct Config {
 }
 
 /// `parseInt(v, 10)` with `clampInt`'s default and bounds.
-fn clamp_int(v: Option<&str>, default: i64, lo: i64, hi: i64) -> i64 {
+pub(crate) fn clamp_int(v: Option<&str>, default: i64, lo: i64, hi: i64) -> i64 {
     let s = String::from_utf16_lossy(prompt_framing::js::trim(&units(v.unwrap_or("undefined"))));
     let (neg, rest) = match s.strip_prefix('-') {
         Some(r) => (true, r),

@@ -14,6 +14,21 @@ pub const DIRECT_INJECT_MAX: usize = 2400;
 pub const LARGE_FILE_HEAD: usize = 24_000;
 /// The default of `FILES_CONTEXT_MAX_CHARS` (`rag.cjs:102`).
 pub const DEFAULT_MAX_CHARS: usize = 120_000;
+/// The bounds of `FILES_CONTEXT_MAX_CHARS` (`rag.cjs:102`, `clampInt(v, 120000, 4000, 2000000)`).
+pub const MIN_MAX_CHARS: usize = 4_000;
+pub const MAX_MAX_CHARS: usize = 2_000_000;
+
+/// `FILES_CONTEXT_MAX_CHARS` as `rag.cjs` reads it at load: `parseInt(v, 10)`, the default when that
+/// is not a number, else clamped to [`MIN_MAX_CHARS`]..=[`MAX_MAX_CHARS`].
+pub fn max_chars(raw: Option<&str>) -> usize {
+    let n = crate::rerank::clamp_int(
+        raw,
+        DEFAULT_MAX_CHARS as i64,
+        MIN_MAX_CHARS as i64,
+        MAX_MAX_CHARS as i64,
+    );
+    usize::try_from(n).unwrap_or(DEFAULT_MAX_CHARS)
+}
 /// `READ_FILE_HINT` (`rag.cjs:1348`), leading space included.
 pub const READ_FILE_HINT: &str =
     " Use read_project_file with PDF startPage/endPage and offset for pages beyond the summary.";
@@ -212,7 +227,7 @@ pub fn files_context(input: &Input) -> Option<Context> {
 
 #[cfg(test)]
 mod tests {
-    use super::head;
+    use super::{head, max_chars, DEFAULT_MAX_CHARS, MAX_MAX_CHARS, MIN_MAX_CHARS};
 
     #[test]
     fn a_head_cut_inside_a_surrogate_pair_is_the_named_difference() {
@@ -224,5 +239,20 @@ mod tests {
         assert_eq!(cut.encode_utf16().count(), 4);
         assert_eq!(head(&text, 5), "aaa😀");
         assert_eq!(head("short", 24_000), "short");
+    }
+
+    #[test]
+    fn the_budget_is_read_as_clamp_int_reads_it() {
+        // clampInt(v, 120000, 4000, 2000000): parseInt(v, 10), the default when NaN, else clamped.
+        assert_eq!(max_chars(None), DEFAULT_MAX_CHARS);
+        assert_eq!(max_chars(Some("")), DEFAULT_MAX_CHARS);
+        assert_eq!(max_chars(Some("abc")), DEFAULT_MAX_CHARS);
+        assert_eq!(max_chars(Some("1")), MIN_MAX_CHARS);
+        assert_eq!(max_chars(Some("-5")), MIN_MAX_CHARS);
+        assert_eq!(max_chars(Some(" 5000chars")), 5000);
+        assert_eq!(max_chars(Some("12.9")), MIN_MAX_CHARS);
+        assert_eq!(max_chars(Some("4500.7")), 4500);
+        assert_eq!(max_chars(Some("99999999999999999999999")), MAX_MAX_CHARS);
+        assert_eq!(max_chars(Some("+64000")), 64000);
     }
 }
