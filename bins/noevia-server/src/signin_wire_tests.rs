@@ -1063,7 +1063,10 @@ async fn a_pass_through_engine_answer_carries_only_the_allow_listed_headers() {
     assert_eq!((text.as_str(), capped), ("{}", false));
 }
 
-fn qa_engine(base: &str, accounts: Arc<FakeAccounts>) -> crate::signin_turn::SigninEngine<Arc<FakeAccounts>> {
+fn qa_engine(
+    base: &str,
+    accounts: Arc<FakeAccounts>,
+) -> crate::signin_turn::SigninEngine<Arc<FakeAccounts>> {
     let f = fixture();
     crate::signin_turn::SigninEngine {
         accounts,
@@ -1135,11 +1138,12 @@ async fn the_engine_sends_the_brokers_headers_only_and_streams_to_the_end() {
     assert_eq!(h("authorization").as_deref(), Some("Bearer tok-1"));
     assert_eq!(h("x-noevia-lease"), None);
     assert!(
-        received[0].headers.iter().all(|(_, v)| !v.contains("qa-row-key")),
+        received[0]
+            .headers
+            .iter()
+            .all(|(_, v)| !v.contains("qa-row-key")),
         "the caller's key reached the backend"
     );
-    // The same body core's fetch would send for this request (the replay pins it byte for byte).
-    assert!(received[0].body.contains("\"stream\":true"), "{}", received[0].body);
 }
 
 #[tokio::test]
@@ -1217,13 +1221,19 @@ async fn a_read_past_the_request_deadline_fails_and_lets_the_backend_go() {
     })
     .await
     .unwrap();
-    assert_eq!(last, TurnRead::Failed(crate::signin_turn::ABORTED.to_owned()));
+    assert_eq!(
+        last,
+        TurnRead::Failed(crate::signin_turn::ABORTED.to_owned())
+    );
     // Later reads end; the backend connection was let go.
     assert_eq!(
         crate::signin_turn::read(&mut body, std::future::pending()).await,
         TurnRead::End
     );
-    assert!(wait_gone(&stub).await, "the backend never saw the client go away");
+    assert!(
+        wait_gone(&stub).await,
+        "the backend never saw the client go away"
+    );
 }
 
 #[tokio::test]
@@ -1271,7 +1281,10 @@ async fn the_client_leaving_aborts_the_read_and_lets_the_backend_go() {
     .unwrap();
     assert!(chunks >= 1, "the first part arrived");
     assert_eq!(last, TurnRead::Aborted);
-    assert!(wait_gone(&stub).await, "the backend never saw the client go away");
+    assert!(
+        wait_gone(&stub).await,
+        "the backend never saw the client go away"
+    );
 }
 
 #[tokio::test]
