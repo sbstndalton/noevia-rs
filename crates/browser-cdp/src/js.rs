@@ -35,12 +35,30 @@ pub(crate) const IS_CONNECTED: &str = "(el) => el.isConnected";
 pub(crate) const IS_FOCUSED: &str = "(el) => el === document.activeElement";
 pub(crate) const FOCUS: &str = "(el) => { el.focus(); }";
 
-/// Scrolled into view; the centre and size of its box, in viewport pixels.
-pub(crate) const SCROLL_AND_MEASURE: &str = "(el) => {
+/// Scrolled into view: the centre and size of its box in viewport pixels, and what receives the
+/// pointer there: `''` the element itself (or one inside it, open shadow roots included),
+/// `'outside'` nothing (off the viewport), else a short description of the element in the way.
+pub(crate) const ACTION_POINT: &str = "(el) => {
   if (!el.isConnected) throw new Error('Element is not attached to the DOM');
   el.scrollIntoView({ block: 'center', inline: 'center', behavior: 'instant' });
   const r = el.getBoundingClientRect();
-  return { x: r.left + r.width / 2, y: r.top + r.height / 2, width: r.width, height: r.height };
+  const x = r.left + r.width / 2, y = r.top + r.height / 2;
+  const out = { x, y, width: r.width, height: r.height, hit: '' };
+  if (!(r.width > 0 && r.height > 0)) return out;
+  const root = el.getRootNode();
+  let hit = (typeof root.elementFromPoint === 'function' ? root : el.ownerDocument).elementFromPoint(x, y);
+  while (hit && hit.shadowRoot) {
+    const inner = hit.shadowRoot.elementFromPoint(x, y);
+    if (!inner || inner === hit) break;
+    hit = inner;
+  }
+  if (!hit) { out.hit = 'outside'; return out; }
+  for (let n = hit; n; n = n.parentNode || n.host) if (n === el) return out;
+  const tag = hit.tagName.toLowerCase();
+  const id = hit.id ? ' id=\"' + hit.id + '\"' : '';
+  const cls = typeof hit.className === 'string' && hit.className ? ' class=\"' + hit.className + '\"' : '';
+  out.hit = '<' + tag + id + cls + '>\u{2026}</' + tag + '>';
+  return out;
 }";
 
 /// Focused and emptied, ready for `Input.insertText` (`'type'`), or, for inputs Playwright sets

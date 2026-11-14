@@ -8,33 +8,43 @@
 //! with one reader thread that answers callers by `id` and handles events: the route gate, proxy
 //! authentication and dialogs are answered on that thread with send-only messages, so it never
 //! waits on a reply it would have to read itself. Every call has a deadline (the action timeout, else
-//! 30 s); a dropped connection fails every waiter and marks every page closed.
+//! 30 s); a dropped connection (or a panic on the reader thread) fails every waiter and marks every
+//! page closed, and a session that detaches fails its own waiters. A message over 64 MiB is read and
+//! dropped (its caller meets its deadline); the connection stays up.
 //!
-//! - A context is `Target.createBrowserContext { disposeOnDetach: true, proxyServer? }`: an
-//!   isolated profile, dropped by the browser when this connection goes.
-//! - Every page and out-of-process frame of a routed context has `Fetch.enable` at the request
-//!   stage; each paused request is asked of the gate, then continued or failed `BlockedByClient`.
-//! - New pages (the context's own and popups) arrive paused through the browser-level
-//!   `Target.setAutoAttach { waitForDebuggerOnStart: true }`, are set up (Page, Runtime, Fetch, their
-//!   own auto-attach for frames and workers), then run; pages of other contexts (the browser is
-//!   shared) are run and detached at once.
+//! - A context is `Target.createBrowserContext { disposeOnDetach: true, proxyServer?,
+//!   proxyBypassList: '<-loopback>' }`: an isolated profile, dropped by the browser when this
+//!   connection goes; with a proxy, loopback goes through it too.
+//! - Every page, out-of-process frame, prerendered page and worker (dedicated, shared, service) of
+//!   a routed context has `Fetch.enable` at the request stage before it runs; each paused request is
+//!   asked of the gate (`main_frame_navigation` only for a page's own main frame), then continued or
+//!   failed `BlockedByClient`. Pages and frames also bypass service workers
+//!   (`Network.setBypassServiceWorker`), as Playwright's `serviceWorkers: 'block'` keeps them from
+//!   answering the page's requests.
+//! - New targets arrive paused through `Target.setAutoAttach { waitForDebuggerOnStart: true }` (the
+//!   browser's for pages and browser-level workers, each page's and frame's for its frames and
+//!   workers), are set up, then run. A target that could not be set up is never run: its page is
+//!   closed (`Target.closeTarget`); a browser-level worker stays paused. Targets of other contexts
+//!   (the browser is shared) are run and detached at once.
 //! - [`Browser::close`] only disconnects: it never sends `Browser.close`.
 //!
 //! Named differences from Playwright (core's executor runs Playwright in-process):
-//! - No downloads: `Browser.setDownloadBehavior { behavior: 'deny' }` per context until a download
-//!   directory shared with the browser container exists, so `on_download` never fires.
+//! - No downloads and no uploads: `Browser.setDownloadBehavior { behavior: 'deny' }` per context,
+//!   so `on_download` never fires, and `set_input_files` is refused, until a directory shared with
+//!   the browser container exists.
 //! - WebSockets are not refused by the engine: Fetch does not intercept them. The gate given to
 //!   `route_websocket` is kept for a future engine; the egress proxy, which every connection of a
 //!   context goes through, is the boundary.
-//! - Requests made by workers and service workers are not asked of the gate (nor are service
-//!   workers blocked); again the egress proxy is the boundary.
+//! - Workers started by workers (nested) are not attached, so their requests are not asked of the
+//!   gate; the egress proxy is the boundary for them.
 //! - Selectors are CSS only (`document.querySelector`); Playwright's own engines (`text=`, `>>`,
-//!   `:has-text()`) are not supported.
-//! - Actions do not wait for actionability: `click`/`hover` scroll the element into view once and
-//!   fail with "Element is not visible" on an empty box; `fill`/`select_option` fail at once.
+//!   `:has-text()`) are not supported. Queries, `innerText` and `describeInPage` run in the page's
+//!   main world (as Playwright's `handle.evaluate` does), so a page could shadow the DOM APIs they
+//!   use there; an isolated world is not used.
+//! - Actionability: `click`/`hover` retry (every 100 ms until the action timeout) until the element
+//!   has a box and is what receives the pointer at its centre ("… intercepts pointer events"), but
+//!   do not wait for it to be stable or enabled; `fill`/`select_option` fail at once.
 //! - The mouse wheel is turned at (400, 300), the centre of the default 800x600 viewport.
-//! - `set_input_files` hands the path to the browser, so the file must exist at the same path in
-//!   the browser's container.
 //! - The WebSocket address `/json/version` gives is used for its path only: the connection goes to
 //!   the configured host and port. The Host header is the configured `host:port` when the host is an
 //!   IP literal or `localhost`, else the resolved IP and port (Chromium's DevTools server refuses
@@ -86,6 +96,22 @@ fn none() -> JValue {
 
 fn closed() -> EngineError {
     EngineError::new(CLOSED)
+}
+
+/// `timeout` from now; a timeout too large for the clock is a century.
+pub(crate) fn deadline(timeout: Duration) -> Instant {
+    let now = Instant::now();
+    now.checked_add(timeout)
+        .or_else(|| now.checked_add(Duration::from_secs(100 * 365 * 86_400)))
+        .unwrap_or(now)
+}
+
+fn bypass_service_workers() -> JValue {
+    JValue::obj([("bypass", JValue::Bool(true))])
+}
+
+fn close_target(target: &str) -> JValue {
+    JValue::obj([("targetId", s(target))])
 }
 
 fn auto_attach() -> JValue {
@@ -143,9 +169,11 @@ impl CdpLaunch {
         let (addr, host) = endpoint.resolve()?;
         let unreachable =
             |e: std::io::Error| format!("The browser engine at {host} is unreachable ({e}).");
+        // One deadline for /json/version, the connection and the handshake together.
+        let until = deadline(CONNECT_TIMEOUT);
         let path = if endpoint.discover {
             let (status, body) =
-                http::get(addr, &host, "/json/version", CONNECT_TIMEOUT).map_err(unreachable)?;
+                http::get(addr, &host, "/json/version", until).map_err(unreachable)?;
             if status != 200 {
                 return Err(format!(
                     "The browser engine at {host} answered /json/version with HTTP {status}."
@@ -162,16 +190,24 @@ impl CdpLaunch {
         } else {
             endpoint.path.clone()
         };
-        let mut stream = TcpStream::connect_timeout(&addr, CONNECT_TIMEOUT).map_err(unreachable)?;
+        let left = until
+            .saturating_duration_since(Instant::now())
+            .max(Duration::from_millis(1));
+        let mut stream = TcpStream::connect_timeout(&addr, left).map_err(unreachable)?;
         let _ = stream.set_nodelay(true);
-        stream
-            .set_read_timeout(Some(CONNECT_TIMEOUT))
-            .map_err(unreachable)?;
+        ws::handshake(
+            &mut ws::Bounded {
+                stream: &mut stream,
+                until,
+            },
+            &host,
+            &path,
+        )
+        .map_err(unreachable)?;
+        stream.set_read_timeout(None).map_err(unreachable)?;
         stream
             .set_write_timeout(Some(CALL_TIMEOUT))
             .map_err(unreachable)?;
-        ws::handshake(&mut stream, &host, &path).map_err(unreachable)?;
-        stream.set_read_timeout(None).map_err(unreachable)?;
         let reader = stream.try_clone().map_err(unreachable)?;
         let conn = Conn::new(stream);
         let browser = Arc::new_cyclic(|me| CdpBrowser {
@@ -194,7 +230,8 @@ impl CdpLaunch {
                     b.disconnected();
                 }
             }),
-        );
+        )
+        .map_err(|e| format!("The browser engine connection could not start ({e})."))?;
         conn.call(None, "Target.setAutoAttach", auto_attach(), CALL_TIMEOUT)
             .map_err(|e| e.message)?;
         Ok(browser)
@@ -215,6 +252,10 @@ impl Launch for CdpLaunch {
 struct Entry {
     ctx: Weak<CdpContext>,
     page: Option<Weak<CdpPage>>,
+    /// The session's own target.
+    target: String,
+    /// The page to close when this session cannot be gated (none for a browser-level worker).
+    owner: Option<String>,
 }
 
 /// One connection to the shared browser.
@@ -268,22 +309,31 @@ impl CdpBrowser {
         let info = params.get("targetInfo");
         let target = info.get("targetId").as_str().unwrap_or("").to_string();
         let kind = info.get("type").as_str().unwrap_or("");
-        let ctx = match kind {
-            "page" => {
-                let id = info.get("browserContextId").as_str().unwrap_or("");
-                let ctx = lock(&self.contexts).get(id).and_then(Weak::upgrade);
-                ctx.filter(|c| {
-                    !c.closed.load(Ordering::SeqCst) && lock(&self.targets).insert(target.clone())
-                })
-            }
-            "iframe" => {
-                let entry = parent.and_then(|p| lock(&self.sessions).get(p).cloned());
-                entry.and_then(|e| e.ctx.upgrade())
-            }
-            _ => None,
+        // A prerendered page is not a page the executor sees, but its requests are routed.
+        let prerender = kind == "page" && info.get("subtype").as_str() == Some("prerender");
+        let child = prerender
+            || matches!(
+                kind,
+                "iframe" | "worker" | "shared_worker" | "service_worker"
+            );
+        let parent_entry = parent.and_then(|p| lock(&self.sessions).get(p).cloned());
+        let by_id = info
+            .get("browserContextId")
+            .as_str()
+            .and_then(|id| lock(&self.contexts).get(id).and_then(Weak::upgrade));
+        let ctx = if kind == "page" && !prerender {
+            by_id
+        } else if child {
+            by_id.or_else(|| parent_entry.as_ref().and_then(|e| e.ctx.upgrade()))
+        } else {
+            None
         };
+        let ctx = ctx.filter(|c| {
+            !c.closed.load(Ordering::SeqCst) && lock(&self.targets).insert(target.clone())
+        });
         let Some(ctx) = ctx else {
-            // Not ours (another context of the shared browser), or a worker: let it run, let go.
+            // Another context's target (the browser is shared), one already set up, or a kind
+            // nothing here runs: let it run, let go.
             self.conn
                 .send(Some(sid), "Runtime.runIfWaitingForDebugger", none());
             self.conn.send(
@@ -294,31 +344,38 @@ impl CdpBrowser {
             return;
         };
         let sid = sid.to_string();
-        if kind == "page" {
+        if !child {
             std::thread::spawn(move || ctx.adopt(sid, target));
-        } else {
-            lock(&self.sessions).insert(
-                sid.clone(),
-                Entry {
-                    ctx: Arc::downgrade(&ctx),
-                    page: None,
-                },
-            );
-            lock(&ctx.sessions).push(sid.clone());
-            std::thread::spawn(move || ctx.setup_frame(&sid));
+            return;
         }
+        let owner = parent_entry.and_then(|e| e.owner);
+        lock(&self.sessions).insert(
+            sid.clone(),
+            Entry {
+                ctx: Arc::downgrade(&ctx),
+                page: None,
+                target,
+                owner: owner.clone(),
+            },
+        );
+        lock(&ctx.sessions).push(sid.clone());
+        let frame_like = prerender || kind == "iframe";
+        std::thread::spawn(move || ctx.setup_child(&sid, frame_like, owner));
     }
 
+    /// A session went: its page (if it is one) is closed first, then its waiting calls fail.
     fn detached(&self, sid: &str) {
         let entry = lock(&self.sessions).remove(sid);
-        let Some(entry) = entry else { return };
-        if let Some(ctx) = entry.ctx.upgrade() {
-            lock(&ctx.sessions).retain(|s| s != sid);
+        if let Some(entry) = entry {
+            lock(&self.targets).remove(&entry.target);
+            if let Some(ctx) = entry.ctx.upgrade() {
+                lock(&ctx.sessions).retain(|s| s != sid);
+            }
+            if let Some(page) = entry.page.and_then(|p| p.upgrade()) {
+                page.mark_closed();
+            }
         }
-        if let Some(page) = entry.page.and_then(|p| p.upgrade()) {
-            lock(&self.targets).remove(&page.target);
-            page.mark_closed();
-        }
+        self.conn.fail_session(sid);
     }
 
     fn destroyed(&self, target: &str) {
@@ -436,6 +493,8 @@ impl Browser for CdpBrowser {
         let mut params = vec![("disposeOnDetach", JValue::Bool(true))];
         if let Some(p) = proxy {
             params.push(("proxyServer", s(&p.server)));
+            // Loopback goes through the proxy too (Chromium bypasses it by default).
+            params.push(("proxyBypassList", s("<-loopback>")));
         }
         let made = self.conn.call(
             None,
@@ -535,7 +594,7 @@ impl CdpContext {
 
     /// A page target of this context attached: [`Context::new_page`]'s own, or a popup.
     fn adopt(self: Arc<Self>, sid: String, target: String) {
-        let deadline = Instant::now() + CALL_TIMEOUT;
+        let deadline = deadline(CALL_TIMEOUT);
         let mut c = lock(&self.creating);
         if let Some(slot) = c.expected.get_mut(&target) {
             *slot = Some(sid);
@@ -567,20 +626,28 @@ impl CdpContext {
         }
     }
 
-    /// Page, Runtime, Fetch (when routed) and auto-attach on a new page, then it runs.
+    /// Page, Network (service workers bypassed), Fetch (when routed) and auto-attach on a new page,
+    /// then it runs. A page that could not be set up is closed, never run ungated.
     fn open_page(&self, sid: String, target: String) -> Result<Arc<CdpPage>> {
-        let page = CdpPage::new(self.browser.conn.clone(), sid.clone(), target);
+        let page = CdpPage::new(self.browser.conn.clone(), sid.clone(), target.clone());
         lock(&self.browser.sessions).insert(
             sid.clone(),
             Entry {
                 ctx: self.me.clone(),
                 page: Some(Arc::downgrade(&page)),
+                target: target.clone(),
+                owner: Some(target.clone()),
             },
         );
         lock(&self.sessions).push(sid.clone());
         let setup = (|| -> Result<()> {
             page.call("Page.enable", none(), CALL_TIMEOUT)?;
-            page.call("Runtime.enable", none(), CALL_TIMEOUT)?;
+            page.call("Network.enable", none(), CALL_TIMEOUT)?;
+            page.call(
+                "Network.setBypassServiceWorker",
+                bypass_service_workers(),
+                CALL_TIMEOUT,
+            )?;
             let routed = lock(&self.gate).is_some();
             if routed {
                 page.call("Fetch.enable", self.fetch_params(), CALL_TIMEOUT)?;
@@ -593,29 +660,43 @@ impl CdpContext {
         })();
         if let Err(e) = setup {
             self.conn()
-                .send(Some(&sid), "Runtime.runIfWaitingForDebugger", none());
+                .send(None, "Target.closeTarget", close_target(&target));
+            self.browser.detached(&sid);
             return Err(e);
         }
         lock(&self.pages).push(page.clone());
         Ok(page)
     }
 
-    /// An out-of-process frame: routed like its page, then run.
-    fn setup_frame(&self, sid: &str) {
-        let routed = lock(&self.gate).is_some();
-        if routed {
-            let _ = self
+    /// A frame, worker or prerendered page: routed like its page, then run. One that could not be
+    /// gated is never run: its page is closed (a browser-level worker stays paused).
+    fn setup_child(&self, sid: &str, frame_like: bool, owner: Option<String>) {
+        let call = |method: &str, params: JValue| {
+            self.conn().call(Some(sid), method, params, CALL_TIMEOUT)
+        };
+        let ready = (|| -> Result<()> {
+            let routed = lock(&self.gate).is_some();
+            if routed {
+                call("Fetch.enable", self.fetch_params())?;
+            }
+            if frame_like {
+                call("Page.enable", none())?;
+                call("Network.enable", none())?;
+                call("Network.setBypassServiceWorker", bypass_service_workers())?;
+                call("Target.setAutoAttach", auto_attach())?;
+            }
+            Ok(())
+        })();
+        match (ready, owner) {
+            (Ok(()), _) => self
                 .conn()
-                .call(Some(sid), "Fetch.enable", self.fetch_params(), CALL_TIMEOUT);
+                .send(Some(sid), "Runtime.runIfWaitingForDebugger", none()),
+            (Err(_), Some(page)) => {
+                self.conn()
+                    .send(None, "Target.closeTarget", close_target(&page))
+            }
+            (Err(_), None) => {}
         }
-        let _ = self.conn().call(
-            Some(sid),
-            "Target.setAutoAttach",
-            auto_attach(),
-            CALL_TIMEOUT,
-        );
-        self.conn()
-            .send(Some(sid), "Runtime.runIfWaitingForDebugger", none());
     }
 }
 
@@ -664,7 +745,7 @@ impl Context for CdpContext {
         if sid.is_none() {
             // Its attachment has not arrived yet.
             c.expected.insert(target.clone(), None);
-            let deadline = Instant::now() + CALL_TIMEOUT;
+            let deadline = deadline(CALL_TIMEOUT);
             loop {
                 if let Some(Some(found)) = c.expected.get(&target) {
                     sid = Some(found.clone());
@@ -726,8 +807,7 @@ impl Context for CdpContext {
 struct PageState {
     url: String,
     main_frame: String,
-    /// The main frame's committed document, and whether its `load` fired.
-    loader: String,
+    /// Whether the main frame's committed document fired `load`.
     loaded: bool,
     commits: u64,
     same_document: u64,
@@ -797,9 +877,6 @@ impl CdpPage {
         if let Some(url) = frame.get("url").as_str().filter(|u| !u.is_empty()) {
             st.url = format!("{url}{}", frame.get("urlFragment").as_str().unwrap_or(""));
         }
-        if let Some(loader) = frame.get("loaderId").as_str() {
-            st.loader = loader.to_string();
-        }
     }
 
     fn mark_closed(&self) {
@@ -834,7 +911,6 @@ impl CdpPage {
                         frame.get("url").as_str().unwrap_or(""),
                         frame.get("urlFragment").as_str().unwrap_or("")
                     );
-                    st.loader = frame.get("loaderId").as_str().unwrap_or("").to_string();
                     st.loaded = params.get("type").as_str() == Some("BackForwardCacheRestore");
                     st.commits += 1;
                     st.starting = false;
@@ -885,7 +961,7 @@ impl CdpPage {
         timeout: Duration,
         mut step: impl FnMut(Duration) -> Option<Result<T>>,
     ) -> Option<Result<T>> {
-        let deadline = Instant::now() + timeout;
+        let deadline = deadline(timeout);
         loop {
             if let Some(done) = step(
                 deadline
@@ -933,38 +1009,77 @@ impl CdpPage {
         found.unwrap_or_else(|| Err(timeout_error(timeout)))
     }
 
+    /// `keyboard.press(name)`: modifiers down in order, the key down and up, modifiers up in
+    /// reverse. With Control, Alt or Meta held the key types no text, as in Playwright.
     fn press_key(&self, name: &str, timeout: Duration) -> Result<()> {
-        let key = keys::lookup(name)
+        let combo = keys::combo(name)
             .ok_or_else(|| EngineError::new(format!("Unknown key: \"{name}\"")))?;
+        let mut mask = 0;
+        for m in &combo.modifiers {
+            mask |= m.bit;
+            self.key_down(&m.key, mask, 1, timeout)?;
+        }
+        let key = if mask & !keys::SHIFT == 0 {
+            combo.key.clone()
+        } else {
+            keys::Key {
+                text: None,
+                ..combo.key.clone()
+            }
+        };
+        self.key_down(&key, mask, 0, timeout)?;
+        self.key_up(&key, mask, 0, timeout)?;
+        for m in combo.modifiers.iter().rev() {
+            mask &= !m.bit;
+            self.key_up(&m.key, mask, 1, timeout)?;
+        }
+        Ok(())
+    }
+
+    fn key_down(
+        &self,
+        key: &keys::Key,
+        modifiers: u32,
+        location: u32,
+        timeout: Duration,
+    ) -> Result<()> {
+        let kind = if key.text.is_some() {
+            "keyDown"
+        } else {
+            "rawKeyDown"
+        };
         let mut down = vec![
-            (
-                "type",
-                s(if key.text.is_some() {
-                    "keyDown"
-                } else {
-                    "rawKeyDown"
-                }),
-            ),
-            ("modifiers", num(0)),
+            ("type", s(kind)),
+            ("modifiers", num(modifiers)),
             ("windowsVirtualKeyCode", num(key.key_code)),
             ("code", s(key.code)),
             ("key", s(&key.key)),
             ("autoRepeat", JValue::Bool(false)),
-            ("location", num(0)),
+            ("location", num(location)),
             ("isKeypad", JValue::Bool(false)),
         ];
         if let Some(text) = &key.text {
             down.push(("text", s(text)));
             down.push(("unmodifiedText", s(text)));
         }
-        self.call("Input.dispatchKeyEvent", JValue::obj(down), timeout)?;
+        self.call("Input.dispatchKeyEvent", JValue::obj(down), timeout)
+            .map(|_| ())
+    }
+
+    fn key_up(
+        &self,
+        key: &keys::Key,
+        modifiers: u32,
+        location: u32,
+        timeout: Duration,
+    ) -> Result<()> {
         let up = JValue::obj([
             ("type", s("keyUp")),
-            ("modifiers", num(0)),
+            ("modifiers", num(modifiers)),
             ("windowsVirtualKeyCode", num(key.key_code)),
             ("code", s(key.code)),
             ("key", s(&key.key)),
-            ("location", num(0)),
+            ("location", num(location)),
         ]);
         self.call("Input.dispatchKeyEvent", up, timeout).map(|_| ())
     }
@@ -1003,8 +1118,18 @@ impl Page for CdpPage {
         lock(&self.download_hooks).push(hook);
     }
 
+    /// A page already closed calls the hook at once (a popup can close before the executor's
+    /// page hook registers this).
     fn on_close(&self, hook: CloseHook) {
-        lock(&self.close_hooks).push(hook);
+        {
+            // mark_closed sets the flag before it takes the hooks under this lock.
+            let mut hooks = lock(&self.close_hooks);
+            if !self.is_closed() {
+                hooks.push(hook);
+                return;
+            }
+        }
+        hook();
     }
 
     fn is_closed(&self) -> bool {
@@ -1046,21 +1171,25 @@ impl Page for CdpPage {
         self.text("body", timeout)
     }
 
+    /// `page.goto(url, { waitUntil: 'load' })`: the `load` of the main frame's document as it
+    /// is once the navigation committed, whichever document that is (one that replaces itself
+    /// before its load, by `location.replace` or a meta refresh, is waited through).
     fn goto(&self, url: &str, timeout: Duration) -> Result<()> {
-        let deadline = Instant::now() + timeout;
+        let deadline = deadline(timeout);
+        let before = lock(&self.state).commits;
         let r = self.call("Page.navigate", JValue::obj([("url", s(url))]), timeout)?;
         if let Some(error) = r.get("errorText").as_str().filter(|e| !e.is_empty()) {
-            return Err(EngineError::new(error));
+            return Err(EngineError::new(format!("{error} at {url}")));
         }
         // No loader: a same-document navigation, already done.
-        let Some(loader) = r.get("loaderId").as_str().filter(|l| !l.is_empty()) else {
+        if r.get("loaderId").as_str().is_none_or(str::is_empty) {
             return Ok(());
-        };
-        self.wait_until(deadline, timeout, |st| st.loader == loader && st.loaded)
+        }
+        self.wait_until(deadline, timeout, |st| st.commits > before && st.loaded)
     }
 
     fn go_back(&self, timeout: Duration) -> Result<()> {
-        let deadline = Instant::now() + timeout;
+        let deadline = deadline(timeout);
         let history = self.call("Page.getNavigationHistory", none(), timeout)?;
         let index = history.get("currentIndex").as_num().unwrap_or(0.0);
         let entries = match history.get("entries") {
@@ -1178,14 +1307,32 @@ impl CdpHandle {
         }
     }
 
-    /// Scrolled into view: the centre of its box, refused when the box is empty.
-    fn centre(&self, timeout: Duration) -> Result<(f64, f64)> {
-        let r = self.run(js::SCROLL_AND_MEASURE, Vec::new(), timeout)?;
-        let n = |k: &str| r.get(k).as_num().unwrap_or(0.0);
-        if !(n("width") > 0.0 && n("height") > 0.0) {
-            return Err(EngineError::new("Element is not visible"));
+    /// Where a pointer action lands: scrolled into view, the centre of its box once the box is not
+    /// empty and the element (or one inside it) is what receives the pointer there. Retried every
+    /// 100 ms until the timeout, as Playwright's actionability checks are; the last refusal is the
+    /// error.
+    fn point(&self, timeout: Duration) -> Result<(f64, f64)> {
+        let deadline = deadline(timeout);
+        loop {
+            let left = deadline.saturating_duration_since(Instant::now());
+            let r = self.run(js::ACTION_POINT, Vec::new(), left.max(MIN_CALL))?;
+            let n = |k: &str| r.get(k).as_num().unwrap_or(0.0);
+            let hit = r.get("hit").as_str().unwrap_or("");
+            let refusal = if !(n("width") > 0.0 && n("height") > 0.0) {
+                "Element is not visible".to_string()
+            } else if hit == "outside" {
+                "Element is outside of the viewport".to_string()
+            } else if !hit.is_empty() {
+                format!("{hit} intercepts pointer events")
+            } else {
+                return Ok((n("x"), n("y")));
+            };
+            let left = deadline.saturating_duration_since(Instant::now());
+            if left.is_zero() {
+                return Err(EngineError::new(refusal));
+            }
+            std::thread::sleep(POLL.min(left));
         }
-        Ok((n("x"), n("y")))
     }
 
     fn flag(&self, function: &str) -> Result<bool> {
@@ -1207,14 +1354,14 @@ impl Handle for CdpHandle {
     }
 
     fn click(&self, timeout: Duration) -> Result<()> {
-        let at = self.centre(timeout)?;
+        let at = self.point(timeout)?;
         self.page.mouse("mouseMoved", at, "none", 0, timeout)?;
         self.page.mouse("mousePressed", at, "left", 1, timeout)?;
         self.page.mouse("mouseReleased", at, "left", 0, timeout)
     }
 
     fn hover(&self, timeout: Duration) -> Result<()> {
-        let at = self.centre(timeout)?;
+        let at = self.point(timeout)?;
         self.page.mouse("mouseMoved", at, "none", 0, timeout)
     }
 
@@ -1236,24 +1383,19 @@ impl Handle for CdpHandle {
     }
 
     fn press(&self, key: &str, timeout: Duration) -> Result<()> {
-        if keys::lookup(key).is_none() {
+        if keys::combo(key).is_none() {
             return Err(EngineError::new(format!("Unknown key: \"{key}\"")));
         }
         self.run(js::FOCUS, Vec::new(), timeout)?;
         self.page.press_key(key, timeout)
     }
 
-    fn set_input_files(&self, file: &Path, timeout: Duration) -> Result<()> {
-        let path = file
-            .to_str()
-            .ok_or_else(|| EngineError::new("The file path is not UTF-8."))?;
-        let params = JValue::obj([
-            ("files", JValue::Arr(vec![s(path)])),
-            ("objectId", s(&self.object)),
-        ]);
-        self.page
-            .call("DOM.setFileInputFiles", params, timeout)
-            .map(|_| ())
+    /// Refused: the browser runs in its own container, and a file reaches it only through a
+    /// directory both share, which does not exist yet (as downloads are denied).
+    fn set_input_files(&self, _file: &Path, _timeout: Duration) -> Result<()> {
+        Err(EngineError::new(
+            "Uploads need a directory shared with the browser engine; none is configured.",
+        ))
     }
 
     fn submit(&self) -> Result<()> {
