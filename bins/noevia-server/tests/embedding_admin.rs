@@ -750,12 +750,14 @@ async fn a_seeded_public_address_is_refused_as_at_start_up() {
     let a = call(w.addr, "GET", "/api/embedding", ADMIN, "").await;
     assert_eq!(a.body["projects"]["active"]["profile"], "unavailable");
     assert_eq!(a.body["projects"]["damaged"], "EMBEDDING_BASE_URL http://8.8.4.4:8080 refused: 8.8.4.4 is not on this network (8.8.4.4 is a public address)");
-    // core's own answer here: its setNext reaches the configuration outside the hold.
+    // Named difference (sbstndalton/noevia#2696): core answers 500 with its internal publication-lock
+    // text here (its setNext reaches the configuration outside the hold); the port refuses with the
+    // lock's own 409 badState and the refusal reason, as clear-next already does.
     let set = post(w.addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-b"}})).await;
-    assert_eq!(set.status, 500);
+    assert_eq!(set.status, 409);
     assert_eq!(
         set.body["projects"],
-        json!({"error": "Embedding configuration requires the publication lock", "status": 500})
+        json!({"error": "EMBEDDING_BASE_URL http://8.8.4.4:8080 refused: 8.8.4.4 is not on this network (8.8.4.4 is a public address)", "status": 409, "code": "badState"})
     );
     assert_eq!(w.saved(), None);
     assert!(w.lock_free());
