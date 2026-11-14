@@ -607,7 +607,9 @@ impl Manifest {
             }
             match line.split_once(' ') {
                 Some((m, p))
-                    if METHODS.contains(&m) && p.starts_with('/') && !p.contains(char::is_whitespace) =>
+                    if METHODS.contains(&m)
+                        && p.starts_with('/')
+                        && !p.contains(char::is_whitespace) =>
                 {
                     pairs.insert((m.to_string(), normalised(p)));
                 }
@@ -644,7 +646,9 @@ impl Manifest {
                 .chain(s.switched.iter().flat_map(|w| w.refusals.iter()))
             {
                 if let Some(p) = &r.pattern {
-                    pattern_of.entry(r.path.clone()).or_insert_with(|| p.clone());
+                    pattern_of
+                        .entry(r.path.clone())
+                        .or_insert_with(|| p.clone());
                 }
             }
         }

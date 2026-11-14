@@ -23,6 +23,8 @@ fn stub(file: &str, refusals: Vec<Refusal>) -> Stub {
         pairing: vec!["deploy/tools/assemble-release.sh:1".to_string()],
         refusals,
         switched: vec![],
+        owned_routes: None,
+        behind: BTreeMap::new(),
         error: None,
     }
 }
@@ -52,6 +54,8 @@ fn synthetic(stubs: Vec<Stub>) -> Recording {
         core: "0123456789abcdef".to_string(),
         noevia: "fedcba9876543210".to_string(),
         methods: METHODS.iter().map(|m| m.to_string()).collect(),
+        routes_toml_sha256: None,
+        fills: vec![],
         probes: 1,
         stubs,
     }
@@ -460,4 +464,333 @@ fn the_delete_list_names_every_stub_and_its_pairing_lines() {
     assert!(md.contains("noevia-core `01234567`"));
     assert!(md.contains("| `server/rust-chat-search.cjs` | `refuseOwned` | 10 | 1 | delete file | pairing: deploy/tools/assemble-release.sh:1 |"));
     assert!(md.contains("1 files can go (10 lines)"));
+}
+
+// ---- council p5: the re-recording, OWNED_ROUTES, handlers behind, switches, the manifest front ----
+
+/// The front's `noevia-server --owned-routes` at the recording's rs commit (this branch), pinned beside it.
+const MANIFEST: &str = include_str!("../fixtures/front-owned-routes.txt");
+const ROUTES_TOML: &str = include_str!("../../../contracts/http/routes.toml");
+const UUID: &str = "00000000-0000-4000-8000-000000000001";
+
+fn manifest() -> Manifest {
+    Manifest::parse(MANIFEST).expect("the pinned manifest parses")
+}
+
+fn hex(s: &str, len: usize) -> bool {
+    s.len() == len && s.chars().all(|c| c.is_ascii_hexdigit())
+}
+
+#[test]
+fn the_recording_names_its_commits_its_routes_toml_and_both_fillings() {
+    let r = rec();
+    assert!(hex(&r.core, 40), "core {}", r.core);
+    assert!(hex(&r.noevia, 40), "noevia {}", r.noevia);
+    assert!(hex(r.routes_toml_sha256.as_deref().unwrap_or(""), 64));
+    assert_eq!(r.fills, ["qa-1", UUID]);
+    assert_eq!(r.probes, 527);
+    assert_eq!(r.stubs.len(), 68);
+}
+
+#[test]
+fn every_recorded_pattern_is_still_a_routes_toml_row() {
+    // A routes.toml row removed since the recording makes the fixture stale: re-record.
+    let rows: BTreeSet<&str> = ROUTES_TOML
+        .lines()
+        .filter_map(|l| l.strip_prefix("path = \"")?.strip_suffix('"'))
+        .collect();
+    assert!(rows.len() > 150);
+    for s in &rec().stubs {
+        for r in &s.refusals {
+            if let Some(p) = &r.pattern {
+                assert!(rows.contains(p.as_str()), "{}: {p} is not in routes.toml", s.file);
+            }
+        }
+    }
+}
+
+#[test]
+fn uuid_only_stubs_are_recorded_on_uuid_paths() {
+    // sbstndalton/noevia#2713 item 1: rust-research.cjs refuses only [0-9a-f-]{36} job ids.
+    let r = rec();
+    let research = r.stubs.iter().find(|s| s.file == "server/rust-research.cjs").expect("research stub");
+    assert!(research
+        .refusals
+        .iter()
+        .any(|x| x.path.contains(&format!("/research/{UUID}"))));
+    assert!(unrecorded_owned(research).is_empty(), "{:?}", unrecorded_owned(research));
+}
+
+#[test]
+fn pairing_lines_cover_every_script_and_the_stub_s_markers() {
+    // sbstndalton/noevia#2713 item 2: the marker reader and the residual pairing suite were missed before.
+    let r = rec();
+    let residual = r
+        .stubs
+        .iter()
+        .find(|s| s.file == "server/rust-residual-fallbacks.cjs")
+        .expect("residual stub");
+    for want in [
+        "deploy/tools/assemble-release.sh:4270",
+        "deploy/tools/test-residual-fallback-pairing.sh:9",
+        "deploy/tools/test-assemble-release.sh:3437",
+    ] {
+        assert!(residual.pairing.iter().any(|p| p == want), "{want} missing: {:?}", residual.pairing);
+    }
+    assert!(r.stubs.iter().all(|s| s.pairing.iter().all(|p| p.rsplit_once(':').is_some_and(|(_, n)| n.parse::<usize>().is_ok()))));
+}
+
+#[test]
+fn exact_totals_with_a_front_that_answers_everything() {
+    // sbstndalton/noevia#2713 item 4: these numbers move only with a re-recording.
+    let all = |_: &str, _: &str| true;
+    let list = classify(&rec(), &all);
+    assert_eq!(
+        totals(&list),
+        Totals {
+            delete_file: 33,
+            delete_file_lines: 842,
+            delete_function: 7,
+            with_handler: 24,
+            keep: 4
+        }
+    );
+    let gated: Vec<&str> = list
+        .iter()
+        .filter(|a| a.verdict == Verdict::SwitchGated)
+        .map(|a| a.file.as_str())
+        .collect();
+    assert_eq!(
+        gated,
+        [
+            "server/rust-model-writes.cjs",
+            "server/rust-model-manager-proxy.cjs",
+            "server/rust-projects.cjs"
+        ]
+    );
+    let incomplete: Vec<&Assessment> = list
+        .iter()
+        .filter(|a| matches!(a.verdict, Verdict::Incomplete { .. }))
+        .collect();
+    assert_eq!(incomplete.len(), 1);
+    assert_eq!(incomplete[0].file, "server/rust-project-reads.cjs");
+    assert_eq!(
+        incomplete[0].verdict,
+        Verdict::Incomplete {
+            missing: vec!["GET /api/projects/{id}/{*}/original".to_string()]
+        }
+    );
+}
+
+#[test]
+fn exact_totals_from_the_front_s_own_manifest() {
+    let r = rec();
+    let m = manifest();
+    assert_eq!(m.len(), 682);
+    let list = classify(&r, &m.front(&r));
+    assert_eq!(
+        totals(&list),
+        Totals {
+            delete_file: 32,
+            delete_file_lines: 799,
+            delete_function: 5,
+            with_handler: 22,
+            keep: 9
+        }
+    );
+    // Live only through what the manifest cannot show: trailing slashes, the residual answers, the page paths.
+    let live: Vec<&str> = list
+        .iter()
+        .filter(|a| matches!(a.verdict, Verdict::Live { .. }))
+        .map(|a| a.file.as_str())
+        .collect();
+    assert_eq!(
+        live,
+        [
+            "server/routes/features.cjs",
+            "server/rust-public-pages.cjs",
+            "server/rust-residual-fallbacks.cjs",
+            "server/rust-mcp-credentials.cjs",
+            "server/rust-mcp-directory.cjs"
+        ]
+    );
+    // Methods a Rust row does not list that the front still answers itself (bins/noevia-server residual_fallback.rs,
+    // Node's exact 404/405 shapes): not route-table ownership, so not in the manifest.
+    let residual_answers = [
+        ("PUT", "/api/mcp-keys/servers"),
+        ("DELETE", "/api/mcp-keys/servers"),
+        ("DELETE", "/api/mcp-oauth/callback"),
+        ("DELETE", "/api/mcp-oauth/servers"),
+    ];
+    let mut seen_residual = BTreeSet::new();
+    for a in &list {
+        if let Verdict::Live { leaks } = &a.verdict {
+            for (method, path) in leaks {
+                let slash = path.len() > 1 && path.ends_with('/');
+                let unpatterned = r
+                    .stubs
+                    .iter()
+                    .flat_map(|s| s.refusals.iter())
+                    .any(|x| x.path == *path && x.pattern.is_none());
+                let residual_stub = a.file == "server/rust-residual-fallbacks.cjs";
+                let residual = residual_answers.contains(&(method.as_str(), path.as_str()));
+                if residual {
+                    seen_residual.insert((method.clone(), path.clone()));
+                }
+                assert!(
+                    slash || unpatterned || residual_stub || residual,
+                    "{}: {method} {path}",
+                    a.file
+                );
+            }
+        }
+    }
+    assert_eq!(seen_residual.len(), residual_answers.len());
+}
+
+#[test]
+fn the_manifest_backs_every_owned_routes_claim_but_one_recording_gap() {
+    // Every route a stub claims in OWNED_ROUTES is in the front's manifest, except the `{*}` row neither the
+    // manifest nor the recorder fills with a single segment (CONTINUE: a one-segment wildcard fill).
+    assert_eq!(
+        manifest().unowned_claims(&rec()),
+        [(
+            "server/rust-project-reads.cjs".to_string(),
+            "GET /api/projects/{id}/{*}/original".to_string()
+        )]
+    );
+}
+
+#[test]
+fn the_manifest_parser_refuses_what_is_not_a_manifest() {
+    assert!(Manifest::parse("").is_err());
+    assert!(Manifest::parse("\n\n").is_err());
+    assert!(Manifest::parse("GET /api/x\nnot a line\n").is_err());
+    assert!(Manifest::parse("FETCH /api/x\n").is_err());
+    assert!(Manifest::parse("GET api/x\n").is_err());
+    assert!(Manifest::parse("GET /api/x y\n").is_err());
+    let m = Manifest::parse("GET /api/a/{id}\r\nDELETE /api/b\n").expect("parses");
+    assert_eq!(m.len(), 2);
+    assert!(m.owns("GET", "/api/a/{name}"));
+    assert!(!m.owns("POST", "/api/a/{id}"));
+    assert!(m.owns("DELETE", "/api/b"));
+}
+
+#[test]
+fn the_manifest_front_answers_patterned_probes_only_without_a_trailing_slash() {
+    let r = synthetic(vec![stub(
+        "server/rust-a.cjs",
+        vec![
+            refusal("GET", "/api/a/qa-1", "/api/a/{id}", BODY),
+            refusal("GET", "/api/a/qa-1/", "/api/a/{id}", BODY),
+        ],
+    )]);
+    let m = Manifest::parse("GET /api/a/{x}\n").expect("parses");
+    let f = m.front(&r);
+    assert!(f.answers("GET", "/api/a/qa-1"));
+    assert!(!f.answers("GET", "/api/a/qa-1/"));
+    assert!(!f.answers("POST", "/api/a/qa-1"));
+    assert!(!f.answers("GET", "/api/unrecorded"));
+    assert_eq!(
+        classify(&r, &f)[0].verdict,
+        Verdict::Live {
+            leaks: vec![("GET".to_string(), "/api/a/qa-1/".to_string())]
+        }
+    );
+}
+
+#[test]
+fn an_owned_route_without_a_recorded_refusal_makes_the_stub_incomplete() {
+    let mut s = stub(
+        "server/rust-y.cjs",
+        vec![refusal("GET", "/api/y/qa-1", "/api/y/{id}", BODY)],
+    );
+    s.owned_routes = Some(vec![
+        "GET /api/y/{name}".to_string(),
+        "ALL /api/z".to_string(),
+        "garbage".to_string(),
+    ]);
+    let all = |_: &str, _: &str| true;
+    assert_eq!(
+        classify(&synthetic(vec![s.clone()]), &all)[0].verdict,
+        Verdict::Incomplete {
+            missing: vec!["ALL /api/z".to_string(), "garbage".to_string()]
+        }
+    );
+    // ALL needs every method.
+    s.owned_routes = Some(vec!["ALL /api/y/{id}".to_string()]);
+    assert_eq!(unrecorded_owned(&s), ["ALL /api/y/{id}"]);
+    s.refusals = METHODS
+        .iter()
+        .map(|m| refusal(m, "/api/y/qa-1", "/api/y/{id}", BODY))
+        .collect();
+    assert!(unrecorded_owned(&s).is_empty());
+    assert_eq!(classify(&synthetic(vec![s]), &all)[0].verdict, Verdict::DeleteFile);
+}
+
+#[test]
+fn a_core_handler_behind_the_stub_must_go_with_it() {
+    // sbstndalton/noevia#2700 item 1.
+    let mut s = stub(
+        "server/rust-y.cjs",
+        vec![refusal("POST", "/api/y", "/api/y", BODY)],
+    );
+    s.behind = [
+        ("/api/y".to_string(), vec!["server/routes/y.cjs:9".to_string(), "server/index.cjs:3".to_string()]),
+        ("/api/y2".to_string(), vec!["server/routes/y.cjs:9".to_string()]),
+    ]
+    .into_iter()
+    .collect();
+    let all = |_: &str, _: &str| true;
+    let r = synthetic(vec![s]);
+    let list = classify(&r, &all);
+    assert_eq!(
+        list[0].verdict,
+        Verdict::GuardsHandler {
+            handlers: vec!["server/index.cjs:3".to_string(), "server/routes/y.cjs:9".to_string()]
+        }
+    );
+    assert_eq!(totals(&list).with_handler, 1);
+    let md = delete_list(&r, &list);
+    assert!(md.contains("| delete with handler | core still names the route at server/index.cjs:3, server/routes/y.cjs:9; pairing: deploy/tools/assemble-release.sh:1 |"), "{md}");
+    assert!(md.contains("1 can go only with the core handler they guard"));
+    // A leak still wins: the stub is live before anything else.
+    let none = |_: &str, _: &str| false;
+    assert!(matches!(classify(&r, &none)[0].verdict, Verdict::Live { .. }));
+}
+
+#[test]
+fn a_named_switch_keeps_the_stub_even_when_the_recorded_values_did_not_change_it() {
+    // sbstndalton/noevia#2713 item 3.
+    let mut s = stub(
+        "server/rust-y.cjs",
+        vec![refusal("GET", "/api/y", "/api/y", BODY)],
+    );
+    s.env = vec!["NOEVIA_RUST_Y".to_string()];
+    let all = |_: &str, _: &str| true;
+    let r = synthetic(vec![s]);
+    assert_eq!(classify(&r, &all)[0].verdict, Verdict::SwitchGated);
+    let none = |_: &str, _: &str| false;
+    assert!(PinTable::leaked(&r, &none).is_empty());
+}
+
+#[test]
+fn the_delete_list_names_the_routes_toml_revision() {
+    let r = rec();
+    let all = |_: &str, _: &str| true;
+    let md = delete_list(&r, &classify(&r, &all));
+    let sha = r.routes_toml_sha256.clone().expect("hash");
+    assert!(md.contains(&format!("routes.toml sha256 `{}`", &sha[..8])));
+    assert!(md.contains("33 files can go (842 lines), 7"));
+    assert!(md.contains("24 can go only with the core handler they guard, 4 stay"));
+}
+
+#[test]
+fn normalised_is_the_assembler_s_sed() {
+    assert_eq!(normalised("/api/chats/{chatId}/export"), "/api/chats/{}/export");
+    assert_eq!(normalised("/api/models/{*}"), "/api/models/{}");
+    assert_eq!(normalised("/api/open/{x"), "/api/open/{x");
+    assert_eq!(owned_entry("ALL /api/x/{id}"), Some(("ALL", "/api/x/{}".to_string())));
+    assert_eq!(owned_entry("/api/x"), None);
+    assert_eq!(owned_entry("GET api/x"), None);
 }

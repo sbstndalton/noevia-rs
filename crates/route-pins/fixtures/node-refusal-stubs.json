@@ -18656,34 +18656,7 @@
      }
     }
    ],
-   "owned_routes": [
-    "/^\\/api\\/account\\/(?:instructions|memory|preferences)$/,",
-    "/^\\/api\\/account\\/retention$/,GET,PUT",
-    "/^\\/api\\/admin\\/invitations$/,POST",
-    "/^\\/api\\/admin\\/users$/,GET",
-    "/^\\/api\\/admin\\/users\\/[^/]+\\/disabled$/,PUT",
-    "/^\\/api\\/admin\\/users\\/[^/]+\\/recovery$/,POST",
-    "/^\\/api\\/auth\\/device\\/(?:approve|code|token|lookup)$/,",
-    "/^\\/api\\/auth\\/devices(?:\\/[^/]+)?$/,",
-    "/^\\/api\\/auth\\/invitations\\/accept$/,POST",
-    "/^\\/api\\/auth\\/login\\/(?:password|passkey\\/options|passkey\\/verify)$/,POST",
-    "/^\\/api\\/auth\\/logout$/,POST",
-    "/^\\/api\\/auth\\/passkeys\\/[^/]+$/,DELETE,PATCH",
-    "/^\\/api\\/auth\\/passkeys\\/register\\/(?:options|verify)$/,POST",
-    "/^\\/api\\/auth\\/recovery\\/complete$/,POST",
-    "/^\\/api\\/auth\\/session$/,GET",
-    "/^\\/api\\/auth\\/sessions\\/[^/]+$/,DELETE",
-    "/^\\/api\\/chat-framing\\/preferences$/,",
-    "/^\\/api\\/profile$/,GET,PATCH",
-    "/^\\/api\\/profile\\/app-passwords$/,GET,POST",
-    "/^\\/api\\/profile\\/app-passwords\\/[^/]+$/,DELETE",
-    "/^\\/api\\/profile\\/appearance$/,",
-    "/^\\/api\\/profile\\/features$/,PUT",
-    "/^\\/api\\/profile\\/onboarding$/,POST",
-    "/^\\/api\\/profile\\/sharing$/,GET,PUT",
-    "/^\\/api\\/setup\\/complete$/,POST",
-    "/^\\/api\\/setup\\/status$/,GET"
-   ],
+   "owned_routes": null,
    "switched": []
   },
   {

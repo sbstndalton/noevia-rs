@@ -88,7 +88,8 @@ pub fn manifest() -> BTreeSet<(&'static str, &'static str)> {
         for &method in METHODS {
             let owned = FILLS.iter().all(|id| {
                 let path = fill(route.path, id);
-                routes::route_for(&path).is_some_and(|r| std::ptr::eq(r, route)) && answers(method, &path)
+                routes::route_for(&path).is_some_and(|r| std::ptr::eq(r, route))
+                    && answers(method, &path)
             });
             if owned {
                 out.insert((method, route.path));
@@ -106,7 +107,8 @@ pub fn disagreements() -> Vec<(&'static str, &'static str, bool, bool)> {
         for &method in METHODS {
             let [a, b] = FILLS.map(|id| {
                 let path = fill(route.path, id);
-                routes::route_for(&path).is_some_and(|r| std::ptr::eq(r, route)) && answers(method, &path)
+                routes::route_for(&path).is_some_and(|r| std::ptr::eq(r, route))
+                    && answers(method, &path)
             });
             if a != b {
                 out.push((method, route.path, a, b));

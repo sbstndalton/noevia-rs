@@ -688,11 +688,16 @@ mod tests {
     #[test]
     fn owned_routes_cli_prints_the_manifest_and_refuses_arguments() {
         let mut out = Vec::new();
-        assert_eq!(owned_routes_cli(std::iter::empty(), &mut out), ExitCode::SUCCESS);
+        assert_eq!(
+            owned_routes_cli(std::iter::empty(), &mut out),
+            ExitCode::SUCCESS
+        );
         let mut want = Vec::new();
         noevia_server::owned_routes::write(&mut want).unwrap();
         assert_eq!(out, want);
-        assert!(String::from_utf8(out).unwrap().contains("DELETE /api/admin/users/{id}\n"));
+        assert!(String::from_utf8(out)
+            .unwrap()
+            .contains("DELETE /api/admin/users/{id}\n"));
         let mut none = Vec::new();
         assert_eq!(
             owned_routes_cli([OsString::from("x")].into_iter(), &mut none),

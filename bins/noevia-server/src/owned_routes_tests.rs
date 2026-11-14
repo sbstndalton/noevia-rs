@@ -5,9 +5,18 @@ use crate::routes::{Owner, ROUTES};
 
 #[test]
 fn fill_replaces_parameters_wildcards_and_keeps_literals() {
-    assert_eq!(fill("/api/admin/users/{id}", "qa-1"), "/api/admin/users/qa-1");
-    assert_eq!(fill("/api/models/{*}", "qa-1"), "/api/models/qa-seg/qa-rest");
-    assert_eq!(fill("/api/x/{a}/y/{*?}", FILLS[1]), format!("/api/x/{}/y/", FILLS[1]));
+    assert_eq!(
+        fill("/api/admin/users/{id}", "qa-1"),
+        "/api/admin/users/qa-1"
+    );
+    assert_eq!(
+        fill("/api/models/{*}", "qa-1"),
+        "/api/models/qa-seg/qa-rest"
+    );
+    assert_eq!(
+        fill("/api/x/{a}/y/{*?}", FILLS[1]),
+        format!("/api/x/{}/y/", FILLS[1])
+    );
     assert_eq!(fill("/api/plain", "qa-1"), "/api/plain");
     assert_eq!(fill("/api/broken/{id", "qa-1"), "/api/broken/{id");
 }
@@ -15,7 +24,10 @@ fn fill_replaces_parameters_wildcards_and_keeps_literals() {
 #[test]
 fn normalised_matches_the_assemblers_sed() {
     // deploy/tools/assemble-release.sh project_routes_core: sed 's/{[^}]*}/{}/g'
-    assert_eq!(normalised("/api/chats/{chatId}/export"), "/api/chats/{}/export");
+    assert_eq!(
+        normalised("/api/chats/{chatId}/export"),
+        "/api/chats/{}/export"
+    );
     assert_eq!(normalised("/api/models/{*}"), "/api/models/{}");
     assert_eq!(normalised("/api/a/{x}/{y}"), "/api/a/{}/{}");
     assert_eq!(normalised("/api/none"), "/api/none");
@@ -35,10 +47,16 @@ fn every_listed_pair_is_a_rust_row_method_the_front_dispatches() {
     let m = manifest();
     assert!(m.len() > 100, "only {} owned pairs", m.len());
     for &(method, pattern) in &m {
-        let row = ROUTES.iter().find(|r| r.path == pattern).expect("listed pattern is a routes.toml row");
+        let row = ROUTES
+            .iter()
+            .find(|r| r.path == pattern)
+            .expect("listed pattern is a routes.toml row");
         assert_eq!(row.owner, Owner::Rust, "{method} {pattern}");
         assert!(!row.catch_all);
-        assert!(row.methods.is_empty() || row.methods.contains(&method), "{method} {pattern}");
+        assert!(
+            row.methods.is_empty() || row.methods.contains(&method),
+            "{method} {pattern}"
+        );
         for id in FILLS {
             let path = fill(pattern, id);
             assert!(routes::dispatch(method, &path).is_some(), "{method} {path}");
@@ -50,11 +68,22 @@ fn every_listed_pair_is_a_rust_row_method_the_front_dispatches() {
 fn node_rows_and_unlisted_methods_are_never_listed() {
     let m = manifest();
     for row in ROUTES.iter().filter(|r| r.owner == Owner::Node) {
-        assert!(m.iter().all(|&(_, p)| p != row.path), "node row {} listed", row.path);
+        assert!(
+            m.iter().all(|&(_, p)| p != row.path),
+            "node row {} listed",
+            row.path
+        );
     }
-    for row in ROUTES.iter().filter(|r| r.owner == Owner::Rust && !r.methods.is_empty()) {
+    for row in ROUTES
+        .iter()
+        .filter(|r| r.owner == Owner::Rust && !r.methods.is_empty())
+    {
         for &method in METHODS.iter().filter(|m| !row.methods.contains(m)) {
-            assert!(!m.contains(&(method, row.path)), "{method} {} is Node's", row.path);
+            assert!(
+                !m.contains(&(method, row.path)),
+                "{method} {} is Node's",
+                row.path
+            );
         }
     }
 }
@@ -115,7 +144,10 @@ fn normalised_manifest_covers_every_rust_row_core_lists_for_admin_users() {
     // The assembler compares `sort -u` of normalised pairs; normalising may merge two rows' pairs into one line
     // but never loses a pair.
     let m = manifest();
-    let norm: BTreeSet<String> = m.iter().map(|(meth, p)| format!("{meth} {}", normalised(p))).collect();
+    let norm: BTreeSet<String> = m
+        .iter()
+        .map(|(meth, p)| format!("{meth} {}", normalised(p)))
+        .collect();
     assert!(norm.contains("DELETE /api/admin/users/{}"));
     assert!(norm.len() <= m.len());
 }
