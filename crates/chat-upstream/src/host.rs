@@ -201,9 +201,10 @@ impl<'a, H: Host, R: Rows> ProviderHost<'a, H, R> {
         if model.as_deref() != Some(self.binding.model.as_str()) {
             return Err(WRONG_MODEL);
         }
-        let call = call_of(request);
         let key = self.rows.key(&self.target.provider_id);
-        let planned = plan::request(&self.target, call, key.as_deref());
+        // Only the address and the headers are taken from the plan: the deadline is the executor's own for
+        // this call site (`timeout_ms` below), so the plan's call kind does not matter here.
+        let planned = plan::request(&self.target, Call::Round, key.as_deref());
         Ok(Outgoing(EngineRequest {
             url: planned.url,
             headers: planned.headers,
@@ -213,16 +214,6 @@ impl<'a, H: Host, R: Rows> ProviderHost<'a, H, R> {
             // same for the round, the fallback and the summary.
             timeout_ms: request.timeout_ms,
         }))
-    }
-}
-
-/// Which call site a request is, from what the executor set: a stream is a round, 300 s the fallback,
-/// anything else with a deadline the summary's rules (the title is built the same way; its deadline is kept).
-fn call_of(request: &EngineRequest) -> Call {
-    match (request.stream, request.timeout_ms) {
-        (true, _) | (false, None) => Call::Round,
-        (false, Some(300_000)) => Call::Fallback,
-        (false, Some(_)) => Call::Summary,
     }
 }
 
@@ -270,12 +261,15 @@ impl<H: Host, R: Rows> Host for ProviderHost<'_, H, R> {
         }
         Ok(answer)
     }
+    /// No idle limit for a provider row's stream: chat.cjs applies `streamIdleMs` only to the default
+    /// provider or a machine (`provider.id === DEFAULT_PROVIDER_ID || provider.machine ? streamIdleMs : 0`,
+    /// ~2170; core's chat-stream-idle-1574 test "a cloud provider is not limited by the local idle limit").
     fn read(
         &self,
         body: &mut Self::Body,
-        idle_ms: Option<u64>,
+        _idle_ms: Option<u64>,
     ) -> impl Future<Output = Read> + Send {
-        self.inner.read(body, idle_ms)
+        self.inner.read(body, None)
     }
     fn text(&self, body: Self::Body, cap: usize) -> impl Future<Output = (String, bool)> + Send {
         self.inner.text(body, cap)

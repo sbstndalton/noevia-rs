@@ -152,6 +152,8 @@ struct Fake {
     left: Mutex<bool>,
     calls: Mutex<Vec<String>>,
     files: Mutex<BTreeMap<String, String>>,
+    /// The idle limit each read was asked with.
+    idles: Mutex<Vec<Option<u64>>>,
 }
 
 impl Fake {
@@ -241,7 +243,8 @@ impl Host for Fake {
             }
         }
     }
-    async fn read(&self, body: &mut Body, _idle_ms: Option<u64>) -> Read {
+    async fn read(&self, body: &mut Body, idle_ms: Option<u64>) -> Read {
+        self.idles.lock().unwrap().push(idle_ms);
         let r = body.reads.pop_front().unwrap_or(Read::End);
         if r == Read::Aborted {
             *self.left.lock().unwrap() = true;
@@ -994,4 +997,28 @@ fn rows_now_debug_prints_the_row_id_only() {
     let printed = format!("{:?}", now_of(&row));
     assert!(!printed.contains("qa-stored-key"), "{printed}");
     assert!(printed.contains("qa-provider"), "{printed}");
+}
+
+/// chat.cjs ~2170: the local idle limit (`streamIdleMs`) is the default provider's and a machine's only; a
+/// provider row's stream is read without it.
+#[test]
+fn a_provider_rows_stream_has_no_local_idle_limit() {
+    let r = row("https://qa-provider.example/v1/", false);
+    let t = resolved(&r);
+    let plain = Fake::new(vec![stream(reply_stream(), Tail::End)]);
+    assert_eq!(run_on(&plain, &frame(&t.url, false, false)), Ended::Done);
+    let seen = plain.idles.lock().unwrap().clone();
+    assert!(
+        seen.iter().any(Option::is_some),
+        "the plain turn reads with the limit: {seen:?}"
+    );
+    let inner = Fake::new(vec![stream(reply_stream(), Tail::End)]);
+    let rows = ScriptRows::steady(&r);
+    let host = ProviderHost::new(&inner, &rows, t.clone(), bound(&r, &t), DEFAULT_ID).unwrap();
+    assert_eq!(run_on(&host, &frame(&t.url, false, false)), Ended::Done);
+    let seen = inner.idles.lock().unwrap().clone();
+    assert!(
+        !seen.is_empty() && seen.iter().all(Option::is_none),
+        "{seen:?}"
+    );
 }
