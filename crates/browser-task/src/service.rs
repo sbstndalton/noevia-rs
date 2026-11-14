@@ -14,12 +14,13 @@ use crate::engine::{Launch, Proxy};
 use crate::executor::{self, Executor, Flight, Held, Open};
 use crate::signal::{Signal, Slot};
 use crate::Fail;
-use js_json::{js_slice, wtf16, JValue};
+use js_json::{wtf16, JValue};
 use server_projects::task_journals::{browser_view, Job};
 use server_projects::task_store::{NewJob, Options as StoreOptions, Refusal, Store};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::MutexGuard;
 use std::sync::{Arc, Condvar, Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -108,10 +109,11 @@ impl Options {
     }
 }
 
-/// `parseDomains`: lower-cased, trimmed, `^[a-z0-9.-]+\.[a-z]{2,}$` only, at most 20.
-pub fn parse_domains(list: &JValue) -> Vec<String> {
+/// `parseDomains`: lower-cased, trimmed, `^[a-z0-9.-]+\.[a-z]{2,}$` only, at most 20. An entry
+/// `String()` throws on (an object with its own `toString`) is core's TypeError: a 500.
+pub fn parse_domains(list: &JValue) -> Result<Vec<String>, Fail> {
     let JValue::Arr(items) = list else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     let shaped = |d: &str| {
         let Some(dot) = d.rfind('.') else {
@@ -125,19 +127,20 @@ pub fn parse_domains(list: &JValue) -> Vec<String> {
             && tld.len() >= 2
             && tld.bytes().all(|b| b.is_ascii_lowercase())
     };
-    items
-        .iter()
-        .map(|d| {
-            let raw = if d.truthy() {
-                executor::js_string(d)
-            } else {
-                String::new()
-            };
-            raw.trim_matches(js_space).to_lowercase()
-        })
-        .filter(|d| shaped(d))
-        .take(20)
-        .collect()
+    let mut out = Vec::new();
+    for d in items {
+        let raw = if d.truthy() {
+            executor::coerce(d)?
+        } else {
+            String::new()
+        };
+        let d = raw.trim_matches(js_space).to_lowercase();
+        if shaped(&d) {
+            out.push(d);
+        }
+    }
+    out.truncate(20);
+    Ok(out)
 }
 
 fn js_space(c: char) -> bool {
@@ -151,7 +154,8 @@ struct Waiting {
     slot: Arc<Slot<String>>,
 }
 
-/// `pending` and `expired`: the cards waiting, in memory on purpose.
+/// `pending` and `expired`: the cards waiting, in memory on purpose. Lock order: `pending`, then
+/// `expired`.
 struct Registry {
     pending: Mutex<Vec<Waiting>>,
     expired: Mutex<HashMap<String, f64>>,
@@ -159,37 +163,35 @@ struct Registry {
 }
 
 impl Registry {
-    /// `finish(decision)`: the first answer settles the card.
+    /// `finish(decision)`: the first answer settles the card. A timed-out card is remembered as
+    /// expired before it stops waiting, so a late answer is never told it was simply gone.
     fn finish(&self, id: &str, decision: &str) {
         let taken = {
             let mut pending = lock(&self.pending);
-            pending
-                .iter()
-                .position(|w| w.id == id)
-                .map(|i| pending.remove(i))
-        };
-        let Some(waiting) = taken else { return };
-        if decision == "timeout" {
-            let now = (self.now)();
-            let mut expired = lock(&self.expired);
-            expired.insert(id.to_string(), now + EXPIRED_MEMORY_MS);
-            if expired.len() > 200 {
-                expired.retain(|_, until| *until > now);
+            let at = pending.iter().position(|w| w.id == id);
+            let taken = at.map(|i| pending.remove(i));
+            if taken.is_some() && decision == "timeout" {
+                let now = (self.now)();
+                let mut expired = lock(&self.expired);
+                expired.insert(id.to_string(), now + EXPIRED_MEMORY_MS);
+                if expired.len() > 200 {
+                    expired.retain(|_, until| *until > now);
+                }
             }
+            taken
+        };
+        if let Some(waiting) = taken {
+            waiting.slot.settle(decision.to_string());
         }
-        waiting.slot.settle(decision.to_string());
-    }
-
-    fn of_task(&self, task_id: &str) -> Vec<String> {
-        lock(&self.pending)
-            .iter()
-            .filter(|w| w.task_id == task_id)
-            .map(|w| w.id.clone())
-            .collect()
     }
 
     fn abort_task(&self, task_id: &str) {
-        for id in self.of_task(task_id) {
+        let ids: Vec<String> = lock(&self.pending)
+            .iter()
+            .filter(|w| w.task_id == task_id)
+            .map(|w| w.id.clone())
+            .collect();
+        for id in ids {
             self.finish(&id, "aborted");
         }
     }
@@ -213,14 +215,23 @@ fn card_view(id: &str, request: &JValue) -> JValue {
     JValue::Obj(items)
 }
 
+type Reply = Arc<Slot<Result<JValue, Fail>>>;
+
 enum Item {
-    Act {
-        action: JValue,
-        reply: Arc<Slot<Result<JValue, Fail>>>,
-    },
-    Finish {
-        result: JValue,
-    },
+    Act { action: JValue, reply: Reply },
+    Finish { result: JValue },
+}
+
+/// The task's action queue, and whether it takes actions (core's `sessions` entry): one lock, so an
+/// action is either queued while the task is open or refused, never queued after the cleanup.
+#[derive(Default)]
+struct Queue {
+    items: VecDeque<Item>,
+    open: bool,
+}
+
+fn cancelled() -> Fail {
+    Fail::public(499, "Cancelled")
 }
 
 /// One live task (core's per-start closure state).
@@ -231,11 +242,10 @@ struct Run {
     egress: Option<Arc<dyn Egress>>,
     grant: Option<JValue>,
     signal: Arc<Signal>,
-    /// A cancel's synchronous part runs holding this; the task's later writes take it first.
+    /// A cancel's synchronous part runs holding this; every later journal write of the task takes it.
     gate: Mutex<()>,
-    queue: Mutex<VecDeque<Item>>,
+    queue: Mutex<Queue>,
     wake: Condvar,
-    open: AtomicBool,
     executor: Mutex<Option<Arc<Executor>>>,
     opening: Held<Result<String, Fail>>,
     executor_closed: AtomicBool,
@@ -246,8 +256,18 @@ struct Run {
 }
 
 impl Run {
+    fn gate(&self) -> MutexGuard<'_, ()> {
+        lock(&self.gate)
+    }
+
+    /// One journal write, after any cancel that is being answered.
     fn append(&self, kind: &str, data: JValue) -> Result<(), Fail> {
-        drop(lock(&self.gate));
+        let _gate = self.gate();
+        self.append_held(kind, data)
+    }
+
+    /// [`Run::append`] for a caller that holds the gate.
+    fn append_held(&self, kind: &str, data: JValue) -> Result<(), Fail> {
         self.store
             .append(&self.id, kind, data)
             .map(|_| ())
@@ -255,7 +275,23 @@ impl Run {
     }
 
     fn uncertain(&self, data: JValue) {
-        let _ = self.store.append(&self.id, "tool.uncertain", data);
+        let _ = self.append("tool.uncertain", data);
+    }
+
+    /// The queue closed for actions; with `drain`, every queued action refused (a finish dropped).
+    fn close_queue(&self, drain: bool) {
+        let mut queue = lock(&self.queue);
+        queue.open = false;
+        if drain {
+            while let Some(item) = queue.items.pop_front() {
+                if let Item::Act { reply, .. } = item {
+                    reply.settle(Err(Fail::public(
+                        409,
+                        "This task ended before this action ran.",
+                    )));
+                }
+            }
+        }
     }
 
     /// `cleanup()`: started once, on its own thread; the network report (`null` without a grant).
@@ -265,48 +301,52 @@ impl Run {
             return f.clone();
         }
         let run = self.clone();
-        let f = Flight::spawn(move || run.clean());
+        let f = Flight::spawn_or(JValue::Null, move || run.clean());
         *slot = Some(f.clone());
         f
     }
 
+    fn cleaned(&self) -> bool {
+        lock(&self.cleanup)
+            .as_ref()
+            .is_some_and(|f| f.peek().is_some())
+    }
+
     fn clean(self: &Arc<Self>) -> JValue {
-        drop(lock(&self.gate));
-        self.open.store(false, Ordering::SeqCst);
+        drop(self.gate());
+        self.close_queue(false);
         self.registry.abort_task(&self.id);
-        {
-            let mut queue = lock(&self.queue);
-            while let Some(item) = queue.pop_front() {
-                if let Item::Act { reply, .. } = item {
-                    reply.settle(Err(Fail::public(
-                        409,
-                        "This task ended before this action ran.",
-                    )));
-                }
-            }
-        }
+        self.close_queue(true);
+        // The executor's close and the grant's revoke run side by side, as core's Promise.all; the
+        // close is confirmed within `close_timeout` of its start or not at all.
         let executor = lock(&self.executor).clone();
-        let closer = executor.map(|exec| {
-            let (id, opening) = (self.id.clone(), lock(&self.opening).clone());
-            Flight::spawn(move || {
-                exec.close_task(&id);
-                if let Some(o) = opening {
-                    let _ = o.wait();
+        let closing = executor.map(|exec| {
+            let (run, opening) = (self.clone(), lock(&self.opening).clone());
+            std::thread::spawn(move || {
+                let id = run.id.clone();
+                let closer = Flight::spawn_or(false, move || {
+                    exec.close_task(&id);
+                    if let Some(o) = opening {
+                        let _ = o.wait();
+                    }
+                    exec.shutdown()
+                });
+                if closer.wait_for(run.close_timeout) != Some(true) {
+                    run.executor_closed.store(false, Ordering::SeqCst);
+                    run.uncertain(JValue::obj([
+                        ("tool", s("network")),
+                        (
+                            "reason",
+                            s("Browser executor closure could not be confirmed."),
+                        ),
+                    ]));
                 }
-                exec.shutdown()
             })
         });
         let report = self.network();
-        if let Some(closer) = closer {
-            if closer.wait_for(self.close_timeout) != Some(true) {
+        if let Some(t) = closing {
+            if t.join().is_err() {
                 self.executor_closed.store(false, Ordering::SeqCst);
-                self.uncertain(JValue::obj([
-                    ("tool", s("network")),
-                    (
-                        "reason",
-                        s("Browser executor closure could not be confirmed."),
-                    ),
-                ]));
             }
         }
         report
@@ -343,9 +383,7 @@ impl Run {
             ]));
         }
         let retained = self
-            .store
             .append(
-                &self.id,
                 "artifact.created",
                 JValue::obj([
                     ("name", s("network.cleanup")),
@@ -373,10 +411,8 @@ pub struct Service {
     options: Options,
     registry: Arc<Registry>,
     stores: Mutex<HashMap<PathBuf, Arc<Tenant>>>,
-    /// `controllers`: the tasks running in this process.
+    /// `controllers`: the tasks running in this process, from `job.started` to their end.
     live: Mutex<HashMap<String, Arc<Run>>>,
-    /// `sessions`: the tasks open for actions.
-    sessions: Mutex<HashMap<String, Arc<Run>>>,
 }
 
 fn is_terminal(job: &Job) -> bool {
@@ -395,7 +431,6 @@ impl Service {
             registry,
             stores: Mutex::new(HashMap::new()),
             live: Mutex::new(HashMap::new()),
-            sessions: Mutex::new(HashMap::new()),
         })
     }
 
@@ -506,14 +541,22 @@ impl Service {
         Ok(browser_view(&job, &self.approval(task_id)))
     }
 
+    /// `jobs.list({ projectId, kind: 'browser', active: true }).length`: an unreadable journal of any
+    /// kind counts (core's non-strict list adds it whatever the filter).
     fn active(&self, tenant: &Tenant, project_id: &str) -> bool {
-        tenant.store.ids().iter().any(|id| {
-            tenant.store.get(id).ok().flatten().is_some_and(|j| {
-                j.kind.as_str() == Some("browser")
-                    && j.project_id.as_str() == Some(project_id)
-                    && !is_terminal(&j)
+        tenant
+            .store
+            .ids()
+            .iter()
+            .any(|id| match tenant.store.get(id) {
+                Ok(Some(j)) => {
+                    j.kind.as_str() == Some("browser")
+                        && j.project_id.as_str() == Some(project_id)
+                        && !is_terminal(&j)
+                }
+                Ok(None) => false,
+                Err(e) => e.is_unreadable(),
             })
-        })
     }
 
     /// `start(workspace, project, body)`: `{ taskId, domains }` (202) once the session is open.
@@ -523,13 +566,13 @@ impl Service {
         project_id: &str,
         body: &JValue,
     ) -> Result<JValue, Fail> {
-        if body.is_nullish() && !matches!(body, JValue::Undefined) {
+        if matches!(body, JValue::Null) {
             return Err(Fail::plain(
                 None,
                 "Cannot read properties of null (reading 'domains')",
             ));
         }
-        let domains = parse_domains(body.get("domains"));
+        let domains = parse_domains(body.get("domains"))?;
         if domains.is_empty() {
             return Err(Fail::public(
                 400,
@@ -584,9 +627,8 @@ impl Service {
             grant: grant.clone(),
             signal: Arc::new(Signal::new()),
             gate: Mutex::new(()),
-            queue: Mutex::new(VecDeque::new()),
+            queue: Mutex::new(Queue::default()),
             wake: Condvar::new(),
-            open: AtomicBool::new(false),
             executor: Mutex::new(None),
             opening: Mutex::new(None),
             executor_closed: AtomicBool::new(true),
@@ -639,7 +681,17 @@ impl Service {
             let (me, run2, ready2) = (self.clone(), run.clone(), ready.clone());
             let (domains2, project) = (domains.clone(), project_id.to_string());
             std::thread::spawn(move || {
-                let outcome = me.work(&run2, &ready2, &domains2, &project, downloads_dir, proxy);
+                let work = std::panic::AssertUnwindSafe(|| {
+                    me.work(&run2, &ready2, &domains2, &project, downloads_dir, proxy)
+                });
+                let outcome = std::panic::catch_unwind(work).unwrap_or_else(|_| {
+                    // Nobody waits forever on a task whose own thread stopped.
+                    run2.close_queue(true);
+                    Err(Fail::plain(None, "The browser task stopped unexpectedly."))
+                });
+                if let Err(e) = &outcome {
+                    ready2.settle(Err(e.clone()));
+                }
                 me.end(&run2, outcome);
             });
         }
@@ -664,35 +716,38 @@ impl Service {
 
     /// The end of jobs.cjs `run`: completed, failed or cancelled, exactly once.
     fn end(&self, run: &Arc<Run>, outcome: Result<JValue, Fail>) {
-        let aborted = run.signal.is_aborted();
-        let (kind, data) = match outcome {
-            Ok(result) if aborted => (
-                "job.cancelled",
-                if matches!(result, JValue::Undefined) {
-                    JValue::obj::<&str>([])
-                } else {
-                    JValue::obj([("result", result)])
-                },
-            ),
-            Ok(result) => ("job.completed", JValue::obj([("result", result)])),
-            Err(_) if aborted => ("job.cancelled", JValue::Undefined),
-            Err(e) => {
-                let text = e
-                    .public
-                    .clone()
-                    .filter(|p| !p.is_empty())
-                    .or_else(|| Some(e.message.clone()).filter(|m| !m.is_empty()))
-                    .unwrap_or_else(|| "failed".into());
-                (
-                    "job.failed",
-                    JValue::obj([
-                        ("error", s(&js_slice(&text, 500))),
-                        ("result", e.result.clone().unwrap_or(JValue::Null)),
-                    ]),
-                )
-            }
-        };
-        let _ = run.append(kind, data);
+        {
+            let _gate = run.gate();
+            let aborted = run.signal.is_aborted();
+            let (kind, data) = match outcome {
+                Ok(result) if aborted => (
+                    "job.cancelled",
+                    if matches!(result, JValue::Undefined) {
+                        JValue::obj::<&str>([])
+                    } else {
+                        JValue::obj([("result", result)])
+                    },
+                ),
+                Ok(result) => ("job.completed", JValue::obj([("result", result)])),
+                Err(_) if aborted => ("job.cancelled", JValue::Undefined),
+                Err(e) => {
+                    let text = e
+                        .public
+                        .clone()
+                        .filter(|p| !p.is_empty())
+                        .or_else(|| Some(e.message.clone()).filter(|m| !m.is_empty()))
+                        .unwrap_or_else(|| "failed".into());
+                    (
+                        "job.failed",
+                        JValue::obj([
+                            ("error", s(&wtf16::slice(&text, 500))),
+                            ("result", e.result.clone().unwrap_or(JValue::Null)),
+                        ]),
+                    )
+                }
+            };
+            let _ = run.append_held(kind, data);
+        }
         lock(&self.live).remove(&run.id);
     }
 
@@ -706,20 +761,24 @@ impl Service {
         downloads_dir: PathBuf,
         proxy: Option<Proxy>,
     ) -> Result<JValue, Fail> {
-        // A cancel takes the session away (and says an action it interrupted may have run).
+        // A cancel takes the session away at once (and says an action it interrupted may have run).
+        // It runs on the cancelling thread with the task's gate held: only signals and spawns.
         let on_cancel = {
             let r = run.clone();
             run.signal.on_abort(move || {
                 let _ = r.cleanup();
                 if let Some(kind) = lock(&r.active).clone() {
-                    r.uncertain(JValue::obj([
-                        ("tool", s("browser")),
-                        ("action", s(&kind)),
-                        (
-                            "reason",
-                            s("The action was still pending when cancellation was accepted."),
-                        ),
-                    ]));
+                    let _ = r.append_held(
+                        "tool.uncertain",
+                        JValue::obj([
+                            ("tool", s("browser")),
+                            ("action", s(&kind)),
+                            (
+                                "reason",
+                                s("The action was still pending when cancellation was accepted."),
+                            ),
+                        ]),
+                    );
                 }
             })
         };
@@ -745,8 +804,43 @@ impl Service {
         run.signal.off(on_cancel);
         run.signal.off(waker);
         run.cleanup().wait();
-        lock(&self.sessions).remove(&run.id);
         outcome
+    }
+
+    /// `executor.open`, raced against a cancel as core races it: whichever comes first.
+    fn open(&self, run: &Arc<Run>, exec: &Arc<Executor>, task: Open) -> Result<String, Fail> {
+        if run.signal.is_aborted() {
+            return Err(cancelled());
+        }
+        let first: Arc<Slot<Option<Result<String, Fail>>>> = Arc::new(Slot::new());
+        let (e2, f2) = (exec.clone(), first.clone());
+        let opening = Flight::spawn_or(
+            Err(Fail::plain(None, "The browser could not open.")),
+            move || {
+                let r = e2.open(task);
+                f2.settle(Some(r.clone()));
+                r
+            },
+        );
+        *lock(&run.opening) = Some(opening.clone());
+        let f3 = first.clone();
+        let hook = run.signal.on_abort(move || {
+            f3.settle(None);
+        });
+        if hook.is_none() {
+            first.settle(None);
+        }
+        let outcome = loop {
+            if let Some(o) = first.wait_for(Duration::from_millis(50)) {
+                break o;
+            }
+            // A panicking open settles its flight, not `first`.
+            if let Some(r) = opening.peek() {
+                first.settle(Some(r));
+            }
+        };
+        run.signal.off(hook);
+        outcome.unwrap_or_else(|| Err(cancelled()))
     }
 
     fn work_inner(
@@ -766,7 +860,7 @@ impl Service {
                 JValue::Arr(domains.iter().map(|d| s(d)).collect()),
             )]),
         )?;
-        let ask = {
+        let ask: executor::Ask = {
             let (r, registry, timeout, new_id) = (
                 run.clone(),
                 self.registry.clone(),
@@ -811,31 +905,15 @@ impl Service {
             new_id: self.options.new_id.clone(),
         });
         *lock(&run.executor) = Some(exec.clone());
-        let opened = (|| -> Result<String, Fail> {
-            if run.signal.is_aborted() {
-                return Err(Fail::public(499, "Cancelled"));
-            }
-            let task = Open {
-                job_id: id.clone(),
-                allowed_domains: domains.to_vec(),
-                downloads_dir,
-                upload_files: Vec::new(),
-                signal: Some(run.signal.clone()),
-                proxy,
-            };
-            let e2 = exec.clone();
-            let opening = Flight::spawn(move || e2.open(task));
-            *lock(&run.opening) = Some(opening.clone());
-            loop {
-                if let Some(result) = opening.wait_for(Duration::from_millis(20)) {
-                    return result;
-                }
-                if run.signal.is_aborted() {
-                    return Err(Fail::public(499, "Cancelled"));
-                }
-            }
-        })();
-        let session_id = match opened {
+        let task = Open {
+            job_id: id.clone(),
+            allowed_domains: domains.to_vec(),
+            downloads_dir,
+            upload_files: Vec::new(),
+            signal: Some(run.signal.clone()),
+            proxy,
+        };
+        let session_id = match self.open(run, &exec, task) {
             Ok(sid) => sid,
             Err(e) => {
                 run.cleanup().wait();
@@ -843,8 +921,12 @@ impl Service {
                 return Err(e);
             }
         };
-        run.open.store(true, Ordering::SeqCst);
-        lock(&self.sessions).insert(id.clone(), run.clone());
+        {
+            let mut queue = lock(&run.queue);
+            if !run.signal.is_aborted() {
+                queue.open = true;
+            }
+        }
         ready.settle(Ok(()));
         let mut output = JValue::Null;
         loop {
@@ -853,29 +935,37 @@ impl Service {
             }
             let item = {
                 let mut queue = lock(&run.queue);
-                let deadline = Instant::now() + self.options.idle_timeout;
+                // A limit past what the clock can hold is no limit.
+                let deadline = Instant::now().checked_add(self.options.idle_timeout);
                 loop {
                     if run.signal.is_aborted() {
                         break None;
                     }
-                    if let Some(item) = queue.pop_front() {
+                    if let Some(item) = queue.items.pop_front() {
                         break Some(item);
                     }
-                    let left = deadline.saturating_duration_since(Instant::now());
-                    if left.is_zero() {
-                        drop(queue);
-                        return Err(Fail {
-                            status: None,
-                            message: TIMEOUT_REASON.into(),
-                            public: Some(TIMEOUT_REASON.into()),
-                            result: None,
-                        });
+                    match deadline {
+                        Some(d) => {
+                            let left = d.saturating_duration_since(Instant::now());
+                            if left.is_zero() {
+                                drop(queue);
+                                return Err(Fail {
+                                    status: None,
+                                    message: TIMEOUT_REASON.into(),
+                                    public: Some(TIMEOUT_REASON.into()),
+                                    result: None,
+                                });
+                            }
+                            queue = run
+                                .wake
+                                .wait_timeout(queue, left)
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .0;
+                        }
+                        None => {
+                            queue = run.wake.wait(queue).unwrap_or_else(PoisonError::into_inner);
+                        }
                     }
-                    queue = run
-                        .wake
-                        .wait_timeout(queue, left)
-                        .unwrap_or_else(PoisonError::into_inner)
-                        .0;
                 }
             };
             let Some(item) = item else { break };
@@ -885,7 +975,7 @@ impl Service {
                     break;
                 }
                 Item::Act { action, reply } => {
-                    self.act_one(run, &exec, &session_id, &action, &reply)
+                    self.act_one(run, &exec, &session_id, action, &reply)
                 }
             }
         }
@@ -910,51 +1000,69 @@ impl Service {
         Ok(result)
     }
 
-    /// One queued action, raced against a cancel (`whileActive`).
+    /// One queued action, raced against a cancel (`whileActive`): the action's own answer if it comes
+    /// first; otherwise 499 once the cleanup has taken the session away, and the task goes on to its
+    /// end without waiting for an engine call that may never return.
     fn act_one(
         &self,
         run: &Arc<Run>,
         exec: &Arc<Executor>,
         session_id: &str,
-        action: &JValue,
-        reply: &Arc<Slot<Result<JValue, Fail>>>,
+        action: JValue,
+        reply: &Reply,
     ) {
         if run.signal.is_aborted() {
-            reply.settle(Err(Fail::public(499, "Cancelled")));
+            reply.settle(Err(cancelled()));
+            return;
+        }
+        let late = |r: &Arc<Run>, rep: &Reply| {
+            let (r, rep) = (r.clone(), rep.clone());
+            std::thread::spawn(move || {
+                r.cleanup().wait();
+                rep.settle(Err(cancelled()));
+            });
+        };
+        let hook = {
+            let (r, rep) = (run.clone(), reply.clone());
+            run.signal.on_abort(move || late(&r, &rep))
+        };
+        if hook.is_none() {
+            // Cancelled since the check above: the action is never sent.
+            late(run, reply);
             return;
         }
         let kind = executor::js_string(action.get("type"));
-        let hook = {
-            let (r, rep) = (run.clone(), reply.clone());
-            run.signal.on_abort(move || {
-                // A real answer already settling is kept; otherwise the action is answered once
-                // the cleanup has taken the session away.
-                std::thread::spawn(move || {
-                    r.cleanup().wait();
-                    rep.settle(Err(Fail::public(499, "Cancelled")));
-                });
-            })
-        };
-        if run.signal.is_aborted() && hook.is_none() {
-            let (r, rep) = (run.clone(), reply.clone());
-            std::thread::spawn(move || {
-                r.cleanup().wait();
-                rep.settle(Err(Fail::public(499, "Cancelled")));
-            });
-        }
         *lock(&run.active) = Some(kind.clone());
-        let outcome = exec.act(session_id, action);
+        let (e2, sid) = (exec.clone(), session_id.to_string());
+        let acting = Flight::spawn_or(
+            Err(Fail::plain(
+                None,
+                "The browser action stopped unexpectedly.",
+            )),
+            move || e2.act(&sid, &action),
+        );
+        let outcome = loop {
+            if let Some(r) = acting.wait_for(Duration::from_millis(20)) {
+                break Some(r);
+            }
+            if run.signal.is_aborted() && run.cleaned() {
+                break None;
+            }
+        };
         *lock(&run.active) = None;
         run.signal.off(hook);
         match outcome {
-            Ok(result) => {
+            None => {
+                reply.settle(Err(cancelled()));
+            }
+            Some(Ok(result)) => {
                 if !run.signal.is_aborted() {
                     let stage = format!("{}: {}", kind, executor::js_string(result.get("status")));
                     let _ = run.append("progress", JValue::obj([("stage", s(&stage))]));
                 }
                 reply.settle(Ok(result));
             }
-            Err(e) => {
+            Some(Err(e)) => {
                 reply.settle(Err(e));
             }
         }
@@ -962,6 +1070,20 @@ impl Service {
 
     fn running(job: &Job) -> bool {
         matches!(job.status.as_str(), Some("running" | "waiting_approval"))
+    }
+
+    /// The live task's queue, open for actions; core's 409 otherwise.
+    fn enqueue(&self, task_id: &str, item: Item) -> Result<(), Fail> {
+        let run = lock(&self.live).get(task_id).cloned();
+        let not_open = || Fail::public(409, "This task is not open for actions.");
+        let run = run.ok_or_else(not_open)?;
+        let mut queue = lock(&run.queue);
+        if !queue.open {
+            return Err(not_open());
+        }
+        queue.items.push_back(item);
+        run.wake.notify_all();
+        Ok(())
     }
 
     /// `act(workspace, project, taskId, action)`: runs one action and waits for its outcome.
@@ -981,22 +1103,14 @@ impl Service {
         if !action.truthy() || kind.as_str().is_none_or(str::is_empty) {
             return Err(Fail::public(400, "Name an action to run."));
         }
-        let run = lock(&self.sessions)
-            .get(task_id)
-            .cloned()
-            .filter(|r| r.open.load(Ordering::SeqCst));
-        let Some(run) = run else {
-            return Err(Fail::public(409, "This task is not open for actions."));
-        };
-        let reply = Arc::new(Slot::new());
-        {
-            let mut queue = lock(&run.queue);
-            queue.push_back(Item::Act {
+        let reply: Reply = Arc::new(Slot::new());
+        self.enqueue(
+            task_id,
+            Item::Act {
                 action: action.clone(),
                 reply: reply.clone(),
-            });
-            run.wake.notify_all();
-        }
+            },
+        )?;
         reply.wait()
     }
 
@@ -1017,32 +1131,43 @@ impl Service {
         if approval_id.is_empty() {
             return Err(Fail::public(400, "Which approval is this answer for?"));
         }
-        let waiting = lock(&self.registry.pending)
-            .iter()
-            .any(|w| w.id == approval_id && w.task_id == task_id);
-        if !waiting {
-            let now = (self.options.now)();
-            let expired = lock(&self.registry.expired)
-                .get(approval_id)
-                .is_some_and(|until| *until > now);
-            return Err(Fail::public(
+        // Found and answered under one lock: a card cannot time out in between.
+        let waiting = {
+            let mut pending = lock(&self.registry.pending);
+            match pending
+                .iter()
+                .position(|w| w.id == approval_id && w.task_id == task_id)
+            {
+                Some(i) => Ok(pending.remove(i)),
+                None => {
+                    let now = (self.options.now)();
+                    Err(lock(&self.registry.expired)
+                        .get(approval_id)
+                        .is_some_and(|until| *until > now))
+                }
+            }
+        };
+        match waiting {
+            Ok(w) => {
+                w.slot.settle(
+                    if decision == "deny" {
+                        "deny"
+                    } else {
+                        "approve"
+                    }
+                    .into(),
+                );
+                Ok(JValue::obj([("ok", JValue::Bool(true))]))
+            }
+            Err(expired) => Err(Fail::public(
                 409,
                 if expired {
                     "This approval expired before anyone answered it."
                 } else {
                     "That approval is no longer waiting."
                 },
-            ));
+            )),
         }
-        self.registry.finish(
-            approval_id,
-            if decision == "deny" {
-                "deny"
-            } else {
-                "approve"
-            },
-        );
-        Ok(JValue::obj([("ok", JValue::Bool(true))]))
     }
 
     /// `finish(workspace, project, taskId, result)`: ends the task cleanly with the caller's result.
@@ -1068,18 +1193,7 @@ impl Service {
         {
             return Err(Fail::public(413, "That result is too large to record."));
         }
-        let run = lock(&self.sessions)
-            .get(task_id)
-            .cloned()
-            .filter(|r| r.open.load(Ordering::SeqCst));
-        let Some(run) = run else {
-            return Err(Fail::public(409, "This task is not open for actions."));
-        };
-        {
-            let mut queue = lock(&run.queue);
-            queue.push_back(Item::Finish { result });
-            run.wake.notify_all();
-        }
+        self.enqueue(task_id, Item::Finish { result })?;
         Ok(JValue::obj([("ok", JValue::Bool(true))]))
     }
 
@@ -1095,8 +1209,10 @@ impl Service {
         let run = lock(&self.live).get(task_id).cloned();
         let job = match run {
             Some(run) => {
-                let _gate = lock(&run.gate);
+                let _gate = run.gate();
                 run.signal.abort();
+                // core's cleanup starts right after the cancel: the task takes no more actions.
+                run.close_queue(false);
                 // Refuse anything still waiting, so a cancelled task never leaves a card that could
                 // later be answered into an action.
                 self.registry.abort_task(task_id);
@@ -1112,7 +1228,9 @@ impl Service {
 }
 
 /// `askApproval(card, { signal })`: a card with a fresh id, refused as `timeout` after the
-/// service's timeout and as `aborted` once the task's signal fires; `approve` or `deny`.
+/// service's timeout and as `aborted` once the task's signal fires; `approve` or `deny`. The card is
+/// never shown on a cancelled task: the abort hook is in place before the card, and the card is
+/// added under the registry's lock only while the task is not cancelled.
 fn ask_approval(
     registry: &Arc<Registry>,
     new_id: &Arc<dyn Fn() -> String + Send + Sync>,
@@ -1126,18 +1244,26 @@ fn ask_approval(
     if let JValue::Obj(items) = &mut request {
         wtf16::set(items, "id", s(&id));
     }
-    lock(&registry.pending).push(Waiting {
-        id: id.clone(),
-        task_id: card.get("jobId").as_str().unwrap_or("").to_string(),
-        request,
-        slot: slot.clone(),
-    });
     let hook = {
         let (registry, id) = (registry.clone(), id.clone());
         signal.on_abort(move || registry.finish(&id, "aborted"))
     };
-    if signal.is_aborted() {
-        registry.finish(&id, "aborted");
+    if hook.is_none() {
+        return "deny".into();
+    }
+    {
+        let mut pending = lock(&registry.pending);
+        if signal.is_aborted() {
+            drop(pending);
+            signal.off(hook);
+            return "deny".into();
+        }
+        pending.push(Waiting {
+            id: id.clone(),
+            task_id: card.get("jobId").as_str().unwrap_or("").to_string(),
+            request,
+            slot: slot.clone(),
+        });
     }
     let decision = match slot.wait_for(timeout) {
         Some(d) => d,

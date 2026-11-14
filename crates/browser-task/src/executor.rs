@@ -18,14 +18,14 @@ use crate::engine::{
     self, Browser, Context, Download, Handle, Launch, Page, Proxy, Request, Route, Socket,
 };
 use crate::policy::{self, Secret, Substituted};
-use crate::signal::Signal;
+use crate::signal::{Signal, Slot};
 use crate::Fail;
 use base64::Engine as _;
-use js_json::{js_slice, to_js_string, JValue};
+use js_json::{to_js_string, wtf16, JValue};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
 /// `ACTIONS`.
@@ -84,59 +84,57 @@ pub type Held<T> = Mutex<Option<Arc<Flight<T>>>>;
 
 /// A result computed once on its own thread and waited for by anyone (a promise kept in a field).
 pub struct Flight<T: Clone + Send + 'static> {
-    slot: Mutex<Option<T>>,
-    done: Condvar,
+    slot: Slot<T>,
 }
 
 impl<T: Clone + Send + 'static> Flight<T> {
-    pub fn spawn(work: impl FnOnce() -> T + Send + 'static) -> Arc<Flight<T>> {
-        let flight = Arc::new(Flight {
-            slot: Mutex::new(None),
-            done: Condvar::new(),
-        });
+    /// `work` on its own thread. A panic in it (an engine's, say) settles the flight with `fallback`,
+    /// so nobody waits on it forever.
+    pub fn spawn_or(fallback: T, work: impl FnOnce() -> T + Send + 'static) -> Arc<Flight<T>> {
+        let flight = Arc::new(Flight { slot: Slot::new() });
         let f = flight.clone();
         std::thread::spawn(move || {
-            let value = work();
-            *lock(&f.slot) = Some(value);
-            f.done.notify_all();
+            let value =
+                std::panic::catch_unwind(std::panic::AssertUnwindSafe(work)).unwrap_or(fallback);
+            f.slot.settle(value);
         });
         flight
     }
 
     pub fn wait(&self) -> T {
-        let mut slot = lock(&self.slot);
-        loop {
-            if let Some(v) = slot.as_ref() {
-                return v.clone();
-            }
-            slot = self.done.wait(slot).unwrap_or_else(PoisonError::into_inner);
-        }
+        self.slot.wait()
     }
 
     /// `None` when it has not finished within `limit`.
     pub fn wait_for(&self, limit: Duration) -> Option<T> {
-        let deadline = std::time::Instant::now() + limit;
-        let mut slot = lock(&self.slot);
-        loop {
-            if let Some(v) = slot.as_ref() {
-                return Some(v.clone());
-            }
-            let left = deadline.saturating_duration_since(std::time::Instant::now());
-            if left.is_zero() {
-                return None;
-            }
-            slot = self
-                .done
-                .wait_timeout(slot, left)
-                .unwrap_or_else(PoisonError::into_inner)
-                .0;
-        }
+        self.slot.wait_for(limit)
+    }
+
+    pub fn peek(&self) -> Option<T> {
+        self.slot.peek()
     }
 }
 
 /// `String(v)`, `''` where JS would throw (an object with its own `toString`).
 pub(crate) fn js_string(v: &JValue) -> String {
     to_js_string(v).unwrap_or_default()
+}
+
+/// What V8 throws for `String(v)` of an object whose own `toString` is not a function.
+pub(crate) const NOT_PRIMITIVE: &str = "Cannot convert object to primitive value";
+
+/// `String(v)` where core lets the TypeError escape: a 500 ("Browser request failed").
+pub(crate) fn coerce(v: &JValue) -> Result<String, Fail> {
+    to_js_string(v).map_err(|_| Fail::plain(None, NOT_PRIMITIVE))
+}
+
+/// Node's `path.basename` (POSIX): trailing slashes dropped, then what follows the last slash.
+fn js_basename(p: &str) -> &str {
+    let trimmed = p.trim_end_matches('/');
+    if trimmed.is_empty() {
+        return if p.is_empty() { "" } else { "/" };
+    }
+    trimmed.rsplit('/').next().unwrap_or(trimmed)
 }
 
 /// `Number(v)` for JSON values.
@@ -518,7 +516,7 @@ impl Executor {
 
     /// `refuse(req, url, reason)`.
     fn refuse(&self, session: &Session, req: Option<&Request>, url: &str, reason: &str) {
-        let shown = js_slice(&self.mask(url), 300);
+        let shown = wtf16::slice(&self.mask(url), 300);
         {
             let mut blocked = lock(&session.blocked);
             if blocked.len() < 100 {
@@ -546,11 +544,7 @@ impl Executor {
         } else {
             suggested
         };
-        let base = Path::new(&suggested)
-            .file_name()
-            .map(|n| n.to_string_lossy().into_owned())
-            .unwrap_or_default();
-        let trimmed = base.trim_start_matches('.');
+        let trimmed = js_basename(&suggested).trim_start_matches('.');
         let name = if trimmed.is_empty() {
             "download".to_string()
         } else {
@@ -559,7 +553,7 @@ impl Executor {
         let seq = session.download_seq.fetch_add(1, Ordering::SeqCst) + 1;
         let target = session.downloads_dir.join(format!("{seq}-{name}"));
         if download.save_as(&target).is_ok() {
-            let from = js_slice(&self.mask(&download.url()), 300);
+            let from = wtf16::slice(&self.mask(&download.url()), 300);
             lock(&session.downloads).push(Saved { name, from });
         }
     }
@@ -601,7 +595,7 @@ impl Executor {
         if let Some(handle) = target {
             let _ = handle.dispose();
         }
-        Ok(out)
+        out
     }
 
     fn result(
@@ -647,37 +641,36 @@ impl Executor {
         session: &Arc<Session>,
         action: &JValue,
         target: &mut Option<Arc<dyn Handle>>,
-    ) -> JValue {
+    ) -> Result<JValue, Fail> {
         let kind = if action.get("type").truthy() {
             js_string(action.get("type"))
         } else {
             String::new()
         };
+        // Answered as they are, without a log line (core returns these before its `result`).
+        let unlogged = |reason: &str| {
+            JValue::obj([
+                ("status", s("blocked")),
+                ("origin", s("")),
+                ("reason", s(reason)),
+            ])
+        };
         if session.closed.load(Ordering::SeqCst) {
-            return self.result(
-                session,
-                &kind,
-                "blocked",
-                "",
-                vec![("reason".into(), s("The browser session is closed."))],
-            );
+            return Ok(unlogged("The browser session is closed."));
         }
         let Some(page) = session.page() else {
-            return self.result(
-                session,
-                &kind,
-                "blocked",
-                "",
-                vec![("reason".into(), s("No page is open in this session."))],
-            );
+            return Ok(unlogged("No page is open in this session."));
         };
         let origin = origin_of(&page);
         let blocked = |reason: &str| vec![("reason".to_string(), s(reason))];
-        let done = |me: &Executor, status: &str, extra: Vec<(String, JValue)>| {
-            me.result(session, &kind, status, &origin, extra)
-        };
+        let done =
+            |me: &Executor, status: &str, extra: Vec<(String, JValue)>| -> Result<JValue, Fail> {
+                Ok(me.result(session, &kind, status, &origin, extra))
+            };
+        // The page the session follows now (a popup may have taken over), else the action's.
+        let current = || session.page().unwrap_or_else(|| page.clone());
         if !ACTIONS.contains(&kind.as_str()) {
-            let shown = js_slice(&self.mask(&kind), 40);
+            let shown = wtf16::slice(&self.mask(&kind), 40);
             return done(
                 self,
                 "blocked",
@@ -686,7 +679,7 @@ impl Executor {
         }
         // Navigation is a GET here; data is sent by submitting the page's own form, which asks.
         let method = action.get("method");
-        if kind == "navigate" && method.truthy() && js_string(method).to_uppercase() != "GET" {
+        if kind == "navigate" && method.truthy() && coerce(method)?.to_uppercase() != "GET" {
             return done(
                 self,
                 "blocked",
@@ -699,10 +692,14 @@ impl Executor {
         // The element as it really is, never as the model described it.
         let selector = action.get("selector");
         let has_selector = selector.truthy();
+        let sel = if has_selector && kind != "navigate" {
+            Some(coerce(selector)?)
+        } else {
+            None
+        };
         let mut element: Option<JValue> = None;
-        if has_selector && kind != "navigate" {
-            let sel = js_string(selector);
-            let found = match page.locate(&sel, timeout) {
+        if let Some(sel) = sel.as_deref() {
+            let found = match page.locate(sel, timeout) {
                 Ok(Some(handle)) => {
                     *target = Some(handle.clone());
                     handle.describe().ok()
@@ -754,7 +751,7 @@ impl Executor {
             let raw = if raw.is_nullish() {
                 String::new()
             } else {
-                js_string(raw)
+                coerce(raw)?
             };
             let into = if into.is_empty() {
                 "about:blank".to_string()
@@ -774,12 +771,13 @@ impl Executor {
         let mut file: Option<PathBuf> = None;
         if kind == "upload" {
             let raw = action.get("file");
+            // core's realpath is inside its try: a value String() refuses is no file.
             let raw = if raw.truthy() {
-                js_string(raw)
+                to_js_string(raw).ok()
             } else {
-                String::new()
+                Some(String::new())
             };
-            file = std::fs::canonicalize(&raw).ok();
+            file = raw.and_then(|r| std::fs::canonicalize(&r).ok());
             if !file.as_ref().is_some_and(|f| session.uploads.contains(f)) {
                 return done(
                     self,
@@ -832,7 +830,7 @@ impl Executor {
                         .map_or(JValue::Null, |n| s(&n.to_string_lossy())),
                 ),
             ];
-            card.extend(self.evidence(session, &page));
+            card.extend(self.evidence(session, &current()));
             let answer = (self.deps.ask)(&JValue::Obj(card)).unwrap_or_else(|_| "deny".into());
             self.log(vec![
                 ("event", s("browser.decided")),
@@ -886,11 +884,23 @@ impl Executor {
             engine::EngineError::new(format!("Cannot read properties of null (reading '{m}')"))
         };
         let on = |m: &str| target.clone().ok_or_else(|| null_read(m));
+        // `String(action.url)` and `String(action.key)` run inside core's try: a refusal is the action's
+        // failure.
+        let url = if kind == "navigate" {
+            to_js_string(action.get("url")).map_err(|_| NOT_PRIMITIVE)
+        } else {
+            Ok(String::new())
+        };
+        let key = if kind == "press" {
+            to_js_string(action.get("key")).map_err(|_| NOT_PRIMITIVE)
+        } else {
+            Ok(String::new())
+        };
         let step: engine::Result<Option<JValue>> = (|| {
             match kind.as_str() {
                 "navigate" => {
                     dispatched = true;
-                    page.goto(&js_string(action.get("url")), timeout)?;
+                    page.goto(&url.clone().map_err(engine::EngineError::new)?, timeout)?;
                 }
                 "click" => {
                     dispatched = true;
@@ -909,7 +919,7 @@ impl Executor {
                 }
                 "press" => {
                     dispatched = true;
-                    let key = js_string(action.get("key"));
+                    let key = key.clone().map_err(engine::EngineError::new)?;
                     match target.as_ref() {
                         Some(h) => h.press(&key, timeout)?,
                         None => page.keyboard_press(&key)?,
@@ -935,26 +945,34 @@ impl Executor {
                     page.wait_for_timeout(ms.min(5000.0))?;
                 }
                 "extract" => {
-                    let text = if has_selector {
-                        page.locator_text(&js_string(selector), timeout)?
+                    let text = if let Some(sel) = sel.as_deref() {
+                        page.locator_text(sel, timeout)?
                     } else {
                         page.body_text(timeout)?
                     };
-                    let shown = self.mask(&js_slice(&text, MAX_EXTRACT));
+                    let shown = self.mask(&wtf16::slice(&text, MAX_EXTRACT));
                     return Ok(Some(JValue::obj([("text", s(&shown))])));
                 }
-                "screenshot" => return Ok(Some(JValue::Obj(self.evidence(session, &page)))),
+                "screenshot" => return Ok(Some(JValue::Obj(self.evidence(session, &current())))),
                 _ => {}
             }
             Ok(None)
         })();
-        let now_page = || session.page().unwrap_or_else(|| page.clone());
+        let origin_now = || session.page().map(|p| origin_of(&p)).unwrap_or_default();
+        // core reads `session.page.url()` next: a session whose pages all closed throws there.
+        let step = match step {
+            Ok(None) if session.page().is_none() => {
+                let _ = page.wait_for_load_state(timeout);
+                Err(null_read("url"))
+            }
+            other => other,
+        };
         match step {
             Ok(Some(evidence)) => done(self, "done", vec![("evidence".into(), evidence)]),
             Ok(None) => {
                 let _ = page.wait_for_load_state(timeout);
                 // Where the page actually is, whatever the routing saw.
-                let landed = now_page().url();
+                let landed = current().url();
                 let refused = if http_like(&landed) {
                     policy::navigation(&landed, &session.allowed).err()
                 } else {
@@ -967,7 +985,7 @@ impl Executor {
                         let mut list = lock(&session.blocked);
                         if list.len() < 100 {
                             list.push(JValue::obj([
-                                ("url", s(&js_slice(&self.mask(&landed), 300))),
+                                ("url", s(&wtf16::slice(&self.mask(&landed), 300))),
                                 ("reason", s(reason)),
                             ]));
                         }
@@ -976,26 +994,27 @@ impl Executor {
                 let nav = lock(&session.nav_blocked).clone();
                 if let Some(reason) = nav {
                     // Step back off the browser's error page, or the refused address.
-                    if refused.is_some() || origin_of(&now_page()).is_empty() {
-                        let _ = now_page().go_back(timeout);
+                    if refused.is_some() || origin_now().is_empty() {
+                        let _ = current().go_back(timeout);
                     }
-                    let at = origin_of(&now_page());
                     return done(
                         self,
                         "blocked",
-                        vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))],
+                        vec![
+                            ("reason".into(), s(&reason)),
+                            ("origin".into(), s(&origin_now())),
+                        ],
                     );
                 }
                 let downloads: Vec<JValue> = lock(&session.downloads)
                     .iter()
                     .map(|d| JValue::obj([("name", s(&d.name)), ("from", s(&d.from))]))
                     .collect();
-                let at = origin_of(&now_page());
                 done(
                     self,
                     "done",
                     vec![
-                        ("origin".into(), s(&at)),
+                        ("origin".into(), s(&origin_now())),
                         ("downloads".into(), JValue::Arr(downloads)),
                     ],
                 )
@@ -1003,24 +1022,41 @@ impl Executor {
             Err(error) => {
                 let nav = lock(&session.nav_blocked).clone();
                 if let Some(reason) = nav {
-                    if origin_of(&now_page()).is_empty() {
-                        let _ = now_page().go_back(timeout);
+                    if origin_now().is_empty() {
+                        // core's `session.page.goBack()` on a session with no page throws out of the action.
+                        let Some(p) = session.page() else {
+                            return Err(Fail::plain(
+                                None,
+                                "Cannot read properties of null (reading 'goBack')",
+                            ));
+                        };
+                        let _ = p.go_back(timeout);
                     }
-                    let at = origin_of(&now_page());
                     return done(
                         self,
                         "blocked",
-                        vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))],
+                        vec![
+                            ("reason".into(), s(&reason)),
+                            ("origin".into(), s(&origin_now())),
+                        ],
                     );
                 }
                 // Once an action with effects was dispatched, a failure does not prove it did not happen.
+                // `String(error?.message || error)`: an empty message is the error's own name.
                 let first = error.message.split('\n').next().unwrap_or("");
-                let reason = js_slice(first, 200);
-                let at = origin_of(&now_page());
+                let first = if error.message.is_empty() {
+                    "Error"
+                } else {
+                    first
+                };
+                let reason = wtf16::slice(first, 200);
                 done(
                     self,
                     if dispatched { "uncertain" } else { "blocked" },
-                    vec![("reason".into(), s(&reason)), ("origin".into(), s(&at))],
+                    vec![
+                        ("reason".into(), s(&reason)),
+                        ("origin".into(), s(&origin_now())),
+                    ],
                 )
             }
         }
@@ -1043,7 +1079,7 @@ impl Executor {
             session.job_id.clone(),
             session.id.clone(),
         );
-        let f = Flight::spawn(move || match context.close() {
+        let f = Flight::spawn_or(false, move || match context.close() {
             Ok(()) => {
                 log(JValue::obj([
                     ("event", s("browser.closed")),
@@ -1083,7 +1119,7 @@ impl Executor {
                 f.clone()
             } else {
                 let me = self.me.clone();
-                let f = Flight::spawn(move || {
+                let f = Flight::spawn_or(false, move || {
                     let Some(me) = me.upgrade() else { return false };
                     let ids: Vec<String> =
                         lock(&me.sessions).iter().map(|s| s.id.clone()).collect();
@@ -1175,6 +1211,21 @@ mod tests {
             JValue::Str("1 2".into()),
         ] {
             assert!(js_number(&v).is_nan(), "{v:?}");
+        }
+    }
+
+    #[test]
+    fn basenames() {
+        for (p, want) in [
+            ("../report.csv", "report.csv"),
+            ("report.csv/.", "."),
+            ("a/b/", "b"),
+            ("..", ".."),
+            ("/", "/"),
+            ("", ""),
+            ("x\\y", "x\\y"),
+        ] {
+            assert_eq!(js_basename(p), want, "{p}");
         }
     }
 

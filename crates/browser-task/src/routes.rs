@@ -155,20 +155,20 @@ pub fn handle(
             "act" => service.act(dir, &project_id, task, &b),
             "finish" => service.finish(dir, &project_id, task, b.get("result")),
             _ => {
+                // `String(body?.decision || '')`: a value String() refuses is core's TypeError, a 500.
                 let text = |v: &JValue| {
                     if v.truthy() {
-                        crate::executor::js_string(v)
+                        crate::executor::coerce(v)
                     } else {
-                        String::new()
+                        Ok(String::new())
                     }
                 };
-                service.decide(
-                    dir,
-                    &project_id,
-                    task,
-                    &text(b.get("decision")),
-                    &text(b.get("approvalId")),
-                )
+                match (text(b.get("decision")), text(b.get("approvalId"))) {
+                    (Ok(decision), Ok(approval)) => {
+                        service.decide(dir, &project_id, task, &decision, &approval)
+                    }
+                    (Err(e), _) | (_, Err(e)) => Err(e),
+                }
             }
         };
         outcome.map(|v| (200, v)).map_err(|f| mapped(&f))

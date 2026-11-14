@@ -5,6 +5,18 @@
 //!
 //! Every call blocks until the engine answers. A failure is an [`EngineError`] whose message is what
 //! the executor reports (its first line, at most 200 UTF-16 units).
+//!
+//! Contract for an engine:
+//! - Every method may be called from any thread, and concurrently (a cancel closes the context while
+//!   an action is still running).
+//! - Hooks ([`RouteGate`], [`SocketGate`], the page, download and close hooks) may be called from any
+//!   thread, but never while the engine holds a lock or a reader its other methods need: the download
+//!   hook calls [`Download::save_as`] and the close hook calls [`Context::pages`] before returning.
+//! - Values are passed as the executor computed them, as core passes them to Playwright:
+//!   [`Page::wait_for_timeout`] may get a negative or infinite count and [`Page::wheel`] a non-finite
+//!   delta; the engine clamps or refuses them, it never panics.
+//! - [`Page::active_element`] answers the element that has focus, `document.body` when nothing has;
+//!   `None` only when the page has no document.
 
 use js_json::JValue;
 use std::path::Path;
