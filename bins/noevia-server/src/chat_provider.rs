@@ -21,8 +21,16 @@
 //! - [`provider_client`]: an engine client that follows no redirect (Node's fetch with `redirect: 'error'`), so a 3xx
 //!   reaches [`ProviderHost`] as an answer and is refused instead of followed.
 //!
-//! Not in this slice (core keeps those turns, [`chat_upstream::refusal`]): Inference machines, the sign-in
-//! provider's broker and route targets.
+//! Not in this slice (core keeps those turns, [`chat_upstream::refusal`]): Inference machines and route targets.
+//!
+//! The sign-in provider's row (council p10-1, p9-3 CONTINUE 2) is planned here too, behind two locks: the front
+//! names [`SIGNIN_CAPS_TOKEN`] only with [`SIGNIN_SWITCH`] set to `1` beside [`SWITCH`], **and** only once
+//! [`EXTERNAL_EGRESS_CLEARED`] is true (it is false: an external row's tool calls still need the external-provider
+//! rules shown to apply at the tool bridge, noevia#2731 item 5, and the sign-in row is an external row). With both,
+//! [`plan`] resolves the row in Node's order (the sign-in checks: on, owner, connected), then
+//! [`crate::signin_drive::plan`] binds it, and chat_native.rs runs it over [`crate::signin_host::SigninHost`]
+//! through [`SigninTurn::run`]. Until then a sign-in frame is refused as before ([`NODE_REFUSES`] when the front did
+//! not name the token, [`EXTERNAL`] in a build that clears the rules but before the front-side switch).
 
 use std::path::Path;
 use std::sync::Arc;
@@ -61,6 +69,33 @@ pub const EXTERNAL: &str =
 pub const UNSUPPORTED: &str =
     "the row needs a transport this front does not run (machine or broker)";
 
+/// The sign-in provider's hand-off capability (chat-upstream `refusal::SIGNIN_CAP`, signin_wire.rs
+/// `CAPS_TOKEN`): core lifts the sign-in row only for a front that names it beside [`CAPS_TOKEN`].
+pub const SIGNIN_CAPS_TOKEN: &str = "signin-transport-v1";
+/// The front's switch for naming [`SIGNIN_CAPS_TOKEN`] (beside [`SWITCH`]): `1` names it; unset or anything else
+/// does not. It takes effect only once [`EXTERNAL_EGRESS_CLEARED`] is true.
+pub const SIGNIN_SWITCH: &str = "NOEVIA_RUST_CHAT_SIGNIN";
+/// Whether a handed-off turn on an external row is shown to get chat.cjs's external-provider rules at the tool
+/// bridge (`egressToolRefusal`; noevia#2731 item 5). False: no external row runs here, the sign-in row included,
+/// whatever the switches say. Turning it true is its own reviewed change, with that check's tests.
+pub const EXTERNAL_EGRESS_CLEARED: bool = false;
+
+/// Whether this front names [`SIGNIN_CAPS_TOKEN`]: never without the sign-in transport (`rust-chatgpt-status`),
+/// [`offered`] and [`EXTERNAL_EGRESS_CLEARED`].
+pub fn signin_offered() -> bool {
+    cfg!(feature = "rust-chatgpt-status")
+        && signin_offered_by(
+            offered(),
+            EXTERNAL_EGRESS_CLEARED,
+            std::env::var(SIGNIN_SWITCH).ok().as_deref(),
+        )
+}
+
+/// [`signin_offered`] for given facts: the provider caps offered, the rules cleared, the switch's value.
+pub fn signin_offered_by(providers: bool, cleared: bool, value: Option<&str>) -> bool {
+    providers && cleared && offered_by(value)
+}
+
 /// Whether this front offers [`CAPS_TOKEN`]: never in a build without the provider store (the
 /// `rust-storage-reads` feature, which holds provider_test_routes.rs's row reader).
 pub fn offered() -> bool {
@@ -74,10 +109,19 @@ pub fn offered_by(value: Option<&str>) -> bool {
 
 /// The hand-off caps this front sends core: chat-turn's own, plus [`CAPS_TOKEN`] when `offer`.
 pub fn caps(offer: bool) -> String {
-    if offer {
-        format!("{},{CAPS_TOKEN}", chat_turn::handoff::HANDOFF_CAPS)
-    } else {
-        chat_turn::handoff::HANDOFF_CAPS.to_string()
+    front_caps(offer, false)
+}
+
+/// [`caps`], plus [`SIGNIN_CAPS_TOKEN`] when `signin` too (never without `offer`: core lifts the sign-in row only
+/// for a front naming both).
+pub fn front_caps(offer: bool, signin: bool) -> String {
+    match (offer, signin) {
+        (true, true) => format!(
+            "{},{CAPS_TOKEN},{SIGNIN_CAPS_TOKEN}",
+            chat_turn::handoff::HANDOFF_CAPS
+        ),
+        (true, false) => format!("{},{CAPS_TOKEN}", chat_turn::handoff::HANDOFF_CAPS),
+        (false, _) => chat_turn::handoff::HANDOFF_CAPS.to_string(),
     }
 }
 
@@ -98,6 +142,63 @@ pub struct Facts<'a> {
     pub row: Option<&'a JValue>,
     pub member_origins: &'a str,
     pub now_ms: f64,
+    /// The sign-in row's facts ([`Signin::OFF`] for every other row).
+    pub signin: Signin<'a>,
+}
+
+/// What [`plan`] reads for a sign-in row besides the frame.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Signin<'a> {
+    /// The hand-off caps this front named for the turn ([`front_caps`]); the sign-in row is planned only when they
+    /// name [`SIGNIN_CAPS_TOKEN`] (core lifted it for exactly that front).
+    pub caps: &'a str,
+    /// core `chatgptOAuth && chatgptEnabled()`: the front has a broker and the sign-in flag is on.
+    pub enabled: bool,
+    /// The broker's connection for the turn's account (core `chatgptOAuth.status(owner).state`).
+    pub connection: Connection,
+    /// [`EXTERNAL_EGRESS_CLEARED`] (a field so the tests run the cleared path; the front passes the constant).
+    pub cleared: bool,
+}
+
+impl Signin<'static> {
+    /// No sign-in facts: the front named no sign-in token.
+    pub const OFF: Signin<'static> = Signin {
+        caps: "",
+        enabled: false,
+        connection: Connection::Missing,
+        cleared: EXTERNAL_EGRESS_CLEARED,
+    };
+}
+
+/// The broker's state word (`Broker::connection`) as the target rules read it: `None` (the store unreadable) and
+/// `disconnected` are a missing connection (core answers both 409).
+pub fn connection_of(state: Option<&str>) -> Connection {
+    match state {
+        Some("connected") => Connection::Connected,
+        Some("reconnect") => Connection::Reconnect,
+        _ => Connection::Missing,
+    }
+}
+
+/// The sign-in turn [`plan`] binds (crate::signin_drive's, in a build with the sign-in transport).
+#[cfg(feature = "rust-chatgpt-status")]
+pub use crate::signin_drive::SigninPlan;
+/// A build without the sign-in transport never plans a sign-in turn (no value of this type exists).
+#[cfg(not(feature = "rust-chatgpt-status"))]
+#[derive(Debug, Clone, PartialEq)]
+pub enum SigninPlan {}
+
+/// Whether `caps` name [`SIGNIN_CAPS_TOKEN`] (signin_wire.rs `offered`'s reading; never without the transport).
+fn names_signin(caps: &str) -> bool {
+    #[cfg(feature = "rust-chatgpt-status")]
+    {
+        crate::signin_wire::offered(caps)
+    }
+    #[cfg(not(feature = "rust-chatgpt-status"))]
+    {
+        let _ = caps;
+        false
+    }
 }
 
 /// How chat_native.rs runs a frame.
@@ -107,6 +208,9 @@ pub enum Plan {
     Plain,
     /// The provider host around the front's, bound by this cut (boxed: clippy large_enum_variant).
     Provider(Box<Cut>),
+    /// The sign-in row's turn over the front's broker, bound by this plan (only for a front that named
+    /// [`SIGNIN_CAPS_TOKEN`], with [`EXTERNAL_EGRESS_CLEARED`]).
+    Signin(Box<SigninPlan>),
     /// Nothing is sent; the turn ends with the native failure text. The reason is for the log.
     Refuse(&'static str),
 }
@@ -125,20 +229,30 @@ pub fn plan(p: &Prepared, f: &Facts<'_>) -> Plan {
     if p.manager_enabled || p.model_lease || p.title.enabled {
         return Plan::Refuse(LOCAL_ENGINE);
     }
+    let sign_in = row.get("kind").as_str() == Some(CHATGPT_KIND);
+    // The sign-in row is this front's only when it named the sign-in token (core lifted it for that front only).
+    let signin_turn = sign_in && names_signin(f.signin.caps);
     let turn = Turn {
         row,
         default_id: f.default_id,
         user: Some(user),
         member_origins: f.member_origins,
         machine: None,
-        sign_in: row.get("kind").as_str() == Some(CHATGPT_KIND),
-        // The sign-in provider's transport is not this slice's: read as off, it never reaches the broker.
-        sign_in_enabled: false,
-        connection: Connection::Missing,
+        sign_in,
+        // Without the sign-in token the transport is read as off: Node's own 409, it never reaches the broker.
+        sign_in_enabled: signin_turn && f.signin.enabled,
+        connection: if signin_turn {
+            f.signin.connection
+        } else {
+            Connection::Missing
+        },
         workspace_user: user.id.as_deref(),
         chat_id: p.chat_id.as_deref(),
         space_id: p.space_id.as_deref(),
     };
+    if signin_turn {
+        return plan_signin(p, f, &turn, user);
+    }
     let c = match cut::cut(
         &turn,
         &p.model,
@@ -165,6 +279,72 @@ pub fn plan(p: &Prepared, f: &Facts<'_>) -> Plan {
         return Plan::Refuse(LIMIT);
     }
     Plan::Provider(Box::new(c))
+}
+
+/// [`plan`] for a sign-in row of a front that named [`SIGNIN_CAPS_TOKEN`], in Node's order: the sign-in checks of
+/// the target rules (on, owner, connected: Node's own 409/403 answers, [`NODE_REFUSES`]), the external-row hold
+/// ([`EXTERNAL`] until the rules are cleared), the runtime limit, then [`crate::signin_drive::plan`]'s checks (the
+/// offer, the owner, the address, the model, the expiry; the local-engine check ran before).
+fn plan_signin(p: &Prepared, f: &Facts<'_>, turn: &Turn<'_>, user: &User) -> Plan {
+    let target = match chat_upstream::target::resolve(turn) {
+        None => return Plan::Refuse(NODE_THROWS),
+        Some(Err(_)) => return Plan::Refuse(NODE_REFUSES),
+        Some(Ok(t)) => t,
+    };
+    let chat_upstream::target::Fetch::Broker {
+        owner,
+        conversation,
+    } = &target.fetch
+    else {
+        return Plan::Refuse(UNSUPPORTED);
+    };
+    if !f.signin.cleared {
+        return Plan::Refuse(EXTERNAL);
+    }
+    let (tokens, source) = chat_upstream::limit::hosted_limit(turn.row);
+    if p.runtime_limit.as_ref() != Some(&(tokens, source.to_string())) {
+        return Plan::Refuse(LIMIT);
+    }
+    signin_plan(p, f, &target.url, owner, conversation.as_deref(), user)
+}
+
+#[cfg(feature = "rust-chatgpt-status")]
+fn signin_plan(
+    p: &Prepared,
+    f: &Facts<'_>,
+    url: &str,
+    owner: &str,
+    conversation: Option<&str>,
+    user: &User,
+) -> Plan {
+    let cut = crate::signin_drive::SigninCut {
+        owner,
+        conversation,
+        url,
+    };
+    match crate::signin_drive::plan(
+        f.signin.caps,
+        user.id.as_deref().unwrap_or_default(),
+        &cut,
+        p,
+        f.now_ms + BINDING_MS,
+    ) {
+        Ok(s) => Plan::Signin(Box::new(s)),
+        Err(why) => Plan::Refuse(why),
+    }
+}
+
+/// Never reached: [`names_signin`] is false in this build.
+#[cfg(not(feature = "rust-chatgpt-status"))]
+fn signin_plan(
+    _p: &Prepared,
+    _f: &Facts<'_>,
+    _url: &str,
+    _owner: &str,
+    _conversation: Option<&str>,
+    _user: &User,
+) -> Plan {
+    Plan::Refuse(UNSUPPORTED)
 }
 
 /// core provider-egress.cjs `isExternalProvider(row)`, an unknown answer counted as external: a row the server
@@ -197,6 +377,69 @@ pub enum Setup {
     Refused,
     /// A provider row's turn, cut and bound (boxed: clippy large_enum_variant).
     Provider(Box<ProviderTurn>),
+    /// The sign-in row's turn, planned and bound, with its engine and account re-check.
+    Signin(Box<SigninTurn>),
+}
+
+/// A sign-in row's turn as [`setup`] planned it: run it with [`SigninTurn::run`] around the front's host.
+#[cfg(feature = "rust-chatgpt-status")]
+pub struct SigninTurn {
+    plan: SigninPlan,
+    engine: crate::signin_turn::SigninEngine<crate::signin_wire::FrontAccounts>,
+    check: Box<dyn Fn() -> Result<(), &'static str> + Send + Sync>,
+}
+
+/// A build without the sign-in transport never has a sign-in turn.
+#[cfg(not(feature = "rust-chatgpt-status"))]
+pub enum SigninTurn {}
+
+#[cfg(feature = "rust-chatgpt-status")]
+impl SigninTurn {
+    /// The turn for `plan` over the front's broker for `user`: `Err` ([`crate::signin_drive::NO_BROKER`]) while the
+    /// front has no broker or backend client.
+    pub fn new(app: &Arc<App>, user: &str, plan: SigninPlan) -> Result<SigninTurn, &'static str> {
+        let engine = crate::signin_drive::front_engine(app, &plan)?;
+        let check = crate::signin_drive::account_check(
+            crate::signin_drive::front_live(app),
+            user.to_string(),
+        );
+        Ok(SigninTurn {
+            plan,
+            engine,
+            check: Box::new(check),
+        })
+    }
+
+    /// Runs the rest of the turn on `host` wrapped in the sign-in host. `Err`: the engine is not the plan's
+    /// account and conversation (never for what [`SigninTurn::new`] builds; refused all the same).
+    pub async fn run<H: Host>(
+        self,
+        host: &H,
+        process: &Process,
+        helpers: &Helpers<'_>,
+        p: &Prepared,
+    ) -> Result<Ended, &'static str> {
+        let SigninTurn {
+            plan,
+            engine,
+            check,
+        } = self;
+        crate::signin_drive::run(host, engine, plan, check, process, helpers, p).await
+    }
+}
+
+#[cfg(not(feature = "rust-chatgpt-status"))]
+impl SigninTurn {
+    /// Never called (no value of this type exists).
+    pub async fn run<H: Host>(
+        self,
+        _host: &H,
+        _process: &Process,
+        _helpers: &Helpers<'_>,
+        _p: &Prepared,
+    ) -> Result<Ended, &'static str> {
+        match self {}
+    }
 }
 
 /// A provider row's turn as [`setup`] cut it: run it with [`ProviderTurn::run`] on a front host built with
@@ -295,6 +538,9 @@ pub async fn setup(app: &Arc<App>, data_dir: &Path, user: &str, p: &Prepared) ->
         return Setup::Refused;
     };
     let origins = origins_now();
+    // The caps this front named core for the turn (handoff_headers), read the same way now.
+    let caps = front_caps(true, signin_offered());
+    let signin = signin_facts(app, user, row.as_ref(), &caps).await;
     #[allow(clippy::cast_precision_loss)]
     let now_ms = crate::identity::now_ms() as f64;
     let facts = Facts {
@@ -304,6 +550,7 @@ pub async fn setup(app: &Arc<App>, data_dir: &Path, user: &str, p: &Prepared) ->
         row: row.as_ref(),
         member_origins: &origins,
         now_ms,
+        signin,
     };
     match plan(p, &facts) {
         Plan::Plain => Setup::Plain,
@@ -330,7 +577,63 @@ pub async fn setup(app: &Arc<App>, data_dir: &Path, user: &str, p: &Prepared) ->
                 default_id,
             }))
         }
+        Plan::Signin(s) => signin_setup(app, user, *s),
     }
+}
+
+#[cfg(all(feature = "rust-storage-reads", feature = "rust-chatgpt-status"))]
+fn signin_setup(app: &Arc<App>, user: &str, plan: SigninPlan) -> Setup {
+    match SigninTurn::new(app, user, plan) {
+        Ok(turn) => Setup::Signin(Box::new(turn)),
+        Err(why) => {
+            eprintln!("chat native: sign-in turn not run: {why}");
+            Setup::Refused
+        }
+    }
+}
+
+#[cfg(all(feature = "rust-storage-reads", not(feature = "rust-chatgpt-status")))]
+fn signin_setup(_app: &Arc<App>, _user: &str, plan: SigninPlan) -> Setup {
+    match plan {}
+}
+
+/// The sign-in facts for `row`: [`Signin::OFF`]'s for every row that is not the sign-in kind, or when `caps` do not
+/// name [`SIGNIN_CAPS_TOKEN`] (nothing is asked of the broker); else the broker's flag and the account's connection
+/// as of now. A front without a broker reads as off (Node's 409).
+#[cfg(feature = "rust-storage-reads")]
+async fn signin_facts<'a>(
+    app: &Arc<App>,
+    user: &str,
+    row: Option<&JValue>,
+    caps: &'a str,
+) -> Signin<'a> {
+    let off = Signin {
+        caps,
+        ..Signin::OFF
+    };
+    let sign_in = row.is_some_and(|r| r.get("kind").as_str() == Some(CHATGPT_KIND));
+    if !sign_in || !names_signin(caps) {
+        return off;
+    }
+    broker_facts(app, user, off).await
+}
+
+#[cfg(all(feature = "rust-storage-reads", feature = "rust-chatgpt-status"))]
+async fn broker_facts<'a>(app: &Arc<App>, user: &str, off: Signin<'a>) -> Signin<'a> {
+    let Some(broker) = app.chatgpt_oauth.as_ref() else {
+        return off;
+    };
+    Signin {
+        enabled: broker.enabled(app).await,
+        connection: connection_of(broker.connection(app, user).await),
+        ..off
+    }
+}
+
+#[cfg(all(feature = "rust-storage-reads", not(feature = "rust-chatgpt-status")))]
+#[allow(clippy::unused_async)]
+async fn broker_facts<'a>(_app: &Arc<App>, _user: &str, off: Signin<'a>) -> Signin<'a> {
+    off
 }
 
 /// See the build with the provider store: this one never offers [`CAPS_TOKEN`], so every frame runs as before.
@@ -585,6 +888,7 @@ mod tests {
             row,
             member_origins: origins,
             now_ms: 1_000.0,
+            signin: Signin::OFF,
         }
     }
 
@@ -762,7 +1066,11 @@ mod tests {
             Plan::Refuse(EXTERNAL)
         );
         // Only `true` flags it (provider-egress.cjs reads `external === true`).
-        for not_flagged in [r#","external":"yes""#, r#","external":1"#, r#","external":false"#] {
+        for not_flagged in [
+            r#","external":"yes""#,
+            r#","external":1"#,
+            r#","external":false"#,
+        ] {
             let r = row(&own_row("", "https://qa-provider.example/v1", not_flagged));
             assert!(
                 matches!(
@@ -781,10 +1089,22 @@ mod tests {
             let r = row(&own_row("", base, ""));
             assert!(external_row(&r), "{base}");
         }
-        assert!(!external_row(&row(&own_row("", "https://notnvidia.com/v1", ""))));
-        assert!(!external_row(&row(&own_row("", "https://qa-provider.example/v1", ""))));
+        assert!(!external_row(&row(&own_row(
+            "",
+            "https://notnvidia.com/v1",
+            ""
+        ))));
+        assert!(!external_row(&row(&own_row(
+            "",
+            "https://qa-provider.example/v1",
+            ""
+        ))));
         // An address the rules cannot be sure about counts as external.
-        assert!(external_row(&row(&own_row("", "https://xn--qa-provider.example/v1", ""))));
+        assert!(external_row(&row(&own_row(
+            "",
+            "https://xn--qa-provider.example/v1",
+            ""
+        ))));
         // The sign-in kind is external too (refused before, by the cut, as Node refuses it).
         assert!(external_row(&row(
             r#"{"id":"qa-provider","kind":"chatgpt-oauth","baseUrl":"https://qa-provider.example"}"#

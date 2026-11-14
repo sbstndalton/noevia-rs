@@ -401,9 +401,13 @@ pub(crate) fn handoff_headers(token: HeaderValue) -> [(&'static str, HeaderValue
         (HANDOFF_HEADER, token),
         (
             chat_turn::handoff::HANDOFF_CAPS_HEADER,
-            // chat_provider.rs: `providers` only with its switch on (off everywhere; no core reads it yet).
-            HeaderValue::from_str(&crate::chat_provider::caps(crate::chat_provider::offered()))
-                .unwrap_or_else(|_| HeaderValue::from_static(chat_turn::handoff::HANDOFF_CAPS)),
+            // chat_provider.rs: `providers` only with its switch on (off everywhere; no core reads it yet), and the
+            // sign-in token beside it only with its own switch once the external-row rules are cleared (never yet).
+            HeaderValue::from_str(&crate::chat_provider::front_caps(
+                crate::chat_provider::offered(),
+                crate::chat_provider::signin_offered(),
+            ))
+            .unwrap_or_else(|_| HeaderValue::from_static(chat_turn::handoff::HANDOFF_CAPS)),
         ),
     ]
 }
@@ -491,11 +495,13 @@ async fn drive(
     if let Some(body) = shadow {
         crate::chat_prepare_shadow::spawn(Arc::clone(&app), user_dir.clone(), body, frame);
     }
-    // Council p6-1/p8-3: a provider row's turn (chat_provider.rs), only from a front that offered `providers`.
-    let provider = match crate::chat_provider::setup(&app, &data_dir, &user, &p).await {
-        crate::chat_provider::Setup::Plain => None,
+    // Council p6-1/p8-3: a provider row's turn (chat_provider.rs), only from a front that offered `providers`;
+    // council p10-1: the sign-in row's, only from a front that also named the sign-in token.
+    let (provider, signin) = match crate::chat_provider::setup(&app, &data_dir, &user, &p).await {
+        crate::chat_provider::Setup::Plain => (None, None),
         crate::chat_provider::Setup::Refused => return failed(&tx),
-        crate::chat_provider::Setup::Provider(turn) => Some(turn),
+        crate::chat_provider::Setup::Provider(turn) => (Some(turn), None),
+        crate::chat_provider::Setup::Signin(turn) => (None, Some(turn)),
     };
     let client = provider
         .as_ref()
@@ -533,9 +539,21 @@ async fn drive(
     };
     let process = process();
     let helpers = helpers();
-    let ended = match provider {
-        None => native::run(&*host, process, &helpers, &p).await,
-        Some(turn) => match (*turn).run(&*host, process, &helpers, &p).await {
+    let ended = match (provider, signin) {
+        (None, Some(turn)) => match (*turn).run(&*host, process, &helpers, &p).await {
+            Ok(ended) => ended,
+            Err(why) => {
+                // setup() builds the engine for the plan's account; refused all the same if they ever differ.
+                eprintln!("chat native: sign-in turn not run: {why}");
+                host.emit(&js::obj([
+                    ("type", js::s("error")),
+                    ("text", js::s(native::FAILED_TEXT)),
+                ]));
+                native::Ended::Error
+            }
+        },
+        (None, None) => native::run(&*host, process, &helpers, &p).await,
+        (Some(turn), _) => match (*turn).run(&*host, process, &helpers, &p).await {
             Ok(ended) => ended,
             Err(e) => {
                 // plan() only cuts what ProviderHost takes; refused all the same if they ever differ.
