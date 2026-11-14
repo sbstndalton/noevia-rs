@@ -44,7 +44,9 @@
 //!
 //! Named, not changed: a non-empty scan cache that lacks a key lets that key through unchecked
 //! (core scans fresh only when the cache is empty); the sweep guard's start-up `adopt()` is not
-//! part of this contract (the front relays `POST benchmark/sweep` to core, which keeps its guard).
+//! part of this contract: the front relays `POST benchmark/sweep` to core, which keeps its guard, but
+//! only after the same [`strict_payload`] check (with `aliases`) and with the parsed body written
+//! again, so core judges and the model manager receives the checked value.
 //!
 //! Core's behaviour is kept where it is wrong but harmless; each is in the recording:
 //! - `PATH_OPTION_ALIASES` is a plain object, so a section PUT whose `values` has a non-string

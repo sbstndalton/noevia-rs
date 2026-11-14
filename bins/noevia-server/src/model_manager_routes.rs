@@ -8,8 +8,12 @@
 //! Kept on core under the switch: **`POST /api/model-manager/benchmark/sweep`** (whatever spelling
 //! of the path decodes to it). Core holds the throughput sweep's maintenance gate in its memory
 //! (benchmark-sweep-guard.cjs) and takes it back after a restart (`adopt`), so the sweep's start is
-//! relayed to core unchanged before anything else is asked; the crate's sweep host steps
-//! (`sweep_hold`, `sweep_release`, `sweep_watch`) are therefore never reached through the front.
+//! relayed to core after the session gate and, for an administrator on a deployment with a model
+//! manager, after the crate's strict payload check (`strict_payload`: `aliases` an array, at most
+//! 64 models; its 400 answered here), with the parsed body written again and its length corrected:
+//! core judges and the model manager receives exactly the checked value (core alone would read an
+//! unparseable body as `{}` and forward its raw bytes). The crate's sweep host steps
+//! (`sweep_hold`, `sweep_release`, `sweep_watch`) are never reached through the front.
 //!
 //! The flow is the crate's [`model_manager_proxy::handle`], run on the blocking pool with each host
 //! step run to its end on the runtime (as model_writes_routes.rs does), after the session gate. Its
@@ -46,6 +50,9 @@
 //!   snapshot it was read with (core's `set` is not).
 //! - **Ids that are not strings** (a scanned `modelId` of 7) are not unloaded, cleared or forgotten;
 //!   a role clean-up that fails is no roles cleared (as delete_model.rs), not a 500.
+//! - **A scan-cache clear core does not confirm** (`{cleared: true}`) fails closed: the forward
+//!   after it is not sent and the answer is the 502 of no answer (core's clear cannot fail). A clear
+//!   after a delete's clean-up has nothing left to refuse.
 //! - A preset refusal that is not a 409 (preset.rs's undecided micro batch, no budget) is answered
 //!   as core answers a throw of its status.
 //! - The crate's own named differences (lib.rs: control characters, the judged payload forwarded,
@@ -154,9 +161,7 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
-    if is_sweep(req.method(), &path) {
-        return app.proxy.forward(conn.peer, req).await;
-    }
+    let sweep = is_sweep(req.method(), &path);
     let (parts, body) = req.into_parts();
     let creds = identity::creds_of(&parts);
     let layer = Arc::clone(&app.identity);
@@ -174,6 +179,9 @@ pub async fn serve(
     } else {
         "member"
     };
+    if sweep {
+        return relay_sweep(app, conn, parts, body, role == "admin").await;
+    }
     let method = parts.method.as_str().to_string();
     // readBody's limit, one byte over to tell "too large" apart; only for a method that carries one.
     let bytes = if model_manager_proxy::carries_body(&method) {
@@ -208,6 +216,7 @@ pub async fn serve(
             sidecars: None,
             scan_token: None,
             hold: None,
+            clear_failed: false,
         };
         let request = model_manager_proxy::Request {
             method: &method,
@@ -241,6 +250,69 @@ pub async fn serve(
     }
 }
 
+/// The sweep start, relayed to core after the session gate. For an administrator on a deployment
+/// with a model manager (where core reads the body), the body must pass the crate's strict payload
+/// check (`aliases` an array, at most 64 models) and core is sent the parsed value written again,
+/// so core judges, and the model manager receives, exactly what was checked. Anything else is
+/// relayed as it came: core refuses it before it reads the body.
+async fn relay_sweep(
+    app: &Arc<App>,
+    conn: crate::serve::Conn,
+    mut parts: axum::http::request::Parts,
+    body: Body,
+    admin: bool,
+) -> Response<Body> {
+    let configured = app
+        .config
+        .model_manager
+        .loader_url
+        .as_deref()
+        .is_some_and(|u| !u.is_empty());
+    if !admin || !configured {
+        return app
+            .proxy
+            .forward(conn.peer, Request::from_parts(parts, body))
+            .await;
+    }
+    let answer = |status: u16, body: &JValue| {
+        reply::json_text(
+            StatusCode::from_u16(status).unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+            wtf16::stringify(body).unwrap_or_default(),
+            true,
+        )
+    };
+    let error = |m: &str| JValue::obj([("error", JValue::from(m))]);
+    let bytes = match axum::body::to_bytes(body, BODY_LIMIT + 1).await {
+        Ok(b) if b.len() <= BODY_LIMIT => b,
+        _ => return answer(413, &error("Request exceeds size limit")),
+    };
+    let text = String::from_utf8_lossy(&bytes).into_owned();
+    let parsed = match model_manager_proxy::strict_payload(Some(&text), Some("aliases")) {
+        Ok(v) => v,
+        Err(message) => return answer(400, &error(&message)),
+    };
+    let models = match parsed.get("aliases") {
+        JValue::Arr(items) => items
+            .iter()
+            .filter(|a| a.as_str().is_some_and(|s| !s.is_empty()))
+            .count(),
+        _ => 0,
+    };
+    if models > model_manager_proxy::MAX_ALIASES {
+        return answer(400, &error("Choose at most 64 models for one sweep."));
+    }
+    let judged = wtf16::stringify(&parsed).unwrap_or_else(|| "{}".to_string());
+    parts.headers.remove(axum::http::header::TRANSFER_ENCODING);
+    if let Ok(len) = axum::http::HeaderValue::from_str(&judged.len().to_string()) {
+        parts
+            .headers
+            .insert(axum::http::header::CONTENT_LENGTH, len);
+    }
+    app.proxy
+        .forward(conn.peer, Request::from_parts(parts, Body::from(judged)))
+        .await
+}
+
 fn of_serde(v: &serde_json::Value) -> JValue {
     wtf16::parse(&v.to_string()).unwrap_or(JValue::Undefined)
 }
@@ -266,6 +338,8 @@ struct FrontHost {
     /// The scan snapshot's token a publish is conditional on.
     scan_token: Option<String>,
     hold: Option<crate::model_maint::Hold>,
+    /// A scan-cache clear core did not confirm: the forward that follows it is not sent.
+    clear_failed: bool,
 }
 
 impl FrontHost {
@@ -454,9 +528,12 @@ impl Host for FrontHost {
     fn scan_cache_clear(&mut self) {
         self.scan_token = None;
         let app = Arc::clone(&self.app);
-        self.rt.block_on(async move {
-            let _ = crate::model_manager_scan::cache(&app, "clear", &serde_json::json!({})).await;
+        let cleared = self.rt.block_on(async move {
+            crate::model_manager_scan::cache(&app, "clear", &serde_json::json!({})).await
         });
+        if cleared.is_none_or(|v| v.get("cleared") != &JValue::Bool(true)) {
+            self.clear_failed = true;
+        }
     }
     fn preset_refusal(&mut self, name: &str, options: &JValue) -> Result<JValue, Thrown> {
         let section: Vec<(String, String)> = match options {
@@ -489,6 +566,11 @@ impl Host for FrontHost {
             .map_or(JValue::Null, JValue::Num)
     }
     fn fetch(&mut self, request: &Fetch) -> Option<Reply> {
+        // Fail closed: a write whose scan clear core did not confirm is not forwarded (a later
+        // delete would be judged by the stale scan); the flow answers its 502.
+        if self.clear_failed {
+            return None;
+        }
         self.rt.block_on(self.call(request))
     }
     fn preset_hold(&mut self) -> Result<(), PresetHoldError> {

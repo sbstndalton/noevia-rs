@@ -25,9 +25,28 @@ const SCAN_PATH: &str = "/api/model-manager/models";
 /// The scan Node's cache holds (`hit.body`), or none.
 type Scan = Arc<Mutex<Option<Value>>>;
 
-fn node(scan: Scan) -> Handler {
+/// What the scripted Node answers besides the scan.
+#[derive(Clone, Copy)]
+struct Knobs {
+    publish_applied: bool,
+    clear_ok: bool,
+    sidecar_names: bool,
+}
+
+impl Default for Knobs {
+    fn default() -> Self {
+        Knobs {
+            publish_applied: true,
+            clear_ok: true,
+            sidecar_names: true,
+        }
+    }
+}
+
+fn node(scan: Scan, knobs: Arc<Mutex<Knobs>>) -> Handler {
     Arc::new(move |req: &Req| {
         let t = req.target.as_str();
+        let k = *knobs.lock().unwrap();
         match (req.method.as_str(), t) {
             ("POST", "/internal/auto-roles/invalidate") => Answer::Reply(200, "{}".into()),
             ("POST", "/internal/model-manager-scan/snapshot") => {
@@ -43,10 +62,16 @@ fn node(scan: Scan) -> Handler {
                 )
             }
             ("POST", "/internal/model-manager-scan/publish") => {
-                Answer::Reply(200, r#"{"applied":true}"#.into())
+                Answer::Reply(200, json!({"applied": k.publish_applied}).to_string())
+            }
+            ("POST", "/internal/model-manager-scan/clear") if k.clear_ok => {
+                Answer::Reply(200, r#"{"cleared":true}"#.into())
             }
             ("POST", "/internal/model-manager-scan/clear") => {
-                Answer::Reply(200, r#"{"cleared":true}"#.into())
+                Answer::Reply(503, r#"{"error":"Model scan cache is unavailable."}"#.into())
+            }
+            ("POST", "/internal/models/facts") if !req.body.contains("budget") && !k.sidecar_names => {
+                Answer::Reply(200, json!({"sidecarLoaded": [], "scan": null}).to_string())
             }
             ("POST", "/internal/models/facts") if req.body.contains("budget") => {
                 Answer::Reply(200, json!({"budget": {"budgetGib": 12}}).to_string())
@@ -117,6 +142,7 @@ struct Rig {
     engine: Arc<Mutex<Vec<Req>>>,
     loader: Arc<Mutex<Vec<Req>>>,
     scan: Scan,
+    knobs: Arc<Mutex<Knobs>>,
     base: String,
 }
 
@@ -124,7 +150,8 @@ async fn rig(switch: bool, loader_answers: Vec<(&'static str, Answer)>, with_loa
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path());
     let scan: Scan = Arc::default();
-    let (node_port, node_seen) = engine(node(Arc::clone(&scan))).await;
+    let knobs: Arc<Mutex<Knobs>> = Arc::default();
+    let (node_port, node_seen) = engine(node(Arc::clone(&scan), Arc::clone(&knobs))).await;
     let (engine_port, engine_seen) = engine(gate_and_router()).await;
     let (loader_port, loader_seen) = engine(loader(loader_answers)).await;
     let ini = d.path().join("models.ini");
@@ -172,6 +199,7 @@ async fn rig(switch: bool, loader_answers: Vec<(&'static str, Answer)>, with_loa
         engine: engine_seen,
         loader: loader_seen,
         scan,
+        knobs,
         base,
     }
 }
@@ -234,7 +262,7 @@ async fn switch_on_the_sweep_start_is_relayed_and_the_scan_get_stays_the_scan_ro
             "POST",
             path,
             Some(ADMIN),
-            br#"{"aliases":["qa-a","qa-b"]}"#,
+            br#"{ "aliases" : ["qa-a", "qa-b"], "n": 1.50 }"#,
         )
         .await;
         assert_eq!(status, 202, "{path}: {body}");
@@ -246,6 +274,63 @@ async fn switch_on_the_sweep_start_is_relayed_and_the_scan_get_stays_the_scan_ro
             "POST /api/model-manager/benchmark/sw%65ep"
         ]
     );
+    // Core is sent the checked value, written again, with its own length.
+    for q in r.node.lock().unwrap().iter() {
+        assert_eq!(q.body, r#"{"aliases":["qa-a","qa-b"],"n":1.5}"#);
+        assert_eq!(
+            q.headers.get("content-length").map(String::as_str),
+            Some("35")
+        );
+    }
+    // A body core would read as {} (and forward raw) is refused here; nothing is relayed.
+    let too_many =
+        json!({"aliases": (0..65).map(|i| format!("qa-{i}")).collect::<Vec<_>>()}).to_string();
+    for (body, error) in [
+        (
+            r#"{"aliases":{"qa-big":1}}"#.to_string(),
+            "aliases must be an array.",
+        ),
+        (
+            r#"{"aliases":["qa-big"],"x":NaN}"#.to_string(),
+            "The request body must be a JSON object.",
+        ),
+        ("[]".to_string(), "The request body must be a JSON object."),
+        (too_many, "Choose at most 64 models for one sweep."),
+    ] {
+        let (status, _, text) = call(
+            r.addr,
+            "POST",
+            "/api/model-manager/benchmark/sweep",
+            Some(ADMIN),
+            body.as_bytes(),
+        )
+        .await;
+        assert_eq!((status, j(&text)), (400, json!({"error": error})), "{body}");
+    }
+    assert_eq!(relayed(&r).len(), 2);
+    // Without a session the gate answers; a member's start is core's to refuse, as it came.
+    let (status, _, _) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/benchmark/sweep",
+        None,
+        b"{}",
+    )
+    .await;
+    assert_eq!(status, 401);
+    let (status, _, _) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/benchmark/sweep",
+        Some(MEMBER),
+        br#"{"aliases":{"x":1}}"#,
+    )
+    .await;
+    assert_eq!(status, 202);
+    assert_eq!(
+        r.node.lock().unwrap().last().unwrap().body,
+        r#"{"aliases":{"x":1}}"#
+    );
     // Nothing of the flow ran: no fence, no load refusal, no hold, no manager call.
     assert!(targets(&r.node).iter().all(|t| !t.contains("/internal/")));
     assert!(targets(&r.loader).is_empty());
@@ -253,7 +338,9 @@ async fn switch_on_the_sweep_start_is_relayed_and_the_scan_get_stays_the_scan_ro
     // Exact GET models: the scan route (its snapshot, then the manager), not the proxy.
     let (status, headers, _) = call(r.addr, "GET", SCAN_PATH, Some(ADMIN), b"").await;
     assert_eq!(status, 200);
-    assert!(headers.contains("x-model-scan") || targets(&r.loader) == ["GET /api/v1/models"]);
+    // A cold cache: the scan route fetches the manager itself (no proxy timeout, no fence).
+    assert!(!headers.contains("x-model-scan"), "{headers}");
+    assert_eq!(targets(&r.loader), ["GET /api/v1/models"]);
     assert!(targets(&r.node).contains(&"POST /internal/model-manager-scan/snapshot".to_string()));
     assert!(!targets(&r.node).contains(&"POST /internal/auto-roles/invalidate".to_string()));
 }
@@ -684,4 +771,186 @@ async fn a_delete_body_is_judged_as_forwarded() {
     let seen = r.loader.lock().unwrap().clone();
     assert_eq!(seen.len(), 1);
     assert_eq!(seen[0].body, r#"{"models":["k-chat"]}"#);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_cold_cache_scans_fresh_and_publishes_with_the_snapshot_token() {
+    let scan = json!({"models": [{"key": "k-chat", "modelId": "qa-chat", "sections": []}]});
+    let r = rig(
+        true,
+        vec![("GET /api/v1/models", Answer::Reply(200, scan.to_string()))],
+        true,
+    )
+    .await;
+    r.knobs.lock().unwrap().publish_applied = false;
+    let (status, _, body) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/models/delete",
+        Some(ADMIN),
+        br#"{"models":["k-chat"]}"#,
+    )
+    .await;
+    // A refused publish changes nothing: the delete goes on, judged by the fresh scan.
+    assert_eq!(status, 200, "{body}");
+    assert_eq!(
+        targets(&r.loader),
+        ["GET /api/v1/models", "POST /api/v1/models/delete"]
+    );
+    let node: Vec<Req> = r.node.lock().unwrap().clone();
+    let publish = node
+        .iter()
+        .find(|q| q.target == "/internal/model-manager-scan/publish")
+        .unwrap();
+    let ask = j(&publish.body);
+    assert_eq!(ask["token"], "a".repeat(64));
+    assert_eq!(j(ask["bodyJson"].as_str().unwrap()), scan);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_unconfirmed_scan_clear_is_not_forwarded() {
+    let r = rig(true, vec![], true).await;
+    r.knobs.lock().unwrap().clear_ok = false;
+    let (status, _, body) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/qa",
+        Some(ADMIN),
+        br#"{}"#,
+    )
+    .await;
+    assert_eq!(
+        (status, j(&body)),
+        (
+            502,
+            json!({"error": "The model management service is not responding."})
+        )
+    );
+    assert!(targets(&r.loader).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_dropped_models_ini_forward_still_releases_the_hold() {
+    let r = rig(true, vec![("PUT /api/v1/models-ini", Answer::Drop)], true).await;
+    let (status, _, body) = call(
+        r.addr,
+        "PUT",
+        "/api/model-manager/models-ini",
+        Some(ADMIN),
+        br#"{"text":""}"#,
+    )
+    .await;
+    assert_eq!(status, 502, "{body}");
+    let engine = targets(&r.engine);
+    assert!(
+        engine.contains(&"POST /gate/v1/maintenance".to_string()),
+        "{engine:?}"
+    );
+    assert!(
+        !engine.contains(&"GET /models?reload=1".to_string()),
+        "{engine:?}"
+    );
+    assert!(
+        engine.contains(&format!("DELETE /gate/v1/maintenance/{HOLD}")),
+        "{engine:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn path_spellings_through_the_whole_front() {
+    let r = rig(true, vec![], true).await;
+    *r.scan.lock().unwrap() =
+        Some(json!({"models": [{"key": "k-router", "modelId": "laya-qa", "sections": []}]}));
+    let (status, _, _) = call(
+        r.addr,
+        "HEAD",
+        "/api/model-manager/status",
+        Some(ADMIN),
+        b"",
+    )
+    .await;
+    assert_eq!(status, 200);
+    let (status, _, _) = call(
+        r.addr,
+        "GET",
+        "/api/model-manager/status/",
+        Some(ADMIN),
+        b"",
+    )
+    .await;
+    assert_eq!(status, 200);
+    // WHATWG resolves the dot segments: this is the guarded delete.
+    let (status, _, body) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/x/%2e%2e/models/delete",
+        Some(ADMIN),
+        br#"{"models":["k-router"]}"#,
+    )
+    .await;
+    assert_eq!(status, 400, "{body}");
+    assert_eq!(j(&body)["errorId"], "systemModel");
+    // An encoded spelling of the scan path is not the exact scan GET: the proxy forwards it.
+    let (status, _, _) = call(
+        r.addr,
+        "GET",
+        "/api/model-manager/m%6Fdels",
+        Some(ADMIN),
+        b"",
+    )
+    .await;
+    assert_eq!(status, 200);
+    assert_eq!(
+        targets(&r.loader),
+        [
+            "HEAD /api/v1/status",
+            "GET /api/v1/status/",
+            "GET /api/v1/m%6Fdels"
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn sidecar_and_protection_refusals() {
+    let r = rig(true, vec![], true).await;
+    *r.scan.lock().unwrap() =
+        Some(json!({"models": [{"key": "k-chat", "modelId": "qa-chat", "sections": []}]}));
+    let (status, _, body) = call(
+        r.addr,
+        "DELETE",
+        "/api/model-manager/sections/qa-embedder",
+        Some(ADMIN),
+        b"",
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(
+        j(&body),
+        json!({"error": "A running sidecar (embedding or reranking) depends on this model — not deleted", "errorId": "modelInUse", "service": "embedding"})
+    );
+    // Facts without sidecar names: protection is not current, nothing is deleted.
+    r.knobs.lock().unwrap().sidecar_names = false;
+    let (status, _, body) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/models/delete",
+        Some(ADMIN),
+        br#"{"models":["k-chat"]}"#,
+    )
+    .await;
+    assert_eq!(status, 409, "{body}");
+    assert_eq!(
+        j(&body),
+        json!({"error": "Embedding model protection is not current.", "errorId": "modelInUse"})
+    );
+    assert!(targets(&r.loader).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_body_over_one_mebibyte_is_413() {
+    let r = rig(true, vec![], true).await;
+    let big = vec![b'x'; 1024 * 1024 + 1];
+    let (status, _, _) = call(r.addr, "POST", "/api/model-manager/qa", Some(ADMIN), &big).await;
+    assert_eq!(status, 413);
+    assert!(targets(&r.loader).is_empty());
 }
