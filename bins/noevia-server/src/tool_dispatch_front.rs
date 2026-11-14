@@ -227,7 +227,8 @@ mod tests {
             };
             let text = c.get("text").as_str().unwrap();
             let core_refused = c.get("failed").as_bool() == Some(true)
-                && (text.starts_with("ERROR: tool \"") && text.ends_with("\" is not enabled for this project")
+                && ((text.starts_with("ERROR: tool \"")
+                    && text.ends_with("\" is not enabled for this project"))
                     || text.starts_with("ERROR: tool arguments were not valid JSON: ")
                     || text.starts_with("ERROR: tool arguments must be a JSON object: "));
             match answer(dir.path(), USER, &r, |_| true) {
