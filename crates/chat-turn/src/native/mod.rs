@@ -385,11 +385,18 @@ impl<H: Host> Turn<'_, H> {
             s.changed = true;
         }
         let names = |list: &[String]| list.iter().cloned().collect::<HashSet<String>>();
+        // chat.cjs `allowedToolNames`: the offered names before a narrowed list's more_tools (appended after it,
+        // last; it never runs as a tool).
+        let mut allowed: Vec<String> = p
+            .tools
+            .iter()
+            .filter_map(|t| t.get("function").get("name").as_str().map(str::to_string))
+            .collect();
+        if p.widen.is_some() && allowed.last().map(String::as_str) == Some("more_tools") {
+            allowed.pop();
+        }
         let mut gate = Tools::new(
-            p.tools
-                .iter()
-                .filter_map(|t| t.get("function").get("name").as_str().map(str::to_string))
-                .collect(),
+            allowed,
             names(&p.writes),
             names(&p.public),
             names(&p.automatic_only_writes),
@@ -555,7 +562,7 @@ impl<H: Host> Turn<'_, H> {
                     self.offers_tools(&s).then_some(s.tools.as_slice()),
                     &mut current,
                 )
-                    .await;
+                .await;
             }
             // #1552: tools on offer, no call, and the reply ends on announcing one: one more try.
             if current.tool_calls.is_empty()
@@ -701,6 +708,7 @@ impl<H: Host> Turn<'_, H> {
 
     /// A round's calls: their arguments and ids settled, the narration kept, then each through the gate.
     async fn run_calls(&mut self, gate: &mut Tools<'_>, round: &mut Round, s: &mut Rounds) {
+        let p = self.p;
         let host = self.host;
         for (_, slot) in round.tool_calls.iter_mut() {
             slot.args = if slot.too_large {
@@ -814,20 +822,55 @@ impl<H: Host> Turn<'_, H> {
         }
     }
 
-    /// chat.cjs's `more_tools` answer: the first call widens the offered tools to the frame's `widen` list (the
-    /// rest of this round keeps the narrowed routes, a widened name only fills a gap; from the next round the
-    /// widened routes win) and says `tools_scope` "all tools"; a later call is told they already are.
-    fn more_tools(&self, s: &mut Rounds, gate: &mut Tools<'_>, widen: &crate::prepared::Widen) -> String {
+    /// chat.cjs's `more_tools` answer: the first call widens the offered tools to the project's whole selection
+    /// (the frame's `widen`, resolved by core at the cut) and says `tools_scope` "all tools"; a later call is told
+    /// they already are. The rest of this round keeps the narrowed routes (a widened name only fills a gap); from
+    /// the next round the widened routes win.
+    ///
+    /// chat.cjs resolves the list at the call, reading the account's policy for each candidate (`blocked`). The
+    /// same reads are made here, in core's order. Named difference: when one answers otherwise than at the cut, a
+    /// newly blocked tool is left out of core's list, but a newly allowed one (or one the tool cap then has room
+    /// for) is not added; nothing is ever offered that the account blocks now.
+    fn more_tools(
+        &self,
+        s: &mut Rounds,
+        gate: &mut Tools<'_>,
+        widen: &crate::prepared::Widen,
+    ) -> String {
         if s.widened {
             return "All of this project's tools are already available.".to_string();
         }
         s.widened = true;
-        s.tools = widen.tools.clone();
-        let names: Vec<String> = widen
+        let mut now_blocked = HashSet::new();
+        let mut changed = false;
+        for (name, write, was) in &widen.asked {
+            let blocked = self.host.tool_policy(name, *write) == "block";
+            if blocked {
+                now_blocked.insert(name.as_str());
+            }
+            changed |= blocked != *was;
+        }
+        let name_of = |t: &JValue| {
+            t.get("function")
+                .get("name")
+                .as_str()
+                .unwrap_or("")
+                .to_string()
+        };
+        let tools: Vec<JValue> = widen
             .tools
             .iter()
-            .map(|t| t.get("function").get("name").as_str().unwrap_or("").to_string())
+            .filter(|t| !changed || !now_blocked.contains(name_of(t).as_str()))
+            .cloned()
             .collect();
+        let names: Vec<String> = tools.iter().map(name_of).collect();
+        let routes: Vec<(String, String)> = widen
+            .routes
+            .iter()
+            .filter(|(n, _)| names.contains(n))
+            .cloned()
+            .collect();
+        s.tools = tools;
         for n in &names {
             if gate.allowed.insert(n.clone()) {
                 gate.allowed_order.push(n.clone());
@@ -837,9 +880,10 @@ impl<H: Host> Turn<'_, H> {
         gate.public.extend(widen.public.iter().cloned());
         gate.edit_tools.extend(widen.edit_tools.iter().cloned());
         gate.once_tools.extend(widen.once_tools.iter().cloned());
-        gate.routes = map_merge(&widen.routes, &gate.routes);
-        s.next_routes = Some(widen.routes.clone());
-        self.host.emit(&event("tools_scope", vec![("text", js::s("all tools"))]));
+        gate.routes = map_merge(&routes, &gate.routes);
+        s.next_routes = Some(routes);
+        self.host
+            .emit(&event("tools_scope", vec![("text", js::s("all tools"))]));
         format!(
             "More tools are now available: {}. Continue with the task.",
             names.join(", ")

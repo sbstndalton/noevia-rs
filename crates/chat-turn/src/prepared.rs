@@ -104,6 +104,8 @@ pub struct Widen {
     pub public: Vec<String>,
     pub edit_tools: Vec<String>,
     pub once_tools: Vec<String>,
+    /// The policy reads core's resolution made (chat.cjs `blocked`), in order: (name, write, blocked).
+    pub asked: Vec<(String, bool, bool)>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -217,6 +219,18 @@ fn widen(v: &JValue) -> Result<Option<Widen>, Unreadable> {
             public: names(v, "public")?,
             edit_tools: names(v, "editTools")?,
             once_tools: names(v, "onceTools")?,
+            asked: list(v, "asked")?
+                .iter()
+                .map(|a| match a {
+                    JValue::Arr(t) => match t.as_slice() {
+                        [JValue::Str(n), JValue::Bool(w), JValue::Bool(b)] => {
+                            Ok((n.clone(), *w, *b))
+                        }
+                        _ => Err(Unreadable("prepared.widen.asked holds a bad read".into())),
+                    },
+                    _ => Err(Unreadable("prepared.widen.asked holds a bad read".into())),
+                })
+                .collect::<Result<_, _>>()?,
         })),
         _ => Err(Unreadable("prepared.widen is not an object".into())),
     }

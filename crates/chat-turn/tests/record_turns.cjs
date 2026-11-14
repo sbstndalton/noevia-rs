@@ -987,6 +987,8 @@ const CASES = [
   { name: 'more_tools_routes', about: 'Routing kept Drive only in a project with the documents box: widening brings the MCP tools with their routes; a read in the same round and the next both reach the documents server.', narrow: ['gdrive'], docs: true, project: QA_DOCS,
     rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('project_read_file', '{"name":"qa-notes.txt"}', 'qa-call-2', 1), finish('tool_calls')] },
       { frames: [toolCall('project_read_file', '{"name":"qa-plan.txt"}', 'qa-call-3'), finish('tool_calls')] }, answer('Read both notes.')] },
+  { name: 'more_tools_blocked', about: 'The account blocks a Drive write: widening reads every policy again and still leaves it out.', narrow: ['core'], policy: { drive_trash_file: 'block' },
+    rounds: [{ frames: [toolCall('more_tools', '{}'), finish('tool_calls')] }, answer('Widened without the blocked tool.')] },
 ];
 
 (async () => {
