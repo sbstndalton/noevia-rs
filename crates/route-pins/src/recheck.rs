@@ -7,15 +7,19 @@
 //! with the recorder's own rules, reports every difference ([`Drift`]), and gives a recording with the new facts, so
 //! [`crate::classify`] and [`crate::delete_list`] can be recomputed at the train's core SHA.
 //!
+//! `behind` (core lines outside the stubs that still name a refused route: the "delete with handler" facts) is
+//! re-read too, with the recorder's piece matcher. `behind_methods` (the methods a hit line tests) is kept only for a
+//! stub whose hits did not move; otherwise it is dropped, so every hit line counts for every method (the safe side,
+//! as [`crate::handlers_behind`] documents).
+//!
 //! What it cannot recheck stays as recorded and is named in [`Rechecked::kept_as_recorded`]: the probed refusals
-//! (they need Node), `behind` (the handler lines, from the recorder's route-pattern scan), `pairing` (noevia's
-//! supervisor and assembler lines) and `owned_routes`. A changed refusal still needs a re-record; this check only
+//! (they need Node), `pairing` (noevia's supervisor and assembler lines) and `owned_routes`. A changed refusal still needs a re-record; this check only
 //! makes a stale *file* fact visible, the commonest way a delete list goes wrong (sbstndalton/noevia#2725 item 1).
 //!
 //! No I/O: the caller passes the tree as `path → text` (bin/route-pins-recheck.rs reads a directory).
 
 use crate::{Recording, Stub};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 /// A core tree: core-relative path (`server/x.cjs`) → file text. Callers leave out `node_modules/` and `.git/`, as
 /// the recorder's `grep --exclude-dir` does.
@@ -29,7 +33,8 @@ pub enum Drift {
     /// index.cjs no longer calls the stub's refusal function: the stub is no longer in the request chain, so its
     /// recorded refusals say nothing about today's core (re-record before trusting its verdict).
     NotCalled { file: String, function: String },
-    /// A list fact changed: `field` is `importers`, `string_refs`, `mentions` or `index_uses`.
+    /// A list fact changed: `field` is `importers`, `string_refs`, `mentions`, `index_uses` or `behind` (as
+    /// `pattern <- file`: a line number moving inside a file is not drift).
     Changed {
         file: String,
         field: &'static str,
@@ -62,15 +67,7 @@ pub struct Rechecked {
 impl Rechecked {
     /// The stub facts this check leaves as recorded.
     pub fn kept_as_recorded() -> &'static [&'static str] {
-        &[
-            "refusals",
-            "switched",
-            "env",
-            "behind",
-            "behind_methods",
-            "pairing",
-            "owned_routes",
-        ]
+        &["refusals", "switched", "env", "pairing", "owned_routes"]
     }
 }
 
@@ -190,7 +187,7 @@ fn declared_before(index: &str, at: usize) -> Option<&str> {
 /// bound requires; a bare `<module>` only when nothing else was named), sorted.
 pub fn index_uses(index: &str, file: &str) -> Vec<String> {
     let call = format!("require('{}')", require_spec(file));
-    let mut uses = std::collections::BTreeSet::new();
+    let mut uses = BTreeSet::new();
     for (at, _) in index.match_indices(&call) {
         let rest = index.get(at + call.len()..).unwrap_or("");
         let named: String = rest
@@ -236,6 +233,127 @@ pub fn line_count(text: &str) -> usize {
     text.split('\n').count()
 }
 
+/// The recorder's handler files: `server/**/*.cjs` outside `node_modules/` and `fixtures/` directories, not a
+/// `.test.cjs`, not one of the recorded stubs. Each as its lines with a regex literal's `\/` read as `/`.
+fn handler_lines<'a>(tree: &'a Tree, stubs: &BTreeSet<&str>) -> Vec<(&'a str, Vec<String>)> {
+    tree.iter()
+        .filter(|(p, _)| {
+            p.starts_with("server/")
+                && p.ends_with(".cjs")
+                && !p.ends_with(".test.cjs")
+                && !stubs.contains(p.as_str())
+                && !p
+                    .split('/')
+                    .rev()
+                    .skip(1)
+                    .any(|d| d == "node_modules" || d == "fixtures")
+        })
+        .map(|(p, t)| {
+            (
+                p.as_str(),
+                t.split('\n').map(|l| l.replace("\\/", "/")).collect(),
+            )
+        })
+        .collect()
+}
+
+/// The literal pieces of a routes.toml pattern between its `{…}` parameters, without empty pieces and bare `/`
+/// (the recorder's `pattern.split(/\{[^}]*\}/).filter((x) => x && x !== '/')`).
+pub fn pattern_pieces(pattern: &str) -> Vec<&str> {
+    let mut out = Vec::new();
+    let mut rest = pattern;
+    loop {
+        let split = rest
+            .find('{')
+            .and_then(|open| Some((open, open + rest.get(open..)?.find('}')?)));
+        let Some((open, close)) = split else {
+            out.push(rest);
+            break;
+        };
+        out.push(rest.get(..open).unwrap_or(""));
+        rest = rest.get(close + 1..).unwrap_or("");
+    }
+    out.retain(|p| !p.is_empty() && *p != "/");
+    out
+}
+
+/// Whether one line names `pieces` in order (the recorder's `behind` line test). An `exact` pattern (one piece, no
+/// parameter) must not continue as a longer literal: `/api/x` is not `/api/xy`.
+fn names_route(line: &str, pieces: &[&str], exact: bool) -> bool {
+    let t = line.trim();
+    if t.starts_with("//") || t.starts_with('*') || line.contains("require('./rust-") {
+        return false;
+    }
+    let mut from = 0;
+    for piece in pieces {
+        let Some(at) = line
+            .get(from..)
+            .and_then(|l| l.find(piece))
+            .map(|i| i + from)
+        else {
+            return false;
+        };
+        let end = at + piece.len();
+        let next = line.get(end..).and_then(|l| l.chars().next());
+        if exact && next.is_some_and(|c| c.is_ascii_alphanumeric() || c == '_' || c == '-') {
+            return false;
+        }
+        from = end;
+    }
+    true
+}
+
+/// The recorder's `behind(patterns)`: per refused pattern, the `file:line` hits in core's handler files (by file,
+/// then line; a pattern without hits is left out).
+pub fn behind(
+    tree: &Tree,
+    stubs: &BTreeSet<&str>,
+    patterns: &[String],
+) -> BTreeMap<String, Vec<String>> {
+    let files = handler_lines(tree, stubs);
+    let mut out = BTreeMap::new();
+    for pattern in patterns {
+        let pieces = pattern_pieces(pattern);
+        if pieces.is_empty() {
+            continue;
+        }
+        let exact = pieces.len() == 1 && !pattern.contains('{');
+        let mut hits = Vec::new();
+        for (f, lines) in &files {
+            for (i, l) in lines.iter().enumerate() {
+                if names_route(l, &pieces, exact) {
+                    hits.push(format!("{f}:{}", i + 1));
+                }
+            }
+        }
+        if !hits.is_empty() {
+            out.insert(pattern.clone(), hits);
+        }
+    }
+    out
+}
+
+/// `behind` as sets of hits per pattern (the recorder lists them in directory order; the verdicts read them as a set).
+fn hit_sets(b: &BTreeMap<String, Vec<String>>) -> BTreeMap<&str, BTreeSet<&str>> {
+    b.iter()
+        .map(|(p, h)| (p.as_str(), h.iter().map(String::as_str).collect()))
+        .collect()
+}
+
+/// `behind` as `pattern <- file` facts, for drift that ignores line numbers.
+fn behind_files(b: &BTreeMap<String, Vec<String>>) -> Vec<String> {
+    let set: BTreeSet<String> = b
+        .iter()
+        .flat_map(|(p, hits)| {
+            hits.iter().map(move |h| {
+                let file = h.rsplit_once(':').map_or(h.as_str(), |(f, _)| f);
+                format!("{p} <- {file}")
+            })
+        })
+        .collect();
+    set.into_iter().collect()
+}
+
 fn changed(file: &str, field: &'static str, was: &[String], now: &[String]) -> Option<Drift> {
     let added: Vec<String> = now.iter().filter(|x| !was.contains(x)).cloned().collect();
     let removed: Vec<String> = was.iter().filter(|x| !now.contains(x)).cloned().collect();
@@ -255,6 +373,7 @@ pub fn recheck(rec: &Recording, tree: &Tree) -> Result<Rechecked, String> {
     let mut out = rec.clone();
     let mut drift = Vec::new();
     out.stubs.clear();
+    let stub_files: BTreeSet<&str> = rec.stubs.iter().map(|s| s.file.as_str()).collect();
     for s in &rec.stubs {
         let Some(text) = tree.get(&s.file) else {
             drift.push(Drift::Gone {
@@ -283,11 +402,24 @@ pub fn recheck(rec: &Recording, tree: &Tree) -> Result<Rechecked, String> {
         n.string_refs = refs;
         n.mentions = mentions;
         n.index_uses = index_uses(index, &s.file);
+        let patterns: BTreeSet<String> = s
+            .refusals
+            .iter()
+            .filter_map(|r| r.pattern.clone())
+            .collect();
+        let patterns: Vec<String> = patterns.into_iter().collect();
+        n.behind = behind(tree, &stub_files, &patterns);
+        if hit_sets(&n.behind) != hit_sets(&s.behind) {
+            // A hit line's method facts belong to its old line number: without them every hit counts (safe side).
+            n.behind_methods.clear();
+        }
+        let (was_behind, now_behind) = (behind_files(&s.behind), behind_files(&n.behind));
         for (field, was, now) in [
             ("importers", &s.importers, &n.importers),
             ("string_refs", &s.string_refs, &n.string_refs),
             ("mentions", &s.mentions, &n.mentions),
             ("index_uses", &s.index_uses, &n.index_uses),
+            ("behind", &was_behind, &now_behind),
         ] {
             drift.extend(changed(&s.file, field, was, now));
         }

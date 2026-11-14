@@ -302,8 +302,132 @@ fn the_embedded_recording_s_facts_are_in_the_rules_shape() {
         );
     }
     assert_eq!(
-        Rechecked::kept_as_recorded().len(),
-        7,
+        Rechecked::kept_as_recorded(),
+        ["refusals", "switched", "env", "pairing", "owned_routes"],
         "the facts left as recorded are named in the module docs"
+    );
+}
+
+#[test]
+fn pattern_pieces_split_on_parameters_like_the_recorder() {
+    assert_eq!(pattern_pieces("/api/x"), ["/api/x"]);
+    assert_eq!(pattern_pieces("/api/x/{id}"), ["/api/x/"]);
+    assert_eq!(pattern_pieces("/api/x/{id}/y"), ["/api/x/", "/y"]);
+    assert_eq!(pattern_pieces("/api/{a}/{b}"), ["/api/"]);
+    assert_eq!(pattern_pieces("/api/x/{*}"), ["/api/x/"]);
+    assert_eq!(pattern_pieces("/{id}"), Vec::<&str>::new());
+    // No closing brace: no parameter (`\{[^}]*\}` needs one).
+    assert_eq!(pattern_pieces("/api/broken/{id"), ["/api/broken/{id"]);
+}
+
+#[test]
+fn behind_finds_handler_lines_outside_stubs_tests_and_fixtures() {
+    let t = tree(&[
+        ("server/index.cjs", "if (p === '/api/a') return a(req, res);\nrequire('./rust-a.cjs').refuseOwned(req, res, '/api/a');"),
+        ("server/rust-a.cjs", "if (p === '/api/a') refuse();"),
+        ("server/routes/a.cjs", "// '/api/a' handled here\n  * '/api/a'\nrouter.get('/api/ab', x);\nrouter.get('/api/a', h);\nconst re = /^\\/api\\/a$/;"),
+        ("server/routes/a.test.cjs", "get('/api/a')"),
+        ("server/fixtures/a.cjs", "get('/api/a')"),
+        ("server/notes.js", "get('/api/a')"),
+        ("tests/a.cjs", "get('/api/a')"),
+        ("server/routes/items.cjs", "if (m[1] && p.startsWith('/api/items/') && p.endsWith('/open')) open();"),
+    ]);
+    let stubs: BTreeSet<&str> = ["server/rust-a.cjs"].into_iter().collect();
+    let b = behind(
+        &t,
+        &stubs,
+        &[
+            "/api/a".to_string(),
+            "/api/items/{id}/open".to_string(),
+            "/api/none".to_string(),
+        ],
+    );
+    assert_eq!(
+        b["/api/a"],
+        [
+            "server/index.cjs:1",
+            "server/routes/a.cjs:4",
+            "server/routes/a.cjs:5"
+        ]
+    );
+    assert_eq!(b["/api/items/{id}/open"], ["server/routes/items.cjs:1"]);
+    assert!(!b.contains_key("/api/none"));
+}
+
+#[test]
+fn a_new_handler_on_core_main_turns_a_file_delete_into_delete_with_handler() {
+    let rec = recording(vec![stub(
+        "server/rust-a.cjs",
+        2,
+        &["server/index.cjs"],
+        &["refuseOwned"],
+    )]);
+    let t = tree(&[
+        (
+            "server/index.cjs",
+            "require('./rust-a.cjs').refuseOwned(req, res);",
+        ),
+        ("server/rust-a.cjs", "x\n"),
+        ("server/routes/a.cjs", "router.get('/api/rust-a', h);"),
+    ]);
+    let r = recheck(&rec, &t).unwrap();
+    assert_eq!(
+        r.drift,
+        [Drift::Changed {
+            file: "server/rust-a.cjs".into(),
+            field: "behind",
+            added: vec!["/api/rust-a <- server/routes/a.cjs".into()],
+            removed: vec![],
+        }]
+    );
+    let front = |_: &str, _: &str| true;
+    assert_eq!(classify(&rec, &front)[0].verdict, Verdict::DeleteFile);
+    assert_eq!(
+        classify(&r.recording, &front)[0].verdict,
+        Verdict::GuardsHandler {
+            handlers: vec!["server/routes/a.cjs:1".into()]
+        }
+    );
+}
+
+#[test]
+fn moved_hit_lines_drop_their_method_facts_but_are_not_drift() {
+    let mut v = stub(
+        "server/rust-a.cjs",
+        2,
+        &["server/index.cjs"],
+        &["refuseOwned"],
+    );
+    v["behind"] = serde_json::json!({"/api/rust-a": ["server/routes/a.cjs:1"]});
+    v["behind_methods"] = serde_json::json!({"server/routes/a.cjs:1": ["PUT"]});
+    let rec = recording(vec![v]);
+    let index = "require('./rust-a.cjs').refuseOwned(req, res);";
+    // Same line: the facts stay.
+    let same = tree(&[
+        ("server/index.cjs", index),
+        ("server/rust-a.cjs", "x\n"),
+        (
+            "server/routes/a.cjs",
+            "if (req.method === 'PUT' && p === '/api/rust-a') put();",
+        ),
+    ]);
+    let r = recheck(&rec, &same).unwrap();
+    assert!(r.drift.is_empty(), "{:?}", r.drift);
+    assert_eq!(r.recording.stubs[0].behind_methods.len(), 1);
+    // One line lower: same file, so no drift, but the method fact no longer names that line.
+    let moved = tree(&[
+        ("server/index.cjs", index),
+        ("server/rust-a.cjs", "x\n"),
+        (
+            "server/routes/a.cjs",
+            "\nif (req.method === 'PUT' && p === '/api/rust-a') put();",
+        ),
+    ]);
+    let r = recheck(&rec, &moved).unwrap();
+    assert!(r.drift.is_empty(), "{:?}", r.drift);
+    assert!(r.recording.stubs[0].behind_methods.is_empty());
+    assert_eq!(
+        r.recording.stubs[0].behind["/api/rust-a"],
+        ["server/routes/a.cjs:2"]
     );
 }

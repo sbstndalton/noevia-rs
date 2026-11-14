@@ -4,7 +4,7 @@
 //! native handler that still hands a method or a spelling on to Node is caught here, not by the text scan in
 //! owned_routes_tests (sbstndalton/noevia#2725 item 4).
 //!
-//! Opt-in: it runs only with `ROUTE_PINS_STRICT=1`, the deletion train's mode, because it sends about 1,400
+//! Opt-in: it runs only with `ROUTE_PINS_STRICT=1`, the deletion train's mode, because it sends about 730
 //! requests to every native handler (some do real work against the synthetic data directory) and a newly added
 //! route must not make every track's CI slower or flakier. Synthetic data only.
 #![allow(
