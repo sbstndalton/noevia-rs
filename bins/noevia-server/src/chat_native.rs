@@ -499,7 +499,7 @@ async fn drive(
     };
     let client = provider
         .as_ref()
-        .map_or_else(engine_client, crate::chat_provider::ProviderTurn::client);
+        .map_or_else(engine_client, |turn| turn.client());
     let host = Arc::new(FrontHost {
         app: Arc::clone(&app),
         user,
@@ -535,7 +535,7 @@ async fn drive(
     let helpers = helpers();
     let ended = match provider {
         None => native::run(&*host, process, &helpers, &p).await,
-        Some(turn) => match turn.run(&*host, process, &helpers, &p).await {
+        Some(turn) => match (*turn).run(&*host, process, &helpers, &p).await {
             Ok(ended) => ended,
             Err(e) => {
                 // plan() only cuts what ProviderHost takes; refused all the same if they ever differ.

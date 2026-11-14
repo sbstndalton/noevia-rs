@@ -105,8 +105,8 @@ pub struct Facts<'a> {
 pub enum Plan {
     /// The front's host as it is: the default provider, or a front not offering [`CAPS_TOKEN`] (today's path).
     Plain,
-    /// The provider host around the front's, bound by this cut.
-    Provider(Cut),
+    /// The provider host around the front's, bound by this cut (boxed: clippy large_enum_variant).
+    Provider(Box<Cut>),
     /// Nothing is sent; the turn ends with the native failure text. The reason is for the log.
     Refuse(&'static str),
 }
@@ -164,7 +164,7 @@ pub fn plan(p: &Prepared, f: &Facts<'_>) -> Plan {
     if p.runtime_limit.as_ref() != Some(&(tokens, source.to_string())) {
         return Plan::Refuse(LIMIT);
     }
-    Plan::Provider(c)
+    Plan::Provider(Box::new(c))
 }
 
 /// core provider-egress.cjs `isExternalProvider(row)`, an unknown answer counted as external: a row the server
@@ -195,8 +195,8 @@ pub enum Setup {
     Plain,
     /// Not run: the reason is logged here, the turn ends with the native failure text before a byte goes out.
     Refused,
-    /// A provider row's turn, cut and bound.
-    Provider(ProviderTurn),
+    /// A provider row's turn, cut and bound (boxed: clippy large_enum_variant).
+    Provider(Box<ProviderTurn>),
 }
 
 /// A provider row's turn as [`setup`] cut it: run it with [`ProviderTurn::run`] on a front host built with
@@ -323,12 +323,12 @@ pub async fn setup(app: &Arc<App>, data_dir: &Path, user: &str, p: &Prepared) ->
                 default_id.clone(),
                 keys,
             );
-            Setup::Provider(ProviderTurn {
-                cut,
+            Setup::Provider(Box::new(ProviderTurn {
+                cut: *cut,
                 rows,
                 client,
                 default_id,
-            })
+            }))
         }
     }
 }
