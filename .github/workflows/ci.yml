@@ -8,10 +8,12 @@ on:
 permissions:
   contents: read
 
-# A newer push to a pull request cancels its superseded run. Push runs (main only) are keyed by
-# commit, so none is ever cancelled or replaced.
+# A newer push to a pull request cancels its superseded run. Push runs (main only) share one group per
+# workflow without cancelling: the running main check always finishes (and saves the cache), and a newer
+# merge replaces any main run still waiting, so main is checked at its latest head and no minutes are spent
+# on superseded merges.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
@@ -35,6 +37,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.12"
@@ -105,6 +110,9 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Verify actual merged worker and production interpreter
         run: |
           set -euo pipefail
@@ -138,6 +146,9 @@ jobs:
           python-version: "3.12"
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Verify actual merged worker and production interpreter
         run: |
           set -euo pipefail
@@ -237,6 +248,9 @@ jobs:
           "$RUNNER_TEMP/rs-pin/tools/build-dav-parse-wasm.sh" "$PWD/server/wasm/dav-parse.wasm"
           echo "$DAV_PARSE_WASM_SHA256  server/wasm/dav-parse.wasm" | sha256sum -c -
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - run: cargo build --locked -p replay
       - name: Replay
         run: |
@@ -308,6 +322,9 @@ jobs:
       # Front replays run behind the Core generation paired with this front (front-core.ref).
       - uses: ./.github/actions/paired-core
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - run: cargo build --locked -p replay -p noevia-server
       # Chat port S5: tests/chat_turn.rs reads a broken chat stream with the web client's own reader
       # (noevia-web src/api.ts at contracts/http/web.ref, run by tests/web-stream-chat.cjs).
@@ -419,6 +436,9 @@ jobs:
       # Front replays run behind the Core generation paired with this front (front-core.ref).
       - uses: ./.github/actions/paired-core
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - run: cargo build --locked -p replay -p noevia-server
       # Ownership follows the current paired guard, not the historical behavior oracle.
       - name: Read the exact paired store-guard counterpart
@@ -546,6 +566,9 @@ jobs:
           cmp crates/server-projects/tests/fixtures/node-free-chats.v1.json "$RUNNER_TEMP/node-free-chats.v1.json" \
             || { echo "::error::regenerate crates/server-projects/tests/fixtures/node-free-chats.v1.json with tools/gen-free-chats-fixtures.cjs at contracts/http/core.ref"; exit 1; }
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Build the front with both chat-list slices
         run: |
           set -euo pipefail
@@ -727,6 +750,9 @@ jobs:
           path: ${{ runner.temp }}/simplewebauthn-v14.json
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Rust agrees with @simplewebauthn on the fresh output
         run: NOEVIA_PASSKEY_FIXTURE="$RUNNER_TEMP/simplewebauthn-v14.json" cargo test --locked -p passkey --test compat
 
@@ -766,6 +792,9 @@ jobs:
           path: ${{ runner.temp }}/node-auth.v1.json
       - uses: dtolnay/rust-toolchain@70dec6087f2cb6bab9fbac4da23160afbe848e91 # 1.99.0
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Rust agrees with the fresh Node output
         run: NOEVIA_AUTH_FIXTURE="$RUNNER_TEMP/node-auth.v1.json" cargo test --locked -p server-auth --test differential
       - name: The committed fixture is current
@@ -798,6 +827,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Regenerate actual Python policy fixture without starting the app
         run: |
           cargo run --locked -q -p noevia-model-manager --bin generate-oracle -- legacy-services/model-manager/app/api.py > "$RUNNER_TEMP/logs.json"
@@ -883,6 +915,9 @@ jobs:
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r prompts-runtime/model-manager/requirements.txt
@@ -963,6 +998,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r settings-services/model-manager/requirements.txt
@@ -1007,6 +1045,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r downloads-services/model-manager/requirements.txt
@@ -1046,6 +1087,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r model-delete-services/model-manager/requirements.txt
@@ -1091,6 +1135,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r draft-heads-services/model-manager/requirements.txt
@@ -1143,6 +1190,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r search-services/model-manager/requirements.txt
@@ -1194,6 +1244,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r benchmark-overview-services/model-manager/requirements.txt
@@ -1236,6 +1289,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r check-updates-services/model-manager/requirements.txt
@@ -1279,6 +1335,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r bench-runner-services/model-manager/requirements.txt
@@ -1329,6 +1388,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r validation-services/model-manager/requirements.txt
@@ -1360,6 +1422,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r settings-write-services/model-manager/requirements.txt
@@ -1409,6 +1474,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r backends-services/model-manager/requirements.txt
@@ -1454,6 +1522,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r backend-control-services/model-manager/requirements.txt
@@ -1498,6 +1569,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r model-updates-services/model-manager/requirements.txt
@@ -1546,6 +1620,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r model-detail-services/model-manager/requirements.txt
@@ -1596,6 +1673,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r model-list-services/model-manager/requirements.txt
@@ -1646,6 +1726,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r section-autoconfig-services/model-manager/requirements.txt
@@ -1706,6 +1789,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r telemetry-services/model-manager/requirements.txt
@@ -1752,6 +1838,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r observe-services/model-manager/requirements.txt
@@ -1794,6 +1883,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r download-targets-services/model-manager/requirements.txt
@@ -1842,6 +1934,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r badges-services/model-manager/requirements.txt
@@ -1898,6 +1993,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r bench-runs-services/model-manager/requirements.txt
@@ -1955,6 +2053,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded oracle framework resolution
         run: |
           python3 -m pip install -r section-writes-services/model-manager/requirements.txt
@@ -2026,6 +2127,9 @@ jobs:
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Prepare immutable oracle and external locked Node dependencies
         run: |
           set -euo pipefail
@@ -2179,6 +2283,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install the real OCR/PDF engines
         run: sudo apt-get update && sudo apt-get install -y poppler-utils ghostscript tesseract-ocr tesseract-ocr-eng tesseract-ocr-deu
       - run: cargo clippy --locked -p noevia-ocr --all-targets --features native-ocr -- -D warnings
@@ -2228,6 +2335,9 @@ jobs:
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Build the independently checksum-pinned actual-core WASM
         run: |
           set -euo pipefail
@@ -2303,6 +2413,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install the services requirements
         run: python3 -m pip install -r telemetry-services/model-manager/requirements.txt
       - name: Regenerate the actual Python telemetry oracle
@@ -2333,6 +2446,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - run: python3 -m pip install -r token-services/model-manager/requirements.txt
       - name: Regenerate actual Python validator oracle without network
         run: |
@@ -2376,6 +2492,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Regenerate actual Python fresh, legacy and repeated schemas
         run: |
           python3 -I tools/gen-db-init-oracle.py --db-file db-init-services/model-manager/app/db.py --services-ref eefbcbaeebd3f806c62dd5aea48036da8b20bfbf --output-root "$RUNNER_TEMP/db-init-oracle"
@@ -2409,6 +2528,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Regenerate actual Python plans, responses and files
         run: |
           python3 -m pip install -r safe-defaults-services/model-manager/requirements.txt
@@ -2462,6 +2584,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Install recorded actual-companion and SDK dependencies
         run: |
           echo "PYTHON=$(command -v python3)" >> "$GITHUB_ENV"
@@ -2500,6 +2625,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Actual Python planner oracle
         run: |
           python3 -m pip install -r download-plan-services/model-manager/requirements.txt
@@ -2533,6 +2661,9 @@ jobs:
         with:
           components: clippy, rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - name: Actual pinned ASGI oracle, with endpoint execution stubbed only
         run: |
           python3 -m pip install -r routing-services/model-manager/requirements.txt

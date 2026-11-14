@@ -5,6 +5,7 @@ merge commit) through the decision at their own merge commits, and prints the jo
 start before and after the scoping. Needs the full history (checkout fetch-depth: 0) and cargo.
 """
 import json
+import os
 import pathlib
 import subprocess
 import sys
@@ -187,6 +188,37 @@ class Synthetic(unittest.TestCase):
                            cwd=REPO, capture_output=True, text=True, check=True)
         self.assertTrue(json.loads(r.stdout)["full"])
 
+
+
+class WorkflowCachePolicy(unittest.TestCase):
+    """Main-only cache saves and one main group per workflow (CI throughput, 2026-11-13).
+
+    Pull-request caches are scoped to their PR, so saving them only evicts main's caches under the
+    10 GB repository cap and leaves later jobs cold. Push runs share one group per workflow so a newer
+    merge replaces a waiting main run instead of a superseded one being cancelled halfway.
+    """
+
+    def _workflows(self):
+        import glob
+        root = os.path.join(os.path.dirname(__file__), "..", "..", ".github", "workflows")
+        files = sorted(glob.glob(os.path.join(root, "*.yml")))
+        self.assertTrue(files)
+        return [(f, open(f, encoding="utf-8").read()) for f in files]
+
+    def test_every_rust_cache_saves_only_on_push(self):
+        for f, text in self._workflows():
+            lines = text.split("\n")
+            for i, line in enumerate(lines):
+                if "Swatinem/rust-cache@" in line:
+                    block = "\n".join(lines[i + 1 : i + 6])
+                    self.assertIn("save-if: ${{ github.event_name == 'push' }}", block, f"{f}:{i + 1}")
+
+    def test_push_runs_group_by_branch_not_commit(self):
+        for f, text in self._workflows():
+            if "concurrency:" not in text:
+                continue
+            self.assertNotIn("|| github.sha }}", text, f)
+            self.assertIn("|| github.ref }}", text, f)
 
 if __name__ == "__main__":
     unittest.main()

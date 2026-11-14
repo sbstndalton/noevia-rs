@@ -5,10 +5,12 @@ on:
   pull_request:
 permissions:
   contents: read
-# A newer push to a pull request cancels its superseded run. Push runs (main only) are keyed by
-# commit, so none is ever cancelled or replaced.
+# A newer push to a pull request cancels its superseded run. Push runs (main only) share one group per
+# workflow without cancelling: the running main check always finishes (and saves the cache), and a newer
+# merge replaces any main run still waiting, so main is checked at its latest head and no minutes are spent
+# on superseded merges.
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.sha }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 jobs:
   # tools/ci/changed_areas.py: on a pull request that only changes leaf crates nobody depends on
@@ -47,6 +49,9 @@ jobs:
           components: clippy, rustfmt
           targets: wasm32-unknown-unknown
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
+        with:
+          # Only main saves caches: pull-request caches are scoped to their PR and evicted main's (10 GB repo cap).
+          save-if: ${{ github.event_name == 'push' }}
       - run: cargo fmt --all -- --check
       - run: cargo clippy --locked -p server-stats -p noevia-server --all-targets --features noevia-server/rust-stats -- -D warnings
       - name: Actual core handler oracle reproduces the committed corpus
