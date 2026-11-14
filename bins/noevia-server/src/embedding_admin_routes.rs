@@ -1193,10 +1193,19 @@ mod tests {
         // A transient refusal (the name does not resolve yet) is asked again after a few seconds.
         let pending = "http://qa-embed-late.invalid:8080";
         let not_yet: Verdict = Err(("the name does not resolve (ENOTFOUND)".into(), true));
-        assert_eq!(rt.block_on(v.verdict(pending, at, check(not_yet.clone()))), not_yet);
-        assert_eq!(rt.block_on(v.verdict(pending, at + Duration::from_secs(4), check(Ok(())))), not_yet);
+        assert_eq!(
+            rt.block_on(v.verdict(pending, at, check(not_yet.clone()))),
+            not_yet
+        );
+        assert_eq!(
+            rt.block_on(v.verdict(pending, at + Duration::from_secs(4), check(Ok(())))),
+            not_yet
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 4);
-        assert_eq!(rt.block_on(v.verdict(pending, at + Duration::from_secs(6), check(Ok(())))), Ok(()));
+        assert_eq!(
+            rt.block_on(v.verdict(pending, at + Duration::from_secs(6), check(Ok(())))),
+            Ok(())
+        );
         assert_eq!(calls.load(Ordering::SeqCst), 5);
         // Two checks are not run one after the other (no lock is held while one waits).
         let slow = |_url: String| async {
