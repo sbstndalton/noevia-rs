@@ -16,6 +16,10 @@
 //!
 //! Each attempt's deadline is core's `AbortSignal.timeout` for that request: PUT 60 s, DELETE 30 s
 //! (15 s for an empty folder), MKCOL and PROPFIND 15 s.
+//!
+//! Two departures from core (sbstndalton/noevia#2751; core's twin follows its own pull request): a
+//! space address ([`checks_first`]) reads the state before a create-only write and a discard, and a
+//! PROPFIND ETag is read with the one-pass XML reference decoder (`&#34;` too, not only `&quot;`).
 use crate::protocol::{
     self, Connection, Kind, Method, Request, Response, Transport, TransportFailure,
 };
@@ -107,6 +111,15 @@ pub enum Version {
 
 fn kind_dav(c: &Connection) -> bool {
     matches!(c.kind, Kind::WebDav | Kind::Nextcloud)
+}
+
+/// Whether the connection is a space address (`…/dav/spaces/<id>`). The WebDAV layer that serves
+/// those honours `If-Match` on PUT but ignores `If-None-Match: *` on PUT and `If-Match` on DELETE, so
+/// there a create-only write and a discard read the resource's state first and refuse as the
+/// condition would have: a check, then the request (not atomic: the window is one round trip).
+/// Every other address sends today's single conditional request.
+pub fn checks_first(c: &Connection) -> bool {
+    kind_dav(c) && url::Url::parse(&c.base_url).is_ok_and(|u| u.path().contains("/dav/spaces/"))
 }
 
 fn safe(raw: &str) -> Option<String> {
@@ -277,6 +290,21 @@ pub fn write_file(
             format!("file exceeds the {} byte limit", crate::WRITE_BYTES),
         ));
     }
+    if *condition == Condition::IfNoneMatch && checks_first(c) {
+        let exists = match file_version(c, &path, t) {
+            Ok(Version::Missing) => false,
+            Ok(Version::Present(_)) => true,
+            Err(e) if e.code == Some("folder") => true,
+            Err(e) => return Err(e),
+        };
+        if exists {
+            return Err(StorageError::new(
+                409,
+                format!("\"{path}\" already exists in storage, so it was not overwritten (412)"),
+            )
+            .code("changed"));
+        }
+    }
     let conditional = *condition != Condition::None;
     let url = dav_url(c, &path, false);
     let r = send(t, conditional, || {
@@ -347,6 +375,14 @@ pub fn discard_written(
     if bad_value(etag) {
         return (false, "no-etag");
     }
+    if checks_first(c) {
+        match file_version(c, &path, t) {
+            Ok(Version::Present(now)) if quote_etag(&now) == quote_etag(etag) => {}
+            Ok(Version::Present(_)) => return (false, "changed"),
+            Ok(Version::Missing) => return (false, "missing"),
+            Err(_) => return (false, "error"),
+        }
+    }
     let url = dav_url(c, &path, false);
     let req = request(
         c,
@@ -415,10 +451,12 @@ fn has_collection(block: &str, attributes: bool) -> bool {
     false
 }
 
+/// The first `<[p:]getetag>`'s text, XML references decoded in one pass: `&quot;` as one server
+/// writes the quotes, `&#34;` as another (an XML encoder that writes numeric references) does.
 fn etag_text(block: &str) -> String {
     dav_parse::element_texts(block, "getetag", 1)
         .first()
-        .map(|t| t.trim().replace("&quot;", "\"").replace("&amp;", "&"))
+        .map(|t| dav_parse::decode_xml_entities(t.trim()))
         .unwrap_or_default()
 }
 
@@ -936,6 +974,109 @@ mod tests {
         assert_eq!(
             delete_file(&dav(), "a.md", &mut t).unwrap_err().message,
             "storage returned no file state"
+        );
+    }
+
+    fn space() -> Connection {
+        Connection {
+            kind: Kind::WebDav,
+            base_url: "https://cloud.example/dav/spaces/s1$p1".into(),
+            ..dav()
+        }
+    }
+
+    #[test]
+    fn a_space_address_checks_before_a_create_only_write_and_a_discard() {
+        assert!(checks_first(&space()));
+        assert!(!checks_first(&dav()));
+        assert!(!checks_first(&s3()));
+        // Missing: the PUT follows, still create-only.
+        let mut t = Fake::new(vec![Ok((404, "")), Ok((201, "\"e1\""))]);
+        let w = write_file(&space(), "a.md", b"x", &Condition::IfNoneMatch, &mut t).unwrap();
+        assert!(w.created);
+        assert_eq!((t.seen[0].0, t.seen[1].0), (Method::Propfind, Method::Put));
+        assert_eq!(t.header(0, "Depth").as_deref(), Some("0"));
+        assert_eq!(t.header(1, "If-None-Match").as_deref(), Some("*"));
+        // Present, or a folder: refused as a 412 would be, and no PUT is sent.
+        for body in [FILE, DIR] {
+            let mut t = Fake::new(vec![Ok((207, body))]);
+            let e =
+                write_file(&space(), "a.md", b"x", &Condition::IfNoneMatch, &mut t).unwrap_err();
+            assert_eq!((e.status, e.code), (409, Some("changed")));
+            assert_eq!(t.seen.len(), 1);
+        }
+        // A replace and an unconditional write send one request, as everywhere.
+        let mut t = Fake::new(vec![Ok((201, "\"e3\""))]);
+        write_file(&space(), "a.md", b"x", &Condition::None, &mut t).unwrap();
+        assert_eq!(t.seen.len(), 1);
+        assert_eq!(t.seen[0].0, Method::Put);
+        let mut t = Fake::new(vec![Ok((204, "\"e2\""))]);
+        write_file(
+            &space(),
+            "a.md",
+            b"x",
+            &Condition::IfMatch("e9".into()),
+            &mut t,
+        )
+        .unwrap();
+        assert_eq!(t.seen.len(), 1);
+        // Discard: the current ETag (quoted or not) lets the DELETE go; another one, or none, stops it.
+        let mut t = Fake::new(vec![Ok((207, FILE)), Ok((204, ""))]);
+        assert_eq!(discard_written(&space(), "a.md", "e9", &mut t), (true, ""));
+        assert_eq!(t.header(1, "If-Match").as_deref(), Some("\"e9\""));
+        let mut t = Fake::new(vec![Ok((207, FILE))]);
+        assert_eq!(
+            discard_written(&space(), "a.md", "\"e8\"", &mut t),
+            (false, "changed")
+        );
+        let mut t = Fake::new(vec![Ok((404, ""))]);
+        assert_eq!(
+            discard_written(&space(), "a.md", "e9", &mut t),
+            (false, "missing")
+        );
+        let mut t = Fake::new(vec![Err(TransportFailure::Timeout)]);
+        assert_eq!(
+            discard_written(&space(), "a.md", "e9", &mut t),
+            (false, "error")
+        );
+        // Today's address: one DELETE, the server holds the condition.
+        let mut t = Fake::new(vec![Ok((412, ""))]);
+        assert_eq!(
+            discard_written(&dav(), "a.md", "e8", &mut t),
+            (false, "changed")
+        );
+        assert_eq!(t.seen.len(), 1);
+    }
+
+    #[test]
+    fn an_etag_written_with_numeric_references_reads_as_the_header_etag() {
+        let numeric = FILE.replace("&quot;", "&#34;");
+        let hex = FILE.replace("&quot;", "&#x22;");
+        for body in [FILE, numeric.as_str(), hex.as_str()] {
+            let mut t = Fake::new(vec![Ok((207, body)), Ok((204, ""))]);
+            assert_eq!(
+                file_version(&dav(), "a.md", &mut t).unwrap(),
+                Version::Present("\"e9\"".into()),
+                "{body}"
+            );
+            let mut t = Fake::new(vec![Ok((207, body)), Ok((204, ""))]);
+            assert!(!delete_file(&dav(), "a.md", &mut t).unwrap());
+            assert_eq!(t.header(1, "If-Match").as_deref(), Some("\"e9\""), "{body}");
+        }
+        // A collection's ETag too: the sweep's If-Match is the quoted value, not its escape.
+        let body = listing(&[], "&#34;d1&#34;");
+        let mut t = Fake::new(vec![Ok((207, &body)), Ok((204, ""))]);
+        assert_eq!(
+            remove_empty_folder(&dav(), "noevia projects/p", &mut t).unwrap(),
+            (true, "")
+        );
+        assert_eq!(t.header(1, "If-Match").as_deref(), Some("\"d1\""));
+        // Decoded once: an escaped reference stays one.
+        let body = FILE.replace("&quot;e9&quot;", "&amp;#34;e9&amp;#34;");
+        let mut t = Fake::new(vec![Ok((207, &body))]);
+        assert_eq!(
+            file_version(&dav(), "a.md", &mut t).unwrap(),
+            Version::Present("&#34;e9&#34;".into())
         );
     }
 
