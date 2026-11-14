@@ -3,6 +3,8 @@
 
 /// Synthetic PDFs for the extraction tests (services docling/synthetic_pdfs.py in Rust).
 pub mod synthetic;
+/// The image health probe (the HEALTHCHECK's python urllib one-liner in Rust).
+pub mod health;
 use serde_json::{json, Value};
 use std::{path::PathBuf, process::Stdio, time::Duration};
 use tokio::{

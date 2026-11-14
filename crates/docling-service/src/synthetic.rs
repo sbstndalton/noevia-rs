@@ -117,19 +117,28 @@ fn stream_object(dictionary_head: &[u8], data: &[u8]) -> Vec<u8> {
 /// The whole document for `pages`. Objects: 1 catalog, 2 pages tree, 3 font, 4 image, then a page
 /// and its content stream per page, written in number order with a classic cross-reference table.
 pub fn build(pages: &[Page]) -> Result<Vec<u8>, Error> {
-    let count = pages.len();
-    // Index = object number; 0 is the free head of the table.
-    let mut objects: Vec<Vec<u8>> = vec![Vec::new(); 5 + 2 * count];
-    objects[3] = b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec();
-    objects[4] = stream_object(
-        b"<< /Type /XObject /Subtype /Image /Width 8 /Height 8 \
+    // Page i is object 5 + 2i, its content stream 6 + 2i.
+    let kids: Vec<String> = (0..pages.len())
+        .map(|index| format!("{} 0 R", 5 + 2 * index))
+        .collect();
+    // In object-number order from 1.
+    let mut objects: Vec<Vec<u8>> = vec![
+        b"<< /Type /Catalog /Pages 2 0 R >>".to_vec(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {} >>",
+            kids.join(" "),
+            kids.len()
+        )
+        .into_bytes(),
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+        stream_object(
+            b"<< /Type /XObject /Subtype /Image /Width 8 /Height 8 \
 /ColorSpace /DeviceGray /BitsPerComponent 8 /Filter /FlateDecode ",
-        &zlib_run(GREY, PIXELS),
-    );
-    let mut kids = Vec::with_capacity(count);
+            &zlib_run(GREY, PIXELS),
+        ),
+    ];
     for (index, page) in pages.iter().enumerate() {
-        let (page_obj, content_obj) = (5 + 2 * index, 6 + 2 * index);
-        kids.push(page_obj);
+        let content_obj = 6 + 2 * index;
         let mut parts: Vec<String> = Vec::new();
         if page.kind == "picture-text" || page.kind == "picture" {
             parts.push(IMAGE_OPS.to_string());
@@ -138,35 +147,29 @@ pub fn build(pages: &[Page]) -> Result<Vec<u8>, Error> {
             parts.push(text_ops(&page.lines));
         }
         let content = latin1(&parts.join("\n"))?;
-        objects[content_obj] = stream_object(b"<< ", &content);
-        objects[page_obj] = format!(
-            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
+        objects.push(
+            format!(
+                "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
 /Resources << /Font << /F1 3 0 R >> /XObject << /Im1 4 0 R >> >> /Contents {content_obj} 0 R >>"
-        )
-        .into_bytes();
+            )
+            .into_bytes(),
+        );
+        objects.push(stream_object(b"<< ", &content));
     }
-    let kids_text: Vec<String> = kids.iter().map(|k| format!("{k} 0 R")).collect();
-    objects[2] = format!(
-        "<< /Type /Pages /Kids [{}] /Count {} >>",
-        kids_text.join(" "),
-        kids.len()
-    )
-    .into_bytes();
-    objects[1] = b"<< /Type /Catalog /Pages 2 0 R >>".to_vec();
 
     let mut out = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n".to_vec();
-    let mut offsets = vec![0usize; objects.len()];
-    for (number, body) in objects.iter().enumerate().skip(1) {
-        offsets[number] = out.len();
+    let mut offsets = Vec::with_capacity(objects.len());
+    for (number, body) in (1..).zip(&objects) {
+        offsets.push(out.len());
         out.extend_from_slice(format!("{number} 0 obj\n").as_bytes());
         out.extend_from_slice(body);
         out.extend_from_slice(b"\nendobj\n");
     }
     let xref = out.len();
-    let size = objects.len();
+    let size = objects.len() + 1;
     out.extend_from_slice(format!("xref\n0 {size}\n").as_bytes());
     out.extend_from_slice(b"0000000000 65535 f \n");
-    for offset in &offsets[1..] {
+    for offset in &offsets {
         out.extend_from_slice(format!("{offset:010} 00000 n \n").as_bytes());
     }
     out.extend_from_slice(
@@ -278,17 +281,20 @@ fn fixed_literal(bits: &mut BitWriter, byte: u8) {
 
 fn fixed_length(bits: &mut BitWriter, length: usize) {
     // The last base not above the length; 258 has its own code (285).
-    let index = LENGTH_BASE
+    let (index, base, extra) = LENGTH_BASE
         .iter()
-        .rposition(|base| *base <= length)
-        .unwrap_or(0);
+        .zip(LENGTH_EXTRA.iter())
+        .enumerate()
+        .rev()
+        .find(|(_, (base, _))| **base <= length)
+        .map_or((0, 3, 0), |(index, (base, extra))| (index, *base, *extra));
     let symbol = 257 + index as u32;
     if symbol < 280 {
         bits.put_code(symbol - 256, 7);
     } else {
         bits.put_code(0xc0 + symbol - 280, 8);
     }
-    bits.put((length - LENGTH_BASE[index]) as u32, LENGTH_EXTRA[index]);
+    bits.put((length - base) as u32, extra);
 }
 
 /// Deflate's bit order: values least significant bit first, Huffman codes most significant first.
@@ -327,6 +333,7 @@ impl BitWriter {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
 
