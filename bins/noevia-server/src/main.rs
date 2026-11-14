@@ -295,6 +295,12 @@ async fn server_main() -> ExitCode {
             config.dist.display()
         );
     }
+    if config.front_only {
+        println!(
+            "noevia-server: {}",
+            noevia_server::node_link::alone_summary()
+        );
+    }
     let legacy = if config.front_only {
         "none: front only".to_owned()
     } else {

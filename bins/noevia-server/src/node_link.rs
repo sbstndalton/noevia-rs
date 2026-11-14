@@ -142,6 +142,21 @@ pub const CONSTANT_READERS: &[&str] = &[
 /// which never starts in a front alone, sends it to Node.
 pub const STORE_CONFIG_READERS: &[&str] = &["main.rs", "embedding_background.rs"];
 
+/// The start-up line of a front alone: how many clients of Node answer without it, and what that means.
+pub fn alone_summary() -> String {
+    let count = |t: Transport| CLIENTS.iter().filter(|c| c.transport == t).count();
+    format!(
+        "front only: {} clients of Node dial nothing (bridge {}, model maintenance {}, approval revocation {}, \
+         proxy {}, idle {}; node_link.rs); model calls refuse busy until admission's decisions are native",
+        CLIENTS.len(),
+        count(Transport::Bridge),
+        count(Transport::Maint),
+        count(Transport::Revoker),
+        count(Transport::Proxy),
+        count(Transport::Idle),
+    )
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -454,5 +469,26 @@ mod tests {
             .map(|c| c.file)
             .collect();
         assert_eq!(idle, ["embedding_background.rs"]);
+    }
+
+    #[test]
+    fn the_summary_counts_every_row_once() {
+        let line = alone_summary();
+        assert!(
+            line.starts_with(&format!("front only: {} clients of Node", CLIENTS.len())),
+            "{line}"
+        );
+        let counted: usize = [
+            Transport::Bridge,
+            Transport::Maint,
+            Transport::Revoker,
+            Transport::Proxy,
+            Transport::Idle,
+        ]
+        .iter()
+        .map(|t| CLIENTS.iter().filter(|c| c.transport == *t).count())
+        .sum();
+        assert_eq!(counted, CLIENTS.len());
+        assert!(!line.contains("  "), "{line}");
     }
 }
