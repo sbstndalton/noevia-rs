@@ -32,7 +32,8 @@
 //!   Every hop, the first included, is looked up before it is contacted; all its addresses must be
 //!   public (ssrf-policy `addresses_public`) and the request is pinned to them. Anything else
 //!   fails the fetch (`fetch failed`, so the check answers `unknown`). The variants lookup follows
-//!   no redirect at all, as core's `fetchJson` (`redirect: 'error'`), and is vetted the same way.
+//!   no redirect at all, as core's `fetchJson` (`redirect: 'error'`), and is vetted the same way:
+//!   one of the five statuses fetch follows fails it, another 3xx is a listing that is not ok.
 //!   As fetch, only 301, 302, 303, 307 and 308 are followed ([`fetch_redirect`]); another 3xx is
 //!   the hop's answer (so a non-ok status, and core's reason for it). A followed status without a
 //!   Location is the answer as it is; one whose Location does not parse is `fetch failed`.
@@ -311,8 +312,9 @@ impl State {
                 req.send().await.map_err(|_| failed())?
             }
         };
-        // fetch with `redirect: 'error'` throws on a redirect.
-        if res.status().is_redirection() {
+        // fetch with `redirect: 'error'` throws on a redirect status (301, 302, 303, 307, 308);
+        // another 3xx (a 300, a 304) is an ordinary answer that is not ok (#2661).
+        if fetch_redirect(res.status().as_u16()) {
             return Err(failed());
         }
         let (status, ok) = (res.status().as_u16(), res.status().is_success());

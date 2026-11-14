@@ -475,6 +475,18 @@ async fn hub_for(delay_ms: u64, elsewhere: u16) -> (u16, Seen) {
     stub(move |target| {
         if let Some(rest) = target.strip_prefix("/api/models/qa-org/") {
             if let Some(repo) = rest.strip_suffix("?blobs=true") {
+                // qa-list<status>: the file list answered with that 3xx (and a Location).
+                if let Some(code) = repo
+                    .strip_prefix("qa-list")
+                    .and_then(|c| c.parse::<u16>().ok())
+                {
+                    return Answer {
+                        status: code,
+                        headers: vec![("Location".into(), "/cdn/qa-list".into())],
+                        body: Vec::new(),
+                        delay_ms: 0,
+                    };
+                }
                 return json(
                     200,
                     &format!(r#"{{"siblings":[{{"rfilename":"{repo}-Q8_0.gguf"}}]}}"#),
@@ -792,4 +804,35 @@ async fn only_fetch_s_redirect_statuses_are_followed() {
         .unwrap()
         .iter()
         .any(|h| h.starts_with("GET /cdn/qa-%C3%A9 ")));
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_file_list_answered_300_or_304_is_not_ok_and_a_redirect_a_throw() {
+    // #2661: the variants lookup is fetchJson's (`redirect: 'error'`): only 301, 302, 303, 307 and
+    // 308 throw (core's 500 `Internal error`); a 300 or a 304 is a listing that is not ok, which
+    // core answers 502 `Could not resolve selected files`. Neither Location is asked.
+    let dir = tempfile::tempdir().unwrap();
+    let (node_port, _) = node().await;
+    let (elsewhere, _) = stub(|_| json(200, "{}")).await;
+    let (hub, seen) = hub_for(0, elsewhere).await;
+    let (addr, _) = front(dir.path(), node_port, hub, true).await;
+    for (repo, status, error) in [
+        ("qa-list300", 502, "Could not resolve selected files"),
+        ("qa-list304", 502, "Could not resolve selected files"),
+        ("qa-list302", 500, "Internal error"),
+    ] {
+        let (code, body) = call(addr, "GET", &query(repo), ADMIN, "").await;
+        assert_eq!(
+            (code, body),
+            (status, JValue::obj([("error", JValue::from(error))])),
+            "{repo}"
+        );
+    }
+    let heads = seen.lock().unwrap().clone();
+    assert!(
+        !heads.iter().any(|h| h.starts_with("GET /cdn/qa-list ")),
+        "{heads:?}"
+    );
+    // Only the three listings: no check ran.
+    assert_eq!(heads.len(), 3, "{heads:?}");
 }

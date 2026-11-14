@@ -41,7 +41,20 @@
 //!   row (later shown as `unknown`) for a pull nobody asked the router for; its outcome is not
 //!   read. A 4xx is core's bridge refusing before it records anything (a body it does not take,
 //!   no tracker, not the front), so nothing is sent then: a `rejected` row would overwrite the
-//!   model's earlier row. A `rejected` call that fails is logged only (the router already refused).
+//!   model's earlier row. Nor is anything sent when the `requested` call never connected (core
+//!   refusing the connection, as while it restarts, or a call that could not be sent): core saw
+//!   none of it, and a `rejected` would overwrite an earlier `completed` row of the model. A
+//!   `rejected` call that fails is logged only (the router already refused).
+//! - `tracker-timeout-overwrite` (issue #2664): the best-effort `rejected` after a `requested`
+//!   call that outlived the deadline is keyed by model, not by pull. When core stalls past the
+//!   5 s deadline while two pulls of the same model are made (two administrators, a double
+//!   click), core can take this pull's `requested`, then the other pull's `requested` (answered
+//!   in time, so its router call goes ahead), then this pull's `rejected`: the other pull's row
+//!   then reads `rejected` (a final status) while its download goes on, so the list shows
+//!   `rejected` for a model that installs and the import hook does not run. Node has the same
+//!   overwrite in another form: a router 409 for a concurrent pull of the same model calls
+//!   `tracker.rejected` (llamacpp-manager.cjs) on the row the first pull holds. The port adds
+//!   only this narrower second trigger, which needs core to stall past the deadline.
 //! - `admission-refused`: core's `enter()` refuses only when its own gate is closed (503 with its
 //!   reason, answered `Internal error`). The front's authority may also refuse when core does not
 //!   answer it; that is the same 503 `Internal error`.
@@ -51,6 +64,7 @@
 //! A member's request is answered 403 (after the prelude's invalidations, as core) without its
 //! body being read: core's prelude refuses before `readBody`, and so a member cannot make the
 //! front hold a 1 MiB body.
+use crate::research_routes::BridgeFault;
 use crate::{identity, reply, App};
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
@@ -96,6 +110,8 @@ enum Told {
     Refused,
     /// No answer within the deadline, or an answer that confirms nothing (core may have recorded).
     Unsure,
+    /// Never sent (no connection to core, no secret): core cannot have recorded anything.
+    Unsent,
 }
 
 fn log(entry: &JValue) {
@@ -155,10 +171,18 @@ impl FrontPull {
 
     fn tell(&self, path: &str, model: &str) -> Told {
         let timeout = Duration::from_millis(TRACKER_TIMEOUT_MS.load(Ordering::SeqCst));
-        let Some((status, bytes)) =
-            self.node_raw(path, &serde_json::json!({ "model": model }), timeout)
-        else {
-            return Told::Unsure;
+        let app = Arc::clone(&self.app);
+        let (path, body) = (path.to_string(), serde_json::json!({ "model": model }));
+        let sent = self.rt.block_on(async move {
+            app.config
+                .research
+                .node_call_sent(&path, &body, timeout)
+                .await
+        });
+        let (status, bytes) = match sent {
+            Ok(answer) => answer,
+            Err(BridgeFault::Unsent) => return Told::Unsent,
+            Err(BridgeFault::Lost) => return Told::Unsure,
         };
         match status {
             200 => {
@@ -239,8 +263,9 @@ impl model_pull::Host for FrontPull {
                     .await
             })
             .map_err(|_| failed())?;
-        // fetchJson's `redirect: 'error'`: a redirect throws.
-        if (300..400).contains(&raw.status) {
+        // fetchJson's `redirect: 'error'`: a redirect status (301, 302, 303, 307, 308) throws;
+        // another 3xx (a 300, a 304) is an answer that is not ok (#2661).
+        if crate::model_pull_routes::fetch_redirect(raw.status) {
             return Err(failed());
         }
         let Some(bytes) = raw.bytes else {
@@ -288,7 +313,9 @@ impl model_pull::Host for FrontPull {
             Some(model) => {
                 let told = self.tell(DOWNLOADS_REQUESTED, model);
                 // Core may hold a `requested` row for a pull the router is never asked for: the
-                // same model is marked rejected (idempotent on core), its outcome not read.
+                // same model is marked rejected (idempotent on core), its outcome not read. Not
+                // when the call never connected (`Unsent`): core holds no row of this pull, and a
+                // `rejected` would overwrite the model's earlier one (a `completed` row, #2664).
                 if told == Told::Unsure {
                     let _ = self.tell(DOWNLOADS_REJECTED, model);
                 }
@@ -302,6 +329,7 @@ impl model_pull::Host for FrontPull {
         log(&JValue::obj([
             ("event", JValue::from("pull.requested_unrecorded")),
             ("rejectedSent", JValue::Bool(told == Told::Unsure)),
+            ("connected", JValue::Bool(told != Told::Unsent)),
         ]));
         Err(Answered {
             status: 503,

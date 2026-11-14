@@ -301,20 +301,50 @@ impl Research {
         body: String,
         timeout: Duration,
     ) -> Option<(u16, Vec<u8>)> {
-        let mut res = self
-            .bridge_post_text(path, body, timeout)?
-            .send()
+        self.node_call_sent_text(path, body, timeout).await.ok()
+    }
+
+    /// [`Self::node_call`] that tells a call core can never have seen ([`BridgeFault::Unsent`])
+    /// apart from one that may have reached it ([`BridgeFault::Lost`]), for a caller whose
+    /// recovery differs (model_pull_post.rs).
+    pub(crate) async fn node_call_sent(
+        &self,
+        path: &str,
+        body: &Value,
+        timeout: Duration,
+    ) -> Result<(u16, Vec<u8>), BridgeFault> {
+        self.node_call_sent_text(path, body.to_string(), timeout)
             .await
-            .ok()?;
+    }
+
+    async fn node_call_sent_text(
+        &self,
+        path: &str,
+        body: String,
+        timeout: Duration,
+    ) -> Result<(u16, Vec<u8>), BridgeFault> {
+        let req = self
+            .bridge_post_text(path, body, timeout)
+            .ok_or(BridgeFault::Unsent)?;
+        let mut res = req.send().await.map_err(|e| {
+            // A connect error (refused, unreachable, no name) or a request that could not be
+            // built: no byte of it reached core. A deadline is not one (it may fire after the
+            // request was written), nor is anything after the connection was made.
+            if !e.is_timeout() && (e.is_connect() || e.is_builder()) {
+                BridgeFault::Unsent
+            } else {
+                BridgeFault::Lost
+            }
+        })?;
         let status = res.status().as_u16();
         let mut bytes = Vec::new();
-        while let Some(chunk) = res.chunk().await.ok()? {
+        while let Some(chunk) = res.chunk().await.map_err(|_| BridgeFault::Lost)? {
             bytes.extend_from_slice(&chunk);
             if bytes.len() > MAX_BRIDGE_BYTES {
-                return None;
+                return Err(BridgeFault::Lost);
             }
         }
-        Some((status, bytes))
+        Ok((status, bytes))
     }
 
     /// One bridge call: (status, JSON). `None`: no answer, a cancel, or a reply over the cap.
@@ -346,6 +376,16 @@ impl Research {
             r = work => r,
         }
     }
+}
+
+/// How a trusted bridge call failed ([`Research::node_call_sent`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BridgeFault {
+    /// Never sent: no secret, a request that could not be built, or no connection to core.
+    Unsent,
+    /// It may have reached core: no answer within the deadline, a broken answer, a reply over
+    /// the cap.
+    Lost,
 }
 
 /// An answer with core's words.
@@ -1948,5 +1988,60 @@ mod tests {
     fn clipping_keeps_characters_whole() {
         assert_eq!(clip_bytes("h\u{e9}llo", 2), "h");
         assert_eq!(clip_bytes("abc", 9), "abc");
+    }
+
+    /// #2664: a bridge call core can never have seen (its port refuses the connection, no secret)
+    /// is told apart from one that may have reached it (the request read, then no answer in time
+    /// or the connection closed).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_bridge_call_that_never_connected_is_told_apart() {
+        use tokio::io::AsyncReadExt;
+        let research = |port: u16, token: Option<&str>| {
+            Research::new(Settings {
+                upstream: format!("http://127.0.0.1:{port}"),
+                token: token.map(str::to_owned),
+                ..Settings::default()
+            })
+            .unwrap()
+        };
+        let body = serde_json::json!({ "model": "qa-org/qa-model" });
+        let wait = Duration::from_millis(400);
+        // A loopback port nothing listens on: bound, then closed.
+        let closed = std::net::TcpListener::bind("127.0.0.1:0")
+            .unwrap()
+            .local_addr()
+            .unwrap()
+            .port();
+        let call = |r: Research| {
+            let body = body.clone();
+            async move { r.node_call_sent("/internal/qa", &body, wait).await }
+        };
+        assert_eq!(
+            call(research(closed, Some("qa-secret"))).await,
+            Err(BridgeFault::Unsent)
+        );
+        assert_eq!(call(research(closed, None)).await, Err(BridgeFault::Unsent));
+        // A core that reads the request and then answers late, or closes without an answer.
+        for answers_late in [true, false] {
+            let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+            let port = listener.local_addr().unwrap().port();
+            let (read_tx, read_rx) = tokio::sync::oneshot::channel();
+            tokio::spawn(async move {
+                let (mut c, _) = listener.accept().await.unwrap();
+                let mut buf = vec![0u8; 8192];
+                let n = c.read(&mut buf).await.unwrap_or(0);
+                let _ = read_tx.send(n);
+                if answers_late {
+                    tokio::time::sleep(Duration::from_secs(5)).await;
+                }
+                drop(c);
+            });
+            assert_eq!(
+                call(research(port, Some("qa-secret"))).await,
+                Err(BridgeFault::Lost),
+                "answers late: {answers_late}"
+            );
+            assert!(read_rx.await.unwrap() > 0, "the request reached core");
+        }
     }
 }

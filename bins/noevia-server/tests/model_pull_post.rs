@@ -109,6 +109,53 @@ struct Seen {
 
 type Log = Arc<Mutex<Vec<Seen>>>;
 
+/// One request read off `c`: its method, target, head and body, logged as `who` saw it.
+async fn read_request(
+    c: &mut TcpStream,
+    who: &str,
+    log: &Log,
+) -> Option<(String, String, String, String)> {
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 8192];
+    let (head, body) = loop {
+        let n = c.read(&mut chunk).await.ok()?;
+        if n == 0 {
+            return None;
+        }
+        buf.extend_from_slice(&chunk[..n]);
+        let t = String::from_utf8_lossy(&buf).into_owned();
+        if let Some((h, b)) = t.split_once("\r\n\r\n") {
+            let want = h
+                .lines()
+                .find_map(|l| {
+                    l.to_ascii_lowercase()
+                        .strip_prefix("content-length: ")
+                        .map(|v| v.trim().parse::<usize>().unwrap())
+                })
+                .unwrap_or(0);
+            if b.len() >= want {
+                break (h.to_owned(), b.to_owned());
+            }
+        }
+    };
+    let mut words = head.split_whitespace();
+    let (method, target) = (
+        words.next().unwrap_or("").to_owned(),
+        words.next().unwrap_or("").to_owned(),
+    );
+    log.lock().unwrap().push(Seen {
+        line: format!("{who} {method} {target}"),
+        head: head.to_ascii_lowercase(),
+        body: body.clone(),
+    });
+    Some((method, target, head.to_ascii_lowercase(), body))
+}
+
+async fn respond(c: &mut TcpStream, code: u16, text: &str) {
+    let out = format!("HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}", text.len());
+    let _ = c.write_all(out.as_bytes()).await;
+}
+
 /// An HTTP/1.1 stub: `route(method, target, head, body)` answers (status, body, delay before the
 /// answer in ms); every request goes to the shared log as it arrives (one log for Node and the
 /// router, so their order shows).
@@ -124,47 +171,50 @@ async fn stub(
         while let Ok((mut c, _)) = listener.accept().await {
             let (log, route) = (Arc::clone(&log), Arc::clone(&route));
             tokio::spawn(async move {
-                let mut buf = Vec::new();
-                let mut chunk = [0u8; 8192];
-                let (head, body) = loop {
-                    let Ok(n) = c.read(&mut chunk).await else {
-                        return;
-                    };
-                    if n == 0 {
-                        return;
-                    }
-                    buf.extend_from_slice(&chunk[..n]);
-                    let t = String::from_utf8_lossy(&buf).into_owned();
-                    if let Some((h, b)) = t.split_once("\r\n\r\n") {
-                        let want = h
-                            .lines()
-                            .find_map(|l| {
-                                l.to_ascii_lowercase()
-                                    .strip_prefix("content-length: ")
-                                    .map(|v| v.trim().parse::<usize>().unwrap())
-                            })
-                            .unwrap_or(0);
-                        if b.len() >= want {
-                            break (h.to_owned(), b.to_owned());
-                        }
-                    }
+                let Some((method, target, head, body)) = read_request(&mut c, who, &log).await
+                else {
+                    return;
                 };
-                let mut words = head.split_whitespace();
-                let (method, target) = (
-                    words.next().unwrap_or("").to_owned(),
-                    words.next().unwrap_or("").to_owned(),
-                );
-                log.lock().unwrap().push(Seen {
-                    line: format!("{who} {method} {target}"),
-                    head: head.to_ascii_lowercase(),
-                    body: body.clone(),
-                });
-                let (code, text, delay_ms) =
-                    route(&method, &target, &head.to_ascii_lowercase(), &body);
+                let (code, text, delay_ms) = route(&method, &target, &head, &body);
                 tokio::time::sleep(Duration::from_millis(delay_ms)).await;
-                let out = format!("HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}", text.len());
-                let _ = c.write_all(out.as_bytes()).await;
+                respond(&mut c, code, &text).await;
             });
+        }
+    });
+    port
+}
+
+/// A scripted Node that stops listening as it grants the lease (core gone, as while it
+/// restarts): every later call, the tracker's `requested` first, has its connection refused.
+/// Before that it answers as [`node`] does under core's contract, one request at a time (a
+/// pull's calls come one after another).
+async fn node_gone_after_lease(log: Log) -> u16 {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let port = listener.local_addr().unwrap().port();
+    tokio::spawn(async move {
+        while let Ok((mut c, _)) = listener.accept().await {
+            let Some((method, target, _, _)) = read_request(&mut c, "node", &log).await else {
+                continue;
+            };
+            if method == "PUT" && target.starts_with("/internal/inference-admission/lease/") {
+                let id = target.rsplit('/').next().unwrap_or("").to_owned();
+                // Closed before the grant is written: the front's next connection is refused.
+                drop(listener);
+                respond(
+                    &mut c,
+                    201,
+                    &format!(
+                        r#"{{"lease":"{id}","ttlMs":60000,"headers":{{"x-noevia-lease":"qaLease1"}}}}"#
+                    ),
+                )
+                .await;
+                return;
+            }
+            let text = match target.as_str() {
+                "/internal/model-manager-scan/clear" => r#"{"cleared":true}"#,
+                _ => "{}",
+            };
+            respond(&mut c, 200, text).await;
         }
     });
     port
@@ -286,6 +336,11 @@ async fn front(on: bool, kind: Option<&str>) -> Front {
 
 /// A front whose router is configured at `http://127.0.0.1:<port><suffix>`.
 async fn front_at(on: bool, kind: Option<&str>, suffix: &str) -> Front {
+    front_with(on, kind, suffix, false).await
+}
+
+/// As [`front_at`]; `node_gone`: the scripted Node is [`node_gone_after_lease`].
+async fn front_with(on: bool, kind: Option<&str>, suffix: &str, node_gone: bool) -> Front {
     noevia_server::model_pull_post::set_tracker_timeout_for_tests(TRACKER_TIMEOUT);
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path());
@@ -301,7 +356,11 @@ async fn front_at(on: bool, kind: Option<&str>, suffix: &str) -> Front {
         lease: None,
     }));
     let router_script: RouterScript = Arc::new(Mutex::new((200, "{}".into())));
-    let node_port = node(Arc::clone(&log), Arc::clone(&node_script)).await;
+    let node_port = if node_gone {
+        node_gone_after_lease(Arc::clone(&log)).await
+    } else {
+        node(Arc::clone(&log), Arc::clone(&node_script)).await
+    };
     let router_port = router(Arc::clone(&log), Arc::clone(&router_script)).await;
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -475,9 +534,16 @@ async fn a_refused_pull_is_recorded_rejected_after_the_router() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_download_core_does_not_record_is_refused_before_the_router() {
     let f = front(true, Some("llamacpp")).await;
-    // A 5xx may come after core recorded the request: a `rejected` goes before the lease is given
-    // back. A 4xx is the bridge refusing before it records: nothing more is sent.
-    for (code, rejected) in [(500, true), (502, true), (404, false), (400, false)] {
+    // A 5xx, or a 200 without `{"ok":true}` (here `{"error":"qa"}`), may come after core recorded
+    // the request: a `rejected` goes before the lease is given back. A 4xx is the bridge refusing
+    // before it records: nothing more is sent.
+    for (code, rejected) in [
+        (500, true),
+        (502, true),
+        (200, true),
+        (404, false),
+        (400, false),
+    ] {
         f.node.lock().unwrap().requested = Some(code);
         let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
         assert_eq!(
@@ -891,4 +957,82 @@ async fn the_router_base_is_trimmed_once_as_core_does() {
         steps.contains(&"router POST /v1/models".to_owned()),
         "{steps:?}"
     );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_requested_call_that_never_connected_sends_no_rejected() {
+    // #2664: core refuses the tracker's connection (it is gone after granting the lease, as while
+    // it restarts): core saw nothing of this pull, and a `rejected` could overwrite an earlier
+    // `completed` row of the model. Nothing more goes to core's tracker and the router is not asked.
+    let f = front_with(true, Some("llamacpp"), "/v1", true).await;
+    *f.router.lock().unwrap() = (200, r#"{"status":"downloading"}"#.into());
+    let started = std::time::Instant::now();
+    let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-gone:Q8_0"}"#).await;
+    assert_eq!(
+        (status, body),
+        (
+            503,
+            JValue::obj([("error", JValue::from("The download could not be recorded."))])
+        )
+    );
+    assert!(
+        started.elapsed() < TRACKER_TIMEOUT,
+        "a refused connection, not the deadline: {:?}",
+        started.elapsed()
+    );
+    // The lease's return and the closing invalidation are refused too: core is gone.
+    assert_eq!(
+        take(&f),
+        [
+            "node POST /internal/auto-roles/invalidate",
+            "node POST /internal/model-manager-scan/clear",
+            "node PUT lease",
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_router_300_or_304_is_a_refused_pull_not_a_throw() {
+    // #2661: fetchJson's `redirect: 'error'` throws only for 301, 302, 303, 307 and 308; a 300 or
+    // a 304 is an answer that is not ok, so core answers 502 with its error (or `pull failed:
+    // <status>`) and records the pull rejected.
+    let f = front(true, Some("llamacpp")).await;
+    for (code, text, error) in [
+        (300, r#"{"error":"QA: choose one"}"#, "QA: choose one"),
+        (304, "", "pull failed: 304"),
+    ] {
+        *f.router.lock().unwrap() = (code, text.into());
+        let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
+        assert_eq!(
+            (status, body),
+            (502, JValue::obj([("error", JValue::from(error))])),
+            "{code}"
+        );
+        assert_eq!(
+            take(&f),
+            [
+                "node POST /internal/auto-roles/invalidate",
+                "node POST /internal/model-manager-scan/clear",
+                "node PUT lease",
+                "node POST /internal/models/downloads/requested",
+                "router POST /models",
+                "node POST /internal/models/downloads/rejected",
+                "node DELETE lease",
+                "node POST /internal/auto-roles/invalidate",
+            ],
+            "{code}"
+        );
+    }
+    // A redirect status is still a throw: core's 500, nothing recorded rejected.
+    *f.router.lock().unwrap() = (302, String::new());
+    let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
+    assert_eq!(
+        (status, body),
+        (
+            500,
+            JValue::obj([("error", JValue::from("Internal error"))])
+        )
+    );
+    let steps = take(&f);
+    assert!(!steps.iter().any(|s| s.ends_with("/rejected")), "{steps:?}");
 }
