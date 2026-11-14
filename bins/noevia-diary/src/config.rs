@@ -59,6 +59,10 @@ pub struct Config {
     /// `~` expanded by its own HOME). Absent: GET /api/external-sources stays with Python.
     #[serde(default)]
     pub external_sources: Option<Vec<String>>,
+    /// R9 main mode (front.rs): the read routes the Python child names in DIARY_RUST_ROUTES (paths);
+    /// the front serves only these natively and forwards every other request. Unused otherwise.
+    #[serde(default)]
+    pub native_routes: Vec<String>,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

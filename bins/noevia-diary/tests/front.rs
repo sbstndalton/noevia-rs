@@ -62,7 +62,7 @@ fn managed_tenant(root: &Path, files: &[(&str, &str)]) {
 fn child_config(root: &Path, key: &str) -> String {
     serde_json::json!({
         "port": 0, "control_token": CTL, "forward_secret": SECRET, "auth_token": TOKEN, "tenant_key": key,
-        "data_root": root.to_str().unwrap(), "legacy_user_id": "",
+        "data_root": root.to_str().unwrap(), "legacy_user_id": "", "native_routes": ["/api/months"],
         "corpus": {"entry_layout": "daily", "entries_prefix": "Entries", "index_enabled": false,
                    "month_file_template": "{year}-{month02}.md", "monthly_prefix": "", "index_file": "INDEX.md"},
         "llm": {"main": {"base_url": "http://127.0.0.1:9/v1", "chat_model": "chat-a", "setting_key": "LLM_CHAT_MODEL",
@@ -417,6 +417,20 @@ async fn native_reads_wait_for_the_childs_recovered_stamp() {
         r#"{"months":[{"id":"2030-01","label":"January 2030","file":"Entries/2030/January"}]}"#
     );
     assert_eq!(s.log.lock().unwrap().len(), 1);
+    // A native read route the child's DIARY_RUST_ROUTES does not name stays with the child.
+    let r = client
+        .get(format!("http://{}/api/files", s.public))
+        .header("authorization", format!("Bearer {TOKEN}"))
+        .header("x-cowork-user-id", UID)
+        .header(
+            "x-cowork-tenant-assertion",
+            sign("GET", "/api/files", "", b""),
+        )
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 207);
+    assert_eq!(s.log.lock().unwrap().len(), 2);
     // A write is never native in S2a.
     let r = client
         .put(format!("http://{}/api/file", s.public))
@@ -432,7 +446,7 @@ async fn native_reads_wait_for_the_childs_recovered_stamp() {
         .await
         .unwrap();
     assert_eq!(r.status(), 207);
-    assert_eq!(s.log.lock().unwrap().len(), 2);
+    assert_eq!(s.log.lock().unwrap().len(), 3);
 }
 
 #[tokio::test]

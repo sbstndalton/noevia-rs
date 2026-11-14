@@ -13,8 +13,9 @@
 //! is verified HERE when a tenant key is set (the only verifier and the only nonce owner: the child
 //! trusts the parent's verdict), with TenantAssertionMiddleware's refusals (401 `invalid tenant
 //! assertion`, 413 `request body too large`). Then:
-//! - a native read route (server.rs `route`, no body) is served here exactly as when Python forwarded
-//!   it, with the "recovered" fact taken from the child's last stamp for that tenant (below);
+//! - a native read route (server.rs `route`, no body) that the child's DIARY_RUST_ROUTES names (the
+//!   start-up config's `native_routes`) is served here exactly as when Python forwarded it, with the
+//!   "recovered" fact taken from the child's last stamp for that tenant (below);
 //! - everything else, and every request the native side declines, goes to the child with the
 //!   parent secret and `x-noevia-diary-asserted`, its body buffered when it was verified (JSON) and
 //!   streamed otherwise; the reply streams back unbuffered with no total deadline, and a client that
@@ -113,6 +114,7 @@ pub struct Front {
     pub secret: String,
     pub child_port: u16,
     app: OnceLock<Arc<App>>,
+    native_routes: OnceLock<Vec<String>>,
     recovered: Mutex<HashMap<String, Instant>>,
     http: reqwest::Client,
 }
@@ -131,6 +133,7 @@ impl Front {
             secret,
             child_port,
             app: OnceLock::new(),
+            native_routes: OnceLock::new(),
             recovered: Mutex::new(HashMap::new()),
             http,
         }
@@ -152,8 +155,12 @@ impl Front {
         {
             return Err("start-up config does not carry this process's secrets");
         }
+        let routes = cfg.native_routes.clone();
         self.app
             .set(Arc::new(App::new(cfg)))
+            .map_err(|_| "start-up config already installed")?;
+        self.native_routes
+            .set(routes)
             .map_err(|_| "start-up config already installed")
     }
 
@@ -277,7 +284,11 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
 
     // A native read: no body, a read route, served here unless it declines.
     let path = server::decoded_path(&raw_path);
-    if let Some(r) = server::route(&parts.method, &path).filter(|r| !r.write()) {
+    let named = front
+        .native_routes
+        .get()
+        .is_some_and(|n| n.iter().any(|n| n == &path));
+    if let Some(r) = server::route(&parts.method, &path).filter(|r| named && !r.write()) {
         if !declares_body(&parts.headers) {
             let mut headers = parts.headers.clone();
             if stamp_tenant(&headers).is_some_and(|uid| front.is_recovered(&uid)) {
