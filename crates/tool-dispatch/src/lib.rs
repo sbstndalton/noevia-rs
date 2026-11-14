@@ -276,7 +276,11 @@ mod tests {
         );
         // Lone surrogate escapes are kept, as the JS keeps them.
         assert_eq!(
-            route(CURRENT_TIME, "{\"timezone\":\"\\ud83d\"}", &Offer::default()),
+            route(
+                CURRENT_TIME,
+                "{\"timezone\":\"\\ud83d\"}",
+                &Offer::default()
+            ),
             Route::CurrentTime {
                 timezone: js_json::wtf16::lone_char(0xD83D).map(String::from)
             }

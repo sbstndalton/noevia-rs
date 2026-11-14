@@ -40,8 +40,12 @@ pub trait Executors {
     fn specialist(&self, args: &JValue) -> impl Future<Output = Ran> + Send;
     /// An MCP tool: `server` the routed one, `None` = the executor picks among the discovered servers (and
     /// refuses a name more than one offers).
-    fn mcp(&self, name: &str, server: Option<&str>, args: &JValue)
-        -> impl Future<Output = Ran> + Send;
+    fn mcp(
+        &self,
+        name: &str,
+        server: Option<&str>,
+        args: &JValue,
+    ) -> impl Future<Output = Ran> + Send;
     /// An offline-encyclopedia tool.
     fn kiwix(&self, name: &str, args: &JValue) -> impl Future<Output = Ran> + Send;
     /// A Drive tool.

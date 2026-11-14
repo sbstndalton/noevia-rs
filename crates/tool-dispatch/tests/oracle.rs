@@ -95,7 +95,10 @@ fn play(name: &str, route: Route, fence_closed: bool) -> Option<Outcome> {
 fn the_constants_are_cores() {
     let f = fixture();
     assert_eq!(f.get("version").as_num(), Some(1.0));
-    assert_eq!(f.get("source").get("path").as_str(), Some("server/toolboxes.cjs"));
+    assert_eq!(
+        f.get("source").get("path").as_str(),
+        Some("server/toolboxes.cjs")
+    );
     assert_eq!(f.get("source").get("sha256").as_str().unwrap().len(), 64);
     let pin = include_str!("fixtures/core-ref").trim();
     assert_eq!(f.get("source").get("coreRef").as_str(), Some(pin));
@@ -116,7 +119,8 @@ fn every_recorded_call_routes_and_ends_as_in_core() {
     for c in cases {
         let name = c.get("name").as_str().unwrap();
         let raw = c.get("rawArgs").as_str().unwrap();
-        let allowed: Option<HashSet<String>> = strs(c.get("allowed")).map(|v| v.into_iter().collect());
+        let allowed: Option<HashSet<String>> =
+            strs(c.get("allowed")).map(|v| v.into_iter().collect());
         let routes = pairs(c.get("routes"));
         let kiwix = strs(c.get("kiwix")).unwrap_or_default();
         let drive = strs(c.get("drive")).unwrap_or_default();
@@ -125,7 +129,8 @@ fn every_recorded_call_routes_and_ends_as_in_core() {
         let offer = Offer {
             allowed: allowed.as_ref(),
             routes: routes.as_deref(),
-            specialist: (c.get("specialist").as_bool() == Some(true) && coworker).then_some("page_tool"),
+            specialist: (c.get("specialist").as_bool() == Some(true) && coworker)
+                .then_some("page_tool"),
             kiwix: &kiwix,
             drive: &drive,
             mcp: Some(&mcp),
@@ -134,7 +139,9 @@ fn every_recorded_call_routes_and_ends_as_in_core() {
         let Some(got) = play(name, route(name, raw, &offer), fence) else {
             // Stricter than the JS, and only for these arguments (see the crate docs).
             assert!(
-                raw.contains("1e400") || raw.contains('\u{10F800}') || raw.matches('[').count() > 100,
+                raw.contains("1e400")
+                    || raw.contains('\u{10F800}')
+                    || raw.matches('[').count() > 100,
                 "not ported: {raw:?}"
             );
             not_ported += 1;

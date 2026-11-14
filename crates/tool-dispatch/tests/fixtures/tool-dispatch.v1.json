@@ -1334,33 +1334,6 @@
   },
   {
    "name": "get_current_time",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "Current time: SERVER | ISO: ISO | FACTS",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "get_current_time",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -2766,33 +2739,6 @@
   {
    "name": "read_project_file",
    "rawArgs": "{\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: RPF [null]",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "read_project_file",
-   "rawArgs": "{\"q\":\"􏠀\"}",
    "allowed": null,
    "routes": null,
    "project": "coworker",
@@ -4250,33 +4196,6 @@
   },
   {
    "name": "page_tool",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "SPEC {\"q\":\"􏠀\"}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "page_tool",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -5703,33 +5622,6 @@
    ],
    "fence": false,
    "text": "KIWIX kw_search {\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "kw_search",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "KIWIX kw_search {\"q\":\"􏠀\"}",
    "failed": false,
    "notRun": false
   },
@@ -7166,33 +7058,6 @@
   },
   {
    "name": "kw_write",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "KIWIX kw_write {\"q\":\"􏠀\"}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "kw_write",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -8619,33 +8484,6 @@
    ],
    "fence": false,
    "text": "DRIVE drive_list {\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "drive_list",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "DRIVE drive_list {\"q\":\"􏠀\"}",
    "failed": false,
    "notRun": false
   },
@@ -10082,33 +9920,6 @@
   },
   {
    "name": "drive_write",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "DRIVE drive_write {\"q\":\"􏠀\"}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "drive_write",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -11514,33 +11325,6 @@
   {
    "name": "drive_fail",
    "rawArgs": "{\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: DRIVE drive_fail",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "drive_fail",
-   "rawArgs": "{\"q\":\"􏠀\"}",
    "allowed": null,
    "routes": null,
    "project": "coworker",
@@ -12998,33 +12782,6 @@
   },
   {
    "name": "mcp_a",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "MCP - {\"q\":\"􏠀\"}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "mcp_a",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -14451,33 +14208,6 @@
    ],
    "fence": false,
    "text": "MCP - {\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "mcp_write",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "MCP - {\"q\":\"􏠀\"}",
    "failed": false,
    "notRun": false
   },
@@ -15914,33 +15644,6 @@
   },
   {
    "name": "mcp_fail",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR from tool: MCP - {\"q\":\"􏠀\"}",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "mcp_fail",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -17372,33 +17075,6 @@
   },
   {
    "name": "mcp_shared",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "MCP - {\"q\":\"􏠀\"}",
-   "failed": false,
-   "notRun": false
-  },
-  {
-   "name": "mcp_shared",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -18830,33 +18506,6 @@
   },
   {
    "name": "unknown_x",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: unknown tool \"unknown_x\"",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "unknown_x",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -20262,33 +19911,6 @@
   {
    "name": "Get_Current_Time",
    "rawArgs": "{\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: unknown tool \"Get_Current_Time\"",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "Get_Current_Time",
-   "rawArgs": "{\"q\":\"􏠀\"}",
    "allowed": null,
    "routes": null,
    "project": "coworker",
@@ -21746,33 +21368,6 @@
   },
   {
    "name": "get_current_time ",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: unknown tool \"get_current_time \"",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "get_current_time ",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -23204,33 +22799,6 @@
   },
   {
    "name": "tool😀",
-   "rawArgs": "{\"q\":\"􏠀\"}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: unknown tool \"tool😀\"",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "tool😀",
    "rawArgs": "NaN",
    "allowed": null,
    "routes": null,
@@ -24636,33 +24204,6 @@
   {
    "name": "kw_search\u0000",
    "rawArgs": "{\"d\":[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[[]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]]}",
-   "allowed": null,
-   "routes": null,
-   "project": "coworker",
-   "specialist": true,
-   "kiwix": [
-    "kw_search",
-    "kw_write"
-   ],
-   "drive": [
-    "drive_list",
-    "drive_write",
-    "drive_fail"
-   ],
-   "mcp": [
-    "mcp_a",
-    "mcp_write",
-    "mcp_fail",
-    "mcp_shared"
-   ],
-   "fence": false,
-   "text": "ERROR: unknown tool \"kw_search\u0000\"",
-   "failed": true,
-   "notRun": false
-  },
-  {
-   "name": "kw_search\u0000",
-   "rawArgs": "{\"q\":\"􏠀\"}",
    "allowed": null,
    "routes": null,
    "project": "coworker",
