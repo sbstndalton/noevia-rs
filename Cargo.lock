@@ -1045,6 +1045,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-read"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "libc",
+ "sha2",
+]
+
+[[package]]
 name = "docx-text"
 version = "0.1.0"
 dependencies = [
@@ -2098,6 +2107,14 @@ version = "0.1.0"
 dependencies = [
  "model-files",
  "serde_json",
+]
+
+[[package]]
+name = "model-manager-proxy"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "js-json",
 ]
 
 [[package]]
