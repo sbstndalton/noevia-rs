@@ -340,3 +340,51 @@ if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
       || die "task read ownership pairing: Core does not hand its task facts bridge the front's captured secret"
   fi
 fi
+#@model_scan
+mm_scan_core=""; mm_scan_rs=""
+grep -qF "require('./rust-model-manager-scan.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && mm_scan_core=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-model-manager-scan features; then mm_scan_rs=rust; fi
+[ "$mm_scan_core" = "$mm_scan_rs" ] || die "model scan read ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  mm_scan_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || mm_scan_table=""
+  mm_scan_rows="$(printf '%s\n' "$mm_scan_table" | awk -F'\t' -v want="$mm_scan_rs" '
+    $1 == "/api/model-manager/models" {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "GET")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "model scan read ownership pairing: only GET belongs to the paired owner"
+fi
+if [ "$mm_scan_rs" = rust ]; then
+  [ "${mm_scan_rows:-}" = /api/model-manager/models ] || die "model scan read ownership pairing: incomplete route ownership"
+  # The pinned Core declares its scan route as 'GET ' plus a file-local PATH.
+  # Match that declaration as a whole so extra methods cannot pass as a GET-only marker.
+  awk -v quote="'" -v path=/api/model-manager/models '
+    block { if (index($0, "*/")) block = 0; next }
+    /^[[:space:]]*\/\// { next }
+    /^[[:space:]]*\/\*/ { if (!index($0, "*/")) block = 1; next }
+    /^const PATH = / {
+      paths++
+      correct_path = ($0 == "const PATH = " quote path quote ";")
+    }
+    /^const OWNED_ROUTES = / {
+      markers++
+      literal = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET " path quote "]));")
+      from_path = ($0 == "const OWNED_ROUTES = Object.freeze(new Set([" quote "GET " quote "+PATH]));")
+    }
+    END { exit !(markers == 1 && (literal || (from_path && paths == 1 && correct_path))) }
+  ' "$tree/core/server/rust-model-manager-scan.cjs" \
+    || die "model scan read ownership pairing: Core must refuse exactly this GET"
+  ! code_has "$tree/core/server/routes/models.cjs" 'X-Model-Scan|scanGeneration' || die "model scan read ownership pairing: Core still carries the public cache policy"
+  for primitive in 'modelScanCache[.]snapshot\(\)' 'modelScanCache[.]publish\(body,token\)' 'modelScanCache[.]refresh\(token\)'; do
+    code_has "$tree/core/server/models.cjs" "$primitive" || die "model scan read ownership pairing: existing shared cache primitives required"
+  done
+  [ -f "$tree/core/server/rust-model-manager-scan-cache.cjs" ] || die "model scan read ownership pairing: missing cache bridge"
+  mm_scan_index="$(code_lines "$tree/core/server/index.cjs")"
+  grep -qF 'modelManagerScanCache(req, res)' <<<"$mm_scan_index" || die "model scan read ownership pairing: missing cache bridge mount"
+  mm_scan_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$mm_scan_index" | head -1)"
+  [ -n "$mm_scan_secret" ] && awk -v c="$mm_scan_secret" '
+    /createModelManagerScanCache\(\{/ { bridge = NR }
+    index($0, "secret: " c) && bridge && NR - bridge <= 3 { ok = 1 }
+    END { exit !ok }
+  ' <<<"$mm_scan_index" || die "model scan read ownership pairing: cache bridge needs the front captured secret"
+fi

@@ -505,6 +505,111 @@ fn gen_task_reads(r: &mut Rng, root: &Path) {
     write(&root.join("core/server/index.cjs"), &index);
 }
 
+fn gen_model_scan(r: &mut Rng, root: &Path) {
+    fs::remove_dir_all(root).ok();
+    fs::create_dir_all(root).expect("the tree root");
+    let moved = r.chance(70);
+    let core_moved = if r.chance(6) { !moved } else { moved };
+    features(r, root, "rust-model-manager-scan", moved);
+    let owner = if moved { "rust" } else { "node" };
+    let path = "/api/model-manager/models";
+    if !r.chance(6) {
+        let mut toml = String::from("# routes\n");
+        if r.chance(3) {
+            toml.push_str("[[\"route\"]]\n");
+        }
+        let rows = match r.below(25) {
+            0 => 0,
+            1 => 2,
+            _ => 1,
+        };
+        for _ in 0..rows {
+            let o = if r.chance(4) { "node" } else { owner };
+            let o = if r.chance(3) { "rust" } else { o };
+            toml.push_str(&format!("[[route]]\npath = \"{path}\"\nowner = \"{o}\"\n"));
+            if r.chance(2) {
+                toml.push_str("switch = \"NOEVIA_RUST_X\"\n");
+            }
+            match r.below(30) {
+                0 => toml.push_str("methods = [\"GET\", \"POST\"]\n"),
+                1 => {}
+                _ if !moved => {}
+                _ => toml.push_str("methods = [\"GET\"]\n"),
+            }
+        }
+        toml.push_str("[[route]]\npath = \"/api/model-manager/models/{id}\"\nowner = \"node\"\n");
+        write(&root.join("rs/contracts/http/routes.toml"), &toml);
+    }
+    let literal = format!("const OWNED_ROUTES = Object.freeze(new Set(['GET {path}']));");
+    let from_path = "const OWNED_ROUTES = Object.freeze(new Set(['GET '+PATH]));";
+    let path_line = format!("const PATH = '{path}';");
+    let marker = match r.below(22) {
+        0 => None,
+        1 => Some(format!("{path_line}\n{path_line}\n{from_path}\n")),
+        2 => Some(format!("const PATH = '/api/models';\n{from_path}\n")),
+        3 => Some(format!("{literal}\n{literal}\n")),
+        4 => Some(format!("// {literal}\n")),
+        5 => Some(format!("/*\n{literal}\n*/\n")),
+        6 => Some(format!(
+            "const OWNED_ROUTES = Object.freeze(new Set(['GET {path}', 'POST {path}']));\n"
+        )),
+        7 => Some(format!("  {literal}\n")),
+        8 => Some(format!("{from_path}\n")),
+        9 | 10 | 11 | 12 => Some(format!("'use strict';\n{path_line}\n{from_path}\n")),
+        _ => Some(format!("'use strict';\n{literal}\n")),
+    };
+    if let Some(m) = marker {
+        write(&root.join("core/server/rust-model-manager-scan.cjs"), &m);
+    }
+    match r.below(16) {
+        0 => write(
+            &root.join("core/server/routes/models.cjs"),
+            "res.setHeader('X-Model-Scan', g);\n",
+        ),
+        1 => write(
+            &root.join("core/server/routes/models.cjs"),
+            "// const g = scanGeneration();\n",
+        ),
+        _ => {}
+    }
+    let mut models = String::new();
+    for p in [
+        "modelScanCache.snapshot()",
+        "modelScanCache.publish(body,token)",
+        "modelScanCache.refresh(token)",
+    ] {
+        match r.below(40) {
+            0 => {}
+            1 => models.push_str(&format!("// {p}\n")),
+            _ => models.push_str(&format!("  return {p};\n")),
+        }
+    }
+    write(&root.join("core/server/models.cjs"), &models);
+    if !r.chance(10) {
+        write(&root.join("core/server/rust-model-manager-scan-cache.cjs"), "'use strict';\n");
+    }
+    let mut index = String::from("'use strict';\n");
+    if core_moved {
+        index.push_str("const scan = require('./rust-model-manager-scan.cjs');\n");
+    }
+    if !r.chance(10) {
+        index.push_str("const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n");
+    }
+    if !r.chance(6) {
+        index.push_str("const cache = createModelManagerScanCache({\n");
+        for _ in 0..r.below(5) {
+            index.push_str("  models,\n");
+        }
+        index.push_str("  secret: FRONT,\n});\n");
+    }
+    match r.below(14) {
+        0 => {}
+        1 => index.push_str("// if (await modelManagerScanCache(req, res)) return;\n"),
+        _ => index.push_str("if (await modelManagerScanCache(req, res)) return;\n"),
+    }
+    write(&root.join("core/server/index.cjs"), &index);
+}
+
 fn shell_verdict(dir: &Path, block: &str, tree: &Path) -> String {
     let prims = dir.join("primitives.sh");
     if !prims.exists() {
@@ -637,6 +742,36 @@ fn task_reads_pairing_matches_the_shell() {
         &gen_task_reads,
         &bridged::task_reads_pairing,
     );
+}
+
+#[test]
+fn model_scan_pairing_matches_the_shell() {
+    // PASS, move together, rows, incomplete, marker, cache policy, primitives, cache bridge, mount, secret.
+    compare(
+        "model_scan",
+        "model scan read ownership pairing",
+        0xCA11_0000_0000_0006,
+        10,
+        &gen_model_scan,
+        &bridged::model_scan_pairing,
+    );
+}
+
+#[test]
+fn model_scan_marker_shapes() {
+    let path_line = "const PATH = '/api/model-manager/models';";
+    let literal = "const OWNED_ROUTES = Object.freeze(new Set(['GET /api/model-manager/models']));";
+    let from_path = "const OWNED_ROUTES = Object.freeze(new Set(['GET '+PATH]));";
+    let ok = |s: String| bridged::model_scan_marker(Some(s.as_bytes()));
+    assert!(ok(format!("{literal}\n")));
+    assert!(ok(format!("{path_line}\n{from_path}\n")));
+    assert!(ok(format!("// {path_line}\n{path_line}\n{from_path}\n")));
+    assert!(!ok(format!("{path_line}\n{path_line}\n{from_path}\n")));
+    assert!(!ok(format!("{from_path}\n")));
+    assert!(!ok(format!("{literal}\n{literal}\n")));
+    assert!(!ok(format!("/* x\n{literal}\n*/\n")));
+    assert!(!ok(format!("  {literal}\n")));
+    assert!(!bridged::model_scan_marker(None));
 }
 
 #[test]

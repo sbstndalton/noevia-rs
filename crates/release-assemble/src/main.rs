@@ -18,7 +18,7 @@
 //!                                                 feature, model-reads, project-reads, project-lifecycle,
 //!                                                 project-files, project-config, code-egress,
 //!                                                 calibration-cancel, calibration-routes, research
-//!                                                 or task-reads
+//!                                                 task-reads or model-scan
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
@@ -201,6 +201,7 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 "code-egress" => bridged::code_egress_pairing(t)?,
                 "research" => bridged::research_pairing(t)?,
                 "task-reads" => bridged::task_reads_pairing(t)?,
+                "model-scan" => bridged::model_scan_pairing(t)?,
                 "calibration-cancel" => {
                     bridged::calibration_pairing(t, &bridged::CALIBRATION_CANCEL)?
                 }

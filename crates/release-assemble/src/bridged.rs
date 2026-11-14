@@ -534,3 +534,127 @@ pub fn task_reads_pairing(tree: &Path) -> Result<(), String> {
         _ => die("Core does not hand its task facts bridge the front's captured secret"),
     }
 }
+
+/// The block's awk over Core's `rust-model-manager-scan.cjs` (raw lines, `//` lines and `/* … */` blocks
+/// skipped): exactly one `OWNED_ROUTES` declaration, and it is either the literal GET of the path or
+/// `'GET '+PATH` with exactly one `PATH` declaration naming the path. The last declaration of each wins,
+/// as in the awk. A missing file is refused (awk cannot open it).
+pub fn model_scan_marker(src: Option<&[u8]>) -> bool {
+    let Some(src) = src else {
+        return false;
+    };
+    let path = "/api/model-manager/models";
+    let path_line = format!("const PATH = '{path}';");
+    let literal_line = format!("const OWNED_ROUTES = Object.freeze(new Set(['GET {path}']));");
+    let from_path_line = "const OWNED_ROUTES = Object.freeze(new Set(['GET '+PATH]));";
+    let (mut block, mut paths, mut markers) = (false, 0usize, 0usize);
+    let (mut correct_path, mut literal, mut from_path) = (false, false, false);
+    for line in records(src) {
+        if block {
+            if contains(line, b"*/") {
+                block = false;
+            }
+            continue;
+        }
+        let start = line
+            .iter()
+            .position(|c| !c.is_ascii_whitespace() && *c != 0x0b)
+            .unwrap_or(line.len());
+        let rest = line.get(start..).unwrap_or_default();
+        if rest.starts_with(b"//") {
+            continue;
+        }
+        if rest.starts_with(b"/*") {
+            if !contains(line, b"*/") {
+                block = true;
+            }
+            continue;
+        }
+        if line.starts_with(b"const PATH = ") {
+            paths += 1;
+            correct_path = line == path_line.as_bytes();
+        }
+        if line.starts_with(b"const OWNED_ROUTES = ") {
+            markers += 1;
+            literal = line == literal_line.as_bytes();
+            from_path = line == from_path_line.as_bytes();
+        }
+    }
+    markers == 1 && (literal || (from_path && paths == 1 && correct_path))
+}
+
+/// #2304 model scan read: Core's `rust-model-manager-scan.cjs` and the front's `rust-model-manager-scan`;
+/// only the exact GET of `/api/model-manager/models` moves.
+pub fn model_scan_pairing(tree: &Path) -> Result<(), String> {
+    let die = |what: &str| Err(format!("model scan read ownership pairing: {what}"));
+    let path = "/api/model-manager/models";
+    let core = grep_fixed(
+        &tree.join("core/server/index.cjs"),
+        "require('./rust-model-manager-scan.cjs')",
+    );
+    let rs = front_has(tree, "rust-model-manager-scan");
+    if core != rs {
+        return die("Core and Rust must move together");
+    }
+    let mut rows = 0usize;
+    let contract = tree.join("rs/contracts/http/routes.toml");
+    if contract.is_file() {
+        let rt = routes_toml_file(&contract);
+        if rt.error.is_none() {
+            for r in &rt.routes {
+                let [p, owner, switch, methods] = tab_fields(r);
+                if p != path.as_bytes() {
+                    continue;
+                }
+                let ok = if rs {
+                    owner == b"rust" && switch == b"-" && methods == b"GET"
+                } else {
+                    owner == b"node"
+                };
+                if !ok {
+                    return die("only GET belongs to the paired owner");
+                }
+                rows += 1;
+            }
+        }
+    }
+    if !rs {
+        return Ok(());
+    }
+    if rows != 1 {
+        return die("incomplete route ownership");
+    }
+    if !model_scan_marker(core_file(tree, "rust-model-manager-scan.cjs").as_deref()) {
+        return die("Core must refuse exactly this GET");
+    }
+    if code_has(
+        core_file(tree, "routes/models.cjs").as_deref(),
+        "X-Model-Scan|scanGeneration",
+    ) {
+        return die("Core still carries the public cache policy");
+    }
+    let models = core_file(tree, "models.cjs");
+    for primitive in [
+        r"modelScanCache[.]snapshot\(\)",
+        r"modelScanCache[.]publish\(body,token\)",
+        r"modelScanCache[.]refresh\(token\)",
+    ] {
+        if !code_has(models.as_deref(), primitive) {
+            return die("existing shared cache primitives required");
+        }
+    }
+    if !tree
+        .join("core/server/rust-model-manager-scan-cache.cjs")
+        .is_file()
+    {
+        return die("missing cache bridge");
+    }
+    let index = code_lines(core_file(tree, "index.cjs").as_deref());
+    if !contains(&index, b"modelManagerScanCache(req, res)") {
+        return die("missing cache bridge mount");
+    }
+    match captured_secret(&index) {
+        Some(secret) if secret_near(&index, r"createModelManagerScanCache\(\{", &secret) => Ok(()),
+        _ => die("cache bridge needs the front captured secret"),
+    }
+}

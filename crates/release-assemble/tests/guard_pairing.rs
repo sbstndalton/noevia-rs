@@ -399,6 +399,7 @@ fn pairings_excerpt_is_verbatim() {
         "calibration_routes",
         "research",
         "task_reads",
+        "model_scan",
     ];
     for name in names {
         let block = section(name);
