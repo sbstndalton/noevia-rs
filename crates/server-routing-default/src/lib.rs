@@ -186,8 +186,13 @@ static TEMP: AtomicU64 = AtomicU64::new(0);
 /// `atomicJson`: the text to a new temporary file (mode 0600) beside `preferences.json`, synced,
 /// then renamed over it. The temporary file is removed when any step fails.
 fn replace(tenant: &OwnedFd, text: &str) -> Result<(), Fault> {
+    // The clock keeps a name left by a crash before the rename from being met again after a
+    // restart under the same process id.
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
     let tmp = format!(
-        "{FILE}.{}.{}.tmp",
+        "{FILE}.{}.{nanos}.{}.tmp",
         std::process::id(),
         TEMP.fetch_add(1, Ordering::Relaxed)
     );

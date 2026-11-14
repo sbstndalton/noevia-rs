@@ -258,3 +258,31 @@ async fn switch_unset_leaves_the_put_to_node_and_the_gate_comes_first() {
     );
     let _ = stop.send(());
 }
+
+/// The account is removed after the first gate and before its directory is made: the removed
+/// account's 410, and neither the directory nor a preferences.json comes back (#1425, #2026).
+#[cfg(debug_assertions)]
+#[tokio::test]
+async fn an_account_removed_after_the_gate_gets_nothing_back() {
+    // Its own user id: the hook is per user and process-wide.
+    let user = "cccccccc-3333-4ccc-8ccc-cccccccccccc";
+    let d = tempfile::tempdir().unwrap();
+    seed_database(d.path(), user);
+    let data = d.path().to_path_buf();
+    noevia_server::project_routes::hooks::on_before_ensure(user, move || {
+        let c = Connection::open(data.join("cowork.db")).unwrap();
+        c.execute("DELETE FROM sessions WHERE user_id = ?1", [user])
+            .unwrap();
+        c.execute("DELETE FROM users WHERE id = ?1", [user])
+            .unwrap();
+        let _ = std::fs::remove_dir_all(data.join("users").join(user));
+    });
+    let (addr, stop) = start(d.path(), &[SWITCH]).await;
+    let (status, body) = put(addr, MEMBER, true, br#"{"routing":"manual"}"#).await;
+    let _ = stop.send(());
+    assert_eq!(
+        (status, body.as_str()),
+        (410, r#"{"error":"account no longer exists"}"#)
+    );
+    assert!(!d.path().join("users").join(user).exists());
+}

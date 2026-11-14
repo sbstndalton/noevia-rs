@@ -118,34 +118,41 @@ fn refused(refusal: put::Refusal) -> Response<Body> {
     reply::error(StatusCode::BAD_REQUEST, refusal.message(), true)
 }
 
-/// What the projects pass ended in.
-enum Projects {
-    Updated(usize),
-    /// projects.json is not a list Node can read: Node loads it as empty and changes nothing.
-    Unreadable,
-}
-
 /// `PUT /api/routing-default` (NOEVIA_RUST_SETTINGS_ROUTES=1), in core models.cjs's order.
 async fn put(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
     let (parts, body) = req.into_parts();
-    let Ok(permit) = Arc::clone(&app.routing_default).try_acquire_owned() else {
+    let Some(data_dir) = app.config.data_dir.clone() else {
         return unavailable();
     };
-    let permit = Arc::new(permit);
     let creds = identity::creds_of(&parts);
-    let layer = Arc::clone(&app.identity);
-    let auth_permit = Arc::clone(&permit);
     let now = identity::now_ms();
-    let id = match tokio::task::spawn_blocking(move || {
-        let _p = auth_permit;
-        layer.gate_blocking(&creds, ROUTE, now)
-    })
-    .await
-    {
-        Ok(Ok(id)) => id,
-        Ok(Err(r)) => return r.into_response(),
-        _ => return identity::Rejection::Unavailable.into_response(),
+    let id = {
+        // Admission covers the gate only: a slow body never holds a permit the GET needs.
+        let Ok(permit) = Arc::clone(&app.routing_default).try_acquire_owned() else {
+            return unavailable();
+        };
+        let (layer, creds) = (Arc::clone(&app.identity), creds.clone());
+        match tokio::task::spawn_blocking(move || {
+            let _p = permit;
+            layer.gate_blocking(&creds, ROUTE, now)
+        })
+        .await
+        {
+            Ok(Ok(id)) => id,
+            Ok(Err(r)) => return r.into_response(),
+            _ => return identity::Rejection::Unavailable.into_response(),
+        }
     };
+    let user = id.user.id.clone();
+    let admin = id.user.role == server_auth::Role::Admin;
+    // workspace.cjs `get` makes the account's directory before any route runs; the front's fence makes it
+    // once, gates again, and takes it away if the account went meanwhile (#1425, #2026).
+    if let Err(response) =
+        crate::project_routes::ensure_account(app, &data_dir, &creds, ROUTE, now, &user, admin)
+            .await
+    {
+        return *response;
+    }
     // readBody inside JSON.parse's try: a body that fails to arrive is the same `invalid JSON`.
     let (bytes, over) = match tokio::time::timeout(BODY_DEADLINE, bounded_body(body)).await {
         Ok(Ok(read)) => read,
@@ -155,60 +162,87 @@ async fn put(app: &Arc<App>, req: Request<Body>) -> Response<Body> {
         Ok(r) => r,
         Err(refusal) => return refused(refusal),
     };
-    let Some(data_dir) = app.config.data_dir.clone() else {
+    let Ok(permit) = Arc::clone(&app.routing_default).try_acquire_owned() else {
         return unavailable();
     };
     let switch = app.config.rust_projects;
-    let user = id.user.id;
-    // Not cancelled with the request: once the preferences are written the projects pass runs too.
-    let done = tokio::task::spawn_blocking(move || -> Result<Projects, Box<Response<Body>>> {
+    // Not cancelled with the request: once it starts, the write runs to its end.
+    let done = tokio::task::spawn_blocking(move || -> Result<usize, Box<Response<Body>>> {
         let _p = permit;
-        // workspace.cjs `get` makes the account's directory before any route runs.
-        let dir = match server_projects::store::ensure_user_dir(&data_dir, &user) {
-            Ok(
-                server_projects::store::Ensured::Existed(d)
-                | server_projects::store::Ensured::Created(d),
-            ) => d,
-            _ => return Err(Box::new(unavailable())),
-        };
-        Root::open(&data_dir)
-            .and_then(|root| root.write_preferences(&user, request.routing))
-            .map_err(|_| Box::new(unavailable()))?;
-        if !request.apply_to_existing {
-            return Ok(Projects::Updated(0));
-        }
-        let changed = server_projects::store::update(&dir, switch, |projects| {
-            match put::apply(projects, request.routing, now) {
-                Ok(n) => (Ok(n), n > 0),
-                Err(put::NotAProject) => (Err(()), false),
-            }
-        });
-        match changed {
-            Ok(Ok(n)) => Ok(Projects::Updated(n)),
-            Ok(Err(())) => Err(Box::new(reply::error(
-                StatusCode::INTERNAL_SERVER_ERROR,
-                "Internal error",
-                true,
-            ))),
-            Err(server_projects::store::StoreError::Corrupt) if unreadable(&dir) => {
-                Ok(Projects::Unreadable)
-            }
-            Err(server_projects::store::StoreError::Gone) => Err(Box::new(reply::error(
-                StatusCode::GONE,
-                "account no longer exists",
-                true,
-            ))),
-            Err(_) => Err(Box::new(unavailable())),
-        }
+        write(&data_dir, &user, request, switch)
     })
     .await;
-    let updated = match done {
-        Ok(Ok(Projects::Updated(n))) => n,
-        Ok(Ok(Projects::Unreadable)) => 0,
-        Ok(Err(response)) => return *response,
-        Err(_) => return unavailable(),
+    match done {
+        Ok(Ok(updated)) => {
+            reply::json_text(StatusCode::OK, put::answer(request.routing, updated), true)
+        }
+        Ok(Err(response)) => *response,
+        Err(_) => unavailable(),
+    }
+}
+
+fn gone() -> Box<Response<Body>> {
+    Box::new(reply::error(
+        StatusCode::GONE,
+        "account no longer exists",
+        true,
+    ))
+}
+
+fn internal() -> Box<Response<Body>> {
+    Box::new(reply::error(
+        StatusCode::INTERNAL_SERVER_ERROR,
+        "Internal error",
+        true,
+    ))
+}
+
+/// The preferences write and, with `applyToExisting`, the projects pass. With the pass, the
+/// preferences are written under the projects.json lock, after the list was read and checked, so two
+/// PUTs of one account land one after the other as in Node (whose handler runs without a pause from
+/// `savePreferences` to the loop). Returns the number of projects changed.
+fn write(
+    data_dir: &std::path::Path,
+    user: &str,
+    request: put::Put,
+    switch: server_store::RustProjects,
+) -> Result<usize, Box<Response<Body>>> {
+    let dir = server_projects::store::user_dir(data_dir, user).map_err(|_| internal())?;
+    let preferences = || -> Result<(), Box<Response<Body>>> {
+        // The account was removed after the fence: Node's `assertActive`, a 410; nothing is made.
+        if !dir.is_dir() {
+            return Err(gone());
+        }
+        Root::open(data_dir)
+            .and_then(|root| root.write_preferences(user, request.routing))
+            .map_err(|_| Box::new(unavailable()))
     };
-    reply::json_text(StatusCode::OK, put::answer(request.routing, updated), true)
+    if !request.apply_to_existing {
+        preferences()?;
+        return Ok(0);
+    }
+    let changed = server_projects::store::update(&dir, switch, |projects| {
+        if projects.iter().any(|p| !p.is_object()) {
+            return (Err(internal()), false);
+        }
+        if let Err(response) = preferences() {
+            return (Err(response), false);
+        }
+        match put::apply(projects, request.routing, identity::now_ms()) {
+            Ok(n) => (Ok(n), n > 0),
+            Err(put::NotAProject) => (Err(internal()), false),
+        }
+    });
+    match changed {
+        Ok(result) => result,
+        // A list Node's load reads as empty: the preferences are written and nothing else changes.
+        Err(server_projects::store::StoreError::Corrupt) if unreadable(&dir) => {
+            preferences()?;
+            Ok(0)
+        }
+        Err(server_projects::store::StoreError::Gone) => Err(gone()),
+        Err(_) => Err(Box::new(unavailable())),
+    }
 }
 
 /// Whether `dir/projects.json` is one Node's load reads as an empty list (`JSON.parse` throws, or
