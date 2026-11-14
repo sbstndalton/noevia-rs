@@ -9,10 +9,11 @@
 //! of the path decodes to it). Core holds the throughput sweep's maintenance gate in its memory
 //! (benchmark-sweep-guard.cjs) and takes it back after a restart (`adopt`), so the sweep's start is
 //! relayed to core after the session gate and, for an administrator on a deployment with a model
-//! manager, after the crate's strict payload check (`strict_payload`: `aliases` an array, at most
-//! 64 models; its 400 answered here), with the parsed body written again and its length corrected:
-//! core judges and the model manager receives exactly the checked value (core alone would read an
-//! unparseable body as `{}` and forward its raw bytes). The crate's sweep host steps
+//! manager, after the crate's strict payload check (`strict_payload`: `aliases` an array of
+//! strings, at most 64 models; its 400 answered here), with the parsed body written again and its
+//! length corrected: core and the model manager are sent the value that was checked (core alone
+//! would read an unparseable body as `{}` and forward its raw bytes, and would let `[7]` or `[true]`
+//! through uncounted for the model manager to read as text). The crate's sweep host steps
 //! (`sweep_hold`, `sweep_release`, `sweep_watch`) are never reached through the front.
 //!
 //! The flow is the crate's [`model_manager_proxy::handle`], run on the blocking pool with each host
@@ -252,8 +253,8 @@ pub async fn serve(
 
 /// The sweep start, relayed to core after the session gate. For an administrator on a deployment
 /// with a model manager (where core reads the body), the body must pass the crate's strict payload
-/// check (`aliases` an array, at most 64 models) and core is sent the parsed value written again,
-/// so core judges, and the model manager receives, exactly what was checked. Anything else is
+/// check (`aliases` an array of strings, at most 64 models) and core is sent the parsed value
+/// written again, so core and the model manager are sent the value that was checked. Anything else is
 /// relayed as it came: core refuses it before it reads the body.
 async fn relay_sweep(
     app: &Arc<App>,

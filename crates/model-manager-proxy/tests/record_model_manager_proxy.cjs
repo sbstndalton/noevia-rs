@@ -665,6 +665,10 @@ for (const [rest, body] of [['models/delete', '{"models":{"k-router":0}}'], ['mo
   ['benchmark/start', '{"aliases":{"0":"qa-embed-x"}}'], ['models/delete', '[]'], ['models/delete', '"x"'], ['models/delete', 'null'], ['models/delete', '{"models":null}']]) {
   add(`payload: POST ${rest} ${body}`, { method: 'POST', path: T(rest), body, scan: SCAN, catalogue: CAT });
 }
+for (const [rest, body] of [['benchmark/sweep', '{"aliases":[7]}'], ['benchmark/sweep', '{"aliases":[true,"qa-a"]}'], ['benchmark/sweep', '{"aliases":[null]}'],
+  ['benchmark/start', '{"aliases":[7]}'], ['models/delete', '{"models":[5]}'], ['models/delete', '{"models":["k-chat",["k-router"]]}']]) {
+  add(`payload: non-string elements POST ${rest} ${body}`, { method: 'POST', path: T(rest), body, scan: SCAN, catalogue: CAT });
+}
 add('payload: PUT section NaN', { method: 'PUT', path: T('sections/qa-chat'), body: '{"values":{"model":"/m"},"x":NaN}', scan: SSCAN });
 add('payload: PUT section array', { method: 'PUT', path: T('sections/qa-chat'), body: '[1]', scan: SSCAN });
 add('payload: re-serialised forward', { method: 'POST', path: T('models/delete'), body: '{ "models" : [ "k-chat" ] , "models": ["k-nosec"] }', scan: SCAN });
@@ -776,6 +780,7 @@ function differenceOf(c, p, expect) {
   try { v = JSON.parse(body); } catch { return answer('payload', 400, { error: 'The request body must be a JSON object.' }); }
   if (!v || typeof v !== 'object' || Array.isArray(v)) return answer('payload', 400, { error: 'The request body must be a JSON object.' });
   if (field && v[field] !== undefined && !Array.isArray(v[field])) return answer('payload', 400, { error: `${field} must be an array.` });
+  if (field && Array.isArray(v[field]) && v[field].some((x) => typeof x !== 'string')) return answer('payload', 400, { error: `${field} must be an array of model names.` });
   return null;
 }
 
