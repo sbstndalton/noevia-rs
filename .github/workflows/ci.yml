@@ -2345,6 +2345,19 @@ jobs:
           CODE_SANDBOX_SUPERVISOR_ORACLE: ${{ github.workspace }}/core/code-sandbox/supervisor.cjs
           CODE_SANDBOX_SUPERVISOR_ORACLE_REQUIRED: '1'
         run: cargo test --locked -p code-sandbox-supervisor --test node_parity -- --nocapture
+      # The OCR front gate's fixture script (core tools/ocr-front/fixtures.py at the same core ref)
+      # loads the services generator; synthetic-pdfs ocr-front must write what it writes.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          repository: sbstndalton/noevia-services
+          ref: bbed9b8a5af9f66ea3133fd8ee5495013d11d6c7
+          path: legacy-services
+      - name: OCR front fixtures (synthetic-pdfs ocr-front vs core fixtures.py)
+        env:
+          OCR_FRONT_FIXTURES_ORACLE: ${{ github.workspace }}/core/tools/ocr-front/fixtures.py
+          OCR_FRONT_FIXTURES_ORACLE_REQUIRED: '1'
+          SYNTHETIC_PDFS_ORACLE: ${{ github.workspace }}/legacy-services/ocr
+        run: cargo test --locked -p synthetic-pdfs --test ocr_front -- --nocapture
 
   reasoning-native:
     needs: changes
