@@ -267,13 +267,25 @@ mod tests {
             sh("[ \"$QA_STEP\" = qa ] && exit 3"),
             sh(&format!("touch '{}'", mark.display())),
         ];
-        let err = block(run(&steps, &Env::default(), dir.path(), STEP_TIMEOUT, never().as_mut()))
-            .unwrap_err();
+        let err = block(run(
+            &steps,
+            &Env::default(),
+            dir.path(),
+            STEP_TIMEOUT,
+            never().as_mut(),
+        ))
+        .unwrap_err();
         assert!(err.contains("failed (3)"), "{err}");
         assert!(err.contains("the pair was not started"), "{err}");
         assert!(!mark.exists());
         let ok = [sh("exit 0"), sh(&format!("touch '{}'", mark.display()))];
-        let done = block(run(&ok, &Env::default(), dir.path(), STEP_TIMEOUT, never().as_mut()));
+        let done = block(run(
+            &ok,
+            &Env::default(),
+            dir.path(),
+            STEP_TIMEOUT,
+            never().as_mut(),
+        ));
         assert_eq!(done, Ok(Outcome::Done));
         assert!(mark.exists());
     }
@@ -316,15 +328,19 @@ mod tests {
     fn a_stop_signal_stops_the_running_step_and_skips_the_rest() {
         let dir = tempfile::tempdir().unwrap();
         let mark = dir.path().join("second-ran");
-        let steps = [
-            sh("sleep 30"),
-            sh(&format!("touch '{}'", mark.display())),
-        ];
+        let steps = [sh("sleep 30"), sh(&format!("touch '{}'", mark.display()))];
         let started = Instant::now();
         let outcome = block(async {
             let stop = tokio::time::sleep(Duration::from_millis(200));
             tokio::pin!(stop);
-            run(&steps, &Env::default(), dir.path(), STEP_TIMEOUT, stop.as_mut()).await
+            run(
+                &steps,
+                &Env::default(),
+                dir.path(),
+                STEP_TIMEOUT,
+                stop.as_mut(),
+            )
+            .await
         });
         assert_eq!(outcome, Ok(Outcome::Stopped));
         assert!(!mark.exists());

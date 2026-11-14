@@ -263,7 +263,10 @@ fn ensure_is_off_by_default_and_runs_key_then_schema_before_the_pair_when_on() {
         key.is_some() && key < schema && schema < node,
         "key, then schema, then the pair: {l}"
     );
-    assert!(data.join("embedding-pair.lock").exists(), "the lock file is in the data directory the steps were given");
+    assert!(
+        data.join("embedding-pair.lock").exists(),
+        "the lock file is in the data directory the steps were given"
+    );
 
     // --check names the steps and runs none.
     fs::write(w.path().join("log"), "").unwrap_or_else(|e| unreachable!("{e}"));
@@ -275,7 +278,10 @@ fn ensure_is_off_by_default_and_runs_key_then_schema_before_the_pair_when_on() {
         .unwrap_or_else(|e| unreachable!("{e}"));
     let stdout = String::from_utf8_lossy(&out.stdout);
     assert_eq!(out.status.code(), Some(0), "{stdout}");
-    assert!(stdout.contains("ensure ") && stdout.contains(" --ensure-secrets-key\n"), "{stdout}");
+    assert!(
+        stdout.contains("ensure ") && stdout.contains(" --ensure-secrets-key\n"),
+        "{stdout}"
+    );
     assert!(stdout.contains(" --ensure-schema\n"), "{stdout}");
     assert_eq!(log(w.path()), "", "--check runs no step");
 }
@@ -289,8 +295,15 @@ fn a_failed_ensure_step_or_a_front_without_the_capability_refuses_before_the_pai
         .unwrap_or_else(|e| unreachable!("{e}"));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert_eq!(out.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("does not advertise boot-ensure-v1"), "{stderr}");
-    assert_eq!(log(w.path()), "", "an older front is never asked to prepare");
+    assert!(
+        stderr.contains("does not advertise boot-ensure-v1"),
+        "{stderr}"
+    );
+    assert_eq!(
+        log(w.path()),
+        "",
+        "an older front is never asked to prepare"
+    );
 
     let out = supervisor(w.path())
         .env("NOEVIA_SUPERVISOR_ENSURE", "1")
@@ -301,8 +314,14 @@ fn a_failed_ensure_step_or_a_front_without_the_capability_refuses_before_the_pai
     let stderr = String::from_utf8_lossy(&out.stderr);
     let l = log(w.path());
     assert_eq!(out.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("--ensure-schema failed (4); the pair was not started"), "{stderr}");
-    assert!(l.contains("ensure-secrets-key") && l.contains("ensure-schema"), "{l}");
+    assert!(
+        stderr.contains("--ensure-schema failed (4); the pair was not started"),
+        "{stderr}"
+    );
+    assert!(
+        l.contains("ensure-secrets-key") && l.contains("ensure-schema"),
+        "{l}"
+    );
     assert!(!l.contains("UI_HOST"), "neither child started: {l}");
 }
 
@@ -320,7 +339,10 @@ fn a_non_utf8_value_the_checks_read_refuses() {
         .unwrap_or_else(|e| unreachable!("{e}"));
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert_eq!(out.status.code(), Some(2), "{stderr}");
-    assert!(stderr.contains("COWORK_CODE_NET_ADDR is not valid UTF-8"), "{stderr}");
+    assert!(
+        stderr.contains("COWORK_CODE_NET_ADDR is not valid UTF-8"),
+        "{stderr}"
+    );
     assert_eq!(log(w.path()), "");
 }
 
@@ -369,7 +391,11 @@ fn a_stop_signal_during_preparation_stops_the_step_and_starts_nothing() {
         .env("STUB_ENSURE_SLOW", "--ensure-schema")
         .spawn()
         .unwrap_or_else(|e| unreachable!("{e}"));
-    assert!(wait_for(w.path(), "front ensure-schema"), "{}", log(w.path()));
+    assert!(
+        wait_for(w.path(), "front ensure-schema"),
+        "{}",
+        log(w.path())
+    );
     let started = Instant::now();
     let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap_or_default());
     nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM)
@@ -378,6 +404,9 @@ fn a_stop_signal_during_preparation_stops_the_step_and_starts_nothing() {
     let l = log(w.path());
     assert_eq!(status.code(), Some(0), "{l}");
     assert!(started.elapsed() < Duration::from_secs(10), "{l}");
-    assert!(wait_for(w.path(), "front ensure TERM"), "the step got the TERM: {l}");
+    assert!(
+        wait_for(w.path(), "front ensure TERM"),
+        "the step got the TERM: {l}"
+    );
     assert!(!log(w.path()).contains("UI_HOST"), "nothing started: {l}");
 }
