@@ -439,10 +439,214 @@ fn read(dir: &Path, project: Option<&JValue>, args: &JValue) -> Option<Outcome> 
     Some(done(out, false))
 }
 
+/// core mcp-internal.cjs `textResult(text, isError)`: the in-app server's tool result.
+fn text_result(text: String, is_error: bool) -> JValue {
+    let mut items = vec![(
+        "content".to_string(),
+        JValue::Arr(vec![JValue::obj([
+            ("type", JValue::Str("text".into())),
+            ("text", JValue::Str(text)),
+        ])]),
+    )];
+    if is_error {
+        items.push(("isError".to_string(), JValue::Bool(true)));
+    }
+    JValue::Obj(items)
+}
+
+/// mcp-internal-tools.cjs `requireProject`'s refusal, as the in-app server answers a throw.
+const NO_PROJECT: &str = "ERROR: this chat is not in a project, so there are no project files";
+
+/// mcp-internal-tools.cjs `clip`: at most [`TOOL_RESULT_CAP`] UTF-16 units, then a mark.
+fn clip(text: &str) -> String {
+    let u = units(text);
+    if u.len() > TOOL_RESULT_CAP {
+        format!("{}\n…[truncated]", slice(&u, 0, TOOL_RESULT_CAP))
+    } else {
+        text.to_string()
+    }
+}
+
+/// The in-app MCP server's (core mcp-internal.cjs + mcp-internal-tools.cjs) result for one of its
+/// read-only project tools, `project_list_files` or `project_read_file`, called for the account whose
+/// directory is `dir` with the project as stored now (`None`: no project in the call, or none of that
+/// id). `None` leaves the call to core's server (a tool this does not answer, or an answer core words
+/// from an error the port does not copy).
+pub fn inapp_result(
+    dir: &Path,
+    project: Option<&JValue>,
+    name: &str,
+    arguments: &JValue,
+) -> Option<JValue> {
+    // The front reads the call's arguments with js_json::parse, where U+10F800..=U+10FFFF are real
+    // characters, not the lone surrogates [`wtf16`] holds there: such a call is core's.
+    if reserved_in(arguments) {
+        return None;
+    }
+    let result = inapp_answer(dir, project, name, arguments)?;
+    // A lone surrogate in the text (a cut through an astral character, or one stored in a name or a
+    // text): core's server sends it as `\udxxx`, which the front's MCP client refuses ("could not be
+    // checked"); answering it here would hand on a different text, so core answers it.
+    let lone = match result.get("content") {
+        JValue::Arr(items) => items.iter().any(|c| {
+            c.get("text")
+                .as_str()
+                .is_some_and(|t| t.chars().any(|ch| u32::from(ch) >= wtf16::LONE_BASE))
+        }),
+        _ => false,
+    };
+    // The front's MCP client takes at most 8 MiB of reply (mcp_egress.rs MCP_CAP): a larger answer of
+    // core's ends there as an error, so it is core's (an "Available: ..." list of a huge project).
+    let fits = wtf16::stringify(&result).is_some_and(|r| r.len() < 8 * 1024 * 1024 - 1024);
+    (!lone && fits).then_some(result)
+}
+
+/// Whether a string anywhere in `v` holds a character of U+10F800..=U+10FFFF.
+fn reserved_in(v: &JValue) -> bool {
+    let reserved = |s: &str| s.chars().any(|c| u32::from(c) >= wtf16::LONE_BASE);
+    match v {
+        JValue::Str(s) => reserved(s),
+        JValue::Arr(items) => items.iter().any(reserved_in),
+        JValue::Obj(items) => items.iter().any(|(k, v)| reserved(k) || reserved_in(v)),
+        _ => false,
+    }
+}
+
+fn inapp_answer(
+    dir: &Path,
+    project: Option<&JValue>,
+    name: &str,
+    arguments: &JValue,
+) -> Option<JValue> {
+    match name {
+        "project_list_files" => {
+            let Some(project) = project else {
+                return Some(text_result(NO_PROJECT.into(), true));
+            };
+            Some(text_result(list_files(dir, project)?, false))
+        }
+        "project_read_file" => {
+            let Some(project) = project else {
+                return Some(text_result(NO_PROJECT.into(), true));
+            };
+            // createHandler: `params.arguments` when it is a plain object, else `{}`; then
+            // readProjectFile's `JSON.stringify(args)` read back by the tool.
+            let args = if arguments.is_object() {
+                arguments.clone()
+            } else {
+                JValue::Obj(Vec::new())
+            };
+            match read_project_file(dir, Some(project), &args) {
+                // The in-app server answers the tool's text as it is (never isError: the tool's own
+                // "ERROR: ..." texts are text results there).
+                Outcome::Done(r) => Some(text_result(r.text, false)),
+                Outcome::Core => None,
+            }
+        }
+        _ => None,
+    }
+}
+
+/// mcp-internal-tools.cjs `project_list_files`: every file with where it came from and its length.
+fn list_files(dir: &Path, project: &JValue) -> Option<String> {
+    let project_id = project.get("id").as_str().unwrap_or("");
+    let files: &[JValue] = match project.get("files") {
+        JValue::Arr(items) => items,
+        _ => &[],
+    };
+    if files.is_empty() {
+        return Some("This project has no files attached.".into());
+    }
+    let mut lines = Vec::with_capacity(files.len());
+    for f in files {
+        // A record the pipeline never writes (core's listing throws on null, words primitives oddly).
+        if !f.is_object() {
+            return None;
+        }
+        let source = f.get("source");
+        let kind = if source.truthy() {
+            format!("from folder {}", js_json::to_js_string(source).ok()?)
+        } else if f.get("document").truthy() {
+            "document".into()
+        } else {
+            "text".into()
+        };
+        // source-text.cjs isExternal: a valid text pointer and no own content (the workspace load gives
+        // such a file its content accessor); textLength: the saved `chars` when a safe integer, else
+        // the text's length.
+        let own = own_content(f);
+        let reference = js_json::to_js_string(f.get("textRef")).ok()?;
+        let external = own.is_none()
+            && reference.len() == 64
+            && reference
+                .bytes()
+                .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b));
+        let size = if external || own.is_some_and(|c| c.as_str().is_some()) {
+            let chars = f
+                .get("chars")
+                .as_num()
+                .filter(|n| external && n.fract() == 0.0 && n.abs() <= 9_007_199_254_740_991.0);
+            match chars {
+                Some(n) => format!("{} chars", number_to_string(n)),
+                None => format!("{} chars", wtf16::len(&content(dir, project_id, f)?)),
+            }
+        } else {
+            "no readable text".into()
+        };
+        lines.push(format!(
+            "{} — {kind}, {size}",
+            js_json::to_js_string(f.get("name")).ok()?
+        ));
+    }
+    Some(clip(&format!(
+        "Pass a name exactly as shown (or just its file name, when unique) to project_read_file.\n{}",
+        lines.join("\n")
+    )))
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn inapp_reads_decline_plane_16_arguments_and_lone_surrogate_results() {
+        assert!(reserved_in(&JValue::Str("QA-\u{10FFFD}.md".into())));
+        assert!(reserved_in(&JValue::obj([(
+            "name",
+            JValue::Arr(vec![JValue::Str("\u{10F800}".into())])
+        )])));
+        assert!(reserved_in(&JValue::obj([("\u{10F801}", JValue::Null)])));
+        assert!(!reserved_in(&JValue::obj([(
+            "name",
+            JValue::Str("QA-\u{1F600}.md".into())
+        )])));
+        let dir = std::env::temp_dir().join(format!("qa-file-read-lone-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        // An inline text whose 8 000-unit cut halves an emoji: core's result holds a lone surrogate.
+        let text = format!("{}\u{1F600}", "x".repeat(7999));
+        let project = JValue::obj([
+            ("id", JValue::Str("qa-p".into())),
+            (
+                "files",
+                JValue::Arr(vec![JValue::obj([
+                    ("name", JValue::Str("QA-cut.md".into())),
+                    ("content", JValue::Str(text)),
+                ])]),
+            ),
+        ]);
+        let args = JValue::obj([("name", JValue::Str("QA-cut.md".into()))]);
+        assert_eq!(
+            inapp_result(&dir, Some(&project), "project_read_file", &args),
+            None
+        );
+        let plane = JValue::obj([("name", JValue::Str("QA-\u{10FFFD}.md".into()))]);
+        assert_eq!(
+            inapp_result(&dir, Some(&project), "project_read_file", &plane),
+            None
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     /// A text file core would read through a symlink (or a too-large one) is core's to answer; a
     /// missing one reads as '' here as in core.

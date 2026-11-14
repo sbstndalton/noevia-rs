@@ -7,6 +7,15 @@ use support::*;
 const PATH: &str = "/api/models/autotune/clear";
 const FACTS: &str = "/internal/autotune-clear/facts";
 const CLEAR: &str = "/internal/autotune-clear/clear";
+const INVALIDATE: &str = "/internal/auto-roles/invalidate";
+const SCAN_CLEAR: &str = "/internal/model-manager-scan/clear";
+/// What the route asked the actor (Core's model-read invalidation and scan clear left out).
+fn actor(up: &Upstream) -> Vec<Seen> {
+    up.seen()
+        .into_iter()
+        .filter(|r| r.path != INVALIDATE && r.path != SCAN_CLEAR)
+        .collect()
+}
 fn facts() -> Value {
     json!({"available":true,"starting":false,"jobPresent":true,"status":"failed","reloadPending":false,"token":"a".repeat(64)})
 }
@@ -46,7 +55,7 @@ async fn native_dismissal_ignores_body_and_query_and_uses_only_the_checked_token
     )
     .await;
     assert_eq!((s, v), (200, json!({"cleared":true})));
-    let seen = up.seen();
+    let seen = actor(&up);
     assert_eq!(seen.len(), 2);
     assert_eq!(seen[0].path, FACTS);
     assert_eq!(j(&seen[0].body), json!({}));
@@ -68,7 +77,7 @@ async fn auth_role_csrf_precede_private_facts_and_availability_precedes_method()
     assert_eq!(write(f.addr, "POST", PATH, MEMBER, "").await.0, 403);
     assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
     assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"").await.0, 403);
-    assert!(up.seen().is_empty());
+    assert!(actor(&up).is_empty());
     assert_eq!(get(f.addr, PATH, ADMIN).await.0, 405);
     assert_eq!(up.count(CLEAR), 0);
     up.set(|_| reply("200 OK", r#"{"available":false}"#));
@@ -147,4 +156,32 @@ async fn lost_generation_never_retargets_and_dead_malformed_actor_cannot_claim_s
         }
     });
     assert_eq!(write(f.addr, "POST", PATH, ADMIN, "").await.0, 503);
+}
+
+/// #2618, core routes/models.cjs at cc74c6f3 (lines 196-202 and 244): every request Core served
+/// under /api/models/ but a GET or HEAD invalidated its shared model reads first (a member's
+/// too), then, past the administrator check, cleared its cached folder scan (not for OPTIONS);
+/// a signed-out or CSRF-refused request never reached it. Both come before the actor is asked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn writes_drop_cores_model_reads_then_past_the_admin_check_its_scan() {
+    let (_d, f, up) = rig().await;
+    let calls = || (up.count(INVALIDATE), up.count(SCAN_CLEAR));
+    assert_eq!(write(f.addr, "POST", PATH, "", "{}").await.0, 401);
+    assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"{}").await.0, 403);
+    assert_eq!(calls(), (0, 0));
+    assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
+    assert_eq!(calls(), (0, 0));
+    assert_eq!(write(f.addr, "POST", PATH, MEMBER, "{}").await.0, 403);
+    assert_eq!(calls(), (1, 0));
+    assert_eq!(get(f.addr, PATH, ADMIN).await.0, 405);
+    assert_eq!(calls(), (1, 0));
+    assert_eq!(write(f.addr, "OPTIONS", PATH, ADMIN, "").await.0, 405);
+    assert_eq!(calls(), (2, 0));
+    assert_eq!(write(f.addr, "PUT", PATH, ADMIN, "").await.0, 405);
+    assert_eq!(calls(), (3, 1));
+    let before = up.seen().len();
+    assert_eq!(write(f.addr, "POST", PATH, ADMIN, "").await.0, 200);
+    assert_eq!(calls(), (4, 2));
+    let paths: Vec<String> = up.seen()[before..].iter().map(|r| r.path.clone()).collect();
+    assert_eq!(&paths[..3], [INVALIDATE, SCAN_CLEAR, FACTS], "{paths:?}");
 }

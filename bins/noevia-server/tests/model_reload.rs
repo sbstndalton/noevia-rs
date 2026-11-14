@@ -386,7 +386,7 @@ async fn a_second_reload_while_one_runs_is_refused_and_the_first_is_not_harmed()
     let d = tempfile::tempdir().unwrap();
     let _db = seed_database(d.path());
     let ini = running_ini(d.path());
-    let (port, _seen) = engine(slow_reload(800)).await;
+    let (port, seen) = engine(slow_reload(3000)).await;
     let (addr, stop) = start(
         d.path(),
         &[
@@ -410,7 +410,21 @@ async fn a_second_reload_while_one_runs_is_refused_and_the_first_is_not_harmed()
         Some(ADMIN),
         b"{}",
     ));
-    tokio::time::sleep(Duration::from_millis(250)).await;
+    // noevia#2588: the second call goes in once the first is inside the engine's reload (the
+    // stub holds it there for 3 s), not after a fixed 250 ms a loaded runner may not reach.
+    let deadline = std::time::Instant::now() + Duration::from_secs(20);
+    while !seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|r| r.target == "/models?reload=1")
+    {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the first reload never reached the engine"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
     let (status, _, body) = call(
         addr,
         "POST",
