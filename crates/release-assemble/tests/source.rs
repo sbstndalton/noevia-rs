@@ -264,6 +264,10 @@ fn stub_curl(bin: &Path) -> PathBuf {
         b"#!/bin/sh\n[ \"${CURL_FAIL:-0}\" = 1 ] && exit 22\nout=\nwhile [ $# -gt 0 ]; do [ \"$1\" = -o ] && { out=$2; shift; }; shift; done\nexec cp \"$CURL_FIXTURE\" \"$out\"\n",
         true,
     );
+    // Without it the shell side would find the real curl on PATH and download (noevia#2726 review).
+    let meta = fs::metadata(&path);
+    let executable = meta.is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
+    assert!(executable, "the stub curl was not written as an executable: {}", path.display());
     path
 }
 
