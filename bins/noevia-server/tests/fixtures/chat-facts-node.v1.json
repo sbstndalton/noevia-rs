@@ -1,0 +1,3169 @@
+{
+  "version": 1,
+  "generator": "tools/gen-chat-facts-fixtures.cjs",
+  "wasmSha256": "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9",
+  "sourcesRead": {
+    "server/dav-parse-wasm.cjs": "29e749a2f00eeead883f06e76cde96e1a2d6083bd1687ef5d70edd82a287f2ca",
+    "server/gdrive-files.cjs": "62f9d7fa28bc963872bf3edddfb23fb1b484762f7314f33cddea13c50140a69b",
+    "server/gdrive-tools.cjs": "bd711bc6202a13adfb46e9ec1891f9a961238d8acbd9441fc6d4a04652ee2edc",
+    "server/http.cjs": "d9bc3d67258f4adcbd10bfaaf9e6674086110fbba079fe8f6678340d3a0080e0",
+    "server/index.cjs": "b1f4dc6f672dea0f2ff9b7e56b54f2c0a9a6a9f35f229df9b1a86877dcb94aa9",
+    "server/kiwix.cjs": "218f174633a0f692dcc3454d4b56188c8c32839c9d40116790f963f9472e086d",
+    "server/mcp-servers.cjs": "ed2c6ce2a678291404eb2133b7bffb86e18eb414b83d7d018798190bf0603fcc",
+    "server/prompt-framing.cjs": "2bd902b671c30d3cf84e55e2a7151c94649f86c9e5b728fb774436b2a4afd193",
+    "server/published-snapshot.cjs": "ad85411bf30e15225842f2da2289ea78bfbf08500c751338eeaa03a8ccfbec71",
+    "server/strip-boilerplate.cjs": "2dd8b323ed82ce702457aa67727f9c6048fb739b70866ec6428ad74eff6d137a",
+    "server/toolbox-chat-facts.cjs": "bed91b3f76932f5f209cfc77aa890d7a725cd8370e1cc18ffaa9c0d432ccd450",
+    "server/toolboxes.cjs": "f2be13090ecb2efc3fb3e49c090108e94b7218e6dc3d6ff8b3224773f5d3b121"
+  },
+  "cases": [
+    {
+      "name": "defaults",
+      "kiwix": false,
+      "kiwixUrl": null,
+      "enabled": null,
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "kiwix-on",
+      "kiwix": true,
+      "kiwixUrl": "http://qa-kiwix.invalid:8080",
+      "enabled": null,
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "offline-wikipedia",
+            "label": "Offline Wikipedia",
+            "description": "Search and read the offline Wikipedia copy on this server. Read-only.",
+            "source": "builtin",
+            "reads": [
+              "wikipedia_search",
+              "wikipedia_read"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_search",
+                  "description": "Search the offline Wikipedia. Returns titles with a path for wikipedia_read.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_read",
+                  "description": "Read one offline Wikipedia article by the path wikipedia_search returned. Use offset to continue.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "kiwix-feature-off",
+      "kiwix": false,
+      "kiwixUrl": "http://qa-kiwix.invalid:8080",
+      "enabled": null,
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "kiwix-no-url",
+      "kiwix": true,
+      "kiwixUrl": null,
+      "enabled": null,
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "kiwix-empty-url",
+      "kiwix": true,
+      "kiwixUrl": "",
+      "enabled": null,
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "kiwix-path-url",
+      "kiwix": true,
+      "kiwixUrl": "https://qa-kiwix.invalid/wiki/",
+      "enabled": null,
+      "harness": true,
+      "repos": true,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "offline-wikipedia",
+            "label": "Offline Wikipedia",
+            "description": "Search and read the offline Wikipedia copy on this server. Read-only.",
+            "source": "builtin",
+            "reads": [
+              "wikipedia_search",
+              "wikipedia_read"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_search",
+                  "description": "Search the offline Wikipedia. Returns titles with a path for wikipedia_read.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_read",
+                  "description": "Read one offline Wikipedia article by the path wikipedia_search returned. Use offset to continue.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": true,
+        "hasRepositories": true,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "enabled-core-only",
+      "kiwix": true,
+      "kiwixUrl": "http://qa-kiwix.invalid",
+      "enabled": "core",
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "enabled-kiwix",
+      "kiwix": true,
+      "kiwixUrl": "http://qa-kiwix.invalid",
+      "enabled": "offline-wikipedia",
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "offline-wikipedia",
+            "label": "Offline Wikipedia",
+            "description": "Search and read the offline Wikipedia copy on this server. Read-only.",
+            "source": "builtin",
+            "reads": [
+              "wikipedia_search",
+              "wikipedia_read"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_search",
+                  "description": "Search the offline Wikipedia. Returns titles with a path for wikipedia_read.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_read",
+                  "description": "Read one offline Wikipedia article by the path wikipedia_search returned. Use offset to continue.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "enabled-blank",
+      "kiwix": true,
+      "kiwixUrl": "http://qa-kiwix.invalid",
+      "enabled": "  ",
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "offline-wikipedia",
+            "label": "Offline Wikipedia",
+            "description": "Search and read the offline Wikipedia copy on this server. Read-only.",
+            "source": "builtin",
+            "reads": [
+              "wikipedia_search",
+              "wikipedia_read"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_search",
+                  "description": "Search the offline Wikipedia. Returns titles with a path for wikipedia_read.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "wikipedia_read",
+                  "description": "Read one offline Wikipedia article by the path wikipedia_search returned. Use offset to continue.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "path": {
+                        "type": "string"
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "path"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "enabled-case",
+      "kiwix": true,
+      "kiwixUrl": "http://qa-kiwix.invalid",
+      "enabled": "Offline-Wikipedia, gdrive",
+      "harness": false,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "harness-on",
+      "kiwix": false,
+      "kiwixUrl": null,
+      "enabled": null,
+      "harness": true,
+      "repos": false,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": true,
+        "hasRepositories": false,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    },
+    {
+      "name": "repos-only",
+      "kiwix": false,
+      "kiwixUrl": null,
+      "enabled": null,
+      "harness": false,
+      "repos": true,
+      "facts": {
+        "builtin": [
+          {
+            "id": "core",
+            "label": "Core",
+            "description": "Always-safe built-ins: the server clock, and full reads of this project's knowledge files.",
+            "source": "builtin",
+            "reads": [
+              "get_current_time",
+              "read_project_file"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "get_current_time",
+                  "description": "Get the current date and time on the server, optionally in a specific IANA timezone (e.g. Europe/Berlin). Use whenever freshness, \"today\", or a timezone matters.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "timezone": {
+                        "type": "string",
+                        "description": "Optional IANA timezone name"
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "read_project_file",
+                  "description": "Read an attached source or enabled instruction skill by its name as listed. Skills support offset pagination. For PDFs use startPage/endPage (up to 5 pages) and offset to read beyond summaries; results include page and version references.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "description": "File name as listed (e.g. Folder/Text/notes.md), or just notes.md if unique"
+                      },
+                      "startPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "endPage": {
+                        "type": "integer",
+                        "minimum": 1
+                      },
+                      "offset": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    },
+                    "required": [
+                      "name"
+                    ]
+                  }
+                }
+              }
+            ]
+          },
+          {
+            "id": "gdrive",
+            "label": "Google Drive",
+            "description": "Search, read and write files in your connected Google Drive (only files noevia created or was given).",
+            "source": "builtin",
+            "reads": [
+              "drive_search_files",
+              "drive_read_file",
+              "drive_get_metadata",
+              "drive_list_recent"
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_search_files",
+                  "description": "Search the user's Google Drive (files noevia created or was given) by name or text.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "query": {
+                        "type": "string"
+                      },
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": [
+                      "query"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_read_file",
+                  "description": "Read a text file, Google Doc, Sheet (as CSV) or Slides deck from Google Drive, by Drive file id. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_get_metadata",
+                  "description": "Get a Google Drive file's name, type, size, dates and link.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_list_recent",
+                  "description": "List the most recently changed files in Google Drive.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "limit": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 25
+                      }
+                    },
+                    "required": []
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_create_file",
+                  "description": "Create a new text file in the user's Google Drive. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string"
+                      },
+                      "content": {
+                        "type": "string"
+                      },
+                      "mimeType": {
+                        "type": "string",
+                        "description": "text/plain (default), text/markdown, text/csv or application/json"
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_update_file",
+                  "description": "Replace the whole content of a text file in Google Drive, by Drive file id. Read it with drive_read_file first, in the same reply. Not for files uploaded to this project; use the project file tools for those.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      },
+                      "content": {
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "fileId",
+                      "content"
+                    ]
+                  }
+                }
+              },
+              {
+                "type": "function",
+                "function": {
+                  "name": "drive_trash_file",
+                  "description": "Move a Google Drive file to the trash (recoverable for 30 days).",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "fileId": {
+                        "type": "string",
+                        "description": "Drive file id from a search or list result"
+                      }
+                    },
+                    "required": [
+                      "fileId"
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "defaults": [
+          "core"
+        ],
+        "connectorBoxes": [
+          "gdrive"
+        ],
+        "harnessEnabled": false,
+        "hasRepositories": true,
+        "prefill": {
+          "targetMs": 14000,
+          "models": {}
+        }
+      }
+    }
+  ]
+}
