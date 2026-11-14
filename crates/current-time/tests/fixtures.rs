@@ -386,6 +386,8 @@ fn server_zone_only_from_an_exact_zone_id() {
     assert_eq!(z(Some("UTC")), Some("UTC"));
     assert_eq!(z(Some("Asia/Kolkata")), Some("Asia/Kolkata"));
     for refused in [
+        Some("Eire"),
+        Some("Europe/Paris"),
         None,
         Some(""),
         Some(":America/New_York"),
@@ -415,4 +417,54 @@ fn server_zone_only_from_an_exact_zone_id() {
         }
     }
     assert!(compared > 100, "{compared}");
+    // The accepted server zones are exactly the recorded process zones Node knew.
+    let mut recorded: Vec<String> = arr(f.get("cases"))
+        .iter()
+        .map(|c| c.get("processTZ").as_str().unwrap().to_string())
+        .filter(|p| z(Some(p)).is_some())
+        .collect();
+    recorded.sort();
+    recorded.dedup();
+    assert_eq!(recorded.len(), 7, "{recorded:?}");
+}
+
+#[test]
+fn runtime_versions_must_be_the_recordings() {
+    let v = fixture();
+    let v = v.get("versions");
+    let (node, icu, tz) = (
+        v.get("node").as_str().unwrap(),
+        v.get("icu").as_str().unwrap(),
+        v.get("tz").as_str().unwrap(),
+    );
+    assert!(current_time::runtime_recorded(node, icu, tz));
+    let other_patch = format!("{}.99.0", node.split('.').next().unwrap());
+    assert!(current_time::runtime_recorded(&other_patch, icu, tz));
+    assert!(!current_time::runtime_recorded("24.0.0", icu, tz));
+    assert!(!current_time::runtime_recorded(node, "79.1", tz));
+    assert!(!current_time::runtime_recorded(node, icu, "2026d"));
+    assert!(!current_time::runtime_recorded("", "", ""));
+}
+
+/// Every offset a zone this port answers for has at 00:00 UTC in 2026-2027 has a recorded name, so
+/// no answer in the verified span falls back to the GMT form where Node prints a name.
+#[test]
+fn every_offset_of_the_span_has_a_recorded_name() {
+    let f = fixture();
+    let mut checked = 0;
+    for z in arr(f.get("zones")) {
+        let id = z.get("id").as_str().unwrap();
+        let Some(named) = current_time::named_offsets(id) else {
+            continue;
+        };
+        if DAILY_DIFFER.iter().any(|(d, _, _)| *d == id) {
+            continue;
+        }
+        for run in z.get("daily").as_str().unwrap().split(' ') {
+            let off: i32 = run.split_once('*').unwrap().0.parse().unwrap();
+            assert!(named.contains(&off), "{id} at {off}");
+            checked += 1;
+        }
+    }
+    assert!(checked > 500, "{checked}");
 }
