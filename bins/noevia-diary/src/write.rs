@@ -106,8 +106,8 @@ impl<E: std::fmt::Display> From<E> for Error {
 pub struct Writers {
     slots: Mutex<HashMap<String, Arc<Slot>>>,
     fenced: Mutex<HashMap<String, Instant>>,
-    /// Live leases: id → (tenant, since).
-    leases: Mutex<HashMap<u64, (String, Instant)>>,
+    /// Live leases: id → (tenant, since, the caller's holder nonce).
+    leases: Mutex<HashMap<u64, (String, Instant, String)>>,
     next: std::sync::atomic::AtomicU64,
 }
 
@@ -324,6 +324,17 @@ impl Writers {
     /// `wait`. A fence does not refuse it: the fence stops this process's own writes, and Python's
     /// own deletion and its 410s run under its lock.
     pub fn lease_acquire(&self, uid: &str, wait: Duration) -> Result<u64, Refused> {
+        self.lease_acquire_for(uid, wait, "")
+    }
+
+    /// `lease_acquire` naming the caller's `holder` nonce, so a caller that never learnt its lease
+    /// id (a lost reply) can still return it (`lease_release_holder`).
+    pub fn lease_acquire_for(
+        &self,
+        uid: &str,
+        wait: Duration,
+        holder: &str,
+    ) -> Result<u64, Refused> {
         let slot = self.slot(uid);
         let id = self.id();
         if !slot.take(id, Some(Instant::now() + wait)) {
@@ -332,8 +343,24 @@ impl Writers {
         self.leases
             .lock()
             .unwrap_or_else(|e| e.into_inner())
-            .insert(id, (uid.to_string(), Instant::now()));
+            .insert(id, (uid.to_string(), Instant::now(), holder.to_string()));
         Ok(id)
+    }
+
+    /// Return every live lease granted to `holder` (a non-empty nonce). The count returned.
+    pub fn lease_release_holder(&self, holder: &str) -> usize {
+        if holder.is_empty() {
+            return 0;
+        }
+        let ids: Vec<u64> = self
+            .leases
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .iter()
+            .filter(|(_, (_, _, h))| h == holder)
+            .map(|(id, _)| *id)
+            .collect();
+        ids.into_iter().filter(|id| self.lease_release(*id)).count()
     }
 
     /// End a lease. False when it is not live (already released, or never issued).
@@ -344,7 +371,7 @@ impl Writers {
             .unwrap_or_else(|e| e.into_inner())
             .remove(&id);
         match entry {
-            Some((uid, _)) => {
+            Some((uid, _, _)) => {
                 self.slot(&uid).release_lease(id);
                 true
             }
@@ -357,7 +384,7 @@ impl Writers {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .get(&id)
-            .is_some_and(|(u, _)| u == uid)
+            .is_some_and(|(u, _, _)| u == uid)
     }
 
     /// The live leases (tenant, seconds held), longest first: a leak is visible.
@@ -367,7 +394,7 @@ impl Writers {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .values()
-            .map(|(u, at)| (u.clone(), at.elapsed().as_secs()))
+            .map(|(u, at, _)| (u.clone(), at.elapsed().as_secs()))
             .collect();
         out.sort_by(|a, b| b.1.cmp(&a.1).then_with(|| a.0.cmp(&b.0)));
         out

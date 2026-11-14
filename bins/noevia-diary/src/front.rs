@@ -42,6 +42,9 @@ use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use subtle::ConstantTimeEq;
 
+/// S3: "1" on a forwarded request when this process served a native write of the tenant since the
+/// child last heard: the child marks its state for the tenant unrecovered (`_rust_write_uncertain`).
+pub const WRITTEN_HEADER: &str = "x-noevia-diary-written";
 /// The header carrying the parent secret on every request to the child.
 pub const PARENT_HEADER: &str = "x-noevia-diary-parent";
 /// "1" when this process verified the request's tenant assertion (the child's `tenant_asserted`).
@@ -131,6 +134,9 @@ pub struct Front {
     native_routes: OnceLock<Vec<String>>,
     native_writers: OnceLock<Vec<String>>,
     recovered: Mutex<HashMap<String, Instant>>,
+    /// S3: per tenant, (native writes served, the highest of them the child has been told of).
+    written: Mutex<HashMap<String, (u64, u64)>>,
+    write_wait: Duration,
     http: Client<HttpConnector, Body>,
 }
 
@@ -152,8 +158,16 @@ impl Front {
             native_routes: OnceLock::new(),
             native_writers: OnceLock::new(),
             recovered: Mutex::new(HashMap::new()),
+            written: Mutex::new(HashMap::new()),
+            write_wait: WRITE_WAIT,
             http,
         }
+    }
+
+    /// How long a native write waits for the writer slot (tests shorten it).
+    pub fn with_write_wait(mut self, wait: Duration) -> Self {
+        self.write_wait = wait;
+        self
     }
 
     /// The App built from the child's start-up config (None until it arrived).
@@ -175,7 +189,7 @@ impl Front {
         let routes = cfg.native_routes.clone();
         let writers = cfg.native_writers.clone();
         let mut app = App::new(cfg);
-        app.write_wait = Some(WRITE_WAIT);
+        app.write_wait = Some(self.write_wait);
         self.app
             .set(Arc::new(app))
             .map_err(|_| "start-up config already installed")?;
@@ -206,6 +220,41 @@ impl Front {
 
     fn forget(&self, uid: &str) {
         self.stamp(uid, false);
+    }
+
+    /// A native write was served for `uid`: the child's recovered state for it is stale (Python's
+    /// D5 forwarder calls `_rust_write_uncertain` after every served native write). Its stamp is
+    /// voided, and the next forwarded request of the tenant tells the child (WRITTEN_HEADER).
+    fn wrote(&self, uid: &str) {
+        let mut map = self.written.lock().unwrap_or_else(|e| e.into_inner());
+        let entry = map.entry(uid.to_string()).or_insert((0, 0));
+        entry.0 += 1;
+        drop(map);
+        self.forget(uid);
+    }
+
+    /// The tenant's native-write count at send time, and whether the child still has to be told.
+    fn written_at_send(&self, uid: &str) -> (u64, bool) {
+        let map = self.written.lock().unwrap_or_else(|e| e.into_inner());
+        map.get(uid).map_or((0, false), |(n, told)| (*n, told < n))
+    }
+
+    /// A reply arrived for a request sent at write count `sent` (`told`: it carried the news). The
+    /// stamp counts only when no native write happened since and the child knew of every one.
+    fn settle(&self, uid: &str, sent: u64, told: bool, recovered: bool) {
+        let fresh = {
+            let mut map = self.written.lock().unwrap_or_else(|e| e.into_inner());
+            match map.get_mut(uid) {
+                None => true,
+                Some((n, delivered)) => {
+                    if told && *delivered < sent {
+                        *delivered = sent;
+                    }
+                    *n == sent && *delivered >= sent
+                }
+            }
+        };
+        self.stamp(uid, recovered && fresh);
     }
 
     fn stamp(&self, uid: &str, recovered: bool) {
@@ -393,6 +442,9 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         )
         .await;
         if !is_decline(&resp) {
+            if let Some(uid) = writer.as_deref() {
+                front.wrote(uid);
+            }
             return resp;
         }
         buffered = Some(bytes);
@@ -440,6 +492,9 @@ async fn forward(
             front.forget(uid);
         }
     }
+    let (sent, tell) = tenant
+        .as_deref()
+        .map_or((0, false), |uid| front.written_at_send(uid));
     let mut out = HeaderMap::new();
     for (k, v) in headers.iter() {
         if !HOP.contains(&k.as_str()) {
@@ -453,6 +508,9 @@ async fn forward(
         ASSERTED_HEADER,
         HeaderValue::from_static(if asserted { "1" } else { "0" }),
     );
+    if tell {
+        out.insert(WRITTEN_HEADER, HeaderValue::from_static("1"));
+    }
     let mut req = Request::new(body);
     *req.method_mut() = method;
     *req.uri_mut() = uri;
@@ -487,7 +545,7 @@ async fn forward(
     }
     // A reply without a stamp (one Starlette's error middleware wrote) leaves the tenant forwarded.
     if let Some(uid) = tenant {
-        front.stamp(&uid, stamp == Some(true));
+        front.settle(&uid, sent, tell, stamp == Some(true));
     }
     builder
         .body(Body::new(resp.into_body()))

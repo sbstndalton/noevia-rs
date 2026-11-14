@@ -184,7 +184,10 @@ async fn start(root: &Path, key: &str, install: bool) -> Started {
 
 async fn start_with(root: &Path, key: &str, install: bool, writers: &[&str]) -> Started {
     let (child_port, log) = stub_child().await;
-    let f = Arc::new(Front::new(CTL.into(), SECRET.into(), child_port));
+    let f = Arc::new(
+        Front::new(CTL.into(), SECRET.into(), child_port)
+            .with_write_wait(std::time::Duration::from_millis(400)),
+    );
     let public = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let control = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let s = Started {
@@ -712,6 +715,89 @@ async fn the_child_leases_the_writer_slot_and_native_writes_wait_for_it() {
     assert!(text.contains("\"version\""), "{text}");
     // Served natively: the child saw nothing.
     assert!(s.log.lock().unwrap().is_empty());
+    // The child's recovered state is stale now: the tenant's next request goes to the child and
+    // tells it; once it has answered (and stamped), reads are native again; nothing more is told.
+    let months = || {
+        c.get(format!("http://{}/api/months", s.public))
+            .header("authorization", format!("Bearer {TOKEN}"))
+            .header("x-cowork-user-id", UID)
+            .header(
+                "x-cowork-tenant-assertion",
+                sign("GET", "/api/months", "", b""),
+            )
+            .send()
+    };
+    assert_eq!(months().await.unwrap().status(), 207);
+    assert_eq!(
+        s.log.lock().unwrap()[0].header("x-noevia-diary-written"),
+        Some("1")
+    );
+    // (The native write left its document dirty, so this read may still be the child's.)
+    let _ = months().await.unwrap();
+    assert!(s
+        .log
+        .lock()
+        .unwrap()
+        .iter()
+        .skip(1)
+        .all(|x| x.header("x-noevia-diary-written").is_none()));
+    // While the child holds the lease, a native write waits for it and answers Python's BUSY.
+    let r = lease(&c, &s, &format!("tenant={UID}&wait_ms=0&holder=qa-holder"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let held: String = serde_json::from_str::<serde_json::Value>(&r.text().await.unwrap()).unwrap()["lease"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let body2 = br###"{"path":"Entries/2030/January/January 8, 2030.md","content":"## Tuesday, January 8, 2030\n","version":null}"###;
+    let r = c
+        .put(format!("http://{}/api/file", s.public))
+        .header("authorization", format!("Bearer {TOKEN}"))
+        .header("x-cowork-user-id", UID)
+        .header(
+            "x-cowork-tenant-assertion",
+            sign("PUT", "/api/file", "", body2),
+        )
+        .header("content-type", "application/json")
+        .body(body2.to_vec())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 503);
+    assert_eq!(r.headers()["retry-after"], "1");
+    assert_eq!(
+        r.text().await.unwrap(),
+        r#"{"detail":"Diary is saving another change. Try again in a moment."}"#
+    );
+    // The deletion fence under the caller's own lease joins it (no wait for itself).
+    let t = std::time::Instant::now();
+    let r = c
+        .post(format!("http://{}/internal/fence?tenant={UID}", s.control))
+        .header("x-noevia-diary-control", CTL)
+        .header("x-noevia-diary-lease", held.as_str())
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    assert!(t.elapsed() < std::time::Duration::from_secs(2));
+    // A caller whose reply was lost returns its lease by its holder nonce.
+    let r = c
+        .delete(format!("http://{}/internal/lease?holder=qa-holder", s.control))
+        .header("x-noevia-diary-control", CTL)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let r = c
+        .delete(format!("http://{}/internal/lease?lease={held}", s.control))
+        .header("x-noevia-diary-control", CTL)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 404);
+    let log_before = s.log.lock().unwrap().len();
     // A released lease is gone.
     let r = c
         .delete(format!("http://{}/internal/lease?lease={id}", s.control))
@@ -732,7 +818,7 @@ async fn the_child_leases_the_writer_slot_and_native_writes_wait_for_it() {
         .unwrap();
     // (unsigned: refused here before anything else)
     assert_eq!(r.status(), 401);
-    assert!(s.log.lock().unwrap().is_empty());
+    assert_eq!(s.log.lock().unwrap().len(), log_before);
 }
 
 #[test]
