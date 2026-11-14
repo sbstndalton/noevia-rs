@@ -16324,6 +16324,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -17075,6 +17076,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -17960,6 +17962,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -31695,6 +31698,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": true
     },
     {
@@ -32576,6 +32580,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": true
     },
     {
@@ -33445,6 +33450,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": true
     },
     {
@@ -34340,6 +34346,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": true
     },
     {
@@ -35059,6 +35066,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": true
     },
     {
@@ -35784,6 +35792,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -36630,6 +36639,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -37513,6 +37523,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -38289,6 +38300,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -39263,6 +39275,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -42757,6 +42770,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -45647,6 +45661,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -48849,6 +48864,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -52740,6 +52756,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": false
     },
     {
@@ -53583,6 +53600,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_replace_text",
      "answer": false
     },
     {
@@ -55503,6 +55521,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": false
     },
     {
@@ -56500,6 +56519,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": false
     },
     {
@@ -57499,6 +57519,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": false
     },
     {
@@ -58519,6 +58540,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": true
     },
     {
@@ -62395,6 +62417,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": false
     },
     {
@@ -63440,6 +63463,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "project_append_file",
      "answer": false
     },
     {
@@ -72805,6 +72829,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_trash_file",
      "answer": false
     },
     {
@@ -79961,6 +79986,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": false
     },
     {
@@ -80936,6 +80963,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": true
     },
     {
@@ -82053,6 +82082,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": true
     },
     {
@@ -83027,6 +83057,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": true
     },
     {
@@ -85512,6 +85544,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": false
     },
     {
@@ -94494,6 +94528,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": false
     },
     {
@@ -101547,6 +101582,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": false
     },
     {
@@ -104082,6 +104118,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": false
     },
     {
@@ -104114,6 +104151,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": false
     },
     {
@@ -104895,6 +104933,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": false
     },
     {
@@ -116003,6 +116042,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_read_file",
      "answer": false
     },
     {
@@ -128923,6 +128963,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": false
     },
     {
@@ -131736,6 +131778,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": false
     },
     {
@@ -133259,6 +133303,8 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
+     "askedAnyway": true,
      "answer": false
     },
     {
@@ -136166,6 +136212,7 @@
      "op": "chatWideApproved",
      "chatId": "qa-chat-1",
      "scope": "project:qa-project",
+     "tool": "drive_create_file",
      "answer": true
     },
     {

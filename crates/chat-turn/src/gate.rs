@@ -37,6 +37,11 @@
 //! lookup sentence (`The file this would change could not be looked up`) and audited `edit-target`,
 //! before the card and after it alike; it never revokes the chat's grant (a transport fault is not
 //! a changed file). Only extra refusals: never a run Node would refuse.
+//!
+//! Named difference (noevia#2575): a call that is asked about anyway (an Automatic-only write, a
+//! provenance hit) asks core's grant bridge for no handle; chat.cjs asks the front for a ticket and drops
+//! it. The card, its answer and the run are the same; core's per-account handle cap no longer fills with
+//! handles nothing redeems.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -752,17 +757,18 @@ impl<'a> Tools<'a> {
             // provenance hit): its single-use handle would never be redeemed and would fill core's
             // per-account cap. Named difference: chat.cjs asks the front for the ticket and drops it.
             let once = self.once_tools.contains(name);
-            let used_grant = if once || !hits.is_empty() || self.automatic_only_writes.contains(name) {
-                None
-            } else {
-                host.chat_wide_approved(
-                    self.chat_id.as_deref(),
-                    &self.grant_scope,
-                    &binding,
-                    &self.exchange_key,
-                )
-                .await
-            };
+            let used_grant =
+                if once || !hits.is_empty() || self.automatic_only_writes.contains(name) {
+                    None
+                } else {
+                    host.chat_wide_approved(
+                        self.chat_id.as_deref(),
+                        &self.grant_scope,
+                        &binding,
+                        &self.exchange_key,
+                    )
+                    .await
+                };
             let asked = used_grant.is_none()
                 || !hits.is_empty()
                 || self.automatic_only_writes.contains(name);

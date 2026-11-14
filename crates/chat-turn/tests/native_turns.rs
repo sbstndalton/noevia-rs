@@ -295,7 +295,11 @@ impl Script {
 /// Those recorded grant checks are not answered here (record_turns.cjs marks each with its tool and, for
 /// a provenance hit, `askedAnyway`).
 fn without_asked_anyway_grants(case: &JValue, stubs: Vec<JValue>) -> Vec<JValue> {
-    let automatic_only: Vec<&str> = match case.get("handoff").get("prepared").get("automaticOnlyWrites") {
+    let automatic_only: Vec<&str> = match case
+        .get("handoff")
+        .get("prepared")
+        .get("automaticOnlyWrites")
+    {
         JValue::Arr(names) => names.iter().filter_map(|n| n.as_str()).collect(),
         _ => Vec::new(),
     };
@@ -304,7 +308,9 @@ fn without_asked_anyway_grants(case: &JValue, stubs: Vec<JValue>) -> Vec<JValue>
         .filter(|s| {
             s.get("op").as_str() != Some("chatWideApproved")
                 || !(s.get("askedAnyway") == &JValue::Bool(true)
-                    || s.get("tool").as_str().is_some_and(|t| automatic_only.contains(&t)))
+                    || s.get("tool")
+                        .as_str()
+                        .is_some_and(|t| automatic_only.contains(&t)))
         })
         .collect()
 }

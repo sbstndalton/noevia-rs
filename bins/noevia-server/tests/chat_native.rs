@@ -1557,7 +1557,10 @@ async fn run_case(
     // With the front's registry its cards are the registry's: their recorded stubs are not asked for.
     // noevia#2575, a named difference: no grant is asked for a call asked about anyway (a provenance hit,
     // an Automatic-only write); those recorded checks are not answered.
-    let automatic_only = arr(case.get("handoff").get("prepared").get("automaticOnlyWrites"));
+    let automatic_only = arr(case
+        .get("handoff")
+        .get("prepared")
+        .get("automaticOnlyWrites"));
     let stubs = arr(case.get("stubs"))
         .into_iter()
         .filter(|s| ANSWERED.contains(&s.get("op").as_str().unwrap_or("")))
