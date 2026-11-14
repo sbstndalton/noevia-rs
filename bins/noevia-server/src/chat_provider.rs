@@ -1672,7 +1672,7 @@ mod features {
     use super::*;
 
     fn listed(name: &str) -> usize {
-        crate::FEATURES.iter().filter(|f| **f == name).count()
+        crate::FEATURES.iter().filter(|&&f| f == name).count()
     }
 
     #[test]
