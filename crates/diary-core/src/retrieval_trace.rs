@@ -28,6 +28,10 @@ impl EntryRef {
     /// The header is entry text: only its leading `HH:MM` is kept. A header that is not a string
     /// never matches the pattern in Python either (its `str()` form starts with a bracket or a
     /// letter), so it gives `None` here too.
+    ///
+    /// A `row` that is not an object makes Python's `_ref` raise, which fails the whole trace; here
+    /// it gives null fields. That cannot happen in the port: the assembler passes
+    /// `row_value()`, which is always an object (noevia#2590).
     pub fn from_row(row: &Value) -> Self {
         let header = row.get("header").and_then(Value::as_str).unwrap_or("");
         Self {
@@ -49,10 +53,14 @@ impl EntryRef {
 
 /// Match `^\s*(\d{1,2}:\d{2})\b` and return the matched `H:MM` / `HH:MM` text.
 ///
-/// Digits are ASCII only; Python's `\d` also accepts other Unicode decimal digits. That is the one
-/// known difference from the Python pattern, and it is recorded in the spec.
+/// `\s` is Python's (it includes U+001C..U+001F, noevia#2590). Two known differences from the
+/// Python pattern, both recorded as such in the fixtures: digits are ASCII only (Python's `\d`
+/// also accepts other Unicode decimal digits), and the `\b` after the minutes treats Rust's
+/// alphanumerics as word characters, which besides Python's `\w` (letters and numbers) include
+/// the Other_Alphabetic marks and symbols (U+24B6, U+093E, U+0345, ...): after one of those
+/// Python finds the time and the port does not.
 fn clock_time(header: &str) -> Option<String> {
-    let s = header.trim_start();
+    let s = header.trim_start_matches(crate::context::is_python_space);
     let hour_digits = s.bytes().take_while(u8::is_ascii_digit).count();
     if !(1..=2).contains(&hour_digits) {
         return None;
