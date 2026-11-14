@@ -22,6 +22,7 @@
 //! session, a legacy Node still writes the file itself (shared mode); the file is re-read on every
 //! use, never cached, so its writes are seen either way.
 
+use super::calibration::PRESET_STEP;
 use super::router::{rows, Router};
 use super::{Hold, HoldError, Maint};
 use js_json::{wtf16, JValue};
@@ -49,8 +50,6 @@ const NEEDS_TOKEN: &str = "An inference gate fronts the engine and INFERENCE_GAT
 /// `POST /models/unload` and `GET /models?reload=1`, as the router client bounds them, plus the rest.
 const UNLOAD_LIMIT: Duration = Duration::from_secs(60);
 const RELOAD_LIMIT: Duration = Duration::from_secs(120);
-/// llamacpp-manager.cjs `PRESET_STEP_MS`: the lease a models.ini write needs left.
-const PRESET_STEP: Duration = Duration::from_millis(150_000);
 const PRESETS_BUSY: &str = "Models are busy, so nothing was changed. Try again shortly.";
 const OTHER_STEPS: Duration = Duration::from_secs(60);
 
@@ -1202,6 +1201,14 @@ pub struct Outcome {
     pub body: String,
 }
 
+/// Whether an outcome is the hold's lease ending under a step (core's `coverageLost`, which Node
+/// throws rather than answers).
+pub(crate) fn lease_lost(o: &Outcome) -> bool {
+    o.status == 503
+        && serde_json::from_str::<Value>(&o.body)
+            .is_ok_and(|b| b.get("error").and_then(Value::as_str) == Some(LEASE_LOST))
+}
+
 fn out(status: u16, body: &Value) -> Outcome {
     Outcome {
         status,
@@ -1343,9 +1350,24 @@ impl Maint {
     where
         F: std::future::Future<Output = T>,
     {
-        let Some(router) = self.router.as_ref() else {
-            return Err(message(404, "This engine does not use a preset file"));
+        let hold = self.preset_hold().await?;
+        let written = write().await;
+        let reloaded = if reload_if(&written) {
+            self.reload_held(&hold).await.status == 200
+        } else {
+            false
         };
+        hold.release().await;
+        Ok((written, reloaded))
+    }
+
+    /// `writePresets`'s hold on its own, for a writer that decides between the write and the reload
+    /// itself (track R11, model_writes_routes.rs): taken and covered for one preset write, or `Err`
+    /// with the refusal (409 `maintenance_held` when another hold is in place). The caller releases it.
+    pub(crate) async fn preset_hold(&self) -> Result<Hold, Outcome> {
+        if self.router.is_none() {
+            return Err(message(404, "This engine does not use a preset file"));
+        }
         // Node's key order: `error`, `code`, `retryable`.
         let busy = || Outcome {
             status: 409,
@@ -1366,14 +1388,26 @@ impl Maint {
             hold.release().await;
             return Err(message(503, LEASE_LOST));
         }
-        let written = write().await;
-        let reloaded = if reload_if(&written) {
-            self.reload_inner(router, &hold, false).await.status == 200
-        } else {
-            false
-        };
-        hold.release().await;
-        Ok((written, reloaded))
+        Ok(hold)
+    }
+
+    /// llamacpp-manager.cjs `presetsInRouter()`: the presets text the router runs on, from this
+    /// process's reload baseline when the router's view still matches it; `None` when unknown.
+    pub(crate) async fn router_text(&self) -> Option<String> {
+        let listing = self.router.as_ref()?.models(None).await.ok()?;
+        if !listing.ok {
+            return None;
+        }
+        let rows = rows(&listing.body)?.clone();
+        self.guard_op(move |g| g.router_text(&rows)).await.flatten()
+    }
+
+    /// `reloadHeld({ unload: false })` under a hold [`Maint::preset_hold`] took.
+    pub(crate) async fn reload_held(&self, hold: &Hold) -> Outcome {
+        match self.router.as_ref() {
+            Some(router) => self.reload_inner(router, hold, false).await,
+            None => message(404, "This engine does not use a preset file"),
+        }
     }
 
     async fn reload_inner(&self, router: &Router, holding: &Hold, unload: bool) -> Outcome {

@@ -109,6 +109,8 @@ pub struct Config {
     pub code_egress: Option<crate::code_egress::Settings>,
     /// Code mode's deployment configuration and the executor switch (code_routes.rs).
     pub code: crate::code_routes::Settings,
+    /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
+    pub model_writes: crate::model_writes_routes::Settings,
     /// Track R12, NOEVIA_RUST_SETTINGS_ROUTES=1: the front answers PUT /api/routing-default
     /// (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs)
     /// itself. Unset (anything but `1`): those methods stay Node's.
@@ -498,6 +500,7 @@ impl Config {
             project_store,
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
+            model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
             settings_routes: get(SETTINGS_ROUTES).as_deref() == Some("1"),
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),
             secrets_rotate: get("NOEVIA_RUST_SECRETS_ROTATE").as_deref() == Some("1"),

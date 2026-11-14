@@ -13,6 +13,13 @@ state-file bytes at every save.
   in-process (TZ=UTC, `NOEVIA_AUTOTUNE_ALLOW_BELOW_Q5_KV` unset; `--baseline` runs the same without the preload). It writes one JSON file per recorded autotuner instance into
   `crates/autotune-runner/tests/fixtures/traces/`, named `<nnn>-<slug of test name>-<instance>.json`.
 - Every trace file records `sourceSha256` of `server/llamacpp-full-autotune.cjs` and of the test file.
+- Scenario traces (R6 shift 3): the recorder then runs `scenarios.test.cjs` beside this file the same
+  way with `TRACE_PREFIX=S` (and `--test-force-exit`), and counts it separately. Its traces are named
+  `S<nnn>-<slug>-<instance>.json`; their `sourceSha256.test` is the scenario file's hash. The scenarios
+  build core's model manager over a synthetic engine (as core's tests do) for what core's tests never
+  record: aborts whose token is no longer current, with no job or a malformed token, and the child
+  aborts the runner makes. `SOURCES.sha256` beside this file holds the core files at the recorded
+  commit.
 
 ## Determinism (enforced by the preload, not by the tests)
 - `crypto.randomUUID` called by the runner file → `"00000000-0000-4000-8000-" + 12-digit counter`
@@ -115,7 +122,8 @@ Values are JSON (`undefined` written as the string `"<undefined>"` only where it
 | `sleep` | `ms` | |
 | `save` | `state` (or `delta`, see Size encodings) / `throws` | the exact text written to the state file (`throws`: the write or rename failed) |
 | `ini` | `text` | models.ini changed outside a recorded write (a test edited it); placed where it was first seen |
-| `driver` | `method`, `args`, `result` / `throws` | a call the test (or the manager) made on the actor: `start`, `compareAndAbort`, `prepareResume`, `compareAndResume`, `commitSettings`, `compareAndClear`, `recover`, `flushReload`, and `scanFacts` (a read, but it calls `rawModels`/`identityFor`). Other reads (`statusFacts`, `*Facts`, `completion`) are not recorded. `result` keeps tokens as `"<token>"` (they are process-salted). A token argument (`compareAndAbort`/`compareAndClear`/`prepareResume`/`compareAndResume` first, `commitSettings` third) that is a 64-hex hash is `"<token>"` when it equalled the actor's current one for that call and `"<stale-token>"` otherwise; anything else is kept. Function args are `"<function>"`, signals `"<signal>"`. |
+| `driver` | `method`, `args`, `result` / `throws` | a call the test (or the manager) made on the actor: `start`, `compareAndAbort`, `prepareResume`, `compareAndResume`, `commitSettings`, `compareAndClear`, `recover`, `flushReload`, and `scanFacts` (a read, but it calls `rawModels`/`identityFor`). Other reads (`statusFacts`, `*Facts`, `completion`) are not recorded, except `cancellationFacts` in scenario traces (below). `result` keeps tokens as `"<token>"` (they are process-salted). A token argument (`compareAndAbort`/`compareAndClear`/`prepareResume`/`compareAndResume` first, `commitSettings` third) that is a 64-hex hash is `"<token>"` when it equalled the actor's current one for that call and `"<stale-token>"` otherwise; anything else is kept. Function args are `"<function>"`, signals `"<signal>"`. |
+| `driver` `cancellationFacts` (scenario traces only) | `args: []`, `result` (`token`/`generation` as `"<token>"`) | the front's read before a cancel. A `compareAndAbort` token argument that is not current but was the token of the k-th such read in the trace (0-based, the first one that returned it) is `"<facts-token:k>"` instead of `"<stale-token>"`: the replay passes the token its own runner answered at that read, so a race where Node's token went stale must go stale natively too |
 | `driverAwait` | `method` | the run launched by that driver method (`start`, or `compareAndResume` with a launch plan) settled; recorded the moment it settled (right after the run's last save), not when the test noticed, so the replay waits for its run to finish here before going on |
 | `timer` | `source?` | a runner timer fired (trace not replayable). `source: "maintenance"`: the gate ran a recovery on its own retry timer outside any recorded call (the first is recorded; at the second, `stop: true`, recording ends) |
 
