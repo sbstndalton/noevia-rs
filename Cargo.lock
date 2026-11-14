@@ -4041,6 +4041,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "synthetic-pdfs"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "tempfile",
+]
+
+[[package]]
 name = "task-lifecycle"
 version = "0.1.0"
 dependencies = [

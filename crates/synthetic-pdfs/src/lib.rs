@@ -546,7 +546,7 @@ pub fn write_ballast_pdf(path: &Path, ballast_bytes: usize, chunk: usize) -> Res
     let file = std::fs::File::create(path)?;
     let mut out = std::io::BufWriter::new(file);
     let mut written = 0usize;
-    let mut put = |out: &mut std::io::BufWriter<std::fs::File>, bytes: &[u8]| -> Result<usize> {
+    let put = |out: &mut std::io::BufWriter<std::fs::File>, bytes: &[u8]| -> Result<usize> {
         out.write_all(bytes)?;
         Ok(bytes.len())
     };

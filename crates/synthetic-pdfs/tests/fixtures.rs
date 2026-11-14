@@ -167,12 +167,15 @@ fn padding_makes_a_valid_oversized_file() {
     assert!(data.len() > 100_000);
     assert!(common::xref_points_at_objects(&data));
     let unpadded = pdf(&[Page::text(&["X"])], 0).unwrap_or_else(|e| unreachable!("{e}"));
-    assert_eq!(data.len(), unpadded.len() + 100_000);
+    let start = |d: &[u8]| common::parse(d).map(|p| p.startxref).unwrap_or_default();
+    // Everything before the xref table moves by exactly the padding (the startxref number grows).
+    assert_eq!(start(&data), start(&unpadded) + 100_000);
     assert!(OVERSIZE_PADDING > 25 * 1024 * 1024);
     // padding 1 and 2 are both the shortest comment line, as in the reference.
     for p in [1, 2] {
         let data = pdf(&[Page::text(&["X"])], p).unwrap_or_else(|e| unreachable!("{e}"));
-        assert_eq!(data.len(), unpadded.len() + 2, "padding {p}");
+        assert_eq!(start(&data), start(&unpadded) + 2, "padding {p}");
+        assert!(common::xref_points_at_objects(&data));
     }
 }
 
