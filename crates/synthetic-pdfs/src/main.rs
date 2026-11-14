@@ -9,7 +9,9 @@
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
-use synthetic_pdfs::{oversized_text_pdf, skip_reason, write_all, write_ballast_pdf, SystemProbe, BALLAST_CHUNK};
+use synthetic_pdfs::{
+    oversized_text_pdf, skip_reason, write_all, write_ballast_pdf, SystemProbe, BALLAST_CHUNK,
+};
 
 const USAGE: &str = "usage: synthetic-pdfs [write-all [DIR] | oversized PATH | ballast PATH BYTES [CHUNK] | skip-reason]";
 
@@ -24,7 +26,10 @@ fn shown(directory: &Path, name: &str) -> PathBuf {
 
 fn run(args: &[String]) -> Result<(), String> {
     let text = |e: synthetic_pdfs::Error| e.to_string();
-    let number = |s: &String| s.parse::<usize>().map_err(|_| format!("not a byte count: {s}"));
+    let number = |s: &String| {
+        s.parse::<usize>()
+            .map_err(|_| format!("not a byte count: {s}"))
+    };
     match args {
         [] => run(&["write-all".to_owned()]),
         [cmd] | [cmd, _] if cmd == "write-all" => {
@@ -39,7 +44,11 @@ fn run(args: &[String]) -> Result<(), String> {
             std::fs::write(path, oversized_text_pdf().map_err(text)?).map_err(|e| e.to_string())
         }
         [cmd, path, bytes, rest @ ..] if cmd == "ballast" && rest.len() <= 1 => {
-            let chunk = rest.first().map(number).transpose()?.unwrap_or(BALLAST_CHUNK);
+            let chunk = rest
+                .first()
+                .map(number)
+                .transpose()?
+                .unwrap_or(BALLAST_CHUNK);
             let size = write_ballast_pdf(Path::new(path), number(bytes)?, chunk).map_err(text)?;
             println!("{size}");
             Ok(())

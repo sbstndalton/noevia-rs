@@ -35,7 +35,11 @@ impl Probe for SystemProbe {
         }
         std::env::var_os("PATH").is_some_and(|path| {
             std::env::split_paths(&path).any(|dir| {
-                let dir = if dir.as_os_str().is_empty() { Path::new(".").to_path_buf() } else { dir };
+                let dir = if dir.as_os_str().is_empty() {
+                    Path::new(".").to_path_buf()
+                } else {
+                    dir
+                };
                 executable(&dir.join(tool))
             })
         })
@@ -64,7 +68,9 @@ impl Probe for SystemProbe {
         let status = loop {
             match child.try_wait() {
                 Ok(Some(status)) => break Some(status),
-                Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
+                Ok(None) if Instant::now() < deadline => {
+                    std::thread::sleep(Duration::from_millis(20))
+                }
                 _ => {
                     let _ = child.kill();
                     let _ = child.wait();
@@ -80,8 +86,11 @@ impl Probe for SystemProbe {
 
 /// Names of the real engines the OCR tests need that are not usable here (empty = all present).
 pub fn missing_engines(probe: &dyn Probe) -> Vec<String> {
-    let mut missing: Vec<String> =
-        TOOLS.iter().filter(|tool| !probe.which(tool)).map(|tool| (*tool).to_owned()).collect();
+    let mut missing: Vec<String> = TOOLS
+        .iter()
+        .filter(|tool| !probe.which(tool))
+        .map(|tool| (*tool).to_owned())
+        .collect();
     if !missing.iter().any(|m| m == "tesseract") {
         let listed = probe.list_langs().unwrap_or_default();
         let listed = String::from_utf8_lossy(&listed);
@@ -101,7 +110,10 @@ pub fn skip_reason_from(missing: &[String]) -> String {
     if missing.is_empty() {
         String::new()
     } else {
-        format!("real-engine OCR/PDF tests need what is not installed here: {}", missing.join(", "))
+        format!(
+            "real-engine OCR/PDF tests need what is not installed here: {}",
+            missing.join(", ")
+        )
     }
 }
 

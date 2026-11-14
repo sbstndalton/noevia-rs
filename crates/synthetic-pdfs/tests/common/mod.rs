@@ -27,11 +27,18 @@ pub struct Parsed {
 }
 
 fn find(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
-    hay.get(from..)?.windows(needle.len()).position(|w| w == needle).map(|p| p + from)
+    hay.get(from..)?
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|p| p + from)
 }
 
 fn digits_at(hay: &[u8], at: usize) -> Option<(usize, usize)> {
-    let len = hay.get(at..)?.iter().take_while(|b| b.is_ascii_digit()).count();
+    let len = hay
+        .get(at..)?
+        .iter()
+        .take_while(|b| b.is_ascii_digit())
+        .count();
     let text = std::str::from_utf8(hay.get(at..at + len)?).ok()?;
     Some((text.parse().ok()?, at + len))
 }
@@ -74,14 +81,31 @@ pub fn parse(data: &[u8]) -> Option<Parsed> {
                 }
                 let flate = find(dict, b"/FlateDecode", 0).is_some();
                 let mut head = dict.get(..length_at)?.to_vec();
-                head.extend_from_slice(if flate { b"<inflated>" } else { dict.get(length_at..length_end)? });
+                head.extend_from_slice(if flate {
+                    b"<inflated>"
+                } else {
+                    dict.get(length_at..length_end)?
+                });
                 head.extend_from_slice(dict.get(length_end..)?);
                 let payload = if flate { inflate(raw) } else { raw.to_vec() };
-                (head, Some(payload), start + length + b"\nendstream\nendobj\n".len())
+                (
+                    head,
+                    Some(payload),
+                    start + length + b"\nendstream\nendobj\n".len(),
+                )
             }
-            _ => (data.get(body_at..endobj_at)?.to_vec(), None, endobj_at + b"\nendobj\n".len()),
+            _ => (
+                data.get(body_at..endobj_at)?.to_vec(),
+                None,
+                endobj_at + b"\nendobj\n".len(),
+            ),
         };
-        objects.push(Object { number, offset: at, head, data: payload });
+        objects.push(Object {
+            number,
+            offset: at,
+            head,
+            data: payload,
+        });
         at = end;
     }
     if at != startxref {
@@ -103,25 +127,42 @@ pub fn parse(data: &[u8]) -> Option<Parsed> {
         xref.push((n, offset));
     }
     let trailer = lines.collect::<Vec<_>>().join("\n").into_bytes();
-    if data.get(startxref_at + b"startxref\n".len()..)? != format!("{startxref}\n%%EOF\n").as_bytes() {
+    if data.get(startxref_at + b"startxref\n".len()..)?
+        != format!("{startxref}\n%%EOF\n").as_bytes()
+    {
         return None;
     }
-    Some(Parsed { preamble, objects, trailer, xref, startxref })
+    Some(Parsed {
+        preamble,
+        objects,
+        trailer,
+        xref,
+        startxref,
+    })
 }
 
 /// Every xref entry points at `n 0 obj\n` of its own number (the reference test's check).
 pub fn xref_points_at_objects(data: &[u8]) -> bool {
-    let Some(parsed) = parse(data) else { return false };
+    let Some(parsed) = parse(data) else {
+        return false;
+    };
     parsed.xref.iter().all(|(n, offset)| {
-        data.get(*offset..).is_some_and(|rest| rest.starts_with(format!("{n} 0 obj\n").as_bytes()))
+        data.get(*offset..)
+            .is_some_and(|rest| rest.starts_with(format!("{n} 0 obj\n").as_bytes()))
     })
 }
 
+/// Preamble, (number, head, data) per object, trailer, xref entry count.
+pub type Semantic = (Vec<u8>, Vec<(u32, Vec<u8>, Option<Vec<u8>>)>, Vec<u8>, usize);
+
 /// The view two encoders must agree on: everything except deflate bytes, their lengths and the
 /// offsets those lengths move.
-pub fn semantic(data: &[u8]) -> Option<(Vec<u8>, Vec<(u32, Vec<u8>, Option<Vec<u8>>)>, Vec<u8>, usize)> {
+pub fn semantic(data: &[u8]) -> Option<Semantic> {
     let parsed = parse(data)?;
-    let objects =
-        parsed.objects.into_iter().map(|o| (o.number, o.head, o.data)).collect::<Vec<_>>();
+    let objects = parsed
+        .objects
+        .into_iter()
+        .map(|o| (o.number, o.head, o.data))
+        .collect::<Vec<_>>();
     Some((parsed.preamble, objects, parsed.trailer, parsed.xref.len()))
 }

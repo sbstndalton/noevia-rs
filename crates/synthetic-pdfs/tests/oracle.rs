@@ -13,7 +13,7 @@ use std::process::Command;
 
 use synthetic_pdfs::{
     encrypted_pdf, fixture, malformed_pdf, oversized_text_pdf, pdf, render_lines, render_lines_at,
-    write_ballast_pdf, Error, Page, Result, FIXTURES, HEADER, IMAGE_H, ROWS, CELL,
+    write_ballast_pdf, Error, Page, Result, CELL, FIXTURES, HEADER, IMAGE_H, ROWS,
 };
 
 enum Kind {
@@ -23,7 +23,12 @@ enum Kind {
     Semantic,
 }
 
-fn compare(name: &str, kind: &Kind, ours: &Result<Vec<u8>>, out: &Path) -> std::result::Result<(), String> {
+fn compare(
+    name: &str,
+    kind: &Kind,
+    ours: &Result<Vec<u8>>,
+    out: &Path,
+) -> std::result::Result<(), String> {
     let error = std::fs::read_to_string(out.join(format!("{name}.error"))).ok();
     let theirs = std::fs::read(out.join(name)).ok();
     match (ours, error, theirs) {
@@ -52,7 +57,8 @@ fn compare(name: &str, kind: &Kind, ours: &Result<Vec<u8>>, out: &Path) -> std::
         }
         (ours, error, theirs) => Err(format!(
             "{name}: verdicts differ (native {}, reference error {error:?}, reference output {})",
-            ours.as_ref().map_or_else(ToString::to_string, |d| format!("{} bytes", d.len())),
+            ours.as_ref()
+                .map_or_else(ToString::to_string, |d| format!("{} bytes", d.len())),
             theirs.map_or(0, |t| t.len())
         )),
     }
@@ -66,7 +72,11 @@ fn explain(ours: &[u8], theirs: &[u8]) -> String {
                 return ": preambles differ".to_owned();
             }
             if a.2 != b.2 || a.3 != b.3 {
-                return format!(": trailers differ ({:?} vs {:?})", String::from_utf8_lossy(&a.2), String::from_utf8_lossy(&b.2));
+                return format!(
+                    ": trailers differ ({:?} vs {:?})",
+                    String::from_utf8_lossy(&a.2),
+                    String::from_utf8_lossy(&b.2)
+                );
             }
             let first = a.1.iter().zip(&b.1).find(|(x, y)| x != y);
             first.map_or_else(
@@ -83,7 +93,11 @@ fn explain(ours: &[u8], theirs: &[u8]) -> String {
                 },
             )
         }
-        (a, b) => format!(": unparsable (native {}, reference {})", a.is_some(), b.is_some()),
+        (a, b) => format!(
+            ": unparsable (native {}, reference {})",
+            a.is_some(),
+            b.is_some()
+        ),
     }
 }
 
@@ -113,7 +127,11 @@ fn live_reference_agrees() {
         return;
     };
     let reference = Path::new(&reference);
-    assert!(reference.join("synthetic_pdfs.py").is_file(), "no synthetic_pdfs.py in {}", reference.display());
+    assert!(
+        reference.join("synthetic_pdfs.py").is_file(),
+        "no synthetic_pdfs.py in {}",
+        reference.display()
+    );
     let out = tempfile::tempdir().unwrap_or_else(|e| unreachable!("{e}"));
     let ours_dir = tempfile::tempdir().unwrap_or_else(|e| unreachable!("{e}"));
     let driver = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/oracle.py");
@@ -129,7 +147,11 @@ fn live_reference_agrees() {
     let mut failures = Vec::new();
     let mut checked = 0;
     for name in FIXTURES {
-        let kind = if name.contains("scan") || name.contains("mixed") { Kind::Semantic } else { Kind::Exact };
+        let kind = if name.contains("scan") || name.contains("mixed") {
+            Kind::Semantic
+        } else {
+            Kind::Exact
+        };
         let ours = fixture(name).unwrap_or_else(|| unreachable!("{name}"));
         failures.extend(compare(name, &kind, &ours, &fixtures).err());
         checked += 1;
@@ -137,18 +159,47 @@ fn live_reference_agrees() {
     let p = |lines: &[&str]| -> Vec<Page> { vec![Page::text(lines)] };
     let cases: Vec<(&str, Kind, Result<Vec<u8>>)> = vec![
         ("pixels-rows", Kind::Exact, pixels(render_lines(&ROWS))),
-        ("pixels-header", Kind::Exact, pixels(render_lines(&[HEADER]))),
+        (
+            "pixels-header",
+            Kind::Exact,
+            pixels(render_lines(&[HEADER])),
+        ),
         (
             "pixels-font",
             Kind::Exact,
-            pixels(render_lines_at(&["ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "0123456789 -."], 0, 6, 0)),
+            pixels(render_lines_at(
+                &["ABCDEFGHIJKLM", "NOPQRSTUVWXYZ", "0123456789 -."],
+                0,
+                6,
+                0,
+            )),
         ),
         ("pixels-empty", Kind::Exact, pixels(render_lines(&[]))),
-        ("pixels-bottom", Kind::Exact, pixels(render_lines_at(&["TOTAL"], 96, IMAGE_H - 7 * CELL, 3))),
-        ("pixels-lowercase", Kind::Exact, pixels(render_lines(&["a"]))),
-        ("pixels-too-wide", Kind::Exact, pixels(render_lines(&["X".repeat(66).as_str()]))),
-        ("pixels-widest", Kind::Exact, pixels(render_lines(&["X".repeat(65).as_str()]))),
-        ("pixels-off-top", Kind::Exact, pixels(render_lines_at(&["A"], 96, 0, 3))),
+        (
+            "pixels-bottom",
+            Kind::Exact,
+            pixels(render_lines_at(&["TOTAL"], 96, IMAGE_H - 7 * CELL, 3)),
+        ),
+        (
+            "pixels-lowercase",
+            Kind::Exact,
+            pixels(render_lines(&["a"])),
+        ),
+        (
+            "pixels-too-wide",
+            Kind::Exact,
+            pixels(render_lines(&["X".repeat(66).as_str()])),
+        ),
+        (
+            "pixels-widest",
+            Kind::Exact,
+            pixels(render_lines(&["X".repeat(65).as_str()])),
+        ),
+        (
+            "pixels-off-top",
+            Kind::Exact,
+            pixels(render_lines_at(&["A"], 96, 0, 3)),
+        ),
         ("pdf-none", Kind::Exact, pdf(&[], 0)),
         ("pdf-blank-page", Kind::Exact, pdf(&[Page::default()], 0)),
         ("pdf-empty-lists", Kind::Exact, pdf(&[Page::default()], 0)),
@@ -158,19 +209,42 @@ fn live_reference_agrees() {
         (
             "pdf-three-pages",
             Kind::Semantic,
-            pdf(&[Page::mixed(&["A"], &["B"]), Page::text(&["C"]), Page::scan(&["D 1"])], 0),
+            pdf(
+                &[
+                    Page::mixed(&["A"], &["B"]),
+                    Page::text(&["C"]),
+                    Page::scan(&["D 1"]),
+                ],
+                0,
+            ),
         ),
         ("pdf-padding-1", Kind::Exact, pdf(&p(&["X"]), 1)),
         ("pdf-padding-2", Kind::Exact, pdf(&p(&["X"]), 2)),
         ("pdf-padding-3", Kind::Exact, pdf(&p(&["X"]), 3)),
         ("pdf-padding-100000", Kind::Exact, pdf(&p(&["X"]), 100_000)),
         ("encrypted-empty", Kind::Exact, encrypted_pdf(b"", b"")),
-        ("encrypted-long", Kind::Exact, encrypted_pdf(&[b'u'; 40], b"o")),
+        (
+            "encrypted-long",
+            Kind::Exact,
+            encrypted_pdf(&[b'u'; 40], b"o"),
+        ),
         ("oversized", Kind::Exact, oversized_text_pdf()),
         ("malformed", Kind::Exact, Ok(malformed_pdf())),
-        ("ballast-300k", Kind::Semantic, ballast(ours_dir.path(), "a", 300_000, 1024 * 1024)),
-        ("ballast-tiny", Kind::Semantic, ballast(ours_dir.path(), "b", 10, 1024 * 1024)),
-        ("ballast-chunked", Kind::Semantic, ballast(ours_dir.path(), "c", 300_000, 7_777)),
+        (
+            "ballast-300k",
+            Kind::Semantic,
+            ballast(ours_dir.path(), "a", 300_000, 1024 * 1024),
+        ),
+        (
+            "ballast-tiny",
+            Kind::Semantic,
+            ballast(ours_dir.path(), "b", 10, 1024 * 1024),
+        ),
+        (
+            "ballast-chunked",
+            Kind::Semantic,
+            ballast(ours_dir.path(), "c", 300_000, 7_777),
+        ),
     ];
     for (name, kind, ours) in &cases {
         failures.extend(compare(name, kind, ours, out.path()).err());
@@ -181,9 +255,15 @@ fn live_reference_agrees() {
     if let Some(px) = mutant.iter_mut().find(|p| **p == 0) {
         *px = 1;
     }
-    assert!(compare("pixels-rows", &Kind::Exact, &Ok(mutant), out.path()).is_err(), "negative control");
+    assert!(
+        compare("pixels-rows", &Kind::Exact, &Ok(mutant), out.path()).is_err(),
+        "negative control"
+    );
     let mutant_pdf = pdf(&[Page::scan(&["REF-2O42"])], 0);
-    assert!(compare("scanned.pdf", &Kind::Semantic, &mutant_pdf, &fixtures).is_err(), "negative control");
+    assert!(
+        compare("scanned.pdf", &Kind::Semantic, &mutant_pdf, &fixtures).is_err(),
+        "negative control"
+    );
     assert!(failures.is_empty(), "{failures:#?}");
     eprintln!("live oracle: {checked} cases agree");
 }

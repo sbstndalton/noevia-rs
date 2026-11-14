@@ -56,46 +56,236 @@ pub const OVERSIZE_PADDING: usize = 26 * 1024 * 1024;
 
 /// The 5x7 font, in the reference's order.
 pub const FONT: [(char, [&str; GLYPH_H]); 39] = [
-    ('A', [".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"]),
-    ('B', ["####.", "#...#", "#...#", "####.", "#...#", "#...#", "####."]),
-    ('C', [".###.", "#...#", "#....", "#....", "#....", "#...#", ".###."]),
-    ('D', ["####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####."]),
-    ('E', ["#####", "#....", "#....", "####.", "#....", "#....", "#####"]),
-    ('F', ["#####", "#....", "#....", "####.", "#....", "#....", "#...."]),
-    ('G', [".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".####"]),
-    ('H', ["#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#"]),
-    ('I', [".###.", "..#..", "..#..", "..#..", "..#..", "..#..", ".###."]),
-    ('J', ["..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##.."]),
-    ('K', ["#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#"]),
-    ('L', ["#....", "#....", "#....", "#....", "#....", "#....", "#####"]),
-    ('M', ["#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#"]),
-    ('N', ["#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#"]),
-    ('O', [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."]),
-    ('P', ["####.", "#...#", "#...#", "####.", "#....", "#....", "#...."]),
-    ('Q', [".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#"]),
-    ('R', ["####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#"]),
-    ('S', [".####", "#....", "#....", ".###.", "....#", "....#", "####."]),
-    ('T', ["#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#.."]),
-    ('U', ["#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."]),
-    ('V', ["#...#", "#...#", "#...#", ".#.#.", ".#.#.", ".#.#.", "..#.."]),
-    ('W', ["#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#"]),
-    ('X', ["#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#"]),
-    ('Y', ["#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#.."]),
-    ('Z', ["#####", "....#", "...#.", "..#..", ".#...", "#....", "#####"]),
+    (
+        'A',
+        [
+            ".###.", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'B',
+        [
+            "####.", "#...#", "#...#", "####.", "#...#", "#...#", "####.",
+        ],
+    ),
+    (
+        'C',
+        [
+            ".###.", "#...#", "#....", "#....", "#....", "#...#", ".###.",
+        ],
+    ),
+    (
+        'D',
+        [
+            "####.", "#...#", "#...#", "#...#", "#...#", "#...#", "####.",
+        ],
+    ),
+    (
+        'E',
+        [
+            "#####", "#....", "#....", "####.", "#....", "#....", "#####",
+        ],
+    ),
+    (
+        'F',
+        [
+            "#####", "#....", "#....", "####.", "#....", "#....", "#....",
+        ],
+    ),
+    (
+        'G',
+        [
+            ".###.", "#...#", "#....", "#.###", "#...#", "#...#", ".####",
+        ],
+    ),
+    (
+        'H',
+        [
+            "#...#", "#...#", "#...#", "#####", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'I',
+        [
+            ".###.", "..#..", "..#..", "..#..", "..#..", "..#..", ".###.",
+        ],
+    ),
+    (
+        'J',
+        [
+            "..###", "...#.", "...#.", "...#.", "...#.", "#..#.", ".##..",
+        ],
+    ),
+    (
+        'K',
+        [
+            "#...#", "#..#.", "#.#..", "##...", "#.#..", "#..#.", "#...#",
+        ],
+    ),
+    (
+        'L',
+        [
+            "#....", "#....", "#....", "#....", "#....", "#....", "#####",
+        ],
+    ),
+    (
+        'M',
+        [
+            "#...#", "##.##", "#.#.#", "#.#.#", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'N',
+        [
+            "#...#", "##..#", "#.#.#", "#..##", "#...#", "#...#", "#...#",
+        ],
+    ),
+    (
+        'O',
+        [
+            ".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'P',
+        [
+            "####.", "#...#", "#...#", "####.", "#....", "#....", "#....",
+        ],
+    ),
+    (
+        'Q',
+        [
+            ".###.", "#...#", "#...#", "#...#", "#.#.#", "#..#.", ".##.#",
+        ],
+    ),
+    (
+        'R',
+        [
+            "####.", "#...#", "#...#", "####.", "#.#..", "#..#.", "#...#",
+        ],
+    ),
+    (
+        'S',
+        [
+            ".####", "#....", "#....", ".###.", "....#", "....#", "####.",
+        ],
+    ),
+    (
+        'T',
+        [
+            "#####", "..#..", "..#..", "..#..", "..#..", "..#..", "..#..",
+        ],
+    ),
+    (
+        'U',
+        [
+            "#...#", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        'V',
+        [
+            "#...#", "#...#", "#...#", ".#.#.", ".#.#.", ".#.#.", "..#..",
+        ],
+    ),
+    (
+        'W',
+        [
+            "#...#", "#...#", "#...#", "#.#.#", "#.#.#", "##.##", "#...#",
+        ],
+    ),
+    (
+        'X',
+        [
+            "#...#", "#...#", ".#.#.", "..#..", ".#.#.", "#...#", "#...#",
+        ],
+    ),
+    (
+        'Y',
+        [
+            "#...#", "#...#", ".#.#.", "..#..", "..#..", "..#..", "..#..",
+        ],
+    ),
+    (
+        'Z',
+        [
+            "#####", "....#", "...#.", "..#..", ".#...", "#....", "#####",
+        ],
+    ),
     // Same shape as 'O' on purpose: a zero with a diagonal or a dot inside was misread as 6, 4,
     // H, B or b (measured in CI, every size and blur); the plain oval reads as 0 among digits.
-    ('0', [".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###."]),
-    ('1', ["..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###."]),
-    ('2', [".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####"]),
-    ('3', ["####.", "....#", "....#", ".###.", "....#", "....#", "####."]),
-    ('4', ["...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#."]),
-    ('5', ["#####", "#....", "####.", "....#", "....#", "#...#", ".###."]),
-    ('6', [".###.", "#....", "#....", "####.", "#...#", "#...#", ".###."]),
-    ('7', ["#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#..."]),
-    ('8', [".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###."]),
-    ('9', [".###.", "#...#", "#...#", ".####", "....#", "....#", ".###."]),
-    ('-', [".....", ".....", ".....", "#####", ".....", ".....", "....."]),
-    ('.', [".....", ".....", ".....", ".....", ".....", ".##..", ".##.."]),
+    (
+        '0',
+        [
+            ".###.", "#...#", "#...#", "#...#", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        '1',
+        [
+            "..#..", ".##..", "..#..", "..#..", "..#..", "..#..", ".###.",
+        ],
+    ),
+    (
+        '2',
+        [
+            ".###.", "#...#", "....#", "...#.", "..#..", ".#...", "#####",
+        ],
+    ),
+    (
+        '3',
+        [
+            "####.", "....#", "....#", ".###.", "....#", "....#", "####.",
+        ],
+    ),
+    (
+        '4',
+        [
+            "...#.", "..##.", ".#.#.", "#..#.", "#####", "...#.", "...#.",
+        ],
+    ),
+    (
+        '5',
+        [
+            "#####", "#....", "####.", "....#", "....#", "#...#", ".###.",
+        ],
+    ),
+    (
+        '6',
+        [
+            ".###.", "#....", "#....", "####.", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        '7',
+        [
+            "#####", "....#", "...#.", "..#..", ".#...", ".#...", ".#...",
+        ],
+    ),
+    (
+        '8',
+        [
+            ".###.", "#...#", "#...#", ".###.", "#...#", "#...#", ".###.",
+        ],
+    ),
+    (
+        '9',
+        [
+            ".###.", "#...#", "#...#", ".####", "....#", "....#", ".###.",
+        ],
+    ),
+    (
+        '-',
+        [
+            ".....", ".....", ".....", "#####", ".....", ".....", ".....",
+        ],
+    ),
+    (
+        '.',
+        [
+            ".....", ".....", ".....", ".....", ".....", ".##..", ".##..",
+        ],
+    ),
     (' ', ["....."; GLYPH_H]),
 ];
 
@@ -179,14 +369,16 @@ fn box_blur(rows: &[Vec<u8>]) -> Vec<Vec<u8>> {
         .collect();
     let mut out = Vec::with_capacity(horizontal.len());
     out.extend(horizontal.first().cloned());
-    out.extend(horizontal.windows(3).map(|w| match w {
-        [above, row, below] => above
-            .iter()
-            .zip(row)
-            .zip(below)
-            .map(|((a, b), c)| avg3(*a, *b, *c))
-            .collect(),
-        _ => Vec::new(),
+    out.extend(horizontal.windows(3).map(|w| {
+        match w {
+            [above, row, below] => above
+                .iter()
+                .zip(row)
+                .zip(below)
+                .map(|((a, b), c)| avg3(*a, *b, *c))
+                .collect(),
+            _ => Vec::new(),
+        }
     }));
     if horizontal.len() > 1 {
         out.extend(horizontal.last().cloned());
@@ -198,7 +390,11 @@ fn box_blur(rows: &[Vec<u8>]) -> Vec<Vec<u8>> {
 fn py_slice(start: isize, end: isize, len: usize) -> (usize, usize) {
     let len_i = isize::try_from(len).unwrap_or(isize::MAX);
     let norm = |i: isize| -> usize {
-        let j = if i < 0 { (i + len_i).max(0) } else { i.min(len_i) };
+        let j = if i < 0 {
+            (i + len_i).max(0)
+        } else {
+            i.min(len_i)
+        };
         usize::try_from(j).unwrap_or(0)
     };
     let (s, e) = (norm(start), norm(end));
@@ -273,15 +469,24 @@ pub struct Page {
 
 impl Page {
     pub fn scan<S: AsRef<str>>(lines: &[S]) -> Self {
-        Page { scan: owned(lines), text: Vec::new() }
+        Page {
+            scan: owned(lines),
+            text: Vec::new(),
+        }
     }
 
     pub fn text<S: AsRef<str>>(lines: &[S]) -> Self {
-        Page { scan: Vec::new(), text: owned(lines) }
+        Page {
+            scan: Vec::new(),
+            text: owned(lines),
+        }
     }
 
     pub fn mixed<S: AsRef<str>, T: AsRef<str>>(scan: &[S], text: &[T]) -> Self {
-        Page { scan: owned(scan), text: owned(text) }
+        Page {
+            scan: owned(scan),
+            text: owned(text),
+        }
     }
 }
 
@@ -291,7 +496,9 @@ fn owned<S: AsRef<str>>(lines: &[S]) -> Vec<String> {
 
 /// PDF literal-string escaping of the reference (backslash, then both parentheses).
 pub fn escape(text: &str) -> String {
-    text.replace('\\', "\\\\").replace('(', "\\(").replace(')', "\\)")
+    text.replace('\\', "\\\\")
+        .replace('(', "\\(")
+        .replace(')', "\\)")
 }
 
 fn latin1(text: &str) -> Result<Vec<u8>> {
@@ -326,7 +533,10 @@ pub type Encrypt<'a> = &'a dyn Fn(u32, &[u8]) -> Vec<u8>;
 /// its content stream and (with a scan) its image.
 pub fn build(pages: &[Page], encrypt: Option<Encrypt<'_>>) -> Result<Objects> {
     let mut objects = Objects::new();
-    objects.insert(3, b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec());
+    objects.insert(
+        3,
+        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>".to_vec(),
+    );
     let mut kids = Vec::new();
     let mut number = 4u32;
     for page in pages {
@@ -345,13 +555,20 @@ pub fn build(pages: &[Page], encrypt: Option<Encrypt<'_>>) -> Result<Objects> {
                  /BitsPerComponent 8 /Filter /FlateDecode",
                 bitmap.width, bitmap.height
             );
-            objects.insert(image_obj, stream(dictionary.as_bytes(), &deflate(&bitmap.pixels)?));
+            objects.insert(
+                image_obj,
+                stream(dictionary.as_bytes(), &deflate(&bitmap.pixels)?),
+            );
             resources.extend_from_slice(format!(" /XObject << /Im1 {image_obj} 0 R >>").as_bytes());
             ops.push("q 612 0 0 792 0 0 cm /Im1 Do Q".to_owned());
         }
         if !page.text.is_empty() {
             ops.push("BT /F1 18 Tf 72 740 Td 24 TL".to_owned());
-            ops.extend(page.text.iter().map(|line| format!("({}) Tj T*", escape(line))));
+            ops.extend(
+                page.text
+                    .iter()
+                    .map(|line| format!("({}) Tj T*", escape(line))),
+            );
             ops.push("ET".to_owned());
         }
         let mut content = latin1(&ops.join("\n"))?;
@@ -359,7 +576,8 @@ pub fn build(pages: &[Page], encrypt: Option<Encrypt<'_>>) -> Result<Objects> {
             content = encrypt(content_obj, &content);
         }
         objects.insert(content_obj, stream(b"", &content));
-        let mut body = b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << ".to_vec();
+        let mut body =
+            b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << ".to_vec();
         body.extend_from_slice(&resources);
         body.extend_from_slice(format!(" >> /Contents {content_obj} 0 R >>").as_bytes());
         objects.insert(page_obj, body);
@@ -367,7 +585,12 @@ pub fn build(pages: &[Page], encrypt: Option<Encrypt<'_>>) -> Result<Objects> {
     let kids: Vec<String> = kids.iter().map(|k| format!("{k} 0 R")).collect();
     objects.insert(
         2,
-        format!("<< /Type /Pages /Kids [{}] /Count {} >>", kids.join(" "), pages.len()).into_bytes(),
+        format!(
+            "<< /Type /Pages /Kids [{}] /Count {} >>",
+            kids.join(" "),
+            pages.len()
+        )
+        .into_bytes(),
     );
     objects.insert(1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec());
     Ok(objects)
@@ -379,7 +602,12 @@ pub const PDF_HEADER: &[u8] = b"%PDF-1.4\n%\xe2\xe3\xcf\xd3\n";
 /// The xref table and trailer. `trailer` is the extra trailer entries: `serialise` always puts
 /// them between two spaces (so an empty one leaves `R  >>`), the ballast writer has none at all
 /// (`R >>`), exactly as the reference's two writers differ.
-fn xref_and_trailer(offsets: &BTreeMap<u32, usize>, size: u32, trailer: Option<&[u8]>, xref: usize) -> Result<Vec<u8>> {
+fn xref_and_trailer(
+    offsets: &BTreeMap<u32, usize>,
+    size: u32,
+    trailer: Option<&[u8]>,
+    xref: usize,
+) -> Result<Vec<u8>> {
     let mut out = format!("xref\n0 {size}\n0000000000 65535 f \n").into_bytes();
     for key in 1..size {
         let offset = offsets.get(&key).ok_or(Error::MissingObject(key))?;
@@ -459,7 +687,12 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn padded(password: &[u8]) -> Vec<u8> {
-    password.iter().chain(PAD.iter()).take(32).copied().collect()
+    password
+        .iter()
+        .chain(PAD.iter())
+        .take(32)
+        .copied()
+        .collect()
 }
 
 pub const DEFAULT_USER_PASSWORD: &[u8] = b"synthetic-user-pw";
@@ -472,7 +705,10 @@ pub fn encrypted_pdf(user_password: &[u8], owner_password: &[u8]) -> Result<Vec<
     let document_id = md5::digest(b"noevia synthetic fixture");
     let permissions: u32 = (-4i32) as u32;
     let owner_key = md5::digest(&padded(owner_password));
-    let owner = rc4(owner_key.get(..5).unwrap_or_default(), &padded(user_password));
+    let owner = rc4(
+        owner_key.get(..5).unwrap_or_default(),
+        &padded(user_password),
+    );
     let mut material = padded(user_password);
     material.extend_from_slice(&owner);
     material.extend_from_slice(&permissions.to_le_bytes());
@@ -512,7 +748,10 @@ pub fn malformed_pdf() -> Vec<u8> {
 
 /// A valid PDF whose only content is one native text line, padded past 25 MB.
 pub fn oversized_text_pdf() -> Result<Vec<u8>> {
-    pdf(&[Page::text(&["SYNTHETIC NATIVE TEXT FOR REDUCTION"])], OVERSIZE_PADDING)
+    pdf(
+        &[Page::text(&["SYNTHETIC NATIVE TEXT FOR REDUCTION"])],
+        OVERSIZE_PADDING,
+    )
 }
 
 /// The reference's default ballast chunk.
@@ -531,7 +770,11 @@ pub fn write_ballast_pdf(path: &Path, ballast_bytes: usize, chunk: usize) -> Res
     let width = 4096usize;
     let height = (ballast_bytes / width).max(1);
     let mut objects = build(
-        &[Page::text(&["NATIVE PAGE ONE"]), Page::text(&["BALLAST PAGE"]), Page::scan(&ROWS)],
+        &[
+            Page::text(&["NATIVE PAGE ONE"]),
+            Page::text(&["BALLAST PAGE"]),
+            Page::scan(&ROWS),
+        ],
         None,
     )?;
     let ballast = objects.keys().next_back().map_or(1, |m| m + 1);
@@ -576,7 +819,10 @@ pub fn write_ballast_pdf(path: &Path, ballast_bytes: usize, chunk: usize) -> Res
     }
     written += put(&mut out, b"\nendstream\nendobj\n")?;
     let xref = written;
-    written += put(&mut out, &xref_and_trailer(&offsets, ballast + 1, None, xref)?)?;
+    written += put(
+        &mut out,
+        &xref_and_trailer(&offsets, ballast + 1, None, xref)?,
+    )?;
     out.flush()?;
     Ok(written as u64)
 }
@@ -599,8 +845,14 @@ fn replace_all(haystack: &[u8], needle: &[u8], with: &[u8]) -> Vec<u8> {
 }
 
 /// The fixture names [`write_all`] writes, in the reference's order.
-pub const FIXTURES: [&str; 6] =
-    ["scanned.pdf", "mixed-page.pdf", "mixed-pages.pdf", "text.pdf", "malformed.pdf", "encrypted.pdf"];
+pub const FIXTURES: [&str; 6] = [
+    "scanned.pdf",
+    "mixed-page.pdf",
+    "mixed-pages.pdf",
+    "text.pdf",
+    "malformed.pdf",
+    "encrypted.pdf",
+];
 
 /// The bytes of the fixture `name` (one of [`FIXTURES`]).
 pub fn fixture(name: &str) -> Option<Result<Vec<u8>>> {
