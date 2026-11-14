@@ -62,6 +62,17 @@ pub struct Stub {
     /// Every core file that names this one (`./rust-x.cjs`), tests included.
     #[serde(default)]
     pub importers: Vec<String>,
+    /// Other core files that name the file in a quoted string (manifests, allowlists, preload lists, generators): a
+    /// non-test one keeps the file.
+    #[serde(default)]
+    pub string_refs: Vec<String>,
+    /// Other core files that name it only in a comment or prose: a deletion edits them, they keep nothing alive.
+    #[serde(default)]
+    pub mentions: Vec<String>,
+    /// What index.cjs takes from the file (`require('./x.cjs').name`, destructured names); the refusal function and
+    /// anything else index.cjs still calls.
+    #[serde(default)]
+    pub index_uses: Vec<String>,
     /// `file:line` in noevia's build/web-supervisor.sh and deploy/tools/assemble-release.sh naming this file.
     #[serde(default)]
     pub pairing: Vec<String>,
@@ -161,6 +172,8 @@ pub struct Assessment {
     pub lines: usize,
     pub refusals: usize,
     pub pairing: Vec<String>,
+    /// Comment or prose mentions a deletion edits.
+    pub mentions: Vec<String>,
     pub verdict: Verdict,
 }
 
@@ -168,13 +181,29 @@ fn is_test_file(f: &str) -> bool {
     f.ends_with(".test.cjs") || f.starts_with("tests/") || f.contains("/fixtures/") || f.ends_with(".probe.cjs")
 }
 
-/// Production files other than index.cjs and the stub itself that name the stub.
+/// Documentation and change notes: naming a file there does not keep it alive.
+fn is_doc(f: &str) -> bool {
+    f.ends_with(".md") || f.starts_with("docs/")
+}
+
+/// Production files other than the stub itself that need it once its refusal function is gone: every other
+/// non-test importer, and index.cjs when it uses anything of the file besides the refusal function.
 pub fn other_importers(stub: &Stub) -> Vec<String> {
-    stub.importers
+    let mut out: Vec<String> = stub
+        .importers
         .iter()
+        .chain(stub.string_refs.iter().filter(|f| !is_doc(f)))
         .filter(|f| **f != stub.file && f.as_str() != "server/index.cjs" && !is_test_file(f))
         .cloned()
-        .collect()
+        .collect();
+    out.sort();
+    out.dedup();
+    let extra: Vec<&str> =
+        stub.index_uses.iter().map(String::as_str).filter(|u| *u != stub.function).collect();
+    if !extra.is_empty() {
+        out.insert(0, format!("server/index.cjs ({})", extra.join(", ")));
+    }
+    out
 }
 
 /// A file whose only job is refusals: core names them `server/rust-*.cjs`. features.cjs or routes/*.cjs are live
@@ -220,6 +249,7 @@ pub fn classify(rec: &Recording, front: &dyn Front) -> Vec<Assessment> {
                 lines: s.lines,
                 refusals: s.refusals.len(),
                 pairing: s.pairing.clone(),
+                mentions: s.mentions.clone(),
                 verdict,
             }
         })
@@ -373,8 +403,10 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
     let _ = writeln!(out, "|---|---|---:|---:|---|---|");
     for a in list {
         let why = match &a.verdict {
-            Verdict::DeleteFile | Verdict::DeleteFunction { .. } if a.pairing.is_empty() => "none".to_string(),
-            Verdict::DeleteFile => a.pairing.join(", "),
+            Verdict::DeleteFile if a.mentions.is_empty() => format!("pairing: {}", none_or(&a.pairing)),
+            Verdict::DeleteFile => {
+                format!("pairing: {}; comments in: {}", none_or(&a.pairing), a.mentions.join(", "))
+            }
             Verdict::DeleteFunction { other_importers } if other_importers.is_empty() => {
                 format!("live file; pairing: {}", none_or(&a.pairing))
             }

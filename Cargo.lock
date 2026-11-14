@@ -2394,6 +2394,7 @@ dependencies = [
  "reqwest",
  "research-core",
  "role-engine",
+ "route-pins",
  "rustix",
  "rustls",
  "s3-sign",
@@ -3142,6 +3143,14 @@ dependencies = [
  "stream-guard",
  "tokio",
  "zeroize",
+]
+
+[[package]]
+name = "route-pins"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

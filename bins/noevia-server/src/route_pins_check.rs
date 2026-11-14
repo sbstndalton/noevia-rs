@@ -167,7 +167,8 @@ fn a_deletable_stub_refuses_only_requests_the_front_answers() {
             continue;
         }
         let stub = rec.stubs.iter().find(|s| s.file == a.file && s.function == a.function).expect("assessed stub");
-        assert!(stub.env.is_empty() && stub.switched.is_empty(), "{}", a.file);
+        // Names of retired switches (a warning only) are allowed; a switch that changes the answer is not.
+        assert!(stub.switched.is_empty(), "{}", a.file);
         for r in &stub.refusals {
             assert!(front_answers(&r.method, &r.path), "{}: {} {}", a.file, r.method, r.path);
         }

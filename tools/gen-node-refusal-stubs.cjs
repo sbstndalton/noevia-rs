@@ -119,6 +119,19 @@ function record(file, fn, pathname, env) {
 
 // Values a switch is asked with: on-spellings the stubs use (`1`, `rust`, `native`).
 const ON = ['1', 'rust', 'native'];
+// What index.cjs takes from a stub besides its refusal function: `require('./x.cjs').name` and destructured or bound
+// requires. A stub index.cjs uses for anything else can lose only its refusal function.
+const escapeRe = (t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+function indexUses(file) {
+  const uses = new Set();
+  const q = escapeRe(file);
+  for (const m of index.matchAll(new RegExp(`require\\('\\./${q}'\\)(?:\\.(\\w+))?`, 'g'))) uses.add(m[1] || '<module>');
+  for (const m of index.matchAll(new RegExp(`(?:const|let|var)\\s+(\\{[^}]*\\}|\\w+)\\s*=\\s*require\\('\\./${q}'\\)\\s*[;\\n]`, 'g'))) {
+    for (const n of m[1].replace(/[{}]/g, '').split(',').map((x) => x.trim().split(':')[0].trim()).filter(Boolean)) uses.add(n);
+  }
+  uses.delete('<module>');
+  return [...uses].sort();
+}
 const lines = (f) => fs.readFileSync(path.join(server, f), 'utf8').split('\n').length;
 const stubs = [];
 for (const { file, fn, pathname } of calls) {
@@ -145,7 +158,19 @@ for (const { file, fn, pathname } of calls) {
       fs.readFileSync(at, 'utf8').split('\n').forEach((l, i) => { if (l.includes(path.basename(file))) pairing.push(`${f}:${i + 1}`); });
     }
   }
-  stubs.push({ file: `server/${file}`, fn, pathname_arg: pathname, lines: lines(file), env, importers, pairing, ...base, switched });
+  // Every core file that names the stub by its file name (manifests, allowlists, preload lists, workflows, docs),
+  // beyond the `./x.cjs` requires above.
+  let mentions = [];
+  try {
+    mentions = execFileSync('grep', ['-rlF', path.basename(file), core, '--exclude-dir=node_modules', '--exclude-dir=.git'], { encoding: 'utf8' })
+      .split('\n').filter(Boolean).map((f) => path.relative(core, f)).filter((f) => f !== `server/${file}` && !importers.includes(f)).sort();
+  } catch { /* none */ }
+  // A quoted name (a path string, a list entry, a JSON key) is a reference something reads; a bare name in a comment
+  // or prose is only a mention.
+  const quoted = new RegExp(`[\`'"][\\w./-]*${escapeRe(path.basename(file))}[\`'"]`);
+  const stringRefs = mentions.filter((f) => quoted.test(fs.readFileSync(path.join(core, f), 'utf8')));
+  mentions = mentions.filter((f) => !stringRefs.includes(f));
+  stubs.push({ file: `server/${file}`, fn, pathname_arg: pathname, string_refs: stringRefs, mentions, lines: lines(file), env, importers, index_uses: indexUses(file), pairing, ...base, switched });
 }
 
 process.stdout.write(`${JSON.stringify({

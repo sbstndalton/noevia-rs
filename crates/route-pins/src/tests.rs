@@ -14,6 +14,9 @@ fn stub(file: &str, refusals: Vec<Refusal>) -> Stub {
         lines: 10,
         env: vec![],
         importers: vec!["server/index.cjs".to_string(), format!("{}.test.cjs", file.trim_end_matches(".cjs"))],
+        string_refs: vec![],
+        mentions: vec![],
+        index_uses: vec!["refuseOwned".to_string()],
         pairing: vec!["deploy/tools/assemble-release.sh:1".to_string()],
         refusals,
         switched: vec![],
@@ -151,7 +154,38 @@ fn shared_files_and_live_files_lose_only_the_function() {
 fn tests_and_fixtures_do_not_count_as_importers() {
     let mut s = stub("server/rust-x.cjs", vec![refusal("GET", "/api/x", "/api/x", BODY)]);
     s.importers.extend(["tests/server/x.test.cjs", "server/fixtures/x.cjs", "server/native-x.probe.cjs"].map(String::from));
+    s.string_refs.extend(["docs/port.md", "CHANGELOG.md"].map(String::from));
+    s.mentions.push("server/routes/chat-lists.cjs".to_string());
     assert!(other_importers(&s).is_empty());
+}
+
+#[test]
+fn a_production_string_reference_keeps_the_file() {
+    let mut s = stub("server/rust-x.cjs", vec![refusal("GET", "/api/x", "/api/x", BODY)]);
+    s.string_refs = vec!["server/route-preload.cjs".to_string(), "server/response-read-guard-920.allowlist.json".to_string()];
+    assert_eq!(
+        other_importers(&s),
+        vec!["server/response-read-guard-920.allowlist.json".to_string(), "server/route-preload.cjs".to_string()]
+    );
+}
+
+#[test]
+fn a_stub_index_cjs_uses_for_more_than_its_refusal_loses_only_the_function() {
+    let mut s = stub("server/rust-health.cjs", vec![refusal("GET", "/api/health", "/api/health", BODY)]);
+    s.index_uses = vec!["createRagStatusPublisher".to_string(), "refuseOwned".to_string()];
+    let r = synthetic(vec![s]);
+    let all = |_: &str, _: &str| true;
+    assert_eq!(
+        classify(&r, &all)[0].verdict,
+        Verdict::DeleteFunction { other_importers: vec!["server/index.cjs (createRagStatusPublisher)".to_string()] }
+    );
+}
+
+#[test]
+fn every_recorded_stub_is_used_by_index_cjs_for_its_refusal() {
+    for s in rec().stubs {
+        assert!(s.index_uses.contains(&s.function), "{}: index.cjs uses {:?}", s.file, s.index_uses);
+    }
 }
 
 #[test]
@@ -231,6 +265,6 @@ fn the_delete_list_names_every_stub_and_its_pairing_lines() {
     let all = |_: &str, _: &str| true;
     let md = delete_list(&r, &classify(&r, &all));
     assert!(md.contains("noevia-core `01234567`"));
-    assert!(md.contains("| `server/rust-chat-search.cjs` | `refuseOwned` | 10 | 1 | delete file | deploy/tools/assemble-release.sh:1 |"));
+    assert!(md.contains("| `server/rust-chat-search.cjs` | `refuseOwned` | 10 | 1 | delete file | pairing: deploy/tools/assemble-release.sh:1 |"));
     assert!(md.contains("1 files can go (10 lines)"));
 }
