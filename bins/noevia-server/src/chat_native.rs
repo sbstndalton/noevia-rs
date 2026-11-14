@@ -425,7 +425,10 @@ async fn drive(
         // quiet: dropping core's stream here ends its turn, as the relay of a Node turn does (#679).
         let next = tokio::select! {
             f = core.frame() => f,
-            () = tx.closed() => return,
+            () = tx.closed() => {
+                journal_after_left(&app, &user, &mut frames, &mut core).await;
+                return;
+            }
         };
         let Some(frame) = next else {
             break None;
@@ -435,12 +438,19 @@ async fn drive(
             continue;
         };
         let mut handed = None;
-        for piece in frames.feed(&data) {
+        let mut pieces = frames.feed(&data).into_iter();
+        while let Some(piece) = pieces.next() {
             match piece {
                 Piece::Forward(bytes) => {
                     lines.feed(&bytes);
                     if !push(&tx, &queued, Bytes::from(bytes)) || !room(&tx, &queued).await {
-                        // The client left: closing core's stream ends its turn, which keeps it (#679).
+                        // The client left: closing core's stream ends its turn, which keeps it (#679). A frame
+                        // already in this chunk handed a Diary journal over: it is finished here (track R16).
+                        for rest in pieces.by_ref() {
+                            if let Piece::Prepared(p) = rest {
+                                Journal::finish_with(&app, &user, journal_handle(&p), Vec::new());
+                            }
+                        }
                         return;
                     }
                 }
@@ -706,6 +716,8 @@ const JOURNAL_PATH: &str = "/internal/chat/native/diary-journal";
 const JOURNAL_BATCH: usize = 256;
 /// How long the turn's end waits for the journal's last call.
 const JOURNAL_FINISH: Duration = Duration::from_secs(3);
+/// How long a client gone before the hand-off leaves core's stream open for a frame already on the way.
+const JOURNAL_LEFT: Duration = Duration::from_millis(100);
 
 enum JournalItem {
     Event(JValue),
@@ -781,17 +793,20 @@ impl Journal {
     /// A turn that ends before it runs (the frame unreadable, no account folder): the client got the failure text,
     /// so the journal gets it too and is finished, as chat.cjs would journal its own error.
     fn fail(app: &Arc<App>, user: &str, handle: Option<String>) {
+        let error = js::obj([
+            ("type", js::s("error")),
+            ("text", js::s(native::FAILED_TEXT)),
+        ]);
+        Journal::finish_with(app, user, handle, vec![error]);
+    }
+
+    /// One call: `events`, then the journal's finish (a turn that never ran here). Its answer is not waited for.
+    fn finish_with(app: &Arc<App>, user: &str, handle: Option<String>, events: Vec<JValue>) {
         let Some(handle) = handle else { return };
         let body = js::obj([
             ("user", js::s(user)),
             ("handle", js::s(handle)),
-            (
-                "events",
-                JValue::Arr(vec![js::obj([
-                    ("type", js::s("error")),
-                    ("text", js::s(native::FAILED_TEXT)),
-                ])]),
-            ),
+            ("events", JValue::Arr(events)),
             ("finish", JValue::Bool(true)),
         ]);
         let app = Arc::clone(app);
@@ -810,6 +825,34 @@ impl Journal {
         let task = self.task.lock().ok().and_then(|mut t| t.take());
         if let Some(task) = task {
             let _ = tokio::time::timeout(JOURNAL_FINISH, task).await;
+        }
+    }
+}
+
+/// The client left while core was still preparing (#679: dropping core's stream ends its turn). Core may have
+/// handed the turn off just then, a Diary journal with it (its frame already on the way): what core sent within a
+/// moment is read for that frame, and its journal is finished, as Node's turn would end it (track R16).
+async fn journal_after_left(app: &Arc<App>, user: &str, frames: &mut Frames, core: &mut Body) {
+    use http_body_util::BodyExt;
+    let deadline = tokio::time::sleep(JOURNAL_LEFT);
+    tokio::pin!(deadline);
+    loop {
+        let next = tokio::select! {
+            f = core.frame() => f,
+            () = &mut deadline => return,
+        };
+        let Some(Ok(frame)) = next else { return };
+        let Ok(data) = frame.into_data() else {
+            continue;
+        };
+        for piece in frames.feed(&data) {
+            match piece {
+                Piece::Prepared(p) => {
+                    return Journal::finish_with(app, user, journal_handle(&p), Vec::new());
+                }
+                Piece::Unreadable => return,
+                Piece::Forward(_) => {}
+            }
         }
     }
 }

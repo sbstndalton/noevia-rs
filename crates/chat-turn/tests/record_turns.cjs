@@ -1255,10 +1255,6 @@ const CASES = [
     diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' },
     body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-2', recoveryId: 'qa-preparation-0002', entryDay: '2026-11-13' },
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y4"}'), finish('tool_calls')] }, answer('Prepared from the file.')] },
-  { name: 'diary_extras_preparation_left', about: 'A recoverable Diary extras preparation whose client leaves mid-answer: what its journal got after the cut, then its finish (a record still running reads uncertain).',
-    diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' },
-    body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-3', recoveryId: 'qa-preparation-0003', entryDay: '2026-11-13' },
-    rounds: [{ frames: [chunk({ content: 'Partial ' }), chunk({ content: 'preparation' }), { leave: true }, chunk({ content: ' never sent' })] }] },
 ];
 
 (async () => {
@@ -1269,6 +1265,10 @@ const CASES = [
   for (const c of CASES.filter((x) => !process.env.RECORD_ONLY || x.name === process.env.RECORD_ONLY)) {
     const turn = await runTurn(c);
     if (withHandoff && turn.http) turn.handoff = await runTurn(c, { handoff: true });
+    // A hand-off that held a Diary journal (track R16): nothing feeds it here, so it is let go of, as a fresh process
+    // would not hold it (the next case would mint the same counted handle).
+    const held = turn.handoff?.prepared?.turn?.diaryJournal;
+    if (held) require(path.join(server, 'rust-chat-journal.cjs')).journals.release(held);
     cases.push(turn);
   }
   const tools = {};

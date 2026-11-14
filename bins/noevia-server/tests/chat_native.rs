@@ -1778,7 +1778,12 @@ async fn run_case(
             .as_ref()
             .is_none_or(|want| kept_now(window).ok().as_ref() == Some(want));
         let released = !leased || model_lease_released(&script.lock().unwrap());
-        if (got == want_files && released && kept) || tokio::time::Instant::now() >= deadline {
+        // Track R16: a Diary journal's finish is the turn's last call to core.
+        let journaled = !matches!(case.get("journal"), JValue::Arr(_))
+            || script.lock().unwrap().journal_finished;
+        if (got == want_files && released && kept && journaled)
+            || tokio::time::Instant::now() >= deadline
+        {
             break got;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
