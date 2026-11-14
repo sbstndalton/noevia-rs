@@ -2325,6 +2325,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "brotli",
+ "browser-cdp",
  "browser-task",
  "bytes",
  "chat-mirror-sched",

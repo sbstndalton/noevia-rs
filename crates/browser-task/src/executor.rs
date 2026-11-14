@@ -132,7 +132,7 @@ pub(crate) fn coerce(v: &JValue) -> Result<String, Fail> {
 fn js_basename(p: &str) -> &str {
     let trimmed = p.trim_end_matches('/');
     if trimmed.is_empty() {
-        return if p.is_empty() { "" } else { "/" };
+        return "";
     }
     trimmed.rsplit('/').next().unwrap_or(trimmed)
 }
@@ -805,20 +805,19 @@ impl Executor {
                 JValue::Obj(items)
             });
             let url = action.get("url");
+            // core's `maskSecrets(action.url)` runs `String()`, which may throw (a 500).
+            let card_url = if url.truthy() {
+                s(&self.mask(&coerce(url)?))
+            } else {
+                JValue::Null
+            };
             let mut card: Vec<(String, JValue)> = vec![
                 ("jobId".into(), s(&session.job_id)),
                 ("origin".into(), s(&origin)),
                 ("action".into(), s(&kind)),
                 ("reason".into(), s(&verdict.reason)),
                 ("element".into(), masked_element),
-                (
-                    "url".into(),
-                    if url.truthy() {
-                        s(&self.mask(&js_string(url)))
-                    } else {
-                        JValue::Null
-                    },
-                ),
+                ("url".into(), card_url),
                 (
                     "typed".into(),
                     typed.as_ref().map_or(JValue::Null, |t| s(&self.mask(t))),
@@ -1221,7 +1220,8 @@ mod tests {
             ("report.csv/.", "."),
             ("a/b/", "b"),
             ("..", ".."),
-            ("/", "/"),
+            ("/", ""),
+            ("//", ""),
             ("", ""),
             ("x\\y", "x\\y"),
         ] {

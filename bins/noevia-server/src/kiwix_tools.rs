@@ -55,12 +55,12 @@ fn reply(status: u16, text: String) -> Response<Body> {
     res
 }
 
+fn error_text(message: &str) -> String {
+    js_json::stringify(&JValue::obj([("error", JValue::Str(message.into()))])).unwrap_or_default()
+}
+
 fn error(status: u16, message: &str) -> Response<Body> {
-    reply(
-        status,
-        js_json::stringify(&JValue::obj([("error", JValue::Str(message.into()))]))
-            .unwrap_or_default(),
-    )
+    reply(status, error_text(message))
 }
 
 /// Whether `url` resolves to one of the two addresses the tools use under `base`: an article
@@ -94,7 +94,8 @@ async fn fetch(client: &reqwest::Client, url: &str) -> Result<String, String> {
             .await
             .map_err(|_| "fetch failed".to_string())?;
         let status = res.status();
-        if status.is_redirection() {
+        // undici's `redirect: 'error'` refuses exactly these; any other 3xx is a status like the rest.
+        if matches!(status.as_u16(), 301 | 302 | 303 | 307 | 308) {
             return Err("fetch failed".to_string());
         }
         if !status.is_success() {
@@ -157,6 +158,8 @@ pub async fn run(base: &kiwix_tools::Base, raw: &[u8]) -> (u16, String) {
     let args = body.get("arguments").clone();
     let Ok(client) = reqwest::Client::builder()
         .redirect(reqwest::redirect::Policy::none())
+        // Node's fetch ignores HTTP_PROXY and friends; so does this client.
+        .no_proxy()
         .build()
     else {
         return (503, error_text("unavailable"));
@@ -165,7 +168,7 @@ pub async fn run(base: &kiwix_tools::Base, raw: &[u8]) -> (u16, String) {
     let base = base.clone();
     let run = tokio::task::spawn_blocking(move || {
         let root = base.origin().to_string();
-        let mut get = |url: &str| -> Result<String, String> {
+        let get = |url: &str| -> Result<String, String> {
             if !stays_under(&root, url) {
                 return Err(String::new());
             }
@@ -203,6 +206,7 @@ async fn answer(base: &kiwix_tools::Base, raw: &[u8]) -> Response<Body> {
 }
 
 #[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing, clippy::panic)]
 mod tests {
     use super::*;
 
