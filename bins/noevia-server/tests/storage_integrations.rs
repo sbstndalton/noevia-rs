@@ -1799,16 +1799,24 @@ async fn put_connection_saves_a_files_address_as_the_space_the_server_names() {
             named,
         ))
     });
+    // The bare home: saved as the space, and the accepted login's proof is for the saved address.
+    let (status, out) = put(addr, ADMIN, &body("/remote.php/dav/files/qa-user")).await;
+    assert_eq!(status, 200, "{out}");
+    let space = format!("{base}/dav/spaces/qa-storage$qa-space");
+    assert_eq!(out["baseUrl"], space);
+    assert_eq!(row(&db, A).unwrap().1, space);
+    assert!(proofs(d.path()).unwrap()["proofs"][A].is_number());
     for (typed, saved) in [
-        (
-            "/remote.php/dav/files/qa-user",
-            "/dav/spaces/qa-storage$qa-space",
-        ),
-        (
-            "/remote.php/dav/files/qa-user/Sub%20dir/",
-            "/dav/spaces/qa-storage$qa-space/Sub%20dir",
-        ),
         ("/remote.php/webdav", "/dav/spaces/qa-storage$qa-space"),
+        // A folder below the home, another user's home, a space or anything else: as typed.
+        (
+            "/remote.php/dav/files/qa-user/Sub%20dir",
+            "/remote.php/dav/files/qa-user/Sub%20dir",
+        ),
+        (
+            "/remote.php/dav/files/qa-other",
+            "/remote.php/dav/files/qa-other",
+        ),
         (
             "/dav/spaces/qa-storage$qa-space",
             "/dav/spaces/qa-storage$qa-space",
@@ -1820,8 +1828,6 @@ async fn put_connection_saves_a_files_address_as_the_space_the_server_names() {
         assert_eq!(out["baseUrl"], format!("{base}{saved}"), "{typed}");
         assert_eq!(row(&db, A).unwrap().1, format!("{base}{saved}"), "{typed}");
     }
-    // The proof of the accepted login is written for the address that was saved.
-    assert!(proofs(d.path()).unwrap()["proofs"][A].is_number());
     // A server that names no space: saved as typed.
     dav.set(|_: &Seen| {
         now(reply(

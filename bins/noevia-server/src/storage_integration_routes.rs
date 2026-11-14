@@ -540,12 +540,14 @@ fn space_id(body: &str) -> Option<String> {
     ok.then_some(id)
 }
 
-/// The space address for a files address of the same server (track S1): `<prefix>/remote.php/dav/
-/// files/<user><rest>`, `<prefix>/dav/files/<user><rest>` or `<prefix>/remote.php/webdav<rest>`
-/// becomes `<prefix>/dav/spaces/<id><rest>` on the same origin, the rest (a folder inside the space)
-/// kept as typed. `None` for any other address, a space address included. Both name the same
-/// folder; only a space address gets the storage client's check-first rule.
-fn space_address(base_url: &str, id: &str) -> Option<String> {
+/// The space address for the bare home address of the same server (track S1): `<prefix>/remote.php/
+/// dav/files/<user>` or `<prefix>/dav/files/<user>` whose `<user>` is the login name (percent-decoded,
+/// ASCII case ignored), or `<prefix>/remote.php/webdav`, becomes `<prefix>/dav/spaces/<id>` on the
+/// same origin; only a space address gets the storage client's check-first rule. `None` for anything
+/// else: a folder below the home (a share mounted there names its own space, so the id need not be
+/// the home's), another name in the user place, a prefix that itself holds a WebDAV path, a space
+/// address.
+fn space_address(base_url: &str, username: &str, id: &str) -> Option<String> {
     let url = parse_url(strip_slashes(base_url))?;
     if !url.username().is_empty()
         || url.password().is_some()
@@ -556,28 +558,33 @@ fn space_address(base_url: &str, id: &str) -> Option<String> {
     }
     let path = url.path();
     let lower = path.to_ascii_lowercase();
-    let (at, rest_at) = [
+    let home = [
         ("/remote.php/dav/files/", true),
         ("/remote.php/webdav", false),
         ("/dav/files/", true),
     ]
     .iter()
-    .find_map(|(marker, user)| {
+    .filter_map(|(marker, user)| {
         let at = lower.find(marker)?;
-        let end = at + marker.len();
-        if *user {
-            let tail = path.get(end..)?;
-            let user_len = tail.find('/').unwrap_or(tail.len());
-            (user_len > 0).then_some((at, end + user_len))
+        let tail = path.get(at + marker.len()..)?;
+        let ok = if *user {
+            !tail.is_empty()
+                && !tail.contains('/')
+                && dav_parse::decode_uri_component(tail)
+                    .is_some_and(|name| name.eq_ignore_ascii_case(username))
         } else {
-            let tail = path.get(end..)?;
-            (tail.is_empty() || tail.starts_with('/')).then_some((at, end))
-        }
-    })?;
-    let prefix = path.get(..at)?;
-    let rest = strip_slashes(path.get(rest_at..)?);
+            tail.is_empty()
+        };
+        ok.then_some(at)
+    })
+    .min()?;
+    let before = lower.get(..home)?;
+    if before.contains("/remote.php") || before.contains("/dav/") {
+        return None;
+    }
+    let prefix = path.get(..home)?;
     Some(format!(
-        "{}://{}{prefix}/dav/spaces/{id}{rest}",
+        "{}://{}{prefix}/dav/spaces/{id}",
         url.scheme(),
         url_host(&url)
     ))
@@ -1945,11 +1952,12 @@ async fn put_connection(ctx: &Arc<Ctx>, body: &JValue) -> Response<Body> {
         Some("s3") => "s3",
         _ => "local",
     };
-    // Track S1: a files address on a server that names the space it is in is saved as that space.
-    let typed = strip_slashes(&or_empty(body.get("baseUrl"))).to_string();
+    // Track S1: the home address on a server that names the space it is in is saved as that space.
+    let raw = or_empty(body.get("baseUrl"));
+    let typed = strip_slashes(&raw).to_string();
     let base_url = space
         .as_deref()
-        .and_then(|id| space_address(&typed, id))
+        .and_then(|id| space_address(&typed, &or_empty(body.get("username")), id))
         .unwrap_or_else(|| typed.clone());
     let used = if base_url == typed {
         body.clone()
@@ -1958,7 +1966,13 @@ async fn put_connection(ctx: &Arc<Ctx>, body: &JValue) -> Response<Body> {
             JValue::Obj(items) => items.clone(),
             _ => Vec::new(),
         };
-        js_json::wtf16::set(&mut items, "baseUrl", JValue::Str(base_url.clone()));
+        // As typed, so a trailing slash still gets no proof (core compares the typed value).
+        let shown = if raw.ends_with('/') {
+            format!("{base_url}/")
+        } else {
+            base_url.clone()
+        };
+        js_json::wtf16::set(&mut items, "baseUrl", JValue::Str(shown));
         JValue::Obj(items)
     };
     let row = Row {
@@ -2042,42 +2056,58 @@ mod tests {
     }
 
     #[test]
-    fn a_files_address_maps_to_its_space_on_the_same_origin() {
+    fn only_the_users_bare_home_address_maps_to_its_space() {
         let id = "qa-storage$qa-space";
-        for (typed, want) in [
+        let space = |origin: &str| format!("{origin}/dav/spaces/qa-storage$qa-space");
+        for (typed, user, want) in [
             (
                 "https://c.test/remote.php/dav/files/qa",
-                Some("https://c.test/dav/spaces/qa-storage$qa-space"),
+                "qa",
+                Some(space("https://c.test")),
             ),
             (
-                "https://c.test/remote.php/dav/files/qa/",
-                Some("https://c.test/dav/spaces/qa-storage$qa-space"),
+                "https://c.test/remote.php/dav/files/QA/",
+                "qa",
+                Some(space("https://c.test")),
             ),
             (
-                "https://c.test:8443/cloud/Remote.php/DAV/files/qa/Sub%20dir/",
-                Some("https://c.test:8443/cloud/dav/spaces/qa-storage$qa-space/Sub%20dir"),
+                "https://c.test:8443/cloud/Remote.php/DAV/files/qa%40x.test",
+                "qa@x.test",
+                Some(space("https://c.test:8443/cloud")),
             ),
             (
                 "https://c.test/remote.php/webdav",
-                Some("https://c.test/dav/spaces/qa-storage$qa-space"),
+                "qa",
+                Some(space("https://c.test")),
             ),
             (
-                "https://c.test/remote.php/webdav/Notes",
-                Some("https://c.test/dav/spaces/qa-storage$qa-space/Notes"),
+                "https://c.test/remote.php/webdav/",
+                "qa",
+                Some(space("https://c.test")),
             ),
             (
                 "https://c.test/dav/files/qa",
-                Some("https://c.test/dav/spaces/qa-storage$qa-space"),
+                "qa",
+                Some(space("https://c.test")),
             ),
-            ("https://c.test/remote.php/webdavx", None),
-            ("https://c.test/remote.php/dav/files/", None),
-            ("https://c.test/dav/spaces/qa-storage$qa-space", None),
-            ("https://c.test/other", None),
-            ("https://u:p@c.test/remote.php/dav/files/qa", None),
-            ("https://c.test/remote.php/dav/files/qa?x=1", None),
-            ("not a url", None),
+            ("https://c.test/remote.php/dav/files/qa/Sub", "qa", None),
+            ("https://c.test/remote.php/webdav/Shares/Team", "qa", None),
+            ("https://c.test/remote.php/dav/files/bob", "qa", None),
+            (
+                "https://c.test/remote.php/webdav/remote.php/dav/files/qa",
+                "qa",
+                None,
+            ),
+            ("https://c.test/x/dav/y/dav/files/qa", "qa", None),
+            ("https://c.test/remote.php/webdavx", "qa", None),
+            ("https://c.test/remote.php/dav/files/", "qa", None),
+            ("https://c.test/dav/spaces/qa-storage$qa-space", "qa", None),
+            ("https://c.test/other", "qa", None),
+            ("https://u:p@c.test/remote.php/dav/files/qa", "qa", None),
+            ("https://c.test/remote.php/dav/files/qa?x=1", "qa", None),
+            ("not a url", "qa", None),
         ] {
-            assert_eq!(space_address(typed, id).as_deref(), want, "{typed}");
+            assert_eq!(space_address(typed, user, id), want, "{typed}");
         }
     }
 
