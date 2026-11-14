@@ -585,11 +585,16 @@ async fn a_client_that_leaves_strands_no_probe() {
     )
     .await
     .unwrap();
-    tokio::time::sleep(Duration::from_millis(300)).await;
-    assert!(
-        noevia_server::health_routes::PROBES_RUNNING.load(Ordering::SeqCst) >= 1,
-        "the probes were in flight when the client left"
-    );
+    // noevia#2498: hang up once the probes are in flight (each takes 1.2 s), not after a fixed
+    // 300 ms a loaded runner may not have started them in.
+    let deadline = std::time::Instant::now() + Duration::from_secs(10);
+    while noevia_server::health_routes::PROBES_RUNNING.load(Ordering::SeqCst) == 0 {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "the probes were in flight when the client left"
+        );
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
     drop(s);
     // Both probes finish on their own deadline; nothing is left behind, and the next call is whole.
     let mut waited = 0;

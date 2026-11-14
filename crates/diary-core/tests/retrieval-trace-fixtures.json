@@ -182,6 +182,78 @@
     },
     {
       "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "09:30"
+      },
+      "header": "\u001f09:30 x",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "9:05"
+      },
+      "header": "\u001c\u001d9:05 separators",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "09:30"
+      },
+      "header": " 09:30 next line",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "09:30"
+      },
+      "header": "　09:30 ideographic space",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": null
+      },
+      "header": "​09:30 zero width space is not space",
+      "known_deviation": false
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "10:15"
+      },
+      "header": "10:15Ⓐ circled letter",
+      "known_deviation": true
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "10:15"
+      },
+      "header": "10:15ा vowel sign",
+      "known_deviation": true
+    },
+    {
+      "expected": {
+        "day": "2026-08-01",
+        "id": 1,
+        "time": "10:15"
+      },
+      "header": "10:15ͅ combining mark",
+      "known_deviation": true
+    },
+    {
+      "expected": {
         "day": "2026-08-02",
         "id": 2,
         "time": null
