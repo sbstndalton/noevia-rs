@@ -75,11 +75,86 @@ fn malformed_tokens() {
         binding::open(SECRET, &long, 0.0),
         Err(TokenError::Malformed)
     );
-    // A good MAC over a body that is not a binding.
+    // Upper-case hex is not the token's.
     let r = row("qa-own", "https://qa.example", false);
     let t = binding::mint(SECRET, &bound(&r)).unwrap();
     let upper = t.to_uppercase().replacen("V1.", "v1.", 1);
     assert!(binding::open(SECRET, &upper, 0.0).is_err());
+    // A good MAC over a body that is not a binding.
+    use hmac::Mac;
+    let hex = |bytes: &[u8]| -> String { bytes.iter().map(|b| format!("{b:02x}")).collect() };
+    let signed = format!("v1.{}", hex(br#"{"user":1}"#));
+    let mut m = hmac::Hmac::<sha2::Sha256>::new_from_slice(SECRET).unwrap();
+    m.update(signed.as_bytes());
+    let token = format!("{signed}.{}", hex(&m.finalize().into_bytes()));
+    assert_eq!(
+        binding::open(b"qa-other-secret", &token, 0.0),
+        Err(TokenError::BadMac)
+    );
+    assert_eq!(
+        binding::open(SECRET, &token, 0.0),
+        Err(TokenError::Malformed)
+    );
+}
+
+#[test]
+fn debug_output_carries_no_key_or_address_secret() {
+    let base = "https://qa-user:qa-pass@qa.example/v1?key=qa-query-secret#qa-frag";
+    let r = row("qa-own", base, false);
+    let b = Binding {
+        url: "https://qa-user:qa-pass@qa.example/v1/chat/completions?key=qa-query-secret#qa-frag"
+            .into(),
+        ..bound(&r)
+    };
+    let t = Target {
+        url: b.url.clone(),
+        ..target(KeyUse::RowKey, Fetch::Direct)
+    };
+    let req = plan::request(&t, Call::Round, Some("qa-row-key"));
+    assert!(req.headers.iter().any(|(_, v)| v == "Bearer qa-row-key"));
+    let now = Now {
+        user: "qa-member",
+        user_active: true,
+        row: Some(&r),
+        member_own: true,
+        origin_approved: true,
+    };
+    let user = chat_upstream::target::User {
+        id: Some("qa-member".into()),
+        admin: false,
+    };
+    let turn = chat_upstream::target::Turn {
+        row: &r,
+        default_id: "default",
+        user: Some(&user),
+        member_origins: "https://qa.example",
+        machine: None,
+        sign_in: false,
+        sign_in_enabled: false,
+        connection: chat_upstream::target::Connection::Missing,
+        workspace_user: None,
+        chat_id: Some("qa-chat"),
+        space_id: None,
+    };
+    for printed in [
+        format!("{b:?}"),
+        format!("{t:?}"),
+        format!("{req:?}"),
+        format!("{now:?}"),
+        format!("{turn:?}"),
+    ] {
+        for secret in [
+            "qa-key",
+            "qa-row-key",
+            "qa-pass",
+            "qa-query-secret",
+            "qa-frag",
+        ] {
+            assert!(!printed.contains(secret), "{secret} in {printed}");
+        }
+    }
+    assert!(format!("{req:?}").contains("https://qa.example/v1/chat/completions"));
+    assert!(format!("{now:?}").contains("qa-own"));
 }
 
 #[test]

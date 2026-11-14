@@ -42,6 +42,26 @@ pub fn authorization(api_key: Option<&str>) -> Option<String> {
     }
 }
 
+/// `raw` for Debug output and logs: without user, password, query and fragment (a base address may
+/// carry a key in any of them); an address that does not parse prints as a placeholder.
+pub fn printable_url(raw: &str) -> String {
+    match url::Url::parse(raw) {
+        Ok(mut u) => {
+            let _ = u.set_username("");
+            let _ = u.set_password(None);
+            u.set_query(None);
+            u.set_fragment(None);
+            u.to_string()
+        }
+        Err(_) => "<address not printed>".to_string(),
+    }
+}
+
+/// The row's `id` for Debug output (a row also holds its key).
+pub(crate) fn row_id(row: &JValue) -> Option<&str> {
+    row.get("id").as_str()
+}
+
 /// The signed-in user as the call path reads it (`authn.user`), or no user.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct User {
@@ -107,7 +127,7 @@ pub enum Connection {
 
 /// What [`resolve`] reads: the provider row as `getProvider` returned it (after any route or
 /// machine swap), and the facts chat.cjs consults on the way.
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Turn<'a> {
     pub row: &'a JValue,
     pub default_id: &'a str,
@@ -128,8 +148,26 @@ pub struct Turn<'a> {
     pub space_id: Option<&'a str>,
 }
 
+impl std::fmt::Debug for Turn<'_> {
+    /// The row prints as its id only (it holds the key); the origin list is not printed.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Turn")
+            .field("row", &row_id(self.row))
+            .field("default_id", &self.default_id)
+            .field("user", &self.user)
+            .field("machine", &self.machine)
+            .field("sign_in", &self.sign_in)
+            .field("sign_in_enabled", &self.sign_in_enabled)
+            .field("connection", &self.connection)
+            .field("workspace_user", &self.workspace_user)
+            .field("chat_id", &self.chat_id)
+            .field("space_id", &self.space_id)
+            .finish_non_exhaustive()
+    }
+}
+
 /// A settled call target.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Clone, PartialEq, Eq)]
 pub struct Target {
     pub provider_id: String,
     /// `provider.label` (the transport error names it).
@@ -139,6 +177,20 @@ pub struct Target {
     pub key: KeyUse,
     /// The member-own-provider rule applied (and passed).
     pub member_own: bool,
+}
+
+impl std::fmt::Debug for Target {
+    /// The address prints without userinfo, query or fragment ([`printable_url`]).
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Target")
+            .field("provider_id", &self.provider_id)
+            .field("label", &self.label)
+            .field("url", &printable_url(&self.url))
+            .field("fetch", &self.fetch)
+            .field("key", &self.key)
+            .field("member_own", &self.member_own)
+            .finish()
+    }
 }
 
 /// Why the call is not sent: Node's status and its `{ error }` text.
