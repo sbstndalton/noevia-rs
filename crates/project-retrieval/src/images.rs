@@ -13,7 +13,7 @@
 //! template literals, `String(x)`) are the same here. Named differences from Node:
 //! - an asset id that is not a plain file name (`chat_prepare` `plain_asset_name`, #2595) is never
 //!   read: its bytes are missing, as for a file that is gone. Node's `resolveHit` joins any id to
-//!   the asset directory (noevia issue filed with this port).
+//!   the asset directory (noevia#2802 item 1).
 //! - asset ids are compared by value; Node's `Set` compares objects and arrays by reference (ids
 //!   are strings everywhere the server writes them).
 //! - a `null` entry in the project's assets is skipped by the question-name rule, where chat.cjs

@@ -11,7 +11,7 @@
 //! ([`Ports`]); this module decides only. Named difference from Node: the names in the two notes
 //! are quoted with [`crate::names::quote_name`] (quoted-name.cjs, #1588), where `answerImages`
 //! uses a bare `JSON.stringify` that leaves U+2028/U+2029 and the bidirectional marks raw in the
-//! system text (noevia issue filed with this port).
+//! system text (noevia#2802 item 2).
 
 use std::collections::HashMap;
 use std::future::Future;
