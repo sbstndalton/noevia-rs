@@ -37,7 +37,9 @@ const { parseEnabledToolboxes, createToolboxOffered } = req('mcp-servers.cjs');
 const { buildFacts } = req('toolbox-chat-facts.cjs');
 const { createKiwixTools } = req('kiwix.cjs');
 const { createDriveTools } = req('gdrive-tools.cjs');
-const TRANSCRIBED = ['server/index.cjs'];
+// index.cjs is transcribed; features.cjs (construction.kiwix = selected().value) and code-service.cjs
+// (parseRepos) hold rules the front copies without the recorder running them: hashed so a change shows.
+const TRANSCRIBED = ['server/code-service.cjs', 'server/features.cjs', 'server/index.cjs'];
 
 const cases = [
   { name: 'defaults', kiwix: false, kiwixUrl: null, enabled: null, harness: false, repos: false },

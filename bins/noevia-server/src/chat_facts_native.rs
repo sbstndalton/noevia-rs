@@ -19,8 +19,11 @@
 //! stream). The facts built here carry an empty measurement set.
 //!
 //! Named differences: core reads its `kiwix` feature once at its start (a construction flag that needs a
-//! restart); this process reads it once, at the first build. A `KIWIX_URL` core cannot parse stops
-//! core's start; here it only means no Offline Wikipedia box.
+//! restart: `selected().value`, not the runtime `enabled`); this process reads the same value once, at
+//! the first build that can read the setting (a failed read is not kept: that build is not ready). A
+//! `KIWIX_URL` core cannot parse stops core's start; here it only means no Offline Wikipedia box.
+//! `KIWIX_URL` and `CODE_REPOS` are this process's environment and filesystem, the same container as
+//! core's.
 //!
 //! Recorded proof: tests/fixtures/chat-facts-node.v1.json (12 configurations through core's own boxes and
 //! buildFacts); the test module below replays them through [`build`].
@@ -108,32 +111,78 @@ pub fn kiwix_url_ok(raw: &str) -> bool {
     }
 }
 
+/// features.cjs `selected(name).value`: the value core reads once at its start for a construction flag
+/// (`featureConstruction.kiwix` = `state.get('kiwix').boot`): the env override, else the typed admin
+/// setting (or its declared legacy row), else the default. Availability does not enter it. `None`: the
+/// setting could not be read (core would not start then).
+fn selected_value(app: &App, feature: server_features::Feature) -> Option<bool> {
+    let env = server_features::Feature::ALL
+        .iter()
+        .position(|f| *f == feature)
+        .and_then(|i| app.config.feature_context_env.get(i).copied().flatten());
+    let stored = match env {
+        Some(_) => None,
+        None => app
+            .writes
+            .writer()
+            .ok()?
+            .read(|r| server_account::feature_context::startup::selected(r, feature))
+            .ok()?,
+    };
+    let text = stored.map(|on| if on { "true" } else { "false" });
+    Some(
+        server_features::evaluate_with_context(
+            feature,
+            env,
+            text,
+            server_features::Availability::Unknown,
+            None,
+        )
+        .value,
+    )
+}
+
+/// Whether the Offline Wikipedia box exists here: the `kiwix` construction value and a `KIWIX_URL`
+/// createKiwixTools accepts. `None`: the setting could not be read.
+fn kiwix_box(app: &App) -> Option<bool> {
+    let url = std::env::var("KIWIX_URL").unwrap_or_default();
+    if url.is_empty() || !kiwix_url_ok(&url) {
+        return Some(false);
+    }
+    selected_value(app, server_features::Feature::Kiwix)
+}
+
 /// The facts for this deployment now. `None` while MCP discovery is not configured here (the caller
-/// then has no catalogue either).
+/// then has no catalogue either), or while the `kiwix` setting cannot be read (not ready: the caller
+/// answers "being prepared"; a later build reads it again).
 pub async fn facts(app: &Arc<App>) -> Option<Arc<JValue>> {
     let handle = crate::mcp_discovery_backend::handle(app)?.clone();
     let app = Arc::clone(app);
     tokio::task::spawn_blocking(move || {
-        static ONCE: OnceLock<(bool, bool)> = OnceLock::new();
-        let (kiwix, has_repositories) = *ONCE.get_or_init(|| {
-            let url = std::env::var("KIWIX_URL").unwrap_or_default();
-            let kiwix = !url.is_empty()
-                && kiwix_url_ok(&url)
-                && crate::code_routes::feature(&app, server_features::Feature::Kiwix);
-            let repos = !code_harness::service::parse_repos(&app.config.code.repos).is_empty();
-            (kiwix, repos)
-        });
+        // Read once, as core reads them once at its start; a failed read is not kept.
+        static KIWIX: OnceLock<bool> = OnceLock::new();
+        static REPOS: OnceLock<bool> = OnceLock::new();
+        let kiwix = match KIWIX.get() {
+            Some(v) => *v,
+            None => {
+                let v = kiwix_box(&app)?;
+                *KIWIX.get_or_init(|| v)
+            }
+        };
+        let has_repositories = *REPOS
+            .get_or_init(|| !code_harness::service::parse_repos(&app.config.code.repos).is_empty());
         let harness_enabled =
             crate::code_routes::feature(&app, server_features::Feature::CodeHarness);
-        Arc::new(build(&Inputs {
+        Some(Arc::new(build(&Inputs {
             kiwix,
             offered: &|id| handle.offered(id),
             harness_enabled,
             has_repositories,
-        }))
+        })))
     })
     .await
     .ok()
+    .flatten()
 }
 
 #[cfg(test)]

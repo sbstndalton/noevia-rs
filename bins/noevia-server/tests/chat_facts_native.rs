@@ -29,9 +29,12 @@ fn published() -> Value {
 
 async fn rig() -> (tempfile::TempDir, Front) {
     std::env::set_var("NOEVIA_RUST_CHAT_FACTS", "1");
+    // The Offline Wikipedia box: KIWIX_URL (read from the process) and the kiwix construction flag
+    // (a restart flag: its selected value, here the env override the front's config reads).
+    std::env::set_var("KIWIX_URL", "http://qa-kiwix.invalid:8080");
     let d = tempfile::tempdir().unwrap();
     let _db = seed(d.path());
-    let f = front_env(d.path(), true, &[]).await;
+    let f = front_env(d.path(), true, &[("NOEVIA_FEATURE_KIWIX", "true".into())]).await;
     write_snapshot(&f, d.path(), published());
     (d, f)
 }
@@ -52,8 +55,11 @@ async fn the_catalogue_takes_the_fronts_built_in_boxes_and_needs_no_core_file() 
     assert_eq!(s, 200, "{body}");
     let got = ids(&body);
     assert!(!got.iter().any(|i| i == "qa-decoy"), "{got:?}");
-    assert_eq!(got.first().map(String::as_str), Some("core"), "{got:?}");
-    assert!(got.iter().any(|i| i == "gdrive"), "{got:?}");
+    assert_eq!(
+        got.iter().take(3).map(String::as_str).collect::<Vec<_>>(),
+        ["core", "offline-wikipedia", "gdrive"],
+        "core's built-in boxes in core's order, the kiwix one included"
+    );
     assert!(got.iter().any(|i| i == "qa-curated"), "{got:?}");
     // core's own tool definitions (contracts/builtin-toolboxes.json), not the decoy's.
     let core = &body["boxes"][0];
