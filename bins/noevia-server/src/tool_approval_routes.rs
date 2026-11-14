@@ -10,6 +10,13 @@ use axum::{
 use server_account::tool_approvals as policy;
 use std::{sync::Arc, time::Duration};
 const UNAVAILABLE: &str = "Tool approval state is unavailable right now. Try again shortly.";
+/// GET /api/tool-approvals?chat=<chatId> (#2580): the signed-in account's own open questions in
+/// that chat, so a second tab (or a reloaded one, while the turn that asked still runs) knows a
+/// card is waiting. Only ids, kinds and expiry: the card's content stays in the asking tab's
+/// stream, and answering still takes POST /api/tool-approvals/{id} with the owner's session.
+pub const LIST: &str = "/api/tool-approvals";
+/// The longest chat id the read accepts.
+const MAX_CHAT: usize = 128;
 fn error(status: StatusCode, message: &str) -> Response<Body> {
     reply::error(status, message, true)
 }
@@ -30,6 +37,9 @@ pub async fn serve(
     req: Request<Body>,
     path: String,
 ) -> Response<Body> {
+    if path == LIST && req.method() == Method::GET {
+        return list(app, req, path).await;
+    }
     let raw = path
         .strip_prefix("/api/tool-approvals/")
         .filter(|s| !s.is_empty() && !s.contains('/'));
@@ -139,6 +149,46 @@ pub async fn serve(
             error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE)
         }
     }
+}
+
+/// [`LIST`]: identity first, then the chat id, then the owner's own open questions. Nothing is
+/// logged; the answer is never cached.
+async fn list(app: &Arc<App>, req: Request<Body>, path: String) -> Response<Body> {
+    let (parts, _body) = req.into_parts();
+    let authn = match gate(app, identity::creds_of(&parts), path).await {
+        Ok(id) => id,
+        Err(r) => return r.into_response(),
+    };
+    let chat = url::form_urlencoded::parse(parts.uri.query().unwrap_or("").as_bytes())
+        .find(|(k, _)| k == "chat")
+        .map(|(_, v)| v.into_owned())
+        .unwrap_or_default();
+    if chat.is_empty() {
+        return error(StatusCode::BAD_REQUEST, "chat required");
+    }
+    if chat.len() > MAX_CHAT || crate::approval_registry::safe_id(&chat) != chat {
+        return error(StatusCode::BAD_REQUEST, "invalid chat id");
+    }
+    let open = match app.approvals.open_in(&authn.user.id, &chat) {
+        Ok(open) => open,
+        Err(_) => return error(StatusCode::SERVICE_UNAVAILABLE, UNAVAILABLE),
+    };
+    let pending: Vec<serde_json::Value> = open
+        .into_iter()
+        .map(|q| {
+            serde_json::json!({
+                "id": q.id,
+                "kind": q.kind.name(),
+                "once": q.once,
+                "expiresInMs": u64::try_from(q.expires_in.as_millis()).unwrap_or(u64::MAX),
+            })
+        })
+        .collect();
+    reply::json(
+        StatusCode::OK,
+        &serde_json::json!({ "pending": pending }),
+        true,
+    )
 }
 
 enum Decided {

@@ -135,7 +135,8 @@ pub enum Native {
     /// POST /api/models/autotune/settings and every other method's refusal (#2287).
     AutotuneSettings,
     /// POST /api/tool-approvals/{approvalId}: public decision policy, answered from the front's
-    /// approval registry (approval_registry.rs, port contract S9).
+    /// approval registry (approval_registry.rs, port contract S9); GET /api/tool-approvals?chat=,
+    /// the owner's open questions in a chat (#2580).
     ToolApprovals,
     /// GET /api/toolboxes and every other method's 405 (#2281).
     ToolboxPicker,
@@ -520,7 +521,9 @@ pub fn native_for(route: &Route) -> Option<Native> {
         p if auth && MCP_CREDENTIALS.contains(&p) => return Some(Native::McpCredentials),
         p if auth && MCP_DIRECTORY.contains(&p) => return Some(Native::McpDirectory),
         "/api/models/autotune/settings" if auth => return Some(Native::AutotuneSettings),
-        server_account::tool_approvals::ROUTE if auth => return Some(Native::ToolApprovals),
+        server_account::tool_approvals::ROUTE | crate::tool_approval_routes::LIST if auth => {
+            return Some(Native::ToolApprovals)
+        }
         "/api/toolboxes" if auth => return Some(Native::ToolboxPicker),
         crate::chat_framing_suggest::PATH if auth => return Some(Native::ChatFramingSuggest),
         crate::chat_turn::PATH if auth => return Some(Native::ChatTurn),
@@ -1649,6 +1652,14 @@ mod tests {
             assert_eq!(dispatch(method, "/api/tool-approvals/a"), None);
         }
         assert_eq!(dispatch("POST", "/api/tool-approvals/a/extra"), None);
+        // #2580: the owner's read of a chat's open questions is GET only.
+        assert_eq!(
+            dispatch("GET", "/api/tool-approvals"),
+            Some(Native::ToolApprovals)
+        );
+        for method in ["HEAD", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"] {
+            assert_eq!(dispatch(method, "/api/tool-approvals"), None, "{method}");
+        }
         assert!(crate::FEATURES.contains(&"rust-tool-approvals"));
         assert!(crate::FEATURES.contains(&"rust-approval-registry"));
         assert!(crate::FEATURES.contains(&crate::approval_registry::PROTOCOL));

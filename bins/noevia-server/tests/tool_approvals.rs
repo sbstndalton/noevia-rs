@@ -866,3 +866,111 @@ async fn chat_delete_does_not_wait_for_another_users_stalled_marker() {
 async fn project_delete_does_not_wait_for_another_users_stalled_marker() {
     deletion_ignores_another_users_pending_invalidation(true, true).await;
 }
+
+/// GET /api/tool-approvals?chat=, signed in or not.
+async fn list(f: &Front, query: &str, auth: bool) -> (u16, Value) {
+    let cookie = if auth {
+        format!("cookie: {}\r\n", f.jar)
+    } else {
+        String::new()
+    };
+    let head = format!(
+        "GET /api/tool-approvals{query} HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\n{cookie}"
+    );
+    http(f.addr, &head, "").await
+}
+
+/// #2580: a chat's open questions are read by their owner only, after the session check, and
+/// never make a question answerable by anyone else.
+#[tokio::test]
+async fn the_open_question_read_is_the_owners_and_refuses_before_reading() {
+    let f = front().await;
+    assert_eq!(
+        f.open("ap-mine", "write", json!({"chat":"qa-chat","once":true}))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        f.open("route-mine", "route", json!({"chat":"qa-chat"}))
+            .await
+            .0,
+        200
+    );
+    assert_eq!(
+        f.open("ap-elsewhere", "write", json!({"chat":"qa-other"}))
+            .await
+            .0,
+        200
+    );
+    let theirs = json!({"user":STRANGER,"id":"ap-theirs","kind":"write","chat":"qa-chat"});
+    assert_eq!(f.op("approvals/open", theirs).await.0, 200);
+    // Signed out: refused before anything is read.
+    let (status, body) = list(&f, "?chat=qa-chat", false).await;
+    assert_eq!(status, 401, "{body}");
+    assert!(body.get("pending").is_none());
+    // A chat id is required and must be a plain id.
+    for query in [
+        "",
+        "?chat=",
+        "?other=qa-chat",
+        "?chat=qa%2F..%2Fchat",
+        "?chat=qa%20chat",
+    ] {
+        let (status, body) = list(&f, query, true).await;
+        assert_eq!(status, 400, "{query}: {body}");
+        assert!(body.get("pending").is_none(), "{query}");
+    }
+    let long = format!("?chat={}", "a".repeat(129));
+    assert_eq!(list(&f, &long, true).await.0, 400);
+    // The owner's own, in that chat only; never another account's.
+    let (status, body) = list(&f, "?chat=qa-chat", true).await;
+    assert_eq!(status, 200, "{body}");
+    let pending = body["pending"].as_array().unwrap();
+    let mut ids: Vec<&str> = pending.iter().map(|q| q["id"].as_str().unwrap()).collect();
+    ids.sort_unstable();
+    assert_eq!(ids, ["ap-mine", "route-mine"]);
+    for q in pending {
+        assert_eq!(q.as_object().unwrap().len(), 4, "{q}");
+        assert!(q["expiresInMs"].as_u64().unwrap() <= 5 * 60 * 1000);
+    }
+    let mine = pending.iter().find(|q| q["id"] == "ap-mine").unwrap();
+    assert_eq!(
+        (&mine["kind"], &mine["once"]),
+        (&json!("write"), &json!(true))
+    );
+    let route = pending.iter().find(|q| q["id"] == "route-mine").unwrap();
+    assert_eq!(
+        (&route["kind"], &route["once"]),
+        (&json!("route"), &json!(false))
+    );
+    let (status, body) = list(&f, "?chat=qa-unknown", true).await;
+    assert_eq!((status, body), (200, json!({"pending":[]})));
+    // Listing it did not make another account's question answerable here.
+    assert_eq!(
+        f.decide("ap-theirs", r#"{"decision":"approve"}"#).await.0,
+        404
+    );
+    // Answered or withdrawn: gone from the read.
+    assert_eq!(
+        f.decide("ap-mine", r#"{"decision":"deny"}"#).await,
+        (200, json!({"ok":true}))
+    );
+    assert_eq!(f.wait("ap-mine").await, (200, json!({"outcome":"deny"})));
+    assert_eq!(
+        f.op("approvals/cancel", json!({"user":f.user,"id":"route-mine"}))
+            .await,
+        (200, json!({"cancelled":true}))
+    );
+    let (status, body) = list(&f, "?chat=qa-chat", true).await;
+    assert_eq!((status, body), (200, json!({"pending":[]})));
+    // Another account's question is still open for that account (the read consumed nothing).
+    assert_eq!(
+        f.op(
+            "approvals/cancel",
+            json!({"user":STRANGER,"id":"ap-theirs"})
+        )
+        .await,
+        (200, json!({"cancelled":true}))
+    );
+}
