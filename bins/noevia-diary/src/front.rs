@@ -32,8 +32,8 @@
 //! STOP_GRACE to finish, then this process exits.
 
 use crate::config::Config;
-use crate::write::Writers;
 use crate::server::{self, App, DECLINE_HEADER, RECOVERED_HEADER};
+use crate::write::Writers;
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Request, Response, StatusCode};
 use hyper_util::client::legacy::connect::HttpConnector;
@@ -418,9 +418,10 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         if !declares_body(&parts.headers) {
             let mut headers = parts.headers.clone();
             // A tenant the child deleted (its fence) is the child's to answer (410), never native.
-            if stamp_tenant(&headers)
-                .is_some_and(|uid| !app.writers.is_fenced(&uid) && front.is_recovered(&uid, app.writers.native_writes(&uid).0))
-            {
+            if stamp_tenant(&headers).is_some_and(|uid| {
+                !app.writers.is_fenced(&uid)
+                    && front.is_recovered(&uid, app.writers.native_writes(&uid).0)
+            }) {
                 headers.insert(RECOVERED_HEADER, HeaderValue::from_static("1"));
             }
             let resp = server::serve_native(app.clone(), r, query.clone(), headers, asserted).await;
