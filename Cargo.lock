@@ -2371,6 +2371,7 @@ dependencies = [
  "rustls",
  "s3-sign",
  "secret-envelope",
+ "secrets-rotate",
  "serde",
  "serde_json",
  "server-account",
@@ -3320,6 +3321,17 @@ dependencies = [
  "aes",
  "aes-gcm",
  "proptest",
+ "serde_json",
+ "zeroize",
+]
+
+[[package]]
+name = "secrets-rotate"
+version = "0.1.0"
+dependencies = [
+ "google-token-seal",
+ "js-json",
+ "secret-envelope",
  "serde_json",
  "zeroize",
 ]
