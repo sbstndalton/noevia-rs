@@ -576,6 +576,52 @@ impl<'a> Tools<'a> {
         }
     }
 
+    /// The tool gate's prefetch (chat.cjs `prefetchTool`'s `runTool`): the read through the exchange checks and
+    /// the turn's result cache, then core's execute bridge; no permission gate (core prefetches only a read the
+    /// account allows, checked by the caller). The result and whether the tool said it failed.
+    pub async fn prefetch<H: Host>(&mut self, host: &H, call: &Call) -> (String, bool) {
+        let name_units = js::to_units(&call.name);
+        let args_units = (!call.args.is_empty()).then(|| js::to_units(&call.args));
+        let checked = tool_exchange::check(
+            host.left(),
+            self.allowed.contains(&call.name),
+            &name_units,
+            args_units.as_deref(),
+        );
+        let key = match checked {
+            Err(_) => return (CHECK_FAULT.to_string(), false),
+            Ok(tool_exchange::Check::Answer(a)) => return (js::from_units(&a), false),
+            Ok(tool_exchange::Check::Run(key)) => key,
+        };
+        if let Some((r, _)) = self.cache.get(&key) {
+            return (r.clone(), false);
+        }
+        let run = ToolRun {
+            project_id: self.project_id.clone(),
+            name: call.name.clone(),
+            args: call.args.clone(),
+            allowed: self.allowed_order.clone(),
+            routes: self.routes.clone(),
+            chat_key: self.chat_key.clone(),
+            exchange_key: self.exchange_key.clone(),
+            edit_target: None,
+            grant: None,
+        };
+        let (text, failed) = match host.execute_tool(&run).await {
+            Ran::Done { text, failed, .. } => (text, failed),
+            Ran::Threw(message) => (
+                tool_exchange::call_error(&name_units, &js::to_units(&message))
+                    .map_or_else(|_| ERROR_FAULT.to_string(), |t| js::from_units(&t)),
+                false,
+            ),
+            Ran::Aborted => (CANCELLED.to_string(), false),
+            // Only a grant's redeem answers these; a prefetch carries none.
+            Ran::Refused | Ran::Unavailable => (CHECK_FAULT.to_string(), false),
+        };
+        self.cache.insert(key, (text.clone(), false));
+        (text, failed)
+    }
+
     /// chat.cjs `revokedSkills()` in the gate: `Some(result)` refusing the call when a loaded skill was revoked.
     /// A skills bridge that gave no answer refuses it unchecked (skills.rs).
     async fn skill_refusal<H: Host>(&self, host: &H, name: &str) -> Option<String> {
