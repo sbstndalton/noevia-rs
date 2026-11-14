@@ -652,13 +652,15 @@ impl Maint {
             }
             return (Applied::Threw(e.message), e.status);
         }
-        if let Ok(Ok(reply)) = self.router_reload(router, holding, None).await {
+        let reload = self.router_reload(router, holding, None).await;
+        if let Ok(Ok(reply)) = &reload {
             if reply.ok {
                 return (Applied::Ok, 200);
             }
         }
-        // The lease was lost after the write: nothing more runs on it, not even the restore.
-        if !holding.excluded() {
+        // The lease was lost after the write, or can no longer cover the re-read (Node's coverage
+        // check counts that as lost too): nothing more runs on it, not even the restore.
+        if !holding.excluded() || matches!(reload, Ok(Err("lease_lost"))) {
             return (
                 Applied::LeaseLost {
                     revision: super::ini::sha(&candidate.text),

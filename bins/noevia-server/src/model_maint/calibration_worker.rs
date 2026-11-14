@@ -6302,42 +6302,50 @@ mod tests {
         .expect("the lease watch saw the lease end");
     }
 
-    /// #2550 (llamacpp-manager.cjs applyUnlocked's loss branch): a write whose lease was lost
-    /// before its re-read puts nothing back on the lost lease; the write's revision and the text
-    /// before it come back for a recovery under a fresh hold.
+    /// #2550 (llamacpp-manager.cjs applyUnlocked's loss branch): a write whose lease is lost
+    /// before its re-read, or can no longer cover it, puts nothing back on that lease and asks the
+    /// router for nothing more; the write's revision and the text before it come back for a
+    /// recovery under a fresh hold.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_write_whose_lease_is_lost_restores_nothing_on_the_lost_lease() {
-        let d = tempfile::tempdir().unwrap();
-        let ini = d.path().join("models.ini");
-        std::fs::write(&ini, INI).unwrap();
-        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
-        let (port, seen) = synthetic_engine(ini.clone(), false).await;
-        let ended = Arc::new(AtomicBool::new(false));
-        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
-        let w = worker_with(d.path(), port, Some(lease));
-        let hold = w
-            .maint
-            .acquire_for_run("synthetic apply", Duration::from_secs(600))
-            .await
-            .unwrap();
-        ended.store(true, Ordering::Release);
-        until_lost(&hold).await;
-        let options = vec![("ctx-size".to_owned(), Some("8192".to_owned()))];
-        let reply = w
-            .maint
-            .apply_unlocked_reply(&hold, "synthetic", &super::super::ini::sha(INI), &options, true)
-            .await;
-        let written = std::fs::read_to_string(&ini).unwrap();
-        assert!(written.contains("ctx-size = 8192"), "{written}");
-        assert_eq!(
-            reply,
-            Err((super::super::ini::sha(&written), INI.to_owned()))
-        );
-        assert!(
-            !seen.lock().unwrap().iter().any(|r| r.contains("reload")),
-            "nothing was re-read on the lost lease"
-        );
-        hold.release().await;
+        for lapse in [false, true] {
+            let d = tempfile::tempdir().unwrap();
+            let ini = d.path().join("models.ini");
+            std::fs::write(&ini, INI).unwrap();
+            std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+            let (port, seen) = synthetic_engine(ini.clone(), false).await;
+            let ended = Arc::new(AtomicBool::new(false));
+            // A lease that ends within the re-read's 120 s, or one the authority ends.
+            let hard = lapse.then_some(60_000);
+            let (lease, _) = lease_stub(hard, Arc::clone(&ended)).await;
+            let w = worker_with(d.path(), port, Some(lease));
+            let hold = w
+                .maint
+                .acquire_for_run("synthetic apply", Duration::from_secs(30))
+                .await
+                .unwrap();
+            if !lapse {
+                ended.store(true, Ordering::Release);
+                until_lost(&hold).await;
+            }
+            let options = vec![("ctx-size".to_owned(), Some("8192".to_owned()))];
+            let reply = w
+                .maint
+                .apply_unlocked_reply(&hold, "synthetic", &super::super::ini::sha(INI), &options, true)
+                .await;
+            let written = std::fs::read_to_string(&ini).unwrap();
+            assert!(written.contains("ctx-size = 8192"), "{lapse}: {written}");
+            assert_eq!(
+                reply,
+                Err((super::super::ini::sha(&written), INI.to_owned())),
+                "{lapse}"
+            );
+            assert!(
+                !seen.lock().unwrap().iter().any(|r| r.contains("reload")),
+                "{lapse}: nothing was re-read on the lost lease"
+            );
+            hold.release().await;
+        }
     }
 
     /// #2550: the owed `apply:<revision>` repair of the native auto-tune runner, under a fresh
