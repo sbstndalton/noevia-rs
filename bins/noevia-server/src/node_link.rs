@@ -137,6 +137,11 @@ pub const CONSTANT_READERS: &[&str] = &[
     "model_maint/evidence_recheck.rs",
 ];
 
+/// The files that read the project store's config (`Config::project_store`, which holds the per-start
+/// secret from the raw lookup): main.rs binds the store's listener with it, and embedding_background.rs,
+/// which never starts in a front alone, sends it to Node.
+pub const STORE_CONFIG_READERS: &[&str] = &["main.rs", "embedding_background.rs"];
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used)]
 mod tests {
@@ -372,5 +377,29 @@ mod tests {
                 c.transport
             );
         }
+    }
+
+    #[test]
+    fn the_store_config_and_its_secret_are_read_only_where_pinned() {
+        let readers: BTreeSet<String> = with(".project_store")
+            .into_iter()
+            .filter(|f| f != "config.rs")
+            .collect();
+        let pinned: BTreeSet<String> = STORE_CONFIG_READERS
+            .iter()
+            .map(|s| (*s).to_owned())
+            .collect();
+        assert_eq!(
+            readers, pinned,
+            "a new reader of the project store's config (it holds the per-start secret): if it calls Node, \
+             give it a CLIENTS row that says what it does in a front alone"
+        );
+        // The one Node client among them is a row that never starts in a front alone.
+        let idle: Vec<_> = CLIENTS
+            .iter()
+            .filter(|c| c.transport == Transport::Idle)
+            .map(|c| c.file)
+            .collect();
+        assert_eq!(idle, ["embedding_background.rs"]);
     }
 }
