@@ -16,6 +16,10 @@
 //!
 //! Each attempt's deadline is core's `AbortSignal.timeout` for that request: PUT 60 s, DELETE 30 s
 //! (15 s for an empty folder), MKCOL and PROPFIND 15 s.
+//!
+//! Two departures from core (sbstndalton/noevia#2751; core's twin follows its own pull request): a
+//! space address ([`checks_first`]) reads the state before a create-only write and a discard, and a
+//! PROPFIND ETag is read with the one-pass XML reference decoder (`&#34;` too, not only `&quot;`).
 use crate::protocol::{
     self, Connection, Kind, Method, Request, Response, Transport, TransportFailure,
 };
@@ -1002,6 +1006,10 @@ mod tests {
             assert_eq!(t.seen.len(), 1);
         }
         // A replace and an unconditional write send one request, as everywhere.
+        let mut t = Fake::new(vec![Ok((201, "\"e3\""))]);
+        write_file(&space(), "a.md", b"x", &Condition::None, &mut t).unwrap();
+        assert_eq!(t.seen.len(), 1);
+        assert_eq!(t.seen[0].0, Method::Put);
         let mut t = Fake::new(vec![Ok((204, "\"e2\""))]);
         write_file(
             &space(),
