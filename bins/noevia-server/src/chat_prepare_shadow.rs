@@ -174,8 +174,22 @@ pub fn server_time_zone() -> String {
 
 /// The names V8 resolves to `UTC` (ICU's `Etc/UTC` and `Etc/GMT` and their links).
 const UTC_ALIASES: [&str; 16] = [
-    "UTC", "Etc/UTC", "GMT", "Etc/GMT", "UCT", "Etc/UCT", "Universal", "Etc/Universal", "Zulu",
-    "Etc/Zulu", "GMT0", "Etc/GMT0", "GMT+0", "Etc/GMT+0", "GMT-0", "Etc/GMT-0",
+    "UTC",
+    "Etc/UTC",
+    "GMT",
+    "Etc/GMT",
+    "UCT",
+    "Etc/UCT",
+    "Universal",
+    "Etc/Universal",
+    "Zulu",
+    "Etc/Zulu",
+    "GMT0",
+    "Etc/GMT0",
+    "GMT+0",
+    "Etc/GMT+0",
+    "GMT-0",
+    "Etc/GMT-0",
 ];
 
 fn zone_from(tz: Option<&str>, localtime: Option<&str>, timezone: Option<&str>) -> String {
@@ -235,7 +249,16 @@ mod tests {
             zone_from(None, Some("/usr/share/zoneinfo/Etc/UTC"), None),
             "UTC"
         );
-        for alias in ["Etc/GMT", "GMT", "UCT", "Etc/Universal", "Zulu", "GMT0", "Greenwich", "etc/utc"] {
+        for alias in [
+            "Etc/GMT",
+            "GMT",
+            "UCT",
+            "Etc/Universal",
+            "Zulu",
+            "GMT0",
+            "Greenwich",
+            "etc/utc",
+        ] {
             assert_eq!(zone_from(Some(alias), None, None), "UTC", "{alias}");
         }
         assert_eq!(zone_from(Some("Etc/GMT+5"), None, None), "Etc/GMT+5");
