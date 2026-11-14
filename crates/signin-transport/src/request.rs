@@ -250,6 +250,11 @@ pub fn uuid_from(text: &str) -> String {
     )
 }
 
+/// `${base without trailing slashes}/responses`, where every request goes.
+pub fn responses_url(base: &str) -> String {
+    format!("{}/responses", base.trim_end_matches('/'))
+}
+
 /// `/\/chat\/completions$/.test(new URL(url).pathname)`.
 pub fn is_chat_path(url: &str) -> bool {
     url::Url::parse(url).is_ok_and(|u| u.path().ends_with("/chat/completions"))
