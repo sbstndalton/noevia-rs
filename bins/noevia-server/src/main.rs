@@ -119,7 +119,10 @@ fn ensure_secrets_key_cli(data_dir: Option<OsString>, err: &mut impl Write) -> E
 /// result.
 fn ensure_schema_cli(get: impl Fn(&str) -> Option<String>, err: &mut impl Write) -> ExitCode {
     use rand_core::{OsRng, RngCore};
-    let Some(dir) = get("UI_DATA_DIR").filter(|d| !d.is_empty()).map(PathBuf::from) else {
+    let Some(dir) = get("UI_DATA_DIR")
+        .filter(|d| !d.is_empty())
+        .map(PathBuf::from)
+    else {
         let _ = writeln!(err, "noevia-server: UI_DATA_DIR is not set");
         return ExitCode::FAILURE;
     };
@@ -524,7 +527,10 @@ mod tests {
         let mut err = Vec::new();
         assert_eq!(ensure_schema_cli(env, &mut err), ExitCode::SUCCESS);
         assert!(err.is_empty());
-        assert_eq!(ensure_schema_cli(|_| None, &mut Vec::new()), ExitCode::FAILURE);
+        assert_eq!(
+            ensure_schema_cli(|_| None, &mut Vec::new()),
+            ExitCode::FAILURE
+        );
     }
 
     #[test]
