@@ -19,6 +19,7 @@ pub mod calibration_routes;
 pub mod chat_activity;
 pub mod chat_admission;
 pub mod chat_edge;
+pub mod chat_facts_native;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_native;

@@ -460,9 +460,14 @@ pub async fn discovered(handle: &Handle) -> Option<Arc<Snapshot>> {
     (snap.generation > 0).then_some(snap)
 }
 
-/// The current catalogue. `None`: not ready.
+/// The current catalogue. `None`: not ready. The chat facts are core's file, or with
+/// `NOEVIA_RUST_CHAT_FACTS=1` this process's own (chat_facts_native.rs, track R14).
 pub async fn read(app: &Arc<App>) -> Option<Arc<Catalogue>> {
-    let facts = chat_facts(app).await?;
+    let facts = if crate::chat_facts_native::native() {
+        crate::chat_facts_native::facts(app).await?
+    } else {
+        chat_facts(app).await?
+    };
     let handle = crate::mcp_discovery_backend::handle(app)?;
     let snap = discovered(handle).await?;
     compose(
