@@ -2349,6 +2349,7 @@ dependencies = [
  "long-profile",
  "mcp-frame",
  "mcp-servers",
+ "model-manager-proxy",
  "model-stream",
  "model-writes",
  "offsite-backup-format",

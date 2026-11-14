@@ -520,7 +520,7 @@ impl Maint {
 
     /// `presetRefusal(model, section)`: the 409 body for a section that must not be saved, an
     /// answer for what Node throws (an undecided micro batch), or `None`.
-    async fn preset_refusal<F, Fut>(
+    pub(crate) async fn preset_refusal<F, Fut>(
         &self,
         hold: Option<&str>,
         model: &str,

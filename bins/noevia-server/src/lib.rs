@@ -78,6 +78,7 @@ pub mod model_assignments;
 pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
+pub mod model_manager_routes;
 pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
@@ -975,6 +976,15 @@ async fn handle(
     if native.is_none() && app.config.model_writes.on {
         let at = whatwg.as_deref().unwrap_or(&path);
         if app.config.model_writes.answers(req.method(), at) {
+            native = Some(routes::Native::Models);
+        }
+    }
+    // Track R11 (S9b): with NOEVIA_RUST_MODEL_MANAGER=rust every method under /api/model-manager/
+    // but the exact scan GET is the models routes' too (model_manager_routes.rs, which relays the
+    // sweep start to Node itself); unset, they stay Node's.
+    if app.config.model_manager.on {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if app.config.model_manager.answers(req.method(), at) {
             native = Some(routes::Native::Models);
         }
     }

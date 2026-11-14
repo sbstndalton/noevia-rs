@@ -129,6 +129,9 @@ pub async fn serve(
     if path == crate::reranker_routes::PATH {
         return crate::reranker_routes::serve(app, conn, req, path).await;
     }
+    if app.config.model_manager.answers(req.method(), &path) {
+        return crate::model_manager_routes::serve(app, conn, req, path).await;
+    }
     if app.config.model_writes.answers(req.method(), &path) {
         return crate::model_writes_routes::serve(app, conn, req, path).await;
     }

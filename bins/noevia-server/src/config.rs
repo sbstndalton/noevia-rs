@@ -111,6 +111,8 @@ pub struct Config {
     pub code: crate::code_routes::Settings,
     /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
     pub model_writes: crate::model_writes_routes::Settings,
+    /// Track R11 (S9b): the `/api/model-manager/*` proxy (`NOEVIA_RUST_MODEL_MANAGER`).
+    pub model_manager: crate::model_manager_routes::Settings,
     /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
     /// hex) and hands Node too, which writes it into a running reply's partial file
     /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
@@ -485,6 +487,7 @@ impl Config {
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
             model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
+            model_manager: crate::model_manager_routes::Settings::from_lookup(&get),
             start_id,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]

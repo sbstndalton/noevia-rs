@@ -262,14 +262,14 @@ fn answer(status: StatusCode, body: &JValue, cached: bool) -> Response<Body> {
     }
     res
 }
-fn opaque<'a>(v: &'a JValue, key: &str) -> Option<&'a str> {
+pub(crate) fn opaque<'a>(v: &'a JValue, key: &str) -> Option<&'a str> {
     v.get(key).as_str().filter(|s| {
         s.len() == 64
             && s.bytes()
                 .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
     })
 }
-async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
+pub(crate) async fn cache(app: &App, op: &str, body: &serde_json::Value) -> Option<JValue> {
     let (status, bytes) = app
         .config
         .research
