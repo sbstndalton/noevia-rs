@@ -61,9 +61,12 @@ for (const block of fs.readFileSync(routesToml, 'utf8').split('[[route]]').slice
 }
 // The two ids (bins/noevia-server owned_routes.rs FILLS): a plain one and a UUID.
 const FILLS = ['qa-1', '00000000-0000-4000-8000-000000000001'];
+// Council p7: `{*}` is one segment in the front's matcher (routes.rs pattern_matches), and the project original's
+// `{*}` is `uploads` (owned_routes.rs wildcard_fill); the old two-segment filling matched no `{*}` row.
+const wildcardFill = (pattern) => (pattern === '/api/projects/{id}/{*}/original' ? 'uploads' : 'qa-seg');
 const fill = (pattern, id = FILLS[0]) => pattern
   .replace(/\{\*\?\}/g, '')
-  .replace(/\{\*\}/g, 'qa-seg/qa-rest')
+  .replace(/\{\*\}/g, wildcardFill(pattern))
   .replace(/\{[A-Za-z]+\}/g, id);
 // probe path -> the routes.toml pattern it was made from (the first one, in file order).
 const patternOf = new Map();

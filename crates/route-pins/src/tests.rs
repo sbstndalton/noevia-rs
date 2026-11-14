@@ -199,6 +199,7 @@ fn a_dedicated_stub_the_front_fully_answers_can_be_deleted() {
         Totals {
             delete_file: 1,
             delete_file_lines: 10,
+            delete_file_tests: 0,
             delete_function: 0,
             with_handler: 0,
             keep: 0
@@ -367,7 +368,9 @@ fn with_a_front_that_answers_nothing_no_recorded_stub_is_deletable() {
         assert!(
             !matches!(
                 a.verdict,
-                Verdict::DeleteFile | Verdict::DeleteFunction { .. }
+                Verdict::DeleteFile
+                    | Verdict::DeleteFileEditTests { .. }
+                    | Verdict::DeleteFunction { .. }
             ),
             "{}",
             a.file
@@ -387,6 +390,7 @@ fn with_a_front_that_answers_everything_every_plain_stub_is_deletable() {
                 matches!(
                     a.verdict,
                     Verdict::DeleteFile
+                        | Verdict::DeleteFileEditTests { .. }
                         | Verdict::DeleteFunction { .. }
                         | Verdict::GuardsHandler { .. }
                 ),
@@ -477,6 +481,8 @@ fn the_delete_list_names_every_stub_and_its_pairing_lines() {
 /// The front's `noevia-server --owned-routes` at the recording's rs commit (this branch), pinned beside it.
 const MANIFEST: &str = include_str!("../fixtures/front-owned-routes.txt");
 const ROUTES_TOML: &str = include_str!("../../../contracts/http/routes.toml");
+/// Distinct `path = "…"` rows in that routes.toml.
+const ROUTES_TOML_ROWS: usize = 211;
 const UUID: &str = "00000000-0000-4000-8000-000000000001";
 
 fn manifest() -> Manifest {
@@ -505,7 +511,9 @@ fn every_recorded_pattern_is_still_a_routes_toml_row() {
         .lines()
         .filter_map(|l| l.strip_prefix("path = \"")?.strip_suffix('"'))
         .collect();
-    assert!(rows.len() > 150);
+    // sbstndalton/noevia#2725 item 3: the exact row count of the routes.toml the recording names (its sha256 is
+    // pinned in the fixture; a changed routes.toml fails the stale guard above or this count).
+    assert_eq!(rows.len(), ROUTES_TOML_ROWS);
     for s in &rec().stubs {
         for r in &s.refusals {
             if let Some(p) = &r.pattern {
@@ -555,6 +563,7 @@ fn exact_totals_with_a_front_that_answers_everything() {
         totals(&list),
         Totals {
             delete_file: 33,
+            delete_file_tests: 8,
             delete_file_lines: 842,
             delete_function: 7,
             with_handler: 24,
@@ -592,13 +601,14 @@ fn exact_totals_with_a_front_that_answers_everything() {
 fn exact_totals_from_the_front_s_own_manifest() {
     let r = rec();
     let m = manifest();
-    assert_eq!(m.len(), 682);
+    assert_eq!(m.len(), 700);
     let list = classify(&r, &m.front(&r));
     assert_eq!(
         totals(&list),
         Totals {
             delete_file: 32,
             delete_file_lines: 799,
+            delete_file_tests: 8,
             delete_function: 5,
             with_handler: 22,
             keep: 9
@@ -655,16 +665,55 @@ fn exact_totals_from_the_front_s_own_manifest() {
 }
 
 #[test]
-fn the_manifest_backs_every_owned_routes_claim_but_one_recording_gap() {
-    // Every route a stub claims in OWNED_ROUTES is in the front's manifest, except the `{*}` row neither the
-    // manifest nor the recorder fills with a single segment (CONTINUE: a one-segment wildcard fill).
+fn the_manifest_backs_every_owned_routes_claim() {
+    // Every route a stub claims in OWNED_ROUTES is in the front's manifest. Council p7: the `{*}/original` row is
+    // listed now that the manifest fills `{*}` with one segment (the recording still has the two-segment probe, so
+    // rust-project-reads stays Incomplete until a re-record).
+    assert!(manifest().unowned_claims(&rec()).is_empty());
+}
+
+#[test]
+fn every_delete_file_stub_names_the_foreign_tests_that_require_it() {
+    // sbstndalton/noevia#2725 item 1: rust-offsite-backup.cjs is required by the kept rust-google-drive.test.cjs.
+    let r = rec();
+    let m = manifest();
+    let list = classify(&r, &m.front(&r));
+    let offsite = list
+        .iter()
+        .find(|a| a.file == "server/rust-offsite-backup.cjs")
+        .expect("offsite stub");
     assert_eq!(
-        manifest().unowned_claims(&rec()),
-        [(
-            "server/rust-project-reads.cjs".to_string(),
-            "GET /api/projects/{id}/{*}/original".to_string()
-        )]
+        offsite.verdict,
+        Verdict::DeleteFileEditTests {
+            tests: vec!["server/rust-google-drive.test.cjs".to_string()]
+        }
     );
+    let edits: Vec<(&str, usize)> = list
+        .iter()
+        .filter_map(|a| match &a.verdict {
+            Verdict::DeleteFileEditTests { tests } => Some((a.file.as_str(), tests.len())),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(
+        edits,
+        [
+            ("server/rust-model-downloads-read.cjs", 1),
+            ("server/rust-plugin-directory.cjs", 1),
+            ("server/rust-toolboxes-permitted.cjs", 1),
+            ("server/rust-calibration-routes.cjs", 2),
+            ("server/rust-model-manager-scan.cjs", 2),
+            ("server/rust-offsite-backup.cjs", 1),
+            ("server/rust-chat-search.cjs", 1),
+            ("server/rust-chat-export.cjs", 1),
+        ]
+    );
+    // A plain DeleteFile has no foreign test left.
+    for s in &r.stubs {
+        if let Some(a) = list.iter().find(|a| a.file == s.file && a.verdict == Verdict::DeleteFile) {
+            assert!(foreign_tests(s).is_empty(), "{}", a.file);
+        }
+    }
 }
 
 #[test]

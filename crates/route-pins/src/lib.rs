@@ -161,6 +161,10 @@ pub enum Verdict {
     /// A dedicated `rust-*.cjs` stub, no switch, every refusal answered by the front, and no production file but
     /// index.cjs imports it: the file, its index.cjs call, its tests and its pairing lines can go together.
     DeleteFile,
+    /// As [`Verdict::DeleteFile`], but tests other than the stub's own require the file (sbstndalton/noevia#2725
+    /// item 1: `server/rust-google-drive.test.cjs` requires `rust-offsite-backup.cjs`): the train edits or deletes
+    /// those tests in the same step, or they fail on the missing file.
+    DeleteFileEditTests { tests: Vec<String> },
     /// Every refusal is answered by the front, but other production code imports the file (shared helpers or route
     /// sets) or it is a function inside a live file: only the refusal function and its index.cjs call can go.
     DeleteFunction { other_importers: Vec<String> },
@@ -184,6 +188,7 @@ impl Verdict {
     pub fn label(&self) -> &'static str {
         match self {
             Verdict::DeleteFile => "delete file",
+            Verdict::DeleteFileEditTests { .. } => "delete file, edit tests",
             Verdict::DeleteFunction { .. } => "delete function",
             Verdict::SwitchGated => "keep (switch)",
             Verdict::Live { .. } => "keep (live)",
@@ -239,6 +244,32 @@ pub fn other_importers(stub: &Stub) -> Vec<String> {
     if !extra.is_empty() {
         out.insert(0, format!("server/index.cjs ({})", extra.join(", ")));
     }
+    out
+}
+
+/// Whether `test` is one of the stub's own tests: its file name starts with the stub's (`rust-x.test.cjs`,
+/// `rust-x.boot.test.cjs` for `rust-x.cjs`). Those go with the stub.
+fn is_own_test(stub: &Stub, test: &str) -> bool {
+    let name = |f: &str| f.rsplit('/').next().unwrap_or(f).to_string();
+    let stem = name(&stub.file);
+    let stem = stem.strip_suffix(".cjs").unwrap_or(&stem);
+    name(test)
+        .strip_prefix(stem)
+        .is_some_and(|rest| rest.starts_with('.'))
+}
+
+/// Tests (and fixtures) other than the stub's own that require or name the file in a string: deleting the file
+/// breaks them unless the same train edits them (sbstndalton/noevia#2725 item 1).
+pub fn foreign_tests(stub: &Stub) -> Vec<String> {
+    let mut out: Vec<String> = stub
+        .importers
+        .iter()
+        .chain(stub.string_refs.iter())
+        .filter(|f| **f != stub.file && is_test_file(f) && !is_own_test(stub, f))
+        .cloned()
+        .collect();
+    out.sort();
+    out.dedup();
     out
 }
 
@@ -339,7 +370,12 @@ pub fn classify(rec: &Recording, front: &dyn Front) -> Vec<Assessment> {
                 } else if !handlers.is_empty() {
                     Verdict::GuardsHandler { handlers }
                 } else if is_dedicated(s) && others.is_empty() {
-                    Verdict::DeleteFile
+                    let tests = foreign_tests(s);
+                    if tests.is_empty() {
+                        Verdict::DeleteFile
+                    } else {
+                        Verdict::DeleteFileEditTests { tests }
+                    }
                 } else {
                     Verdict::DeleteFunction {
                         other_importers: others,
@@ -472,6 +508,8 @@ pub fn reply_of(r: &Refusal) -> Reply {
 pub struct Totals {
     pub delete_file: usize,
     pub delete_file_lines: usize,
+    /// Of `delete_file`, the files other stubs' tests require ([`Verdict::DeleteFileEditTests`]).
+    pub delete_file_tests: usize,
     pub delete_function: usize,
     /// Deletable once the named core handler goes too ([`Verdict::GuardsHandler`]).
     pub with_handler: usize,
@@ -485,6 +523,11 @@ pub fn totals(list: &[Assessment]) -> Totals {
             Verdict::DeleteFile => {
                 t.delete_file += 1;
                 t.delete_file_lines += a.lines;
+            }
+            Verdict::DeleteFileEditTests { .. } => {
+                t.delete_file += 1;
+                t.delete_file_lines += a.lines;
+                t.delete_file_tests += 1;
             }
             Verdict::DeleteFunction { .. } => t.delete_function += 1,
             Verdict::GuardsHandler { .. } => t.with_handler += 1,
@@ -503,8 +546,9 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
     let _ = writeln!(
         out,
         "Recorded from noevia-core `{}` (pairing lines from noevia `{}`, routes.toml sha256 `{}`) by `{}`; verdicts from \
-         the front's own dispatch with every switch off (`crates/route-pins`). {} stubs: {} files can go ({} lines), {} \
-         refusal functions can go from files that stay, {} can go only with the core handler they guard, {} stay.",
+         the front's own dispatch with every switch off (`crates/route-pins`). {} stubs: {} files can go ({} lines; {} of \
+         them only with edits to other tests that require them), {} refusal functions can go from files that stay, {} \
+         can go only with the core handler they guard, {} stay.",
         short(&rec.core),
         short(&rec.noevia),
         short(rec.routes_toml_sha256.as_deref().unwrap_or("unknown")),
@@ -512,6 +556,7 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
         list.len(),
         t.delete_file,
         t.delete_file_lines,
+        t.delete_file_tests,
         t.delete_function,
         t.with_handler,
         t.keep
@@ -540,6 +585,17 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
                     none_or(&a.pairing),
                     a.mentions.join(", ")
                 )
+            }
+            Verdict::DeleteFileEditTests { tests } => {
+                let mut why = format!(
+                    "tests that require it (edit in the same train): {}; pairing: {}",
+                    tests.join(", "),
+                    none_or(&a.pairing)
+                );
+                if !a.mentions.is_empty() {
+                    let _ = write!(why, "; comments in: {}", a.mentions.join(", "));
+                }
+                why
             }
             Verdict::DeleteFunction { other_importers } if other_importers.is_empty() => {
                 format!("live file; pairing: {}", none_or(&a.pairing))
