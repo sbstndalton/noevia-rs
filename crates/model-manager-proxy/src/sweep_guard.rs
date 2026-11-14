@@ -1,7 +1,7 @@
 //! noevia-core `server/benchmark-sweep-guard.cjs` (#873, #895, #2187, row J): the throughput sweep's
 //! hold on the inference maintenance gate, as a state machine without I/O.
 //!
-//! A sweep runs llama-bench in its own container, so nothing in the web process sees its memory.
+//! A sweep runs the engine's benchmark tool in its own container, so nothing in the web process sees its memory.
 //! The guard keeps the maintenance hold from the moment the sweep is accepted until the model
 //! manager reports the job is no longer active (`watch`), and after a web restart takes the hold
 //! back for a sweep that is still running (`adopt`). Today core runs this guard and the front
@@ -16,17 +16,18 @@
 //!
 //! Read and kept from Node, on purpose:
 //! - Only a terminal acknowledgement releases the hold: a progress outage, a thrown call, a job
-//!   that is `null` while watching, a local deadline: none of them ends the watch.
+//!   that is `null` while watching, a local deadline: none of them ends the watch (`adopt` reads
+//!   `job: null` as nothing running: sbstndalton/noevia#2803).
 //! - `cancel_adopt` (shutdown) does not lift a restart barrier that `adopt` raised, and the
 //!   cancelled flag is never cleared: a later `adopt` settles `false` at once, barrier raised.
 //! - A thrown `Number(job.total)` (a `total` object with an own `toString`) rejects `adopt` with
-//!   the barrier still up.
+//!   the barrier still up (noevia#2804 items 5 and 6).
 //!
 //! Node options read by nothing that decides: `perModelMs`, `slackMs`, `unreachableMs`,
 //! `adoptAttempts` and `now` feed a deadline, a bound and a last-seen time that no branch reads
 //! (the "retain until terminal" fixes left them behind), and `finish(why)` is only ever called
 //! with `''`, so its "chat resumed" line is never logged. They have no counterpart here; the
-//! recorded scenarios vary them to show they change nothing.
+//! recorded scenarios vary them to show they change nothing (noevia#2804 items 1-4).
 //!
 //! Named difference: Node lets two `adopt()` calls run side by side (each with its own barrier);
 //! core calls it once at start. Here a second [`Guard::adopt`] while one runs settles `false`
