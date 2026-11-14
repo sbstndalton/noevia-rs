@@ -397,6 +397,7 @@ fn pairings_excerpt_is_verbatim() {
         "code_egress",
         "calibration_cancel",
         "calibration_routes",
+        "research",
     ];
     for name in names {
         let block = section(name);

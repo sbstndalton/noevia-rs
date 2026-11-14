@@ -257,3 +257,164 @@ pub fn code_egress_pairing(tree: &Path) -> Result<(), String> {
     }
     Ok(())
 }
+
+/// The five paths of deep research as Node's matcher took them (the block's awk `$1 ~ /…/`).
+fn research_path(p: &[u8]) -> bool {
+    let Some(rest) = p.strip_prefix(b"/api/projects/{projectId}/research".as_slice()) else {
+        return false;
+    };
+    matches!(
+        rest,
+        b"" | b"/plan" | b"/{job}" | b"/{job}/cancel" | b"/{job}/save"
+    )
+}
+
+/// The five refusals Core's `rust-research.cjs` must hold (params collapsed, byte order).
+pub const RESEARCH_REFUSED: &[&str] = &[
+    "ALL /api/projects/{}/research",
+    "ALL /api/projects/{}/research/plan",
+    "ALL /api/projects/{}/research/{}",
+    "ALL /api/projects/{}/research/{}/cancel",
+    "ALL /api/projects/{}/research/{}/save",
+];
+
+/// The block's last awk over `code_lines index.cjs`: the secret is captured (`cap`) before the first
+/// `clientFromEnv(` (`cut`), never read from the environment after it (`late`), and handed to both the
+/// admission routes and the research bridge within three lines of their constructors.
+pub fn research_secret_order(index_code: &[u8], secret: &[u8]) -> bool {
+    let (Some(cut_re), Some(env_re), Some(adm_re), Some(bridge_re)) = (
+        ere(r"clientFromEnv\("),
+        ere(r"process\.env\.NOEVIA_PROJECT_STORE_TOKEN"),
+        ere(r"createAdmissionRoutes\(\{"),
+        ere(r"createResearchBridge\(\{"),
+    ) else {
+        return false;
+    };
+    let mut capture = b"const ".to_vec();
+    capture.extend_from_slice(secret);
+    capture.extend_from_slice(b" = String(process.env.NOEVIA_PROJECT_STORE_TOKEN");
+    let mut handed = b"secret: ".to_vec();
+    handed.extend_from_slice(secret);
+    let (mut cut, mut cap, mut adm, mut bridge) = (0usize, 0usize, 0usize, 0usize);
+    let (mut late, mut adm_ok, mut bridge_ok) = (false, false, false);
+    for (i, l) in here_lines(index_code).iter().enumerate() {
+        let nr = i + 1;
+        if cut == 0 && cut_re.is_match(l) {
+            cut = nr;
+        }
+        if cap == 0 && contains(l, &capture) {
+            cap = nr;
+            continue; // awk `next`
+        }
+        if cut != 0 && nr > cut && env_re.is_match(l) {
+            late = true;
+        }
+        if adm_re.is_match(l) {
+            adm = nr;
+        }
+        if bridge_re.is_match(l) {
+            bridge = nr;
+        }
+        if contains(l, &handed) {
+            if adm != 0 && nr - adm <= 3 {
+                adm_ok = true;
+            }
+            if bridge != 0 && nr - bridge <= 3 {
+                bridge_ok = true;
+            }
+        }
+    }
+    cap != 0 && cut != 0 && cap < cut && !late && adm_ok && bridge_ok
+}
+
+/// #2218 deep research: Core's `rust-research.cjs` and the front's `rust-research`.
+pub fn research_pairing(tree: &Path) -> Result<(), String> {
+    let die = |what: &str| Err(format!("deep research ownership pairing: {what}"));
+    let core = grep_fixed(
+        &tree.join("core/server/index.cjs"),
+        "require('./rust-research.cjs')",
+    );
+    let rs = front_has(tree, "rust-research");
+    if core != rs {
+        return die("Core and Rust must move together");
+    }
+    let contract = tree.join("rs/contracts/http/routes.toml");
+    if !contract.is_file() {
+        // An absent table is the route-table check's to report.
+        return Ok(());
+    }
+    let rt = routes_toml_file(&contract);
+    let mut paths: Vec<Vec<u8>> = Vec::new();
+    if rt.error.is_none() {
+        for r in &rt.routes {
+            let [p, owner, switch, methods] = tab_fields(r);
+            if !research_path(&p) {
+                continue;
+            }
+            let ok = if rs {
+                owner == b"rust" && switch == b"-" && methods == b"-"
+            } else {
+                owner == b"node"
+            };
+            if !ok {
+                return die(
+                    "its routes must be Rust's for every method with the new pair, and Node's with the old",
+                );
+            }
+            paths.push(p);
+        }
+    }
+    if !rs {
+        return Ok(());
+    }
+    paths.sort();
+    paths.dedup();
+    if paths.len() != 5 {
+        return die("incomplete route ownership");
+    }
+    let refused = project_routes_core(
+        core_file(tree, "rust-research.cjs").as_deref(),
+        "OWNED_ROUTES",
+    );
+    let want: Vec<Vec<u8>> = RESEARCH_REFUSED
+        .iter()
+        .map(|s| s.as_bytes().to_vec())
+        .collect();
+    if refused != want {
+        return die("Core must refuse exactly the five paths the front answers");
+    }
+    let server = tree.join("core/server");
+    if server.join("routes/research.cjs").exists()
+        || server.join("research-service.cjs").exists()
+    {
+        return die("Core still carries the research handlers");
+    }
+    if !server.join("inference-admission-lease.cjs").is_file()
+        || !server.join("rust-research-bridge.cjs").is_file()
+    {
+        return die(
+            "Core does not offer the front its admission lease and tool bridge",
+        );
+    }
+    let index = code_lines(core_file(tree, "index.cjs").as_deref());
+    let mounted = |re: &str| {
+        ere(re).is_some_and(|re| here_lines(&index).iter().any(|l| re.is_match(l)))
+    };
+    if !mounted(r"inferenceAdmission\.handle\(req, res\)") {
+        return die("Core does not mount the admission lease route");
+    }
+    if !mounted(r"researchBridge\(req, res\)") {
+        return die("Core does not mount the research bridge");
+    }
+    let Some(secret) = captured_secret(&index) else {
+        return die(
+            "Core does not capture the front's secret before its project-store client deletes it",
+        );
+    };
+    if !research_secret_order(&index, &secret) {
+        return die(
+            "Core does not hand its admission lease and research bridge the front's secret (captured before clientFromEnv, never read from process.env after it)",
+        );
+    }
+    Ok(())
+}

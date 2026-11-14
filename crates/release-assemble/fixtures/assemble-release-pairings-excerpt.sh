@@ -233,3 +233,58 @@ if [ "$cr_rs_owner" = rust ]; then
     END { exit !ok }
   ' <<<"$cr_index" || die "calibration start/read ownership pairing: state bridge needs the front captured secret"
 fi
+#@research
+rr_core_owner=""
+rr_rs_owner=""
+grep -qF "require('./rust-research.cjs')" "$tree/core/server/index.cjs" 2>/dev/null && rr_core_owner=rust
+if move_capability "$tree/rs/bins/noevia-server/src/lib.rs" FEATURES rust-research features; then
+  rr_rs_owner=rust
+fi
+[ "$rr_core_owner" = "$rr_rs_owner" ] \
+  || die "deep research ownership pairing: Core and Rust must move together"
+if [ -f "$tree/rs/contracts/http/routes.toml" ]; then
+  # An unreadable table is the route-table check's to report, below.
+  rr_table="$(routes_toml "$tree/rs/contracts/http/routes.toml" 2>/dev/null)" || rr_table=""
+  rr_routes="$(printf '%s\n' "$rr_table" | awk -F'\t' -v want="$rr_rs_owner" '
+    $1 ~ /^\/api\/projects\/\{projectId\}\/research(\/plan|\/\{job\}(\/cancel|\/save)?)?$/ {
+      if (want == "rust" && ($2 != "rust" || $3 != "-" || $4 != "-")) exit 1
+      if (want != "rust" && $2 != "node") exit 1
+      print $1
+    }')" || die "deep research ownership pairing: its routes must be Rust's for every method with the new pair, and Node's with the old"
+  if [ "$rr_rs_owner" = rust ]; then
+    [ "$(printf '%s\n' "$rr_routes" | sort -u | wc -l | tr -d ' ')" = 5 ] || die "deep research ownership pairing: incomplete route ownership"
+    rr_refused="$( { project_routes_core "$tree/core/server/rust-research.cjs" || true; } | sort | tr '\n' ' ')"
+    rr_refused_expected="$(printf '%s\n' 'ALL /api/projects/{}/research' 'ALL /api/projects/{}/research/plan' 'ALL /api/projects/{}/research/{}' 'ALL /api/projects/{}/research/{}/cancel' 'ALL /api/projects/{}/research/{}/save' | sort | tr '\n' ' ')"
+    [ "$rr_refused" = "$rr_refused_expected" ] \
+      || die "deep research ownership pairing: Core must refuse exactly the five paths the front answers"
+    { [ ! -e "$tree/core/server/routes/research.cjs" ] && [ ! -e "$tree/core/server/research-service.cjs" ]; } \
+      || die "deep research ownership pairing: Core still carries the research handlers"
+    { [ -f "$tree/core/server/inference-admission-lease.cjs" ] && [ -f "$tree/core/server/rust-research-bridge.cjs" ]; } \
+      || die "deep research ownership pairing: Core does not offer the front its admission lease and tool bridge"
+    # The files are not the feature: index.cjs must mount both, and hand both the front's secret. Core's project-store
+    # client deletes NOEVIA_PROJECT_STORE_TOKEN from process.env when it is built, so a secret read after that is
+    # empty and every call from the front is a 404 (review H1 of #2218). The secret has to be captured in a constant
+    # before clientFromEnv runs, never read from the environment after it, and passed to both constructors.
+    rr_index="$(code_lines "$tree/core/server/index.cjs")"
+    grep -qE 'inferenceAdmission\.handle\(req, res\)' <<<"$rr_index" \
+      || die "deep research ownership pairing: Core does not mount the admission lease route"
+    grep -qE 'researchBridge\(req, res\)' <<<"$rr_index" \
+      || die "deep research ownership pairing: Core does not mount the research bridge"
+    rr_secret="$(sed -nE "s/^[[:space:]]*const ([A-Za-z_][A-Za-z0-9_]*) = String\(process\.env\.NOEVIA_PROJECT_STORE_TOKEN \|\| ''\);.*/\1/p" <<<"$rr_index" | head -1)"
+    [ -n "$rr_secret" ] \
+      || die "deep research ownership pairing: Core does not capture the front's secret before its project-store client deletes it"
+    awk -v c="$rr_secret" '
+      /clientFromEnv\(/ && !cut { cut = NR }
+      index($0, "const " c " = String(process.env.NOEVIA_PROJECT_STORE_TOKEN") && !cap { cap = NR; next }
+      /process\.env\.NOEVIA_PROJECT_STORE_TOKEN/ && cut && NR > cut { late = 1 }
+      /createAdmissionRoutes\(\{/ { adm = NR }
+      /createResearchBridge\(\{/ { bridge = NR }
+      index($0, "secret: " c) {
+        if (adm && NR - adm <= 3) admok = 1
+        if (bridge && NR - bridge <= 3) bridgeok = 1
+      }
+      END { exit !(cap && cut && cap < cut && !late && admok && bridgeok) }
+    ' <<<"$rr_index" \
+      || die "deep research ownership pairing: Core does not hand its admission lease and research bridge the front's secret (captured before clientFromEnv, never read from process.env after it)"
+  fi
+fi

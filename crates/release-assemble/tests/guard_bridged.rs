@@ -273,6 +273,130 @@ fn gen_code_egress(r: &mut Rng, root: &Path) {
     }
 }
 
+fn gen_research(r: &mut Rng, root: &Path) {
+    fs::remove_dir_all(root).ok();
+    fs::create_dir_all(root).expect("the tree root");
+    let moved = r.chance(70);
+    let core_moved = if r.chance(6) { !moved } else { moved };
+    features(r, root, "rust-research", moved);
+    let owner = if moved { "rust" } else { "node" };
+    let base = "/api/projects/{projectId}/research";
+    if !r.chance(6) {
+        let mut toml = String::from("# routes\n");
+        if r.chance(3) {
+            toml.push_str("[[\"route\"]]\n");
+        }
+        let mut tails = vec!["", "/plan", "/{job}", "/{job}/cancel", "/{job}/save"];
+        if r.chance(6) {
+            tails.remove(r.below(tails.len()));
+        }
+        if r.chance(10) {
+            tails.push("/plan");
+        }
+        for tail in tails {
+            let o = if r.chance(4) { "node" } else { owner };
+            let o = if r.chance(3) { "rust" } else { o };
+            toml.push_str(&format!("[[route]]\npath = \"{base}{tail}\"\nowner = \"{o}\"\n"));
+            if r.chance(2) {
+                toml.push_str("switch = \"NOEVIA_RUST_X\"\n");
+            }
+            if r.chance(2) {
+                toml.push_str("methods = [\"GET\"]\n");
+            }
+        }
+        // Near misses the matcher must not take.
+        toml.push_str(&format!("[[route]]\npath = \"{base}/{{job}}/x\"\nowner = \"node\"\n"));
+        toml.push_str("[[route]]\npath = \"/api/projects/{id}/research\"\nowner = \"node\"\n");
+        write(&root.join("rs/contracts/http/routes.toml"), &toml);
+    }
+    let mut refused = vec![
+        "'ALL /api/projects/{projectId}/research'",
+        "'ALL /api/projects/{projectId}/research/plan'",
+        "'ALL /api/projects/{projectId}/research/{job}'",
+        "'ALL /api/projects/{p}/research/{j}/cancel'",
+        "'ALL /api/projects/{projectId}/research/{job}/save'",
+    ];
+    match r.below(16) {
+        0 => refused.clear(),
+        1 => {
+            refused.remove(r.below(refused.len()));
+        }
+        2 => refused.push("'GET /api/projects/{projectId}/research'"),
+        _ => {}
+    }
+    write(
+        &root.join("core/server/rust-research.cjs"),
+        &format!("const OWNED_ROUTES = new Set(([\n  {},\n]));\n", refused.join(",\n  ")),
+    );
+    if r.chance(5) {
+        write(&root.join("core/server/routes/research.cjs"), "'use strict';\n");
+    }
+    if r.chance(4) {
+        write(&root.join("core/server/research-service.cjs"), "'use strict';\n");
+    }
+    if !r.chance(5) {
+        write(&root.join("core/server/inference-admission-lease.cjs"), "'use strict';\n");
+    }
+    if !r.chance(5) {
+        write(&root.join("core/server/rust-research-bridge.cjs"), "'use strict';\n");
+    }
+    // index.cjs: marker, capture, clientFromEnv, the constructors with the secret, the mounts.
+    let mut lines: Vec<String> = vec!["'use strict';".into()];
+    if core_moved {
+        lines.push("const research = require('./rust-research.cjs');".into());
+    }
+    let capture = "const FRONT = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');";
+    let client = "const store = clientFromEnv();";
+    match r.below(17) {
+        0 => lines.push(client.into()),
+        1 => {
+            lines.push(client.into());
+            lines.push(capture.into());
+        }
+        2 => {
+            lines.push(format!("// {capture}"));
+            lines.push(client.into());
+        }
+        3 => {
+            lines.push(capture.into());
+            lines.push(client.into());
+            lines.push("const again = process.env.NOEVIA_PROJECT_STORE_TOKEN;".into());
+        }
+        4 => lines.push(capture.into()),
+        5 => lines.push(format!("{capture} const s = clientFromEnv();")),
+        6 => {
+            lines.push(capture.replacen("const", "let", 1));
+            lines.push(client.into());
+        }
+        _ => {
+            lines.push(format!("  {capture}"));
+            lines.push(client.into());
+        }
+    }
+    for ctor in ["createAdmissionRoutes({", "createResearchBridge({"] {
+        if r.chance(4) {
+            continue;
+        }
+        lines.push(format!("const x = {ctor}"));
+        for _ in 0..r.below(5) {
+            lines.push("  store,".into());
+        }
+        let secret = if r.chance(5) { "OTHER" } else { "FRONT" };
+        lines.push(format!("  secret: {secret},"));
+        lines.push("});".into());
+    }
+    for mount in ["inferenceAdmission.handle(req, res)", "researchBridge(req, res)"] {
+        match r.below(16) {
+            0 => {}
+            1 => lines.push(format!("// if (await {mount}) return;")),
+            _ => lines.push(format!("if (await {mount}) return;")),
+        }
+    }
+    let mut index = lines.join("\n");
+    index.push('\n');
+    write(&root.join("core/server/index.cjs"), &index);
+}
+
 fn shell_verdict(dir: &Path, block: &str, tree: &Path) -> String {
     let prims = dir.join("primitives.sh");
     if !prims.exists() {
@@ -377,6 +501,20 @@ fn code_egress_pairing_matches_the_shell() {
         5,
         &gen_code_egress,
         &bridged::code_egress_pairing,
+    );
+}
+
+#[test]
+fn research_pairing_matches_the_shell() {
+    // PASS, move together, rows, incomplete, refused, handlers, lease/bridge files, the two mounts, no
+    // captured secret, the secret's order.
+    compare(
+        "research",
+        "deep research ownership pairing",
+        0xCA11_0000_0000_0004,
+        11,
+        &gen_research,
+        &bridged::research_pairing,
     );
 }
 
