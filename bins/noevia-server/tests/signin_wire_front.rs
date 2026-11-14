@@ -1,3 +1,4 @@
+#![cfg(feature = "rust-chatgpt-status")]
 //! The sign-in provider's chat call through the real front: its broker (a sealed QA token row in a
 //! seeded data directory), the broker's change signal, and a synthetic backend on 127.0.0.1 (the
 //! loopback QA override). No real account, token or credential. Nothing in the shipped front calls

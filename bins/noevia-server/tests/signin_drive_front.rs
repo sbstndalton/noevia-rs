@@ -1,3 +1,4 @@
+#![cfg(feature = "rust-chatgpt-status")]
 //! signin_drive's front halves over a real front and a seeded data directory (council p9-3): the
 //! account re-check's query against core's own schema (an active, a disabled and a missing
 //! account) and the engine over the front's broker. No real account, token or credential; nothing
@@ -9,7 +10,7 @@
     clippy::panic
 )]
 use noevia_server::signin_drive::{
-    account_check, front_engine, front_live, SigninPlan, NOT_ACTIVE, NO_BROKER,
+    account_check, front_engine, front_live, SigninPlan, NOT_ACTIVE,
 };
 use noevia_server::signin_host::SigninBinding;
 use noevia_server::{config::Config, App};
@@ -114,17 +115,4 @@ fn the_engine_is_the_plans_over_the_fronts_broker() {
     let engine = front_engine(&app, &plan(ACTIVE)).unwrap();
     assert_eq!(engine.user, ACTIVE);
     assert_eq!(engine.conversation.as_deref(), Some("qa-chat-1"));
-}
-
-#[test]
-fn without_a_broker_there_is_no_engine() {
-    // A front without a data directory makes no sign-in broker.
-    let env = HashMap::from([
-        ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_string()),
-        ("PUBLIC_ORIGIN", "http://127.0.0.1:9".to_string()),
-        ("NOEVIA_FEATURE_CHATGPT_OAUTH", "1".to_string()),
-    ]);
-    let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
-    assert!(app.chatgpt_oauth.is_none(), "precondition: no broker");
-    assert_eq!(front_engine(&app, &plan(ACTIVE)).err(), Some(NO_BROKER));
 }

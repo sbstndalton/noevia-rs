@@ -370,3 +370,36 @@ async fn an_expired_binding_ends_the_turn_before_anything_is_asked() {
     assert_eq!(checked.load(Ordering::SeqCst), 0);
     assert!(!broker.asked.load(Ordering::SeqCst));
 }
+
+#[test]
+fn the_account_read_runs_in_place_outside_a_runtime() {
+    assert_eq!(off_the_reactor(|| 7), 7);
+}
+
+#[tokio::test(flavor = "current_thread")]
+async fn on_a_current_thread_runtime_the_account_read_runs_in_place() {
+    // block_in_place panics on a current-thread runtime; the read must not.
+    assert_eq!(off_the_reactor(|| 8), 8);
+}
+
+/// noevia#2754 item 5: on the front's multi-thread runtime the blocking account read gives its
+/// worker away, so the runtime's other tasks go on while it waits. With one worker and an in-place
+/// read the spawned task could never run and the wait below would time out.
+#[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+async fn on_a_multi_thread_runtime_the_account_read_lets_other_tasks_run() {
+    let ran = Arc::new(AtomicBool::new(false));
+    let flag = Arc::clone(&ran);
+    let other = tokio::spawn(async move { flag.store(true, Ordering::SeqCst) });
+    let seen = off_the_reactor(|| {
+        let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+        while !ran.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+            std::thread::sleep(std::time::Duration::from_millis(5));
+        }
+        ran.load(Ordering::SeqCst)
+    });
+    assert!(seen, "the other task ran while the read blocked");
+    tokio::time::timeout(std::time::Duration::from_secs(5), other)
+        .await
+        .unwrap()
+        .unwrap();
+}

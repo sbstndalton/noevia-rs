@@ -138,6 +138,17 @@ fn the_caps_token_is_exact() {
     assert!(!offered(""));
     assert!(!offered("signin-transport-v10"));
     assert!(!offered("signin-transport"));
+    // chat-upstream refusal::caps' limit (noevia#2754 item 4): 1000 UTF-16 units still name the
+    // token, 1001 name nothing; a non-BMP character counts two units.
+    let pad = |n: usize| format!("signin-transport-v1,{}", "x".repeat(n - 20));
+    assert_eq!(pad(1000).encode_utf16().count(), 1000);
+    assert!(offered(&pad(1000)));
+    assert!(!offered(&pad(1001)));
+    let wide = format!("signin-transport-v1,{}", "\u{1F600}".repeat(490));
+    assert_eq!(wide.encode_utf16().count(), 1000);
+    assert!(offered(&wide));
+    assert!(!offered(&format!("{wide}x")));
+    assert!(!offered(",,"));
 }
 
 #[test]

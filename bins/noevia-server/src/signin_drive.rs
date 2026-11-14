@@ -39,6 +39,8 @@ pub const LOCAL_ENGINE: &str =
 pub const ADDRESS: &str = "the frame's upstreamUrl is not the sign-in cut's address";
 pub const NO_MODEL: &str = "the frame names no model";
 pub const BAD_EXPIRY: &str = "the sign-in binding's expiry is not a time";
+/// Defensive: a front built from [`crate::config::Config`] always has a broker (the config refuses
+/// a start without UI_DATA_DIR), so only a failed backend client or account store answers this.
 pub const NO_BROKER: &str = "the front has no sign-in broker or backend client";
 /// The account re-check's error before a request (the turn's user removed or disabled, or the
 /// account store unreadable: fail closed).
@@ -115,20 +117,36 @@ where
 
 /// core `asUser` over the front's account store: a `users` row that is not disabled; `Err` when
 /// it cannot be read (the same query as edit_target_native.rs).
+///
+/// The read is a short blocking SQLite query, and [`SigninHost`] runs the check inside its async
+/// request (noevia#2754 item 5). On the front's multi-thread runtime it runs under
+/// [`tokio::task::block_in_place`], so the worker's other tasks move to another thread while it
+/// waits; outside a runtime, or on a current-thread one (where `block_in_place` panics), it is
+/// read in place.
 pub fn front_live(app: &Arc<App>) -> impl Fn(&str) -> Result<bool, ()> + Send + Sync {
     let app = Arc::clone(app);
-    move |user: &str| {
-        let writer = app.writes.writer().map_err(|_| ())?;
-        writer
-            .read(|r| {
-                r.row(
-                    "SELECT 1 FROM users WHERE id=?1 AND (disabled_at IS NULL OR disabled_at=0)",
-                    [user],
-                    |row| row.get::<_, i64>(0),
-                )
-            })
-            .map(|row| row.is_some())
-            .map_err(|_| ())
+    move |user: &str| off_the_reactor(|| read_live(&app, user))
+}
+
+fn read_live(app: &App, user: &str) -> Result<bool, ()> {
+    let writer = app.writes.writer().map_err(|_| ())?;
+    writer
+        .read(|r| {
+            r.row(
+                "SELECT 1 FROM users WHERE id=?1 AND (disabled_at IS NULL OR disabled_at=0)",
+                [user],
+                |row| row.get::<_, i64>(0),
+            )
+        })
+        .map(|row| row.is_some())
+        .map_err(|_| ())
+}
+
+/// Runs a short blocking `f` without holding up a multi-thread runtime's worker.
+pub(crate) fn off_the_reactor<T>(f: impl FnOnce() -> T) -> T {
+    match tokio::runtime::Handle::try_current().map(|h| h.runtime_flavor()) {
+        Ok(tokio::runtime::RuntimeFlavor::MultiThread) => tokio::task::block_in_place(f),
+        _ => f(),
     }
 }
 

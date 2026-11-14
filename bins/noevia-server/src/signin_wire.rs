@@ -52,10 +52,17 @@ pub type FrontAnswer = Answer<HttpBody>;
 pub static SESSIONS: LazyLock<Mutex<SessionCache>> =
     LazyLock::new(|| Mutex::new(SessionCache::default()));
 
-/// Whether core offered the sign-in transport (an exact token of its capability list).
+/// Whether core offered the sign-in transport (an exact token of its capability list). Read as
+/// chat-upstream's `refusal::caps` reads the header (noevia#2754 item 4): `a,b,c`, trimmed, and a
+/// header over [`CAPS_MAX_UNITS`] UTF-16 units names no caps at all, so the plan and the refusal
+/// lift never disagree on one header. (One parser once this crate depends on chat-upstream, with
+/// the provider-row plan's train.)
 pub fn offered(caps: &str) -> bool {
-    caps.split(',').any(|c| c.trim() == CAPS_TOKEN)
+    js_json::js_len(caps) <= CAPS_MAX_UNITS && caps.split(',').any(|c| c.trim() == CAPS_TOKEN)
 }
+
+/// The longest caps header core's list is read from (chat-upstream `refusal::caps`).
+pub const CAPS_MAX_UNITS: usize = 1000;
 
 /// core's `fileSignal(file)`: `<inode>:<size>:<mtime ns>`, "" when the file does not exist,
 /// `None` (unreadable: nothing is cached) on any other failure.
