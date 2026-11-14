@@ -1438,7 +1438,18 @@ impl Drop for LargeHold {
     }
 }
 
+#[cfg(test)]
+thread_local! {
+    /// A test's own acquire wait, for its thread only (noevia#2654: a process-wide environment change
+    /// left later tests in the same binary giving up on the lock after the short wait one test wanted).
+    pub(crate) static TEST_ACQUIRE_WAIT: std::cell::Cell<Option<Duration>> = const { std::cell::Cell::new(None) };
+}
+
 fn acquire_wait() -> Duration {
+    #[cfg(test)]
+    if let Some(wait) = TEST_ACQUIRE_WAIT.with(std::cell::Cell::get) {
+        return wait;
+    }
     let ms = positive(
         std::env::var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS").ok(),
         120_000,
@@ -1984,21 +1995,28 @@ pub(crate) mod tests {
     #[test]
     fn the_large_lock_waits_then_is_busy() {
         let _s = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
-        std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "50");
+        let short = || TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_millis(50))));
+        short();
         let first = large_lock(LARGE_BYTES + 1, None).unwrap();
         assert!(large_lock(10, None).is_ok());
         // Another thread waits, then is busy.
-        let other = std::thread::spawn(|| large_lock(LARGE_BYTES + 1, None).err())
-            .join()
-            .unwrap();
+        let other = std::thread::spawn(move || {
+            short();
+            large_lock(LARGE_BYTES + 1, None).err()
+        })
+        .join()
+        .unwrap();
         assert_eq!(other.as_deref(), Some(BUSY));
         // The holder's own thread passes straight through (a sync's read, then its extraction), and
         // the inner take never lets go of the outer one.
         let inner = large_lock(LARGE_BYTES + 1, None).unwrap();
         drop(inner);
-        let still = std::thread::spawn(|| large_lock(LARGE_BYTES + 1, None).err())
-            .join()
-            .unwrap();
+        let still = std::thread::spawn(move || {
+            short();
+            large_lock(LARGE_BYTES + 1, None).err()
+        })
+        .join()
+        .unwrap();
         assert_eq!(still.as_deref(), Some(BUSY), "the outer hold is still held");
         drop(first);
         assert!(large_lock(LARGE_BYTES + 1, None).is_ok());
@@ -2045,7 +2063,7 @@ pub(crate) mod tests {
             assert!(Instant::now() < until, "the child never took the lock");
             std::thread::sleep(Duration::from_millis(20));
         }
-        std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "300");
+        TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_millis(300))));
         let started = Instant::now();
         assert_eq!(
             large_lock(LARGE_BYTES + 1, Some(&file)).err().as_deref(),
@@ -2057,7 +2075,7 @@ pub(crate) mod tests {
         assert!(large_lock(LARGE_BYTES + 1, None).is_ok());
         std::fs::write(file.with_extension("release"), b"1").unwrap();
         assert!(child.wait().unwrap().success());
-        std::env::set_var("LARGE_DOCUMENT_ACQUIRE_WAIT_MS", "5000");
+        TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_millis(5000))));
         let hold = large_lock(LARGE_BYTES + 1, Some(&file));
         assert!(hold.is_ok(), "free once the other process lets go");
     }
