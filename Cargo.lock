@@ -359,6 +359,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "boot-schema"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -472,6 +484,7 @@ dependencies = [
 name = "chat-prepare"
 version = "0.1.0"
 dependencies = [
+ "chat-turn",
  "chrono",
  "chrono-tz",
  "icu_properties",
@@ -2222,8 +2235,11 @@ dependencies = [
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",
+ "futures-util",
  "http-body",
  "http-body-util",
+ "hyper-util",
+ "nix",
  "regex",
  "reqwest",
  "rusqlite",
@@ -2356,11 +2372,13 @@ dependencies = [
  "autotune-runner",
  "axum",
  "base64 0.22.1",
+ "boot-schema",
  "brotli",
  "browser-cdp",
  "browser-task",
  "bytes",
  "chat-mirror-sched",
+ "chat-prepare",
  "chat-turn",
  "code-acp",
  "code-harness",
@@ -3784,6 +3802,7 @@ dependencies = [
  "icu_collator",
  "icu_locale",
  "indexmap",
+ "js-json",
  "proptest",
  "rustix",
  "serde",

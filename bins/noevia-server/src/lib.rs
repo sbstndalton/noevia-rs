@@ -23,6 +23,7 @@ pub mod chat_edge;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_native;
+pub mod chat_prepare_shadow;
 pub mod chat_turn;
 pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -145,6 +146,8 @@ pub mod storage_metadata_worker;
 #[cfg(feature = "rust-storage-reads")]
 pub mod storage_read_routes;
 pub mod task_routes;
+#[cfg(feature = "rust-storage-reads")]
+pub mod text_write_op;
 pub mod tool_approval_routes;
 #[cfg(feature = "rust-storage-reads")]
 pub mod toolbox_picker;
@@ -152,6 +155,7 @@ pub mod toolbox_picker;
 pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
+pub mod usage_writes;
 pub mod web_address_routes;
 
 use axum::body::Body;
@@ -997,6 +1001,22 @@ async fn handle(
         if app.config.model_writes.answers(req.method(), at) {
             native = Some(routes::Native::Models);
         }
+    }
+    // #2550: unless the native runner runs here, the auto-tune start's POST is Node's, unparsed
+    // (the legacy proxy, as before #2516), so no spelling of its path meets the front's checks.
+    if native == Some(routes::Native::Models)
+        && [Some(path.as_str()), whatwg.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|p| {
+                autotune_read_routes::start_is_nodes(
+                    req.method().as_str(),
+                    p,
+                    app.config.autotune.is_some(),
+                )
+            })
+    {
+        native = None;
     }
     // Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the front answers PUT /api/routing-default
     // (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs);

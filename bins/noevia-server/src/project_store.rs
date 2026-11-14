@@ -671,6 +671,11 @@ pub fn router_with_app(
         }),
     );
     router = router.merge(crate::machine_service::router(store.clone(), app.clone()));
+    // Track R14: core's writeProjectTextFile, asked only under core's NOEVIA_RUST_PROJECT_WRITE.
+    #[cfg(feature = "rust-storage-reads")]
+    {
+        router = crate::text_write_op::route(router, store.clone(), app.clone());
+    }
     let reranker_store = store.clone();
     let reranker_app = app.clone();
     router = router.route(
@@ -747,6 +752,16 @@ pub fn router_with_app(
         store.clone(),
         app.as_ref().map(|a| a.config.maint.authority.clone()),
     ));
+    // Track R12: the usage writer (usage_writes.rs), called by core's usage.cjs only with
+    // NOEVIA_RUST_USAGE_WRITES=1.
+    let usage_store = store.clone();
+    router = router.route(
+        "/v1/usage/record",
+        post(move |headers: HeaderMap, raw: Bytes| {
+            let store = usage_store.clone();
+            async move { usage_record(store, headers, raw).await }
+        }),
+    );
     // sbstndalton/noevia#2190 round 6: the provider keys' re-seal (provider_reseal.rs).
     let reseal_store = store.clone();
     router = router.route(
@@ -1320,6 +1335,47 @@ async fn mcp_op(
         let _ = (app, raw, op);
         error(StatusCode::NOT_FOUND, "not found")
     }
+}
+
+/// `POST /v1/usage/record { user, kind: "reply", model, usage } | { user, kind: "tool", name }` (track
+/// R12): core usage.cjs `recordUsage` / `recordToolUse` for that account, made here
+/// (usage_writes.rs). 200 `{ ok: true, recorded: "written" | "nothing" | "skipped" }`.
+async fn usage_record(store: Store, headers: HeaderMap, raw: Bytes) -> Response<Body> {
+    if !authorised(&store, &headers) {
+        return error(StatusCode::UNAUTHORIZED, "unauthorised");
+    }
+    let Ok(body) = js_json::wtf16::parse(&String::from_utf8_lossy(&raw)) else {
+        return error(StatusCode::BAD_REQUEST, "invalid JSON");
+    };
+    let Some(user) = body.get("user").as_str().map(str::to_owned) else {
+        return error(StatusCode::BAD_REQUEST, "user is required");
+    };
+    let kind = body.get("kind").as_str().map(str::to_owned);
+    if !matches!(kind.as_deref(), Some("reply" | "tool")) {
+        return error(StatusCode::BAD_REQUEST, "kind must be reply or tool");
+    }
+    let data_dir = store.data_dir.clone();
+    let done = tokio::task::spawn_blocking(move || {
+        use crate::usage_writes::{record, Record};
+        let what = if kind.as_deref() == Some("tool") {
+            Record::Tool {
+                name: body.get("name"),
+            }
+        } else {
+            Record::Reply {
+                model: body.get("model"),
+                usage: body.get("usage"),
+            }
+        };
+        record(&data_dir, &user, what)
+    })
+    .await;
+    let recorded = match done {
+        Ok(crate::usage_writes::Recorded::Written) => "written",
+        Ok(crate::usage_writes::Recorded::Nothing) => "nothing",
+        Ok(crate::usage_writes::Recorded::Skipped) | Err(_) => "skipped",
+    };
+    reply(StatusCode::OK, &json!({ "ok": true, "recorded": recorded }))
 }
 
 /// `POST /v1/providers/reseal { scope, user? }` (see the header).
