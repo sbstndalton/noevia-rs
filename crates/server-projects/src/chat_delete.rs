@@ -1081,6 +1081,22 @@ mod tests {
                 std::thread::yield_now();
             }
         }
+        /// `op` again while it answers Busy, up to 50 times: a late write still competes with the
+        /// other writers for the polled user lock, and that contention is not a resurrection
+        /// (#2705 item 3). Any other answer is returned as it is.
+        fn unless_busy<T>(
+            op: impl Fn() -> Result<T, transcript::TranscriptError>,
+        ) -> Result<T, transcript::TranscriptError> {
+            let mut tries = 0;
+            loop {
+                match op() {
+                    Err(transcript::TranscriptError::Store(StoreError::Busy)) if tries < 50 => {
+                        tries += 1;
+                    }
+                    other => return other,
+                }
+            }
+        }
         /// Ends the writers even when the main thread panics, so the scope can join them.
         struct Stop<'a>(&'a AtomicBool);
         impl Drop for Stop<'_> {
@@ -1116,15 +1132,22 @@ mod tests {
                                 wait_for("the delete call to return", || !deleting.load(SeqCst));
                                 let after = deleted.load(SeqCst);
                                 let h = vec![JValue::Num(f64::from(i * 100 + j % 100))];
-                                let saved =
-                                    transcript::write(root, USER, "qa-c1", &h, &Base::Any, None);
-                                let appended = transcript::append_if_last(
-                                    root,
-                                    USER,
-                                    "qa-c1",
-                                    "qa",
-                                    &JValue::Null,
-                                );
+                                let write =
+                                    || transcript::write(root, USER, "qa-c1", &h, &Base::Any, None);
+                                let append = || {
+                                    transcript::append_if_last(
+                                        root,
+                                        USER,
+                                        "qa-c1",
+                                        "qa",
+                                        &JValue::Null,
+                                    )
+                                };
+                                let (saved, appended) = if after {
+                                    (unless_busy(write), unless_busy(append))
+                                } else {
+                                    (write(), append())
+                                };
                                 if after {
                                     assert!(
                                         matches!(saved, Ok(Saved::Deleted)),
