@@ -109,4 +109,17 @@ fn shapes_core_never_stores_ask_core() {
         resolve_edit_target(Some(&project), r#"{"name":"a.txt"}"#, None, &inline),
         Lookup::Unsupported
     );
+    // Arguments JSON.parse takes and wtf16::parse refuses.
+    let project = wtf16::parse(r#"{"files":[{"name":"a.txt"}]}"#).unwrap();
+    for args in [
+        r#"{"name":1e400}"#,
+        "{\"name\":\"\u{10f800}\"}",
+        &format!("{}{}", "[".repeat(200), "]".repeat(200)),
+    ] {
+        assert_eq!(
+            resolve_edit_target(Some(&project), args, None, &inline),
+            Lookup::Unsupported,
+            "{args}"
+        );
+    }
 }

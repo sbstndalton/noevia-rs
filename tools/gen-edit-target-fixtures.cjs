@@ -57,6 +57,23 @@ const alpha = {
     null, 5, 'stray', { name: 7 }, { title: 'no name' },
   ],
 };
+// Names that resolve (no stored name with a lone surrogate or a non-inert tail before them), the
+// entries without a string name first, so a filtered index is never the full one.
+const G = 'noevia projects/QA Beta';
+const beta = {
+  id: 'qa-beta', projectFolder: G,
+  files: [
+    null, 5, 'stray', { name: 7 }, { title: 'no name' },
+    { name: 'x/dup.md' }, { name: 'y/dup.md' },
+    { name: `${G}/Text/notes.md`, source: G, attachment: { state: 'ready', group: 'Text' } },
+    { name: 'qa\u0085q.txt', document: { state: 'queued' } },
+    { name: 'emoji-\u{1f600}.txt', document: { state: 'failed' } },
+    { name: 'qa\u2028\u202e-dir.txt', document: { state: 'failed' } },
+    { name: 't.txt' }, { name: `${G}/Text/t.txt`, source: G, attachment: { state: 'ready', group: 'Text' } },
+    { name: 'free.txt' },
+  ],
+};
+const emptyName = { id: 'qa-empty-name', files: [{ name: '' }] };
 const reserved = { id: 'qa-res', reservedFolder: 'noevia projects/QA Res', files: [{ name: 'r.txt' }, { name: 'r2.txt' }, { name: 'noevia projects/QA Res/Text/r2.txt' }, { name: 'r3.md', document: { state: 'queued' } }] };
 const both = { id: 'qa-both', projectFolder: 'noevia projects/QA Both', reservedFolder: 'noevia projects/QA Other', files: [{ name: 'b.txt' }] };
 const noFolder = { id: 'qa-none', projectFolder: '', files: [{ name: 'n.txt' }, { name: 'n.csv' }] };
@@ -70,6 +87,11 @@ const add = (project, args, account) => cases.push({ project, args, account });
 const nameArgs = (name) => JSON.stringify({ name });
 for (const f of alpha.files) if (f && typeof f.name === 'string') for (const a of ACCOUNTS) add(alpha, nameArgs(f.name), a);
 for (const p of [reserved, both, noFolder]) for (const f of p.files) for (const a of ACCOUNTS) add(p, nameArgs(f.name), a);
+for (const n of ['dup.md', 'notes.md', 'qa\u0085q.txt', 'emoji-\u{1f600}.txt', 'qa\u2028\u202e-dir.txt', 't.txt', 'free.txt', 'x/dup.md', 'missing.md',
+  'q'.repeat(199) + '\u{1f600}', 'q'.repeat(201)]) for (const a of ACCOUNTS) add(beta, nameArgs(n), a);
+for (const args of ['{"name":{"toString":1}}', '{"name":{"toString":1,"a":2}}', '{"name":[{"toString":1}]}']) add(beta, args, null);
+add(emptyName, nameArgs('a.txt'), null);
+for (const p of [false, 0, '']) add(p, nameArgs('a.txt'), null);
 for (const p of [noFiles, filesString, filesEmpty]) add(p, nameArgs('a.txt'), 'qa-account-digest-1');
 for (const args of ['', '{}', 'not json', '[]', 'null', '5', '"plain.txt"', '{"name":5}', '{"name":null}', '{"name":true}', '{"name":{"a":1}}',
   '{"name":[1,[2,null],"x"]}', '{"name":1e21}', '{"name":0.1}', '{"name":"../x"}', '{"name":"/abs.txt"}', '{"name":"%2e%2e/a"}', '{"name":"missing.txt"}',

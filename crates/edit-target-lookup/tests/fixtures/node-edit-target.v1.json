@@ -799,6 +799,342 @@
       }
     },
     {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"dup.md\"}",
+      "account": null,
+      "node": {
+        "error": "\"dup.md\" matches more than one project file: x/dup.md, y/dup.md. Pass the full name exactly as listed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"dup.md\"}",
+      "account": "",
+      "node": {
+        "error": "\"dup.md\" matches more than one project file: x/dup.md, y/dup.md. Pass the full name exactly as listed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"dup.md\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "\"dup.md\" matches more than one project file: x/dup.md, y/dup.md. Pass the full name exactly as listed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"notes.md\"}",
+      "account": null,
+      "node": {
+        "path": "noevia projects/QA Beta/Text/notes.md",
+        "account": null,
+        "digest": "e9df8414ab4dbb6ceb373b9dff3881a80b5b6411ce48e45f0543285d0ab6d070"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"notes.md\"}",
+      "account": "",
+      "node": {
+        "path": "noevia projects/QA Beta/Text/notes.md",
+        "account": null,
+        "digest": "e9df8414ab4dbb6ceb373b9dff3881a80b5b6411ce48e45f0543285d0ab6d070"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"notes.md\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "path": "noevia projects/QA Beta/Text/notes.md",
+        "account": null,
+        "digest": "e9df8414ab4dbb6ceb373b9dff3881a80b5b6411ce48e45f0543285d0ab6d070"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qaq.txt\"}",
+      "account": null,
+      "node": {
+        "error": "\"qa\\u0085q.txt\" is waiting to be read (document reading is not available yet), so it cannot be edited yet. Nothing was changed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qaq.txt\"}",
+      "account": "",
+      "node": {
+        "error": "\"qa\\u0085q.txt\" is waiting to be read (document reading is not available yet), so it cannot be edited yet. Nothing was changed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qaq.txt\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "\"qa\\u0085q.txt\" is waiting to be read (document reading is not available yet), so it cannot be edited yet. Nothing was changed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"emoji-😀.txt\"}",
+      "account": null,
+      "node": {
+        "error": "\"emoji-😀.txt\" could not be read when it was added, so it cannot be edited. Nothing was changed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"emoji-😀.txt\"}",
+      "account": "",
+      "node": {
+        "error": "\"emoji-😀.txt\" could not be read when it was added, so it cannot be edited. Nothing was changed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"emoji-😀.txt\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "\"emoji-😀.txt\" could not be read when it was added, so it cannot be edited. Nothing was changed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qa ‮-dir.txt\"}",
+      "account": null,
+      "node": {
+        "error": "\"qa ‮-dir.txt\" could not be confirmed as exactly one project file, so nothing was read or changed. Use a name exactly as listed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qa ‮-dir.txt\"}",
+      "account": "",
+      "node": {
+        "error": "\"qa ‮-dir.txt\" could not be confirmed as exactly one project file, so nothing was read or changed. Use a name exactly as listed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qa ‮-dir.txt\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "\"qa ‮-dir.txt\" could not be confirmed as exactly one project file, so nothing was read or changed. Use a name exactly as listed."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"t.txt\"}",
+      "account": null,
+      "node": {
+        "path": "t.txt",
+        "account": null,
+        "digest": "8243d3a34ab8ee132aacae6e85083fbc8ceb4ccbf967fb6d9c3d12510cdb99e5"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"t.txt\"}",
+      "account": "",
+      "node": {
+        "path": "t.txt",
+        "account": null,
+        "digest": "8243d3a34ab8ee132aacae6e85083fbc8ceb4ccbf967fb6d9c3d12510cdb99e5"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"t.txt\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "\"noevia projects/QA Beta/Text/t.txt\" is already a separate file in this project, so \"t.txt\" cannot be moved there. Nothing was changed. Edit \"noevia projects/QA Beta/Text/t.txt\" instead."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"free.txt\"}",
+      "account": null,
+      "node": {
+        "path": "free.txt",
+        "account": null,
+        "digest": "9dca1a7cbade02dc04520eee4c593baca2014895523e7f184d6c128ac8db3812"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"free.txt\"}",
+      "account": "",
+      "node": {
+        "path": "free.txt",
+        "account": null,
+        "digest": "9dca1a7cbade02dc04520eee4c593baca2014895523e7f184d6c128ac8db3812"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"free.txt\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "path": "noevia projects/QA Beta/Text/free.txt",
+        "account": "qa-account-digest-1",
+        "digest": "47e8031817d801f9369d255cfb8bd8fedd7f42f59b4aeac5b9e09a7a371cdf35"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"x/dup.md\"}",
+      "account": null,
+      "node": {
+        "error": "\"x/dup.md\" is stored under a folder path; editing it with tools isn't supported yet. Use project_create_file to write a new file."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"x/dup.md\"}",
+      "account": "",
+      "node": {
+        "error": "\"x/dup.md\" is stored under a folder path; editing it with tools isn't supported yet. Use project_create_file to write a new file."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"x/dup.md\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "\"x/dup.md\" is stored under a folder path; editing it with tools isn't supported yet. Use project_create_file to write a new file."
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"missing.md\"}",
+      "account": null,
+      "node": {
+        "error": "no project file named \"missing.md\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"missing.md\"}",
+      "account": "",
+      "node": {
+        "error": "no project file named \"missing.md\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"missing.md\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "no project file named \"missing.md\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq😀\"}",
+      "account": null,
+      "node": {
+        "error": "no project file named \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\\ud83d\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq😀\"}",
+      "account": "",
+      "node": {
+        "error": "no project file named \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\\ud83d\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq😀\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "no project file named \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\\ud83d\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\"}",
+      "account": null,
+      "node": {
+        "error": "no project file named \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\"}",
+      "account": "",
+      "node": {
+        "error": "no project file named \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":\"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\"}",
+      "account": "qa-account-digest-1",
+      "node": {
+        "error": "no project file named \"qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq\". Available: x/dup.md, y/dup.md, noevia projects/QA Beta/Text/notes.md, qaq.txt, emoji-😀.txt, qa ‮-dir.txt, t.txt, noevia projects/QA Beta/Text/t.txt, free.txt"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":{\"toString\":1}}",
+      "account": null,
+      "node": {
+        "error": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":{\"toString\":1,\"a\":2}}",
+      "account": null,
+      "node": {
+        "error": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-beta\",\"projectFolder\":\"noevia projects/QA Beta\",\"files\":[null,5,\"stray\",{\"name\":7},{\"title\":\"no name\"},{\"name\":\"x/dup.md\"},{\"name\":\"y/dup.md\"},{\"name\":\"noevia projects/QA Beta/Text/notes.md\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"qaq.txt\",\"document\":{\"state\":\"queued\"}},{\"name\":\"emoji-😀.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"qa ‮-dir.txt\",\"document\":{\"state\":\"failed\"}},{\"name\":\"t.txt\"},{\"name\":\"noevia projects/QA Beta/Text/t.txt\",\"source\":\"noevia projects/QA Beta\",\"attachment\":{\"state\":\"ready\",\"group\":\"Text\"}},{\"name\":\"free.txt\"}]}",
+      "args": "{\"name\":[{\"toString\":1}]}",
+      "account": null,
+      "node": {
+        "error": "Cannot convert object to primitive value"
+      }
+    },
+    {
+      "project": "{\"id\":\"qa-empty-name\",\"files\":[{\"name\":\"\"}]}",
+      "args": "{\"name\":\"a.txt\"}",
+      "account": null,
+      "node": {
+        "error": "no project file named \"a.txt\". Available: (none attached)"
+      }
+    },
+    {
+      "project": "false",
+      "args": "{\"name\":\"a.txt\"}",
+      "account": null,
+      "node": {
+        "error": "this chat is not in a project, so there are no project files to edit."
+      }
+    },
+    {
+      "project": "0",
+      "args": "{\"name\":\"a.txt\"}",
+      "account": null,
+      "node": {
+        "error": "this chat is not in a project, so there are no project files to edit."
+      }
+    },
+    {
+      "project": "\"\"",
+      "args": "{\"name\":\"a.txt\"}",
+      "account": null,
+      "node": {
+        "error": "this chat is not in a project, so there are no project files to edit."
+      }
+    },
+    {
       "project": "{\"id\":\"qa-empty\"}",
       "args": "{\"name\":\"a.txt\"}",
       "account": "qa-account-digest-1",

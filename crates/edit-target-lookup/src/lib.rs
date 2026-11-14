@@ -11,14 +11,27 @@
 //!
 //! Strings are `js_json::wtf16` strings (a lone surrogate held as its mapped character), so a
 //! name with a lone surrogate is quoted as `JSON.stringify` quotes it. [`Lookup::Unsupported`]
-//! stands for what core would answer from a shape it never stores (a truthy non-string
-//! `projectFolder`, `reservedFolder` or `source`, an argument object with its own `toString`):
-//! the caller then asks core.
+//! hands the call back to core (which then answers it) for what this port does not reproduce: a
+//! project shape core never stores (a truthy non-string `projectFolder`, `reservedFolder` or
+//! `source`), and arguments `js_json::wtf16::parse` refuses although `JSON.parse` takes them (a
+//! number outside the f64 range such as `1e400`, a literal U+10F800..U+10FFFF character, nesting
+//! deeper than 128 levels).
 #![forbid(unsafe_code)]
 
 use js_json::{wtf16, JValue};
 use project_edit_target::{plan, Attachment, File, Refused, Request, Work};
 use sha2::{Digest, Sha256};
+
+/// dav-parse-wasm.cjs `FILE_NAME_REASONS`.
+const REASONS: [&str; 7] = [
+    "a file name is required",
+    "that file name is too long",
+    "a file name cannot contain control characters",
+    "a file name cannot contain backslashes",
+    "a file name cannot contain encoded dots or separators",
+    "a file name cannot be an absolute path",
+    "a file name cannot contain empty, \".\" or \"..\" parts",
+];
 
 /// What the lookup answers.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,7 +142,11 @@ fn resolve_file(files: &[JValue], raw: &JValue) -> Result<Result<usize, String>,
         .enumerate()
         .filter_map(|(i, f)| f.get("name").as_str().map(|n| (i, n)))
         .collect();
-    let shown = shown(raw).ok_or(())?;
+    // `String(raw)` of an object with its own `toString` throws in core; resolveEditTarget answers
+    // the TypeError's message.
+    let Some(shown) = shown(raw) else {
+        return Ok(Err("Cannot convert object to primitive value".into()));
+    };
     let unverified = || {
         Ok(Err(format!(
             "{shown} could not be confirmed as exactly one project file, so nothing was read or changed. Use a name exactly as listed."
@@ -159,24 +176,43 @@ fn resolve_file(files: &[JValue], raw: &JValue) -> Result<Result<usize, String>,
     let Ok(reply) = wtf16::parse(&String::from_utf8_lossy(&reply)) else {
         return unverified();
     };
-    if let Some(i) = reply.get("file").as_num() {
-        return match named.get(i as usize) {
+    // dav-parse-wasm.cjs `projectFileNames`: exactly these keys, an index in range, a known reason,
+    // two or more candidates; anything else is a bad reply (unverified).
+    let JValue::Obj(fields) = &reply else {
+        return unverified();
+    };
+    let keys: Vec<&str> = fields.iter().map(|(k, _)| k.as_str()).collect();
+    let index = |v: &JValue| {
+        v.as_num()
+            .filter(|n| n.fract() == 0.0 && *n >= 0.0 && *n < named.len() as f64)
+            .map(|n| n as usize)
+    };
+    if keys == ["file"] {
+        return match index(reply.get("file")).and_then(|i| named.get(i)) {
             Some((at, _)) => Ok(Ok(*at)),
             None => unverified(),
         };
     }
-    match reply.get("code").as_str() {
-        Some("invalid") => Ok(Err(format!(
-            "{shown} is not a usable project file name: {}. Use a name exactly as listed.",
-            reply.get("reason").as_str().unwrap_or_default()
-        ))),
-        Some("ambiguous") => {
+    match (reply.get("code").as_str(), keys.as_slice()) {
+        (Some("invalid"), ["code", "reason"]) => {
+            let reason = reply.get("reason").as_str().unwrap_or_default();
+            if !REASONS.contains(&reason) {
+                return unverified();
+            }
+            Ok(Err(format!(
+                "{shown} is not a usable project file name: {reason}. Use a name exactly as listed."
+            )))
+        }
+        (Some("ambiguous"), ["code", "candidates"]) => {
             let JValue::Arr(candidates) = reply.get("candidates") else {
                 return unverified();
             };
+            if candidates.len() < 2 {
+                return unverified();
+            }
             let mut list = Vec::new();
             for c in candidates {
-                let Some((_, name)) = c.as_num().and_then(|i| named.get(i as usize)) else {
+                let Some((_, name)) = index(c).and_then(|i| named.get(i)) else {
                     return unverified();
                 };
                 list.push(*name);
@@ -186,12 +222,12 @@ fn resolve_file(files: &[JValue], raw: &JValue) -> Result<Result<usize, String>,
                 list.join(", ")
             )))
         }
-        Some("missing") => {
-            let names: Vec<&str> = named.iter().map(|(_, n)| *n).collect();
-            let names = if names.is_empty() {
+        (Some("missing"), ["code"]) => {
+            let joined = named.iter().map(|(_, n)| *n).collect::<Vec<_>>().join(", ");
+            let names = if joined.is_empty() {
                 "(none attached)".to_owned()
             } else {
-                names.join(", ")
+                joined
             };
             Ok(Err(format!(
                 "no project file named {shown}. Available: {names}"
@@ -210,7 +246,7 @@ pub fn resolve_edit_target(
     account: Option<&str>,
     content: &dyn Fn(&JValue) -> String,
 ) -> Lookup {
-    let Some(project) = project else {
+    let Some(project) = project.filter(|p| p.truthy()) else {
         return Lookup::Refused(
             "this chat is not in a project, so there are no project files to edit.".into(),
         );
