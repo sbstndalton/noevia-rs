@@ -74,6 +74,15 @@
 //!   round note. Recorded in `tests/fixtures/node-offbox.v1.json`, written by
 //!   `tests/record_offbox.cjs` (whole free-chat turns through `createChatHandler`); no named
 //!   differences.
+//! - [`pre_rules`] and [`router_input`] (slice P5d, part 3): routing modes' deterministic
+//!   pre-rules (`preRule`: secrets, IBANs, cards, health text, scanned as UTF-16 code units),
+//!   chat.cjs's hold of a cloud route's tool result (`holdForCloud`, [`pre_rules::CloudHold`]) and
+//!   what the router role reads (`routerInput`, `chunkCharsFor`). Recorded in
+//!   `tests/fixtures/node-prerules.v1.json`, written by `tests/record_prerules.cjs`; no named
+//!   differences.
+//! - [`shadow`] (slice P7a): the front's native preparation beside core's: a handed-off free-chat
+//!   turn's messages built here and compared with core's `prepared` frame (logged only, behind the
+//!   front's `NOEVIA_CHAT_PREPARE`); what is not covered yet is skipped with its reason.
 //! - [`retrieval`] (slice P2b): a project turn's knowledge-file retrieval around its two seams (the
 //!   file-job wait and `rag.filesContext`): the project id, whether and how the turn waits, the
 //!   request (the readable files, the question, `attached`, multimodal `images`), and what chat.cjs
@@ -145,6 +154,7 @@ pub mod modes;
 pub mod names;
 pub mod offbox;
 pub mod offer;
+pub mod pre_rules;
 pub mod project;
 pub mod reroute;
 pub mod retrieval;
@@ -152,7 +162,9 @@ pub mod roles;
 pub mod route;
 pub mod route_notes;
 pub mod router;
+pub mod router_input;
 pub mod sampling;
+pub mod shadow;
 pub mod shared;
 pub mod skills;
 pub mod sources;

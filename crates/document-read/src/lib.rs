@@ -144,7 +144,7 @@ fn is_space(c: char) -> bool {
 }
 
 /// JS `StringToNumber` (what `Number(string)` and a numeric comparison do to a string).
-fn string_to_number(raw: &str) -> f64 {
+pub fn string_to_number(raw: &str) -> f64 {
     let s = raw.trim_matches(is_space);
     if s.is_empty() {
         return 0.0;

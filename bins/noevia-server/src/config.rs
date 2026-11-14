@@ -109,6 +109,8 @@ pub struct Config {
     pub code_egress: Option<crate::code_egress::Settings>,
     /// Code mode's deployment configuration and the executor switch (code_routes.rs).
     pub code: crate::code_routes::Settings,
+    /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
+    pub model_writes: crate::model_writes_routes::Settings,
     /// Track R12, NOEVIA_RUST_SETTINGS_ROUTES=1: the front answers PUT /api/routing-default
     /// (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs)
     /// itself. Unset (anything but `1`): those methods stay Node's.
@@ -116,6 +118,9 @@ pub struct Config {
     /// The default provider row and engine variables GET /api/reasoning-settings reads, from the
     /// same environment core index.cjs and reasoning-effort.cjs read.
     pub reasoning_defaults: server_reasoning_settings::read::Defaults,
+    /// Track R12, NOEVIA_RUST_SECRETS_ROTATE=1: the front answers POST /api/admin/secrets/rotate itself
+    /// (secrets_rotate_routes.rs). Unset (anything but `1`): Node's rotation, as today.
+    pub secrets_rotate: bool,
     /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
     /// hex) and hands Node too, which writes it into a running reply's partial file
     /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
@@ -489,8 +494,10 @@ impl Config {
             project_store,
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
+            model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
             settings_routes: get(SETTINGS_ROUTES).as_deref() == Some("1"),
             reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),
+            secrets_rotate: get("NOEVIA_RUST_SECRETS_ROTATE").as_deref() == Some("1"),
             start_id,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]
