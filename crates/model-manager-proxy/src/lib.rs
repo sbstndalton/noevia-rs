@@ -18,6 +18,18 @@
 //! [`Outcome::Core`] for a body the port cannot hold (a number past the f64 range, nesting deeper
 //! than 128, text in U+10F800..U+10FFFF) on a route that parses it: the request then goes to core
 //! unchanged, before anything but the reads fence ([`Host::invalidate_model_reads`]) was asked.
+//!
+//! Core's behaviour is kept where it is wrong; each is in the recording:
+//! - a JSON `null` body is a TypeError (500 `Internal error`) on `benchmark/start`,
+//!   `benchmark/sweep`, `models/delete`, and a section PUT when `presetRefusal` exists;
+//! - `PATH_OPTION_ALIASES` is a plain object, so a section PUT whose `values` has a non-string
+//!   under an inherited name (`constructor`, `toString`, `__proto__`, …) is refused as
+//!   `Not saved: function Object() { [native code] } must be a text path` (or `[object Object]`);
+//! - a scanned entry whose `sections` is a string matches a section name by substring in the
+//!   section guards, and makes a folder-scan delete of it a 500; a `null` scanned entry makes both a
+//!   500;
+//! - a benchmark alias that is falsy or not a string (`0`, `null`, `[]`) is named in the
+//!   "needs chat models" refusal as `String()` gives it (`null` as nothing).
 
 pub mod evidence;
 pub mod js;
@@ -299,8 +311,10 @@ pub fn protected_action(method: &str, path: &str, role: &str) -> bool {
 
 /// `/^[\w./%:+@-]*$/`.
 fn raw_path_ok(raw: &str) -> bool {
-    raw.bytes()
-        .all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'/' | b'%' | b':' | b'+' | b'@' | b'-'))
+    raw.bytes().all(|b| {
+        b.is_ascii_alphanumeric()
+            || matches!(b, b'_' | b'.' | b'/' | b'%' | b':' | b'+' | b'@' | b'-')
+    })
 }
 
 /// The decoded manager path, or `None` for 400 `Invalid path`.
@@ -341,8 +355,7 @@ fn section_with(rest: &str, tails: &[&str]) -> bool {
         let name = if tail.is_empty() {
             Some(r)
         } else {
-            r.strip_suffix(tail)
-                .and_then(|n| n.strip_suffix('/'))
+            r.strip_suffix(tail).and_then(|n| n.strip_suffix('/'))
         };
         name.is_some_and(|n| !n.is_empty() && !n.contains('/'))
     })
@@ -586,7 +599,10 @@ fn route(
     let section = section_name(rest);
     let section_put = method == "PUT" && section.is_some() && !rest.ends_with("/rename");
     let parses = (method == "POST"
-        && matches!(rest, "benchmark/start" | "benchmark/sweep" | "models/delete"))
+        && matches!(
+            rest,
+            "benchmark/start" | "benchmark/sweep" | "models/delete"
+        ))
         || section_put;
     let parsed = if parses {
         match payload(body.as_deref()) {
@@ -622,11 +638,7 @@ fn route(
             return Ok(answer(400, error(&message), false));
         }
         if caps.load_refusal {
-            for alias in aliases
-                .iter()
-                .filter_map(JValue::as_str)
-                .take(MAX_ALIASES)
-            {
+            for alias in aliases.iter().filter_map(JValue::as_str).take(MAX_ALIASES) {
                 let refusal = host.load_refusal(alias);
                 if refusal.truthy() {
                     return Ok(answer(409, refusal, false));
@@ -690,7 +702,10 @@ fn route(
             return Ok(answer(
                 409,
                 JValue::obj([
-                    ("error", JValue::from("Embedding model protection is not current.")),
+                    (
+                        "error",
+                        JValue::from("Embedding model protection is not current."),
+                    ),
                     ("errorId", JValue::from("modelInUse")),
                 ]),
                 false,

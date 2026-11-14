@@ -55,8 +55,9 @@ pub fn throughput_records(detail: &JValue, now: f64) -> Result<Vec<(JValue, JVal
     }
     let mut out = Vec::new();
     for v in list_or_empty(detail.get("variants"), true)? {
+        // `v.argv_json` of a null variant throws inside the try: the variant is skipped.
         if v.is_nullish() {
-            return Err(Thrown::type_error());
+            continue;
         }
         let argv_json = v.get("argv_json");
         // JSON.parse(v.argv_json || '{}'): String() first; a throw of either skips the variant.

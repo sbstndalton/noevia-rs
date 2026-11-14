@@ -700,6 +700,8 @@ evd({ run: { id: 5, status: 'done', finished_at: NOWMS / 1000 }, variants: [{}],
 evd({ run: { id: 5, status: 'done', finished_at: NOWMS / 1000 }, variants: [{ alias: 'x' }], results: [{ alias: 'x', gen_tps: 1 }, null] });
 evd({ run: { id: 5, status: 'done', finished_at: NOWMS / 1000 }, variants: [{ alias: 'x' }], results: null });
 evd({ run: { id: 5, status: 'done', finished_at: NOWMS / 1000 }, variants: null, results: [] });
+evd({ run: { id: 6, status: 'done', finished_at: NOWMS / 1000 }, variants: [null, 5, { alias: 'x' }], results: [{ alias: 'x', gen_tps: 1 }, { alias: 'x', gen_tps: 2 }] });
+evd({ run: { id: 6, status: 'done', finished_at: NOWMS / 1000 }, variants: [{ alias: 'x', argv_json: '{"a":1e999}' }, { alias: 'y', argv_json: '[1e999]' }], results: [{ alias: 'x', gen_tps: 1 }, { alias: 'x', gen_tps: 2 }] });
 evd({ run: { status: 'done', finished_at: NOWMS / 1000 }, variants: [{ alias: 'x' }, { alias: 'x' }], results: [{ alias: 'x', gen_tps: 0.05 }, { alias: 'x', gen_tps: 0.15 }, { alias: 'x', gen_tps: 0.25 }] });
 evd({ run: { id: { n: 1 }, status: 'done', finished_at: NOWMS / 1000 }, variants: [{ alias: 7 }], results: [{ alias: 7, gen_tps: 2.45 }, { alias: 7, gen_tps: 2.55 }, { alias: 7, gen_tps: 1e308 }, { alias: 7, gen_tps: 1e308 }] });
 for (let n = 0; n < 300; n += 1) {

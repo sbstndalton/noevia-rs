@@ -156,7 +156,11 @@ impl Host for Fake {
     fn sweep_hold(&mut self, reason: &str) -> Result<(), HoldError> {
         let c = self.next("sweepHold");
         self.same("sweepHold reason", &JValue::from(reason), c.get("reason"));
-        self.same("sweepHold recovery", &JValue::Bool(false), c.get("recovery"));
+        self.same(
+            "sweepHold recovery",
+            &JValue::Bool(false),
+            c.get("recovery"),
+        );
         if c.get("answer").as_str() == Some("granted") {
             return Ok(());
         }
@@ -171,7 +175,11 @@ impl Host for Fake {
     }
     fn sweep_watch(&mut self, models: usize) {
         let c = self.next("sweepWatch");
-        self.same("sweepWatch models", &JValue::Num(models as f64), c.get("models"));
+        self.same(
+            "sweepWatch models",
+            &JValue::Num(models as f64),
+            c.get("models"),
+        );
     }
     fn scan_cache_get(&mut self) -> JValue {
         let c = self.next("scanCacheGet");
@@ -200,7 +208,11 @@ impl Host for Fake {
     }
     fn fetch(&mut self, request: &Fetch) -> Option<Reply> {
         let c = self.next("fetch");
-        self.same("fetch url", &JValue::from(request.url.as_str()), c.get("url"));
+        self.same(
+            "fetch url",
+            &JValue::from(request.url.as_str()),
+            c.get("url"),
+        );
         self.same(
             "fetch method",
             &JValue::from(request.method.as_str()),

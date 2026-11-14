@@ -2098,6 +2098,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-manager-proxy"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "js-json",
+]
+
+[[package]]
 name = "model-router"
 version = "0.1.0"
 dependencies = [

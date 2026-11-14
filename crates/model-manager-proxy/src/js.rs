@@ -291,7 +291,16 @@ mod tests {
         assert_eq!(decode_uri_component("%E2%9C%93").as_deref(), Some("✓"));
         assert_eq!(decode_uri_component("%f0%9f%98%80").as_deref(), Some("😀"));
         for bad in [
-            "%", "%2", "%zz", "%C3", "%80", "%C0%AF", "%ED%A0%80", "%F4%90%80%80", "%F8%80", "%C3%28",
+            "%",
+            "%2",
+            "%zz",
+            "%C3",
+            "%80",
+            "%C0%AF",
+            "%ED%A0%80",
+            "%F4%90%80%80",
+            "%F8%80",
+            "%C3%28",
         ] {
             assert_eq!(decode_uri_component(bad), None, "{bad}");
         }

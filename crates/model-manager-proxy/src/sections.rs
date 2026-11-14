@@ -78,8 +78,7 @@ pub fn path_refusal(sent: &JValue) -> Option<String> {
     for (raw_key, value) in vals {
         let key = alias(&raw_key);
         if key == Some(Alias::Path("model"))
-            && (matches!(value, JValue::Null)
-                || value.as_str().is_some_and(|s| trim(s).is_empty()))
+            && (matches!(value, JValue::Null) || value.as_str().is_some_and(|s| trim(s).is_empty()))
         {
             return Some("Not saved: model must be a text path".to_string());
         }
