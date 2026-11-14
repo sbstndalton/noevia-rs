@@ -85,8 +85,8 @@ pub enum PropsFailure {
     Unparsable,
 }
 
-/// core `propsSource(t).props(model)` (#1850): the machine's llama-server `/props` for `model`, shaped like the
-/// model manager's `props()` answer, through the on-this-network fetch with a 2.5 s deadline and a 1 MiB cap.
+/// core `propsSource(t).props(model)` (#1850): the `/props` for `model` of the machine's OpenAI-compatible server,
+/// shaped like the model manager's `props()` answer, through the on-this-network fetch (2.5 s deadline, 1 MiB cap).
 pub async fn props<F: Fetch>(fetch: &F, t: &Target, model: &str) -> Result<Props, PropsFailure> {
     let url = format!("{}/props?model={}", t.base_url, encode_uri_component(model));
     let r = fetch
