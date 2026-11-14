@@ -46,7 +46,6 @@
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
 //!   rather than pinned unchecked;
-//! - a Cowork session's task start from chat stays Node's, which refuses it while the front owns Code;
 //! - the role engine's endpoint and the engine key a Planner task uses are a snapshot taken from
 //!   core's engine facts at its start, for the life of that task; Node's `codeRoleEndpoint` and
 //!   `engineKey` re-read them at each use, so a Code role or key changed mid-task reaches Node's
@@ -56,6 +55,11 @@
 //! Node's latch takes as `modelManager.enterInference()`, as Node's own Code tasks hold) for its run.
 //! A lease the authority ends (Node restarted, stopped confirming it, the hard cap) stops the run
 //! (logged `code.lease_lost`): Node's own lease cannot end under a task, the front's can.
+//!
+//! A Cowork session's task start from chat (`POST /api/chat` with `mode: 'cowork'`, routes/chat.cjs)
+//! is the front's too when it owns Code ([`cowork`], called by chat_turn.rs after chat_edge.rs's
+//! refusals): the same service start with Node's Cowork body and answers. Before this, core
+//! refused every such start (409) once the switch was on.
 //!
 //! Code actions are answered only when core says the front owns them (`owner: 'front'` on the
 //! facts bridge); a core that still runs Code tasks itself gets 503, never a second writer.
@@ -821,6 +825,37 @@ fn fail(status: u16, message: &str) -> Fail {
     }
 }
 
+/// code-service.cjs `start` for one project the caller owns: the service's answer, or `None` when
+/// the blocking task did not finish (a panic).
+async fn start(
+    app: &Arc<App>,
+    service: Arc<Service>,
+    dir: String,
+    user: String,
+    project_id: String,
+    record: JValue,
+    body: JValue,
+) -> Option<Result<JValue, Fail>> {
+    let (app, rt) = (Arc::clone(app), tokio::runtime::Handle::current());
+    tokio::task::spawn_blocking(move || {
+        let project = Project {
+            id: &project_id,
+            record: &record,
+        };
+        let resolve = || {
+            rt.block_on(resolve(
+                Arc::clone(&app),
+                user.clone(),
+                project_id.clone(),
+                record.clone(),
+            ))
+        };
+        service.start(&dir, Some(&user), &project, &resolve, &body)
+    })
+    .await
+    .ok()
+}
+
 /// One Code action, after the session gate.
 pub async fn serve(
     app: &Arc<App>,
@@ -882,27 +917,10 @@ pub async fn serve(
                 Ok(b) => b,
                 Err(r) => return *r,
             };
-            let (app, rt) = (Arc::clone(app), tokio::runtime::Handle::current());
-            let work = tokio::task::spawn_blocking(move || {
-                let project = Project {
-                    id: &project_id,
-                    record: &record,
-                };
-                let resolve = || {
-                    rt.block_on(resolve(
-                        Arc::clone(&app),
-                        user.clone(),
-                        project_id.clone(),
-                        record.clone(),
-                    ))
-                };
-                service.start(&dir, Some(&user), &project, &resolve, &body)
-            })
-            .await;
-            match work {
-                Ok(Ok(v)) => answer(StatusCode::ACCEPTED, &v),
-                Ok(Err(e)) => refused(&e),
-                Err(_) => Rejection::Unavailable.into_response(),
+            match start(app, service, dir, user, project_id, record, body).await {
+                Some(Ok(v)) => answer(StatusCode::ACCEPTED, &v),
+                Some(Err(e)) => refused(&e),
+                None => Rejection::Unavailable.into_response(),
             }
         }
         Action::Decide(_, task) => {
@@ -945,6 +963,121 @@ pub async fn facts(app: &Arc<App>, data_dir: &std::path::Path, user: &str) -> Op
         .await
         .ok()
         .flatten()
+}
+
+/// routes/chat.cjs's answer for a Cowork start that failed: `status || 500` and
+/// `{error: publicMessage || (status ? message : 'Cowork task could not start'), mode: 'cowork'}`.
+fn cowork_refused(e: &Fail) -> Response<Body> {
+    let message = match (&e.public_message, e.status) {
+        (Some(m), _) if !m.is_empty() => m.clone(),
+        (_, Some(_)) => e.message.clone(),
+        (_, None) => COWORK_FAILED.to_string(),
+    };
+    let status = e
+        .status
+        .and_then(|s| StatusCode::from_u16(s).ok())
+        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR);
+    cowork_answer(status, JValue::obj([("error", JValue::Str(message))]))
+}
+
+/// `json(res, status, { ...body, mode: 'cowork' })` in routes/chat.cjs's key order: the error, then
+/// the mode; a start's `{mode, task}`.
+fn cowork_answer(status: StatusCode, body: JValue) -> Response<Body> {
+    let mut pairs = match body {
+        JValue::Obj(pairs) => pairs,
+        _ => Vec::new(),
+    };
+    pairs.push(("mode".into(), JValue::Str("cowork".into())));
+    answer(status, &JValue::Obj(pairs))
+}
+
+/// routes/chat.cjs's fallback words for a Cowork start that failed without a status.
+pub const COWORK_FAILED: &str = "Cowork task could not start";
+
+/// A Cowork session's task start from chat (routes/chat.cjs `startCoworkTask`, #236), answered
+/// by the front's own Code service when the front owns Code tasks: index.cjs's
+/// `getProject(String(body.projectId))` (no URI decoding, unlike the Code route), then
+/// `codeService.start(workspace, project, { repository: body.repository, prompt: body.message })`
+/// (the default capabilities, the first harness, the direct preparation, no domains, no model),
+/// answered 202 `{mode: 'cowork', task}`.
+///
+/// `bytes` is the chat body chat_edge.rs already let through as [`chat_edge::Verdict::Cowork`]
+/// (an object, an administrator, `projectId` a non-empty string). `None` means "not the front's":
+/// the switch is unset, the data directory is not configured, core does not say the front owns
+/// Code (`owner: 'front'`), the facts bridge did not answer or the body does not parse; the caller
+/// then relays the start to core's `/internal/chat/cowork` exactly as before, and core answers it
+/// (a core that hands Code to the front refuses it there, which is what this replaces).
+///
+/// [`chat_edge::Verdict::Cowork`]: crate::chat_edge::Verdict::Cowork
+pub async fn cowork(
+    app: &Arc<App>,
+    authn: &server_auth::Identity,
+    bytes: &[u8],
+) -> Option<Response<Body>> {
+    if !app.config.code.executor {
+        return None;
+    }
+    let data_dir = app.config.data_dir.clone()?;
+    let admin = authn.user.role == server_auth::Role::Admin;
+    let user = authn.user.id.as_str().to_owned();
+    if !matches!(
+        task_routes::code_flag(app, &user, admin).await,
+        Some(Facts::Front)
+    ) {
+        return None;
+    }
+    let body = wtf16::parse(&String::from_utf8_lossy(bytes)).ok()?;
+    let project_id = body.get("projectId").as_str()?.to_string();
+    let failed = || {
+        cowork_answer(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            JValue::obj([("error", JValue::Str(COWORK_FAILED.into()))]),
+        )
+    };
+    let record = {
+        let (data_dir, user, id) = (data_dir.clone(), user.clone(), project_id.clone());
+        let switch = app.config.rust_projects;
+        tokio::task::spawn_blocking(move || {
+            task_routes::project_record(&data_dir, &user, switch, &id)
+        })
+        .await
+    };
+    let record = match record {
+        Ok(Ok(Some(r))) => r,
+        Ok(Ok(None)) => {
+            return Some(cowork_answer(
+                StatusCode::NOT_FOUND,
+                JValue::obj([("error", JValue::Str("project not found".into()))]),
+            ))
+        }
+        Ok(Err(())) | Err(_) => return Some(failed()),
+    };
+    let Some(dir) = server_projects::store::user_dir(&data_dir, &user)
+        .ok()
+        .and_then(|d| d.to_str().map(str::to_string))
+    else {
+        return Some(failed());
+    };
+    let start_body = cowork_body(&body);
+    Some(
+        match start(app, service(app), dir, user, project_id, record, start_body).await {
+            Some(Ok(task)) => answer(
+                StatusCode::ACCEPTED,
+                &JValue::obj([("mode", JValue::Str("cowork".into())), ("task", task)]),
+            ),
+            Some(Err(e)) => cowork_refused(&e),
+            None => failed(),
+        },
+    )
+}
+
+/// index.cjs's `{ repository: body.repository, prompt: body.message }`: both as sent (absent stays
+/// absent), every other field of the chat body dropped.
+pub fn cowork_body(body: &JValue) -> JValue {
+    JValue::obj([
+        ("repository", body.get("repository").clone()),
+        ("prompt", body.get("message").clone()),
+    ])
 }
 
 #[cfg(test)]

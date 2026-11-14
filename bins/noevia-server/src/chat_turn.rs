@@ -17,7 +17,7 @@
 //!    body cap (413), JSON and the object (400), the request shape (400), Cowork (403/409) and the
 //!    Diary add-on (404).
 //! 4. The request, its body as read, to `/internal/chat/turn` (a Cowork start to
-//!    `/internal/chat/cowork`) with the per-start secret, the signed-in user and the admission lease,
+//!    `/internal/chat/cowork`, unless the front owns Code: code_routes.rs `cowork` answers it) with the per-start secret, the signed-in user and the admission lease,
 //!    which covers Core's turn so that it does not enter the gate again (legacy_proxy.rs `relay`): the
 //!    client's headers and credentials ride along, Core authenticates them again and must find the
 //!    same user.
@@ -143,6 +143,16 @@ pub async fn serve(app: &Arc<App>, conn: Conn, req: Request<Body>, path: String)
         chat_edge::Verdict::Cowork => chat_edge::COWORK_PATH,
         chat_edge::Verdict::Refuse(status, text) => return reply::json_text(status, text, true),
     };
+    // Track R7 leftover (council p1): with NOEVIA_CODE_EXECUTOR=rust and core saying the front owns
+    // Code, the Cowork start is the front's own Code service's (code_routes.rs `cowork`); otherwise
+    // it goes to Core as before. The start runs to its end under the gate (a task it made must not
+    // be answered as lost), then the gate is given back: the task holds its own lease.
+    if target == chat_edge::COWORK_PATH {
+        if let Some(answer) = crate::code_routes::cowork(app, &authn, &bytes).await {
+            lease.release().await;
+            return answer;
+        }
+    }
     // Track R8: an account the native executor runs (chat_native.rs; NOEVIA_CHAT_EXECUTOR, off by default).
     let native = target == TURN_PATH && crate::chat_native::wanted(app, &authn.user.id);
     crate::chat_native::strip_client_header(&mut parts.headers);
