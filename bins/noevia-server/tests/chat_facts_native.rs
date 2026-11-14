@@ -92,11 +92,17 @@ async fn context_listener(f: &Front, dir: &std::path::Path, start: &str) -> std:
         start_id: start.into(),
     };
     let context = f.app.feature_context.clone();
-    assert!(context.is_some(), "NOEVIA_START_ID gives the front a feature context");
+    assert!(
+        context.is_some(),
+        "NOEVIA_START_ID gives the front a feature context"
+    );
     tokio::spawn(async move {
-        axum::serve(listener, noevia_server::project_store::router_with_context(store, context))
-            .await
-            .unwrap()
+        axum::serve(
+            listener,
+            noevia_server::project_store::router_with_context(store, context),
+        )
+        .await
+        .unwrap()
     });
     addr
 }
