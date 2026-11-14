@@ -524,7 +524,10 @@ fn replay_log_exchange(set: &str, native: bool) -> (usize, usize, usize) {
             let replayed = before["applied"] == 0
                 && (after["applied"] == 1 || after["attempts"].as_i64().unwrap_or(0) > 0);
             if replayed {
-                assert_eq!(before["kind"], "exchange", "{name}: only exchange rows recorded");
+                assert_eq!(
+                    before["kind"], "exchange",
+                    "{name}: only exchange rows recorded"
+                );
                 let p: Value = serde_json::from_str(before["payload"].as_str().unwrap()).unwrap();
                 want_dirty.push(p["document"].as_str().unwrap().to_string());
             }
