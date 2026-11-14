@@ -359,6 +359,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "boot-schema"
+version = "0.1.0"
+dependencies = [
+ "rusqlite",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "url",
+ "zeroize",
+]
+
+[[package]]
 name = "brotli"
 version = "8.0.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2336,6 +2348,7 @@ dependencies = [
  "autotune-runner",
  "axum",
  "base64 0.22.1",
+ "boot-schema",
  "brotli",
  "bytes",
  "chat-mirror-sched",
@@ -3761,6 +3774,7 @@ dependencies = [
  "icu_collator",
  "icu_locale",
  "indexmap",
+ "js-json",
  "proptest",
  "rustix",
  "serde",
