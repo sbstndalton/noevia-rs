@@ -681,6 +681,24 @@ pub(crate) struct EngineBody {
 }
 
 impl FrontHost {
+    /// Core counts a call the front answered (recordToolUse) before the answer goes on, as its bridge
+    /// counts a call it runs: the usage store keeps one writer.
+    async fn count_tool_use(&self, name: &str, what: &str) {
+        let counted = self
+            .core_full(
+                "/internal/chat/native/tool-used",
+                &js::obj([
+                    ("user", js::s(self.user.clone())),
+                    ("name", js::s(name.to_string())),
+                ]),
+                BRIDGE_TIMEOUT,
+            )
+            .await;
+        if !matches!(counted, Some((204, _))) {
+            eprintln!("chat native: {what} the front answered was not counted");
+        }
+    }
+
     fn observe(&self, event: &JValue, left: bool) {
         if let Ok(mut s) = self.saving.lock() {
             s.observe(event, left);
@@ -1351,6 +1369,25 @@ impl Host for FrontHost {
     }
 
     async fn execute_tool(&self, run: &ToolRun) -> Ran {
+        // Council p3: core's refusals before any executor (not offered, arguments not JSON or not an
+        // object) answered here when NOEVIA_RUST_TOOL_DISPATCH is on (tool_dispatch_front.rs); core still
+        // counts them, as its bridge does.
+        if crate::tool_dispatch_front::enabled() {
+            let (data, user, call) = (self.data_dir.clone(), self.user.clone(), run.clone());
+            let native = tokio::task::spawn_blocking(move || {
+                crate::tool_dispatch_front::answer(&data, &user, &call, |u| {
+                    crate::project_file_read::account_active(&data, u)
+                })
+            });
+            if let Ok(Some((text, failed))) = native.await {
+                self.count_tool_use(&run.name, "a refused tool call").await;
+                return Ran::Done {
+                    text,
+                    failed,
+                    not_run: false,
+                };
+            }
+        }
         // Track R13: read_project_file answered here when NOEVIA_RUST_READ_FILE is on and the call is one
         // the port answers as core would (project_file_read.rs); core still counts it.
         if crate::project_file_read::enabled() && run.name == crate::project_file_read::NAME {
@@ -1361,22 +1398,7 @@ impl Host for FrontHost {
                 })
             });
             if let Ok(Some((text, failed))) = native.await {
-                // Core counts it (recordToolUse) before the answer goes on, as its bridge counts a call it runs.
-                let counted = self
-                    .core_full(
-                        "/internal/chat/native/tool-used",
-                        &js::obj([
-                            ("user", js::s(self.user.clone())),
-                            ("name", js::s(run.name.clone())),
-                        ]),
-                        BRIDGE_TIMEOUT,
-                    )
-                    .await;
-                if !matches!(counted, Some((204, _))) {
-                    eprintln!(
-                        "chat native: a read_project_file the front answered was not counted"
-                    );
-                }
+                self.count_tool_use(&run.name, "a read_project_file").await;
                 return Ran::Done {
                     text,
                     failed,

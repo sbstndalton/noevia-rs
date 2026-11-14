@@ -78,46 +78,37 @@ pub fn account_active(data_dir: &Path, user: &str) -> bool {
         .is_some()
 }
 
-/// The tool's text and failure flag when the front answers this call; `None` leaves it to core.
-/// `active(user)` is core's account check ([`account_active`]).
-pub fn answer(
+/// Whether core's execute bridge would take this call's body as it is and run it with no grant and no edit
+/// target (its 400s, a grant's redeem and an approved edit stay core's).
+pub(crate) fn bridge_takes(run: &ToolRun) -> bool {
+    let listed = |v: &str| wtf16::len(v) <= ID_CAP;
+    run.allowed.len() <= LIST_CAP
+        && run.allowed.iter().all(|a| listed(a))
+        && run.routes.len() <= LIST_CAP
+        && run.routes.iter().all(|(a, b)| listed(a) && listed(b))
+        && run.grant.is_none()
+        && run.edit_target.is_none()
+        && body_fits(run)
+        && within(&run.exchange_key, ID_CAP)
+        && !run
+            .chat_key
+            .as_deref()
+            .is_some_and(|k| !within(k, CHAT_ID_CAP))
+        && !run
+            .project_id
+            .as_deref()
+            .is_some_and(|p| !within(p, ID_CAP))
+}
+
+/// core's bridge scope for the call: the account active (`asUser`, [`account_active`]), and the call's
+/// project found as stored now (`getProject`, with its self-heal saved as core saves it). `None` = core
+/// answers it (its 404).
+pub(crate) fn bridge_scope(
     data_dir: &Path,
     user: &str,
     run: &ToolRun,
     active: impl FnOnce(&str) -> bool,
-) -> Option<(String, bool)> {
-    let listed = |v: &str| wtf16::len(v) <= ID_CAP;
-    if run.name != NAME
-        || !run.allowed.iter().any(|a| a == NAME)
-        || run.allowed.len() > LIST_CAP
-        || !run.allowed.iter().all(|a| listed(a))
-        || run.routes.len() > LIST_CAP
-        || !run.routes.iter().all(|(a, b)| listed(a) && listed(b))
-        || run.routes.iter().any(|(tool, _)| tool == NAME)
-        || run.grant.is_some()
-        || run.edit_target.is_some()
-        || !body_fits(run)
-        || !within(&run.exchange_key, ID_CAP)
-        || run
-            .chat_key
-            .as_deref()
-            .is_some_and(|k| !within(k, CHAT_ID_CAP))
-        || run
-            .project_id
-            .as_deref()
-            .is_some_and(|p| !within(p, ID_CAP))
-    {
-        return None;
-    }
-    // runToolCall: `rawArgs ? JSON.parse(rawArgs) : {}`, an object or core's own error.
-    let args = if run.args.is_empty() {
-        JValue::Obj(Vec::new())
-    } else {
-        wtf16::parse(&run.args).ok()?
-    };
-    if !args.is_object() {
-        return None;
-    }
+) -> Option<(std::path::PathBuf, Option<JValue>)> {
     if !active(user) {
         return None;
     }
@@ -141,6 +132,34 @@ pub fn answer(
     if !dir.is_dir() {
         return None;
     }
+    Some((dir, project))
+}
+
+/// The tool's text and failure flag when the front answers this call; `None` leaves it to core.
+/// `active(user)` is core's account check ([`account_active`]).
+pub fn answer(
+    data_dir: &Path,
+    user: &str,
+    run: &ToolRun,
+    active: impl FnOnce(&str) -> bool,
+) -> Option<(String, bool)> {
+    if run.name != NAME
+        || !run.allowed.iter().any(|a| a == NAME)
+        || run.routes.iter().any(|(tool, _)| tool == NAME)
+        || !bridge_takes(run)
+    {
+        return None;
+    }
+    // runToolCall: `rawArgs ? JSON.parse(rawArgs) : {}`, an object or core's own error.
+    let args = if run.args.is_empty() {
+        JValue::Obj(Vec::new())
+    } else {
+        wtf16::parse(&run.args).ok()?
+    };
+    if !args.is_object() {
+        return None;
+    }
+    let (dir, project) = bridge_scope(data_dir, user, run, active)?;
     match read_project_file(&dir, project.as_ref(), &args) {
         Outcome::Done(r) => Some((r.text, r.failed)),
         Outcome::Core => None,
