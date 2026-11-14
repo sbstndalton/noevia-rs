@@ -20,7 +20,8 @@ const { route } = require(path.resolve(file));
 const sha256 = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex');
 
 let seed = 0x2f6e2b1;
-const rand = () => { seed = (seed * 1103515245 + 12345) >>> 0; return seed / 0x100000000; };
+// 32-bit LCG kept exact with Math.imul (a plain multiply passes 2^53 and loses low bits).
+const rand = () => { seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0; return seed / 0x100000000; };
 const pick = (xs) => xs[Math.floor(rand() * xs.length)];
 const IDS = ['a', 'A', 'b', 'b-x', 'b_x', 'bx', 'B-x', 'box2', 'box10', '2', '10', 'files', 'files-mirror', 'web.search'];
 const TOOLS = ['t_read', 't_write', 't_list', 't_find', 't_x', 't_y', 't_z'];

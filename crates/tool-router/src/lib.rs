@@ -21,7 +21,8 @@
 //! Named difference: `localeCompare` (ICU root collation) is reproduced for ASCII ids (punctuation,
 //! then digits, then letters case-insensitively with lower case first on a tie); ids with other
 //! characters fall back to code-point order after the ASCII rule. Ties need two boxes with exactly
-//! the same score, so this only orders equal scores.
+//! the same score, so this only orders equal scores. An id `__proto__` gets a reason here; JS drops
+//! that assignment silently (manifest ids never take that name).
 use js_json::JValue;
 use std::cmp::Ordering;
 use std::collections::{HashMap, HashSet};
@@ -340,7 +341,7 @@ pub fn route(input: &Input<'_>) -> Routed {
     let mut ranked: Vec<(&str, f64)> = input
         .boxes
         .iter()
-        .filter(|b| eligible(*b) && !chosen.has(&b.id))
+        .filter(|b| eligible(b) && !chosen.has(&b.id))
         .filter_map(|b| {
             b.embedding
                 .as_deref()
@@ -443,7 +444,8 @@ mod tests {
         assert_eq!(slice_end(5, -1.0), 4);
         assert_eq!(slice_end(5, -9.0), 0);
         assert_eq!(slice_end(5, 2.9), 2);
-        assert_eq!(slice_end(5, -0.5), 5);
+        // -0.5 truncates to -0: the end is 0, nothing kept (as JS).
+        assert_eq!(slice_end(5, -0.5), 0);
         assert_eq!(slice_end(5, f64::NAN), 0);
         assert_eq!(slice_end(5, f64::INFINITY), 5);
     }
