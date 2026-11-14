@@ -59,7 +59,8 @@ pub struct ShadowTurn<'a> {
     pub titles: bool,
     pub workspace: bool,
     /// The settings rows chat.cjs reads for the effort and the sampling presets, when the caller
-    /// could read them; without them those three fields are not compared.
+    /// could read them; without them those three fields are not compared, and a turn whose other
+    /// fields are core's is `skip settings`, not a match.
     pub settings: Option<Settings<'a>>,
     /// The history replay's `knownTool` and `carryOrphanTool` over the server's toolboxes, when the
     /// caller has them; without them a history that asks either is skipped.
@@ -321,6 +322,10 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
                 });
             }
         }
+    }
+    if ours.len() == core.len() && t.settings.is_none() {
+        // Everything compared is core's, but the effort and sampling fields could not be: not a match.
+        return Verdict::Skip("settings");
     }
     if ours.len() != core.len() {
         return Verdict::Diff(Diff {
