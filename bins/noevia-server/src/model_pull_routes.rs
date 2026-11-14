@@ -11,7 +11,8 @@
 //! and each file's tensor directory, a byte prefix of at most 16 MiB
 //! (`model_pull::artifact`), with one process-wide cache and running set ([`State`], locked only
 //! to begin and to finish a check, never while it fetches). A request for a check that is
-//! running waits for that check's answer, as core shares its promise.
+//! running waits for that check's answer (crates/model-pull `check_shared`), as core shares its
+//! promise; if that run panics, the waiter gets core's answer to a rejection (500).
 //!
 //! # Named differences (fail closed; draft advisory GHSA-2pcf-gc4m-hr5f)
 //!
@@ -50,11 +51,9 @@ use axum::response::IntoResponse;
 use js_json::{wtf16, JValue};
 use model_pull::artifact::{self, Artifacts, Checked, FetchError, Fetched, Fetcher};
 use model_pull::manager::{self, Reply, Target, Thrown};
-use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
-use tokio::sync::watch;
 
 pub const PATH: &str = "/api/models/mtp-artifact";
 /// The public hub every URL of the check and of llama.cpp's variants names.
@@ -62,9 +61,6 @@ const PUBLIC_HUB: &str = "https://huggingface.co";
 /// fetchJson's answer cap (http.cjs `DEFAULT_MAX_RESPONSE_BYTES`).
 const ANSWER_CAP: usize = 8 * 1024 * 1024;
 const MAX_REDIRECTS: usize = 20;
-/// How long a request waits for the running check it joined (core: as long as the promise takes;
-/// a check is bounded by 10 s + 4 x 20 s of fetches).
-const JOIN_WAIT: Duration = Duration::from_secs(120);
 
 /// The hub host rule: `https`, no credentials, the default port, and a host of `huggingface.co`
 /// or `hf.co` or a subdomain of either (`cdn-lfs.huggingface.co`, `cas-bridge.xethub.hf.co`).
@@ -133,16 +129,11 @@ impl Hub {
     }
 }
 
-fn lock<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
-    m.lock().unwrap_or_else(PoisonError::into_inner)
-}
-
-/// The process-wide state of the check: core's module state (cache and running set), the
-/// answers running checks will give their joiners, and the two permits.
+/// The process-wide state of the check: core's module state (cache, running checks and the
+/// answers their joiners wait for) and the two permits.
 pub struct State {
     hub: Hub,
     artifacts: Mutex<Artifacts>,
-    joins: Mutex<HashMap<String, watch::Receiver<Option<JValue>>>>,
     permits: Arc<tokio::sync::Semaphore>,
     hub_client: Option<reqwest::Client>,
     plain_client: Option<reqwest::Client>,
@@ -181,7 +172,6 @@ impl State {
         State {
             hub,
             artifacts: Mutex::new(Artifacts::new()),
-            joins: Mutex::new(HashMap::new()),
             permits: Arc::new(tokio::sync::Semaphore::new(artifact::RUNNING)),
             hub_client,
             plain_client,
@@ -368,32 +358,8 @@ fn manager_config(kind: server_stats::Kind) -> manager::Config {
     }
 }
 
-fn key_text(key: &artifact::Key) -> String {
-    let mut parts = vec![JValue::from(key.repo.as_str())];
-    parts.extend(key.files.iter().map(|f| JValue::from(f.as_str())));
-    wtf16::stringify(&JValue::Arr(parts)).unwrap_or_default()
-}
-
-/// Removes a finished (or abandoned) run's join entry, if it is still this run's.
-struct JoinEntry<'a> {
-    state: &'a State,
-    key: String,
-    rx: watch::Receiver<Option<JValue>>,
-}
-
-impl Drop for JoinEntry<'_> {
-    fn drop(&mut self) {
-        let mut joins = lock(&self.state.joins);
-        if joins
-            .get(&self.key)
-            .is_some_and(|r| r.same_channel(&self.rx))
-        {
-            joins.remove(&self.key);
-        }
-    }
-}
-
-/// The variants lookup and the check, on a blocking thread.
+/// The variants lookup and the check, on a blocking thread (a joiner waits here for the running
+/// check's answer).
 fn check(
     state: Arc<State>,
     rt: tokio::runtime::Handle,
@@ -402,50 +368,17 @@ fn check(
 ) -> (u16, JValue) {
     let mut host = FrontHub {
         state: Arc::clone(&state),
-        rt: rt.clone(),
+        rt,
     };
     let (repo, files) = match model_pull::mtp_selection(config, query, &mut host) {
         Ok(selected) => selected,
         Err(model_pull::Outcome::Answer { status, body }) => return (status, body),
         Err(_) => return internal(),
     };
-    let joins = lock(&state.joins);
-    match artifact::begin(&state.artifacts, &repo, &files, identity::now_ms()) {
-        Err(Checked::Answer(body)) => (200, body),
-        Err(Checked::Join(key)) => {
-            let rx = joins.get(&key_text(&key)).cloned();
-            drop(joins);
-            let Some(mut rx) = rx else {
-                return internal();
-            };
-            let waited = rt.block_on(async {
-                tokio::time::timeout(JOIN_WAIT, rx.wait_for(Option::is_some))
-                    .await
-                    .ok()
-                    .and_then(Result::ok)
-                    .and_then(|v| v.clone())
-            });
-            waited.map_or_else(internal, |body| (200, body))
-        }
-        Ok(running) => {
-            let Some(key) = running.key().cloned() else {
-                return internal();
-            };
-            let (tx, rx) = watch::channel(None);
-            let mut joins = joins;
-            let text = key_text(&key);
-            joins.insert(text.clone(), rx.clone());
-            drop(joins);
-            let _entry = JoinEntry {
-                state: &state,
-                key: text,
-                rx,
-            };
-            let ran = artifact::run(&key, &mut host);
-            let body = running.finish(ran, identity::now_ms());
-            let _ = tx.send(Some(body.clone()));
-            (200, body)
-        }
+    match artifact::check_shared(&state.artifacts, &repo, &files, &mut host) {
+        Checked::Answer(body) => (200, body),
+        // The joined run panicked or did not end in time: core's answer to a rejected promise.
+        Checked::Failed(_) => internal(),
     }
 }
 

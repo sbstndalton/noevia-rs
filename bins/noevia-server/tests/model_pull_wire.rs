@@ -608,3 +608,29 @@ async fn a_redirect_off_the_hub_is_refused_and_one_on_it_followed() {
         wtf16::stringify(&body).unwrap()
     );
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_second_request_for_a_running_check_gets_its_answer() {
+    let dir = tempfile::tempdir().unwrap();
+    let (node_port, _) = node().await;
+    let (elsewhere, _) = stub(|_| json(200, "{}")).await;
+    let (hub, seen) = hub_for(1500, elsewhere).await;
+    let (addr, _) = front(dir.path(), node_port, hub, true).await;
+    let first =
+        tokio::spawn(async move { call(addr, "GET", &query("qa-present"), ADMIN, "").await });
+    tokio::time::sleep(Duration::from_millis(500)).await;
+    let (status, joined) = call(addr, "GET", &query("qa-present"), ADMIN, "").await;
+    let (first_status, first) = first.await.unwrap();
+    assert_eq!((status, first_status), (200, 200));
+    assert_eq!(first.get("status").as_str(), Some("present"));
+    assert_eq!(
+        joined, first,
+        "the running check's answer, checkedAt included"
+    );
+    let heads = seen.lock().unwrap().clone();
+    let revisions = heads
+        .iter()
+        .filter(|h| h.starts_with("GET /api/models/qa-org/qa-present HTTP"))
+        .count();
+    assert_eq!(revisions, 1, "one check ran: {heads:?}");
+}
