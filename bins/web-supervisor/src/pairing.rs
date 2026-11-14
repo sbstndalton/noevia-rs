@@ -32,7 +32,9 @@ pub struct Features {
 
 impl Features {
     pub fn parse(stdout: &str) -> Self {
-        Self { lines: stdout.split('\n').map(str::to_owned).collect() }
+        Self {
+            lines: stdout.split('\n').map(str::to_owned).collect(),
+        }
     }
 
     /// `grep -qx`: one whole line equals the capability.
@@ -80,11 +82,14 @@ fn requires(core: &dyn CoreView, rel: &str, module: &str) -> bool {
 /// `grep -vE '^[[:space:]]*(//|/\*|\*)'` then `grep -qF "require('./<module>')"`: the require must sit
 /// on a line that does not start as a comment.
 fn code_requires(core: &dyn CoreView, rel: &str, module: &str) -> bool {
-    let Some(text) = core.read(rel) else { return false };
+    let Some(text) = core.read(rel) else {
+        return false;
+    };
     let needle = format!("require('./{module}')");
     text.split('\n').any(|line| {
         let t = line.trim_start_matches([' ', '\t', '\x0b', '\x0c', '\r']);
-        !(t.starts_with("//") || t.starts_with("/*") || t.starts_with('*')) && line.contains(&needle)
+        !(t.starts_with("//") || t.starts_with("/*") || t.starts_with('*'))
+            && line.contains(&needle)
     })
 }
 
@@ -98,8 +103,16 @@ struct RequirePair {
 /// The groups the script checks one by one before its PAIRS table, in its order, with its wording
 /// ("<label> mismatch between noevia-server and noevia-core").
 const EARLY_PAIRS: &[RequirePair] = &[
-    RequirePair { module: "rust-diary.cjs", capability: "rust-diary", label: "Diary route ownership" },
-    RequirePair { module: "rust-models.cjs", capability: "rust-model-reads", label: "model read route ownership" },
+    RequirePair {
+        module: "rust-diary.cjs",
+        capability: "rust-diary",
+        label: "Diary route ownership",
+    },
+    RequirePair {
+        module: "rust-models.cjs",
+        capability: "rust-model-reads",
+        label: "model read route ownership",
+    },
     RequirePair {
         module: "rust-project-reads.cjs",
         capability: "rust-project-reads",
@@ -138,51 +151,187 @@ const MID_PAIRS: &[RequirePair] = &[
 /// The script's PAIRS heredoc: "<label> route ownership mismatch …".
 pub const ROUTE_PAIRS: &[(&str, &str, &str)] = &[
     ("rust-public-pages.cjs", "rust-public-pages", "public page"),
-    ("rust-plugin-directory.cjs", "rust-plugin-directory", "plugin directory"),
-    ("rust-decision-settings.cjs", "rust-decision-settings", "decision settings"),
-    ("rust-storage-integrations.cjs", "rust-storage-integrations", "storage integration"),
-    ("rust-vault-mirror-preferences.cjs", "rust-vault-mirror-preferences", "vault mirror preference"),
-    ("rust-storage-connection.cjs", "rust-storage-connection", "storage connection"),
-    ("rust-provider-test.cjs", "rust-provider-test", "provider test"),
-    ("rust-chatgpt-oauth.cjs", "rust-chatgpt-oauth", "ChatGPT sign-in"),
-    ("rust-provider-models.cjs", "rust-provider-models", "provider model list"),
+    (
+        "rust-plugin-directory.cjs",
+        "rust-plugin-directory",
+        "plugin directory",
+    ),
+    (
+        "rust-decision-settings.cjs",
+        "rust-decision-settings",
+        "decision settings",
+    ),
+    (
+        "rust-storage-integrations.cjs",
+        "rust-storage-integrations",
+        "storage integration",
+    ),
+    (
+        "rust-vault-mirror-preferences.cjs",
+        "rust-vault-mirror-preferences",
+        "vault mirror preference",
+    ),
+    (
+        "rust-storage-connection.cjs",
+        "rust-storage-connection",
+        "storage connection",
+    ),
+    (
+        "rust-provider-test.cjs",
+        "rust-provider-test",
+        "provider test",
+    ),
+    (
+        "rust-chatgpt-oauth.cjs",
+        "rust-chatgpt-oauth",
+        "ChatGPT sign-in",
+    ),
+    (
+        "rust-provider-models.cjs",
+        "rust-provider-models",
+        "provider model list",
+    ),
     ("rust-providers.cjs", "rust-providers", "provider registry"),
-    ("rust-providers-reseal.cjs", "rust-providers-reseal", "provider key reseal"),
+    (
+        "rust-providers-reseal.cjs",
+        "rust-providers-reseal",
+        "provider key reseal",
+    ),
     ("rust-google-drive.cjs", "rust-google-drive", "Google Drive"),
-    ("rust-offsite-backup.cjs", "rust-offsite-backup", "off-site backup"),
-    ("rust-mcp-credentials.cjs", "rust-mcp-credentials", "MCP credential"),
+    (
+        "rust-offsite-backup.cjs",
+        "rust-offsite-backup",
+        "off-site backup",
+    ),
+    (
+        "rust-mcp-credentials.cjs",
+        "rust-mcp-credentials",
+        "MCP credential",
+    ),
     ("rust-health.cjs", "rust-health", "health check"),
     ("rust-auto-roles.cjs", "rust-auto-roles", "auto-roles read"),
     ("rust-workspace.cjs", "rust-workspace", "workspace list"),
     ("rust-chat-search.cjs", "rust-chat-search", "chat search"),
     ("rust-chat-export.cjs", "rust-chat-export", "chat download"),
-    ("rust-diary-routes.cjs", "rust-diary-routes", "Diary connector and recovery"),
-    ("rust-diary-local-exchange.cjs", "rust-diary-local-exchange", "Diary local exchange"),
-    ("rust-mcp-directory.cjs", "rust-mcp-directory", "MCP directory"),
-    ("rust-toolbox-picker.cjs", "rust-toolbox-picker", "toolbox picker"),
-    ("rust-toolboxes-permitted.cjs", "rust-toolboxes-permitted", "permitted tools"),
+    (
+        "rust-diary-routes.cjs",
+        "rust-diary-routes",
+        "Diary connector and recovery",
+    ),
+    (
+        "rust-diary-local-exchange.cjs",
+        "rust-diary-local-exchange",
+        "Diary local exchange",
+    ),
+    (
+        "rust-mcp-directory.cjs",
+        "rust-mcp-directory",
+        "MCP directory",
+    ),
+    (
+        "rust-toolbox-picker.cjs",
+        "rust-toolbox-picker",
+        "toolbox picker",
+    ),
+    (
+        "rust-toolboxes-permitted.cjs",
+        "rust-toolboxes-permitted",
+        "permitted tools",
+    ),
     ("rust-connectors.cjs", "rust-connectors", "connectors"),
-    ("rust-project-config.cjs", "rust-project-config", "project configuration"),
-    ("rust-admin-users.cjs", "rust-admin-users", "account deletion"),
+    (
+        "rust-project-config.cjs",
+        "rust-project-config",
+        "project configuration",
+    ),
+    (
+        "rust-admin-users.cjs",
+        "rust-admin-users",
+        "account deletion",
+    ),
     ("rust-research.cjs", "rust-research", "deep research"),
     ("rust-task-reads.cjs", "rust-task-reads", "task read"),
-    ("rust-autotune-read.cjs", "rust-autotune-read", "auto-tune status GET"),
-    ("rust-idle-unload-read.cjs", "rust-idle-unload-read", "idle unload read"),
-    ("rust-model-assignments.cjs", "rust-model-assignments", "model assignments read"),
-    ("rust-model-downloads-read.cjs", "rust-model-downloads-read", "model download GET"),
+    (
+        "rust-autotune-read.cjs",
+        "rust-autotune-read",
+        "auto-tune status GET",
+    ),
+    (
+        "rust-idle-unload-read.cjs",
+        "rust-idle-unload-read",
+        "idle unload read",
+    ),
+    (
+        "rust-model-assignments.cjs",
+        "rust-model-assignments",
+        "model assignments read",
+    ),
+    (
+        "rust-model-downloads-read.cjs",
+        "rust-model-downloads-read",
+        "model download GET",
+    ),
     ("rust-preset-read.cjs", "rust-preset-read", "preset GET"),
-    ("rust-autotune-resume.cjs", "rust-autotune-resume", "auto-tune resume"),
-    ("rust-autotune-cancel.cjs", "rust-autotune-cancel", "auto-tune cancellation"),
-    ("rust-autotune-clear.cjs", "rust-autotune-clear", "autotune dismissal"),
-    ("rust-model-manager-scan.cjs", "rust-model-manager-scan", "model folder scan read"),
-    ("rust-calibration-cancel.cjs", "rust-calibration-cancel", "calibration cancellation"),
-    ("rust-autotune-untuned.cjs", "rust-autotune-untuned", "untuned discovery"),
-    ("rust-calibration-routes.cjs", "rust-calibration-routes", "calibration start/read"),
-    ("rust-autotune-settings.cjs", "rust-autotune-settings", "auto-tune settings"),
-    ("rust-tool-approvals.cjs", "rust-tool-approvals", "tool approval decision"),
-    ("rust-model-evidence-recheck.cjs", "rust-model-evidence-recheck", "model evidence recheck"),
-    ("rust-model-state-reads.cjs", "rust-model-state-reads", "model state read"),
-    ("rust-chat-framing-suggest.cjs", "rust-chat-framing-suggest", "framing suggestion"),
+    (
+        "rust-autotune-resume.cjs",
+        "rust-autotune-resume",
+        "auto-tune resume",
+    ),
+    (
+        "rust-autotune-cancel.cjs",
+        "rust-autotune-cancel",
+        "auto-tune cancellation",
+    ),
+    (
+        "rust-autotune-clear.cjs",
+        "rust-autotune-clear",
+        "autotune dismissal",
+    ),
+    (
+        "rust-model-manager-scan.cjs",
+        "rust-model-manager-scan",
+        "model folder scan read",
+    ),
+    (
+        "rust-calibration-cancel.cjs",
+        "rust-calibration-cancel",
+        "calibration cancellation",
+    ),
+    (
+        "rust-autotune-untuned.cjs",
+        "rust-autotune-untuned",
+        "untuned discovery",
+    ),
+    (
+        "rust-calibration-routes.cjs",
+        "rust-calibration-routes",
+        "calibration start/read",
+    ),
+    (
+        "rust-autotune-settings.cjs",
+        "rust-autotune-settings",
+        "auto-tune settings",
+    ),
+    (
+        "rust-tool-approvals.cjs",
+        "rust-tool-approvals",
+        "tool approval decision",
+    ),
+    (
+        "rust-model-evidence-recheck.cjs",
+        "rust-model-evidence-recheck",
+        "model evidence recheck",
+    ),
+    (
+        "rust-model-state-reads.cjs",
+        "rust-model-state-reads",
+        "model state read",
+    ),
+    (
+        "rust-chat-framing-suggest.cjs",
+        "rust-chat-framing-suggest",
+        "framing suggestion",
+    ),
 ];
 
 const INDEX: &str = "server/index.cjs";
@@ -300,27 +449,55 @@ pub fn check(
     if !features.has("rust-auth") {
         return refuse("this noevia-server has no rust-auth; Node no longer answers sign-in (sbstndalton/noevia#1071), so update the image");
     }
-    let missing: Vec<&str> = FRONT_ROUTE_FEATURES.iter().copied().filter(|f| !features.has(f)).collect();
+    let missing: Vec<&str> = FRONT_ROUTE_FEATURES
+        .iter()
+        .copied()
+        .filter(|f| !features.has(f))
+        .collect();
     if !missing.is_empty() {
         let list: String = missing.iter().map(|f| format!(" {f}")).collect();
         return refuse(format!(
             "this noevia-server lacks the front route feature(s):{list}; Node no longer answers those routes (sbstndalton/noevia#1071), so update the image"
         ));
     }
-    pair(contains(core, INDEX, ".createReadOnlyFeatures("), features.has("rust-feature-owner"), "feature ownership")?;
+    pair(
+        contains(core, INDEX, ".createReadOnlyFeatures("),
+        features.has("rust-feature-owner"),
+        "feature ownership",
+    )?;
     for p in EARLY_PAIRS {
-        pair(requires(core, INDEX, p.module), features.has(p.capability), p.label)?;
+        pair(
+            requires(core, INDEX, p.module),
+            features.has(p.capability),
+            p.label,
+        )?;
     }
     // Round 3: either index.cjs requires the storage split, or it loads the outbox view that does.
     let storage_core = code_requires(core, INDEX, "rust-project-storage.cjs")
         || (code_requires(core, INDEX, "rust-index-outbox.cjs")
-            && code_requires(core, "server/rust-index-outbox.cjs", "rust-project-storage.cjs"));
-    pair(storage_core, features.has("rust-project-storage"), "project storage write ownership")?;
+            && code_requires(
+                core,
+                "server/rust-index-outbox.cjs",
+                "rust-project-storage.cjs",
+            ));
+    pair(
+        storage_core,
+        features.has("rust-project-storage"),
+        "project storage write ownership",
+    )?;
     for p in MID_PAIRS {
-        pair(requires(core, INDEX, p.module), features.has(p.capability), p.label)?;
+        pair(
+            requires(core, INDEX, p.module),
+            features.has(p.capability),
+            p.label,
+        )?;
     }
     for (module, capability, label) in ROUTE_PAIRS {
-        pair(requires(core, INDEX, module), features.has(capability), &format!("{label} route ownership"))?;
+        pair(
+            requires(core, INDEX, module),
+            features.has(capability),
+            &format!("{label} route ownership"),
+        )?;
     }
     // #1638: Core's native-owner clients export their marker (loaded from routes, not index.cjs).
     pair(
@@ -337,13 +514,24 @@ pub fn check(
         probe_file(core, AUTO_ROLES_PROBE, "server/rust-auto-roles-write.cjs")
     };
     let mut auto_front = "none";
-    for line in features.lines().filter(|l| l.contains("rust-auto-roles-write")) {
-        auto_front = if line == "rust-auto-roles-write" && auto_front == "none" { "rust" } else { "invalid" };
+    for line in features
+        .lines()
+        .filter(|l| l.contains("rust-auto-roles-write"))
+    {
+        auto_front = if line == "rust-auto-roles-write" && auto_front == "none" {
+            "rust"
+        } else {
+            "invalid"
+        };
     }
     if auto_core == "invalid" || auto_front == "invalid" || auto_core != auto_front {
         return refuse("auto-roles write route ownership mismatch or ambiguous capability marker; update the paired image");
     }
-    pair(requires(core, INDEX, "rust-model-sizing.cjs"), features.has("rust-model-sizing"), "model sizing route ownership")?;
+    pair(
+        requires(core, INDEX, "rust-model-sizing.cjs"),
+        features.has("rust-model-sizing"),
+        "model sizing route ownership",
+    )?;
     pair(
         requires(core, INDEX, "rust-model-maintenance.cjs"),
         features.has("rust-model-maintenance"),
@@ -355,7 +543,9 @@ pub fn check(
         return refuse("invalid embedding background ownership marker");
     }
     if embedding_core && !features.has("rust-embedding-background-v1") {
-        return refuse("embedding background requires rust-embedding-background-v1; update the paired image");
+        return refuse(
+            "embedding background requires rust-embedding-background-v1; update the paired image",
+        );
     }
     let chat_mirror_core = probe(core, CHAT_MIRROR_PROBE) == "rust";
     if requires(core, INDEX, "rust-chat-mirror.cjs") && !chat_mirror_core {
@@ -372,30 +562,53 @@ pub fn check(
         }
     };
     let source_startup_core = generation("server/rust-source-startup.cjs", SOURCE_STARTUP_PROBE);
-    let source_startup_front = if features.has("rust-source-startup-v1") { "v1" } else { "none" };
+    let source_startup_front = if features.has("rust-source-startup-v1") {
+        "v1"
+    } else {
+        "none"
+    };
     if source_startup_core == "invalid" || source_startup_core != source_startup_front {
         return refuse("source startup ownership mismatch; update the paired image");
     }
     let dav_listener_core = generation("server/rust-dav-listener.cjs", DAV_LISTENER_PROBE);
-    let dav_listener_front = if features.has("rust-dav-listener-v1") { "v1" } else { "none" };
+    let dav_listener_front = if features.has("rust-dav-listener-v1") {
+        "v1"
+    } else {
+        "none"
+    };
     if dav_listener_core == "invalid" || dav_listener_core != dav_listener_front {
         return refuse("DAV listener ownership mismatch; update the paired image");
     }
     // One direction only: an older Core beside a baseline front is shared mode and starts.
-    if contains(core, "server/preset-reload.cjs", "'noevia-preset-baseline-bridge/1'")
-        && !features.has("rust-preset-baseline")
+    if contains(
+        core,
+        "server/preset-reload.cjs",
+        "'noevia-preset-baseline-bridge/1'",
+    ) && !features.has("rust-preset-baseline")
     {
         return refuse("this noevia-core asks the front for the preset reload baseline, but this noevia-server has no rust-preset-baseline; update the paired image");
     }
-    pair(probe(core, WEB_READ_PROBE) == "rust", features.has("rust-web-address-read"), "web-address GET ownership")?;
-    pair(probe(core, WEB_WRITE_PROBE) == "rust", features.has("rust-web-address-write"), "web-address POST ownership")?;
+    pair(
+        probe(core, WEB_READ_PROBE) == "rust",
+        features.has("rust-web-address-read"),
+        "web-address GET ownership",
+    )?;
+    pair(
+        probe(core, WEB_WRITE_PROBE) == "rust",
+        features.has("rust-web-address-write"),
+        "web-address POST ownership",
+    )?;
     pair(
         probe(core, DIARY_BACKUP_PROBE) == "rust",
         features.has("rust-diary-backup-worker"),
         "diary backup worker ownership",
     )?;
     let mut budget_front = "";
-    for (cap, level) in [("rust-budget-watch", "v1"), ("rust-budget-watch-v2", "v2"), ("rust-budget-watch-v3", "v3")] {
+    for (cap, level) in [
+        ("rust-budget-watch", "v1"),
+        ("rust-budget-watch-v2", "v2"),
+        ("rust-budget-watch-v3", "v3"),
+    ] {
         if features.has(cap) {
             budget_front = level;
         }
@@ -404,7 +617,10 @@ pub fn check(
         return refuse(mismatch("budget watch ownership"));
     }
     let mut calibration_front = "";
-    for (cap, level) in [("rust-calibration-worker", "v1"), ("rust-calibration-worker-v2", "v2")] {
+    for (cap, level) in [
+        ("rust-calibration-worker", "v1"),
+        ("rust-calibration-worker-v2", "v2"),
+    ] {
         if features.has(cap) {
             calibration_front = level;
         }
@@ -414,22 +630,31 @@ pub fn check(
     }
     check_source_jobs(features, core)?;
     let source_work_core = requires(core, INDEX, "rust-project-source-work.cjs");
-    pair(source_work_core, features.has("rust-project-source-work"), "project source operations ownership")?;
+    pair(
+        source_work_core,
+        features.has("rust-project-source-work"),
+        "project source operations ownership",
+    )?;
     if source_work_core {
         for worker_file in ["source-work.cjs", "folder-import.cjs", "pdf-reduce.cjs"] {
             if core.exists(&format!("server/{worker_file}")) {
                 return refuse(format!("project source operations ownership mismatch between noevia-server and noevia-core (Core still carries server/{worker_file}); update the paired image"));
             }
         }
-        let answers_worker = ["server/routes/projects.cjs", INDEX]
-            .iter()
-            .any(|rel| core.read(rel).is_some_and(|t| t.to_ascii_lowercase().contains("x-noevia-source-work")));
+        let answers_worker = ["server/routes/projects.cjs", INDEX].iter().any(|rel| {
+            core.read(rel)
+                .is_some_and(|t| t.to_ascii_lowercase().contains("x-noevia-source-work"))
+        });
         if answers_worker {
             return refuse("project source operations ownership mismatch between noevia-server and noevia-core (Core still answers the worker call); update the paired image");
         }
     }
     pair(
-        requires(core, "server/large-document-lock.cjs", "large-document-file-lock.cjs"),
+        requires(
+            core,
+            "server/large-document-lock.cjs",
+            "large-document-file-lock.cjs",
+        ),
         features.has("rust-large-document-host-lock"),
         "large-document lock",
     )?;
@@ -442,7 +667,11 @@ pub fn check(
     } else {
         None
     };
-    Ok(Paired { client_ip_confirmed, legacy_claim_bin, dav_listener_core })
+    Ok(Paired {
+        client_ip_confirmed,
+        legacy_claim_bin,
+        dav_listener_core,
+    })
 }
 
 /// Source job journals (#2191 round 6): Node's client export, the front's store, then the route owner.
@@ -455,19 +684,27 @@ fn check_source_jobs(features: &Features, core: &dyn CoreView) -> Result<(), Ref
         .is_some_and(|t| t.contains("SOURCE_JOBS_CLIENT_MARKER") || t.contains("sourceJobsFor("))
         || contains(core, "server/source-jobs.cjs", "workspace.sourceJobs");
     if declares && marker != CANONICAL {
-        return refuse("core declares a source job store client but does not export its canonical capability");
+        return refuse(
+            "core declares a source job store client but does not export its canonical capability",
+        );
     }
     if !marker.is_empty() && marker != CANONICAL {
         return refuse("unknown source job client capability");
     }
     let store = features.has("noevia-source-jobs-store/1");
     if !marker.is_empty() && !store {
-        return refuse("core source job client requires noevia-source-jobs-store/1 from this noevia-server");
+        return refuse(
+            "core source job client requires noevia-source-jobs-store/1 from this noevia-server",
+        );
     }
     if marker.is_empty() && store {
         return refuse("noevia-server source job store requires a paired core source job client");
     }
-    pair(requires(core, INDEX, "rust-source-jobs.cjs"), features.has("rust-source-jobs"), "source job ownership")
+    pair(
+        requires(core, INDEX, "rust-source-jobs.cjs"),
+        features.has("rust-source-jobs"),
+        "source job ownership",
+    )
 }
 
 #[cfg(test)]
@@ -489,7 +726,13 @@ mod tests {
             self
         }
         fn probe(mut self, module: &str, out: &str) -> Self {
-            self.probes.insert(module.to_owned(), NodeOut { ok: true, stdout: out.to_owned() });
+            self.probes.insert(
+                module.to_owned(),
+                NodeOut {
+                    ok: true,
+                    stdout: out.to_owned(),
+                },
+            );
             self
         }
     }
@@ -506,7 +749,11 @@ mod tests {
         }
         fn node(&self, script: &str, args: &[String]) -> NodeOut {
             let haystack = format!("{script} {}", args.join(" "));
-            self.probes.iter().find(|(m, _)| haystack.contains(m.as_str())).map(|(_, o)| o.clone()).unwrap_or_default()
+            self.probes
+                .iter()
+                .find(|(m, _)| haystack.contains(m.as_str()))
+                .map(|(_, o)| o.clone())
+                .unwrap_or_default()
         }
         fn has_node(&self) -> bool {
             true
@@ -519,7 +766,12 @@ mod tests {
     const BASE: &str = "code-net-guard rust-auth client-address-header rust-chatgpt-status rust-storage-reads rust-storage-browse rust-export rust-free-chats rust-usage rust-stats rust-routing-default rust-sampling-settings rust-reasoning-settings rust-routing-mode rust-projects rust-project-chats rust-project-writes project-store";
 
     fn features(extra: &str) -> Features {
-        Features::parse(&format!("{BASE} {extra}").split_whitespace().collect::<Vec<_>>().join("\n"))
+        Features::parse(
+            &format!("{BASE} {extra}")
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join("\n"),
+        )
     }
 
     fn run(core: &Fake, f: &Features, env: &Env) -> Result<Paired, Refusal> {
@@ -527,7 +779,10 @@ mod tests {
     }
 
     fn refusal(core: &Fake, f: &Features) -> String {
-        run(core, f, &Env::default()).err().map(|r| r.0).unwrap_or_default()
+        run(core, f, &Env::default())
+            .err()
+            .map(|r| r.0)
+            .unwrap_or_default()
     }
 
     #[test]
@@ -549,7 +804,12 @@ mod tests {
     fn every_missing_route_feature_is_named_in_order() {
         let f = Features::parse("code-net-guard\nrust-auth\nrust-usage");
         let err = refusal(&Fake::default(), &f);
-        assert!(err.contains("lacks the front route feature(s): rust-chatgpt-status rust-storage-reads"), "{err}");
+        assert!(
+            err.contains(
+                "lacks the front route feature(s): rust-chatgpt-status rust-storage-reads"
+            ),
+            "{err}"
+        );
         assert!(!err.contains(" rust-usage "), "{err}");
         assert!(err.ends_with("so update the image"));
     }
@@ -565,9 +825,16 @@ mod tests {
 
     #[test]
     fn a_missing_client_address_header_only_warns() {
-        let f = Features::parse(&BASE.replace("client-address-header ", "").replace(' ', "\n"));
+        let f = Features::parse(
+            &BASE
+                .replace("client-address-header ", "")
+                .replace(' ', "\n"),
+        );
         let mut notes = Vec::new();
-        let p = check(&Env::default(), "/f", &f, &Fake::default(), &mut |w| notes.push(w)).unwrap();
+        let p = check(&Env::default(), "/f", &f, &Fake::default(), &mut |w| {
+            notes.push(w)
+        })
+        .unwrap();
         assert!(!p.client_ip_confirmed);
         assert_eq!(notes.len(), 1);
         assert!(notes[0].contains("no client-address-header"));
@@ -576,17 +843,42 @@ mod tests {
     #[test]
     fn every_route_pair_refuses_both_mixes_and_accepts_the_match() {
         for (module, capability, label) in ROUTE_PAIRS {
-            let core = Fake::default().file(INDEX, &format!("  if (require('./{module}').refuseOwned(req, res)) return;"));
-            let want = format!("{label} route ownership mismatch between noevia-server and noevia-core");
-            assert!(refusal(&core, &features("")).contains(&want), "{module}: core only");
-            assert!(run(&core, &features(capability), &Env::default()).is_ok(), "{module}: pair");
-            assert!(refusal(&Fake::default(), &features(capability)).contains(&want), "{module}: front only");
+            let core = Fake::default().file(
+                INDEX,
+                &format!("  if (require('./{module}').refuseOwned(req, res)) return;"),
+            );
+            let want =
+                format!("{label} route ownership mismatch between noevia-server and noevia-core");
+            assert!(
+                refusal(&core, &features("")).contains(&want),
+                "{module}: core only"
+            );
+            assert!(
+                run(&core, &features(capability), &Env::default()).is_ok(),
+                "{module}: pair"
+            );
+            assert!(
+                refusal(&Fake::default(), &features(capability)).contains(&want),
+                "{module}: front only"
+            );
         }
         for p in EARLY_PAIRS.iter().chain(MID_PAIRS) {
             let core = Fake::default().file(INDEX, &format!("require('./{}')", p.module));
-            assert!(refusal(&core, &features("")).contains(p.label), "{}", p.module);
-            assert!(run(&core, &features(p.capability), &Env::default()).is_ok(), "{}", p.module);
-            assert!(refusal(&Fake::default(), &features(p.capability)).contains(p.label), "{}", p.module);
+            assert!(
+                refusal(&core, &features("")).contains(p.label),
+                "{}",
+                p.module
+            );
+            assert!(
+                run(&core, &features(p.capability), &Env::default()).is_ok(),
+                "{}",
+                p.module
+            );
+            assert!(
+                refusal(&Fake::default(), &features(p.capability)).contains(p.label),
+                "{}",
+                p.module
+            );
         }
     }
 
@@ -594,109 +886,238 @@ mod tests {
     fn the_storage_split_counts_through_the_outbox_view_on_code_lines_only() {
         let chained = Fake::default()
             .file(INDEX, "const o = require('./rust-index-outbox.cjs');")
-            .file("server/rust-index-outbox.cjs", "const s = require('./rust-project-storage.cjs');");
+            .file(
+                "server/rust-index-outbox.cjs",
+                "const s = require('./rust-project-storage.cjs');",
+            );
         assert!(run(&chained, &features("rust-project-storage"), &Env::default()).is_ok());
-        let commented = Fake::default().file(INDEX, "  // require('./rust-project-storage.cjs')\n * require('./rust-project-storage.cjs')");
+        let commented = Fake::default().file(
+            INDEX,
+            "  // require('./rust-project-storage.cjs')\n * require('./rust-project-storage.cjs')",
+        );
         assert!(run(&commented, &features(""), &Env::default()).is_ok());
-        assert!(refusal(&commented, &features("rust-project-storage")).contains("project storage write ownership"));
+        assert!(refusal(&commented, &features("rust-project-storage"))
+            .contains("project storage write ownership"));
         let broken = Fake::default().file(INDEX, "require('./rust-index-outbox.cjs')");
-        assert!(refusal(&broken, &features("rust-project-storage")).contains("project storage write ownership"));
+        assert!(refusal(&broken, &features("rust-project-storage"))
+            .contains("project storage write ownership"));
     }
 
     #[test]
     fn exported_markers_pair_with_their_capability() {
         let cases: &[(&str, &str, &str, &str)] = &[
-            ("rust-inference-machines.cjs", "rust", "rust-inference-machines", "inference machines route ownership"),
-            ("rust-web-address.cjs", "rust", "rust-web-address-read", "web-address GET ownership"),
-            ("rust-diary.cjs", "rust", "rust-diary-backup-worker", "diary backup worker ownership"),
-            ("rust-budget-watch.cjs", "v2", "rust-budget-watch-v2", "budget watch ownership"),
-            ("rust-calibration-routes.cjs", "v2", "rust-calibration-worker-v2", "calibration worker ownership"),
+            (
+                "rust-inference-machines.cjs",
+                "rust",
+                "rust-inference-machines",
+                "inference machines route ownership",
+            ),
+            (
+                "rust-web-address.cjs",
+                "rust",
+                "rust-web-address-read",
+                "web-address GET ownership",
+            ),
+            (
+                "rust-diary.cjs",
+                "rust",
+                "rust-diary-backup-worker",
+                "diary backup worker ownership",
+            ),
+            (
+                "rust-budget-watch.cjs",
+                "v2",
+                "rust-budget-watch-v2",
+                "budget watch ownership",
+            ),
+            (
+                "rust-calibration-routes.cjs",
+                "v2",
+                "rust-calibration-worker-v2",
+                "calibration worker ownership",
+            ),
         ];
         for (module, out, capability, label) in cases {
             let core = Fake::default().probe(module, out);
-            assert!(run(&core, &features(capability), &Env::default()).is_ok(), "{module}");
+            assert!(
+                run(&core, &features(capability), &Env::default()).is_ok(),
+                "{module}"
+            );
             assert!(refusal(&core, &features("")).contains(label), "{module}");
-            assert!(refusal(&Fake::default(), &features(capability)).contains(label), "{module}");
+            assert!(
+                refusal(&Fake::default(), &features(capability)).contains(label),
+                "{module}"
+            );
         }
         // The newest generation listed wins; a v1 Core beside a v1+v3 front is a mismatch.
         let core = Fake::default().probe("rust-budget-watch.cjs", "v1");
-        assert!(refusal(&core, &features("rust-budget-watch rust-budget-watch-v3")).contains("budget watch"));
+        assert!(
+            refusal(&core, &features("rust-budget-watch rust-budget-watch-v3"))
+                .contains("budget watch")
+        );
     }
 
     #[test]
     fn embedding_background_is_one_directional() {
         // A new front beside an old Core stays idle and starts.
-        assert!(run(&Fake::default(), &features("rust-embedding-background-v1"), &Env::default()).is_ok());
+        assert!(run(
+            &Fake::default(),
+            &features("rust-embedding-background-v1"),
+            &Env::default()
+        )
+        .is_ok());
         let core = Fake::default().probe("rust-embedding-background.cjs", "rust");
         assert!(refusal(&core, &features("")).contains("requires rust-embedding-background-v1"));
         let required = Fake::default().file(INDEX, "require('./rust-embedding-background.cjs')");
-        assert!(refusal(&required, &features("rust-embedding-background-v1")).contains("invalid embedding background"));
+        assert!(
+            refusal(&required, &features("rust-embedding-background-v1"))
+                .contains("invalid embedding background")
+        );
     }
 
     #[test]
     fn auto_roles_write_needs_one_exact_capability_line() {
-        let core = Fake::default().file("server/rust-auto-roles-write.cjs", "x").probe("rust-auto-roles-write.cjs", "rust");
+        let core = Fake::default()
+            .file("server/rust-auto-roles-write.cjs", "x")
+            .probe("rust-auto-roles-write.cjs", "rust");
         assert!(run(&core, &features("rust-auto-roles-write"), &Env::default()).is_ok());
-        assert!(refusal(&core, &features("rust-auto-roles-write rust-auto-roles-write")).contains("ambiguous"));
+        assert!(refusal(
+            &core,
+            &features("rust-auto-roles-write rust-auto-roles-write")
+        )
+        .contains("ambiguous"));
         assert!(refusal(&core, &features("rust-auto-roles-write-v2")).contains("ambiguous"));
-        assert!(refusal(&Fake::default(), &features("rust-auto-roles-write")).contains("ambiguous"));
-        let invalid = Fake::default().file("server/rust-auto-roles-write.cjs", "x").probe("rust-auto-roles-write.cjs", "invalid");
+        assert!(
+            refusal(&Fake::default(), &features("rust-auto-roles-write")).contains("ambiguous")
+        );
+        let invalid = Fake::default()
+            .file("server/rust-auto-roles-write.cjs", "x")
+            .probe("rust-auto-roles-write.cjs", "invalid");
         assert!(refusal(&invalid, &features("rust-auto-roles-write")).contains("ambiguous"));
     }
 
     #[test]
     fn generations_compare_exactly_and_a_failed_probe_is_invalid() {
-        let core = Fake::default().file("server/rust-dav-listener.cjs", "x").probe("rust-dav-listener.cjs", "v1");
+        let core = Fake::default()
+            .file("server/rust-dav-listener.cjs", "x")
+            .probe("rust-dav-listener.cjs", "v1");
         let p = run(&core, &features("rust-dav-listener-v1"), &Env::default()).unwrap();
         assert_eq!(p.dav_listener_core, "v1");
         assert!(refusal(&core, &features("")).contains("DAV listener ownership mismatch"));
         let mut failed = Fake::default().file("server/rust-source-startup.cjs", "x");
-        failed.probes.insert("rust-source-startup.cjs".to_owned(), NodeOut { ok: false, stdout: "v1".to_owned() });
-        assert!(refusal(&failed, &features("rust-source-startup-v1")).contains("source startup ownership mismatch"));
+        failed.probes.insert(
+            "rust-source-startup.cjs".to_owned(),
+            NodeOut {
+                ok: false,
+                stdout: "v1".to_owned(),
+            },
+        );
+        assert!(refusal(&failed, &features("rust-source-startup-v1"))
+            .contains("source startup ownership mismatch"));
     }
 
     #[test]
     fn source_job_client_and_store_pair() {
         let canonical = "noevia-source-jobs-client/1";
-        let core = Fake::default().file("server/project-store-client.cjs", "SOURCE_JOBS_CLIENT_MARKER").probe("project-store-client.cjs", canonical);
-        assert!(run(&core, &features("noevia-source-jobs-store/1"), &Env::default()).is_ok());
+        let core = Fake::default()
+            .file(
+                "server/project-store-client.cjs",
+                "SOURCE_JOBS_CLIENT_MARKER",
+            )
+            .probe("project-store-client.cjs", canonical);
+        assert!(run(
+            &core,
+            &features("noevia-source-jobs-store/1"),
+            &Env::default()
+        )
+        .is_ok());
         assert!(refusal(&core, &features("")).contains("requires noevia-source-jobs-store/1"));
-        assert!(refusal(&Fake::default(), &features("noevia-source-jobs-store/1")).contains("requires a paired core source job client"));
+        assert!(
+            refusal(&Fake::default(), &features("noevia-source-jobs-store/1"))
+                .contains("requires a paired core source job client")
+        );
         let declared = Fake::default().file("server/source-jobs.cjs", "workspace.sourceJobs");
-        assert!(refusal(&declared, &features("")).contains("does not export its canonical capability"));
-        let unknown = Fake::default().probe("project-store-client.cjs", "noevia-source-jobs-client/2");
-        assert!(refusal(&unknown, &features("noevia-source-jobs-store/1")).contains("unknown source job client capability"));
+        assert!(
+            refusal(&declared, &features("")).contains("does not export its canonical capability")
+        );
+        let unknown =
+            Fake::default().probe("project-store-client.cjs", "noevia-source-jobs-client/2");
+        assert!(refusal(&unknown, &features("noevia-source-jobs-store/1"))
+            .contains("unknown source job client capability"));
     }
 
     #[test]
     fn source_work_core_must_have_dropped_the_worker_path() {
         let base = Fake::default().file(INDEX, "require('./rust-project-source-work.cjs')");
-        assert!(run(&base, &features("rust-project-source-work"), &Env::default()).is_ok());
-        let carries = Fake::default().file(INDEX, "require('./rust-project-source-work.cjs')").file("server/pdf-reduce.cjs", "");
-        assert!(refusal(&carries, &features("rust-project-source-work")).contains("Core still carries server/pdf-reduce.cjs"));
+        assert!(run(
+            &base,
+            &features("rust-project-source-work"),
+            &Env::default()
+        )
+        .is_ok());
+        let carries = Fake::default()
+            .file(INDEX, "require('./rust-project-source-work.cjs')")
+            .file("server/pdf-reduce.cjs", "");
+        assert!(refusal(&carries, &features("rust-project-source-work"))
+            .contains("Core still carries server/pdf-reduce.cjs"));
         let answers = Fake::default()
             .file(INDEX, "require('./rust-project-source-work.cjs')")
-            .file("server/routes/projects.cjs", "headers['X-Noevia-Source-Work']");
-        assert!(refusal(&answers, &features("rust-project-source-work")).contains("Core still answers the worker call"));
+            .file(
+                "server/routes/projects.cjs",
+                "headers['X-Noevia-Source-Work']",
+            );
+        assert!(refusal(&answers, &features("rust-project-source-work"))
+            .contains("Core still answers the worker call"));
     }
 
     #[test]
     fn preset_baseline_and_large_lock() {
-        let bridge = Fake::default().file("server/preset-reload.cjs", "const B = 'noevia-preset-baseline-bridge/1';");
+        let bridge = Fake::default().file(
+            "server/preset-reload.cjs",
+            "const B = 'noevia-preset-baseline-bridge/1';",
+        );
         assert!(refusal(&bridge, &features("")).contains("has no rust-preset-baseline"));
         assert!(run(&bridge, &features("rust-preset-baseline"), &Env::default()).is_ok());
-        assert!(run(&Fake::default(), &features("rust-preset-baseline"), &Env::default()).is_ok(), "shared mode");
-        let host = Fake::default().file("server/large-document-lock.cjs", "require('./large-document-file-lock.cjs')");
+        assert!(
+            run(
+                &Fake::default(),
+                &features("rust-preset-baseline"),
+                &Env::default()
+            )
+            .is_ok(),
+            "shared mode"
+        );
+        let host = Fake::default().file(
+            "server/large-document-lock.cjs",
+            "require('./large-document-file-lock.cjs')",
+        );
         assert!(refusal(&host, &features("")).contains("large-document lock mismatch"));
-        assert!(run(&host, &features("rust-large-document-host-lock"), &Env::default()).is_ok());
+        assert!(run(
+            &host,
+            &features("rust-large-document-host-lock"),
+            &Env::default()
+        )
+        .is_ok());
     }
 
     #[test]
     fn legacy_claim_needs_an_absolute_front_path() {
         let f = features("legacy-root-claim");
         let p = run(&Fake::default(), &f, &Env::default()).unwrap();
-        assert_eq!(p.legacy_claim_bin.as_deref(), Some("/usr/local/bin/noevia-server"));
-        let err = check(&Env::default(), "./noevia-server", &f, &Fake::default(), &mut |_| {}).err().unwrap().0;
+        assert_eq!(
+            p.legacy_claim_bin.as_deref(),
+            Some("/usr/local/bin/noevia-server")
+        );
+        let err = check(
+            &Env::default(),
+            "./noevia-server",
+            &f,
+            &Fake::default(),
+            &mut |_| {},
+        )
+        .err()
+        .unwrap()
+        .0;
         assert!(err.contains("requires an absolute NOEVIA_SERVER_BIN"));
     }
 }

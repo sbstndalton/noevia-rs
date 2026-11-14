@@ -27,14 +27,17 @@ pub fn signal(pid: u32, sig: Signal) {
 /// The exit code `wait` reports: the code, or 128 + the signal that ended it.
 pub fn status_code(status: ExitStatus) -> i32 {
     use std::os::unix::process::ExitStatusExt;
-    status.code().unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
+    status
+        .code()
+        .unwrap_or_else(|| 128 + status.signal().unwrap_or(0))
 }
 
 /// Takes `<data>/embedding-pair.lock` without waiting and leaves it open, inheritable, for the
 /// container's life: both children hold it, so a replacement pair cannot start before both exit.
 /// The file is never unlinked and the lock never released explicitly.
 pub fn take_pair_lock(data: &Path) -> Result<(), String> {
-    std::fs::create_dir_all(data).map_err(|e| format!("web-supervisor: cannot create {}: {e}", data.display()))?;
+    std::fs::create_dir_all(data)
+        .map_err(|e| format!("web-supervisor: cannot create {}: {e}", data.display()))?;
     let path = data.join("embedding-pair.lock");
     let file = OpenOptions::new()
         .write(true)
@@ -53,7 +56,10 @@ pub fn take_pair_lock(data: &Path) -> Result<(), String> {
 
 fn command(spec: &ChildSpec, env: &Env) -> Command {
     let mut cmd = Command::new(&spec.program);
-    cmd.args(&spec.args).env_clear().envs(env.vars()).envs(spec.set.iter().map(|(k, v)| (k, v)));
+    cmd.args(&spec.args)
+        .env_clear()
+        .envs(env.vars())
+        .envs(spec.set.iter().map(|(k, v)| (k, v)));
     cmd
 }
 
@@ -122,7 +128,10 @@ pub fn supervise(env: &Env, data: &Path, launch: &Launch) -> i32 {
         return 2;
     }
     let mut node = match command(&launch.node, env).spawn() {
-        Ok(child) => Proc { child, status: None },
+        Ok(child) => Proc {
+            child,
+            status: None,
+        },
         Err(e) => {
             // The script's `node … &` would exit 127 at once and stop the front it started next.
             eprintln!("web-supervisor: cannot start node: {e}");
@@ -131,7 +140,10 @@ pub fn supervise(env: &Env, data: &Path, launch: &Launch) -> i32 {
         }
     };
     let mut front = match command(&launch.front, env).spawn() {
-        Ok(child) => Proc { child, status: None },
+        Ok(child) => Proc {
+            child,
+            status: None,
+        },
         Err(e) => {
             eprintln!("web-supervisor: cannot start {}: {e}", launch.front.program);
             eprintln!("web-supervisor: noevia-server exited (126); stopping the other");
@@ -159,7 +171,11 @@ pub fn supervise(env: &Env, data: &Path, launch: &Launch) -> i32 {
         }
     };
     if !signalled {
-        let which = if node.running() { "noevia-server" } else { "node" };
+        let which = if node.running() {
+            "noevia-server"
+        } else {
+            "node"
+        };
         eprintln!("web-supervisor: {which} exited ({code}); stopping the other");
     }
     stop(&mut front, &mut node);

@@ -31,8 +31,15 @@ const PROBE_KILL_AFTER: Duration = Duration::from_secs(2);
 
 /// Runs a command with the given environment, stdout captured, stderr dropped, bounded in time.
 pub fn run_bounded(mut cmd: Command, env: &Env, cwd: &Path) -> NodeOut {
-    cmd.env_clear().envs(env.vars()).current_dir(cwd).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
-    let Ok(mut child) = cmd.spawn() else { return NodeOut::default() };
+    cmd.env_clear()
+        .envs(env.vars())
+        .current_dir(cwd)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    let Ok(mut child) = cmd.spawn() else {
+        return NodeOut::default();
+    };
     let reader = child.stdout.take().map(|mut out| {
         std::thread::spawn(move || {
             let mut buf = Vec::new();
@@ -80,7 +87,9 @@ impl FsCore<'_> {
 
 impl CoreView for FsCore<'_> {
     fn read(&self, rel: &str) -> Option<String> {
-        std::fs::read(self.path(rel)).ok().map(|b| String::from_utf8_lossy(&b).into_owned())
+        std::fs::read(self.path(rel))
+            .ok()
+            .map(|b| String::from_utf8_lossy(&b).into_owned())
     }
     fn exists(&self, rel: &str) -> bool {
         self.path(rel).exists()
@@ -103,7 +112,9 @@ impl CoreView for FsCore<'_> {
 
 /// `command -v <name>` for a plain name: an executable file in one PATH directory.
 pub fn on_path(path: &str, name: &str) -> bool {
-    path.split(':').map(|d| if d.is_empty() { "." } else { d }).any(|d| executable(&Path::new(d).join(name)))
+    path.split(':')
+        .map(|d| if d.is_empty() { "." } else { d })
+        .any(|d| executable(&Path::new(d).join(name)))
 }
 
 /// `[ -x path ]`.
@@ -120,7 +131,11 @@ fn random(n: usize) -> Vec<u8> {
 }
 
 /// Everything before the launch: the refusal (exit 2) or the plan.
-pub fn prepare(env: &mut Env, cwd: &Path, warn: &mut dyn FnMut(String)) -> Result<plan::Launch, Refusal> {
+pub fn prepare(
+    env: &mut Env,
+    cwd: &Path,
+    warn: &mut dyn FnMut(String),
+) -> Result<plan::Launch, Refusal> {
     for w in env.scrub() {
         warn(w);
     }
@@ -131,14 +146,19 @@ pub fn prepare(env: &mut Env, cwd: &Path, warn: &mut dyn FnMut(String)) -> Resul
         "node" => return Err(Refusal("web-supervisor: NOEVIA_FRONT=node is no longer supported: the Rust front owns sign-in and routes Node no longer has (sbstndalton/noevia#1071); set NOEVIA_FRONT=rust".to_owned())),
         other => return Err(Refusal(format!("web-supervisor: NOEVIA_FRONT must be rust, got '{other}'"))),
     }
-    let bin = env.get_or("NOEVIA_SERVER_BIN", "/usr/local/bin/noevia-server").to_owned();
+    let bin = env
+        .get_or("NOEVIA_SERVER_BIN", "/usr/local/bin/noevia-server")
+        .to_owned();
     if !executable(Path::new(&bin)) {
         return Err(Refusal("web-supervisor: NOEVIA_FRONT=rust but this image has no noevia-server (its NOEVIA_RS_REF predates bins/noevia-server); update the image".to_owned()));
     }
     let mut cmd = Command::new(&bin);
     cmd.arg("--features");
     let features = Features::parse(&run_bounded(cmd, env, cwd).stdout);
-    let core = FsCore { dir: cwd.to_path_buf(), env };
+    let core = FsCore {
+        dir: cwd.to_path_buf(),
+        env,
+    };
     let paired = pairing::check(env, &bin, &features, &core, warn)?;
     let launch = plan::plan(env, &bin, &paired, &random(32), &random(16))?;
     for w in &launch.warnings {

@@ -54,11 +54,20 @@ pub struct Env {
 
 impl Env {
     pub fn from_process() -> Self {
-        Self { vars: std::env::vars_os().collect() }
+        Self {
+            vars: std::env::vars_os().collect(),
+        }
     }
 
-    pub fn from_pairs<K: Into<OsString>, V: Into<OsString>>(pairs: impl IntoIterator<Item = (K, V)>) -> Self {
-        Self { vars: pairs.into_iter().map(|(k, v)| (k.into(), v.into())).collect() }
+    pub fn from_pairs<K: Into<OsString>, V: Into<OsString>>(
+        pairs: impl IntoIterator<Item = (K, V)>,
+    ) -> Self {
+        Self {
+            vars: pairs
+                .into_iter()
+                .map(|(k, v)| (k.into(), v.into()))
+                .collect(),
+        }
     }
 
     /// `${NAME+set}`: present, even when empty.
@@ -68,7 +77,10 @@ impl Env {
 
     /// `${NAME:-}`: the value, or empty when unset. Values that are not UTF-8 read as empty.
     pub fn get(&self, name: &str) -> &str {
-        self.vars.get(OsStr::new(name)).and_then(|v| v.to_str()).unwrap_or("")
+        self.vars
+            .get(OsStr::new(name))
+            .and_then(|v| v.to_str())
+            .unwrap_or("")
     }
 
     /// `${NAME:-default}`: unset or empty both give the default.

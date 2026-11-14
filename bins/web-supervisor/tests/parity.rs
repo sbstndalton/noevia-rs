@@ -8,7 +8,10 @@ use std::path::Path;
 use std::process::Command;
 
 fn have(program: &str) -> bool {
-    Command::new(program).arg("--version").output().is_ok_and(|o| o.status.success())
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .is_ok_and(|o| o.status.success())
 }
 
 fn suite(supervisor: Option<&str>) -> (bool, String) {
@@ -23,7 +26,11 @@ fn suite(supervisor: Option<&str>) -> (bool, String) {
         Ok(out) => out,
         Err(e) => return (false, format!("cannot run bash: {e}")),
     };
-    let text = format!("{}{}", String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+    let text = format!(
+        "{}{}",
+        String::from_utf8_lossy(&out.stdout),
+        String::from_utf8_lossy(&out.stderr)
+    );
     (out.status.success(), text)
 }
 
@@ -46,9 +53,19 @@ fn the_script_suite_passes_against_the_native_supervisor_and_the_reference() {
     let native_counts = summary(&native);
     let (reference_ok, reference) = suite(None);
     let reference_counts = summary(&reference);
-    assert!(reference_ok, "the bash reference fails its own suite here:\n{reference}");
-    assert!(native_ok, "native supervisor failures:\n{}\n\nfull output:\n{native}", failures.join("\n"));
-    assert_eq!(native_counts, reference_counts, "both runs must make the same number of checks");
+    assert!(
+        reference_ok,
+        "the bash reference fails its own suite here:\n{reference}"
+    );
+    assert!(
+        native_ok,
+        "native supervisor failures:\n{}\n\nfull output:\n{native}",
+        failures.join("\n")
+    );
+    assert_eq!(
+        native_counts, reference_counts,
+        "both runs must make the same number of checks"
+    );
     let (passed, failed) = native_counts.unwrap_or_default();
     assert_eq!(failed, 0);
     assert!(passed > 150, "the suite ran only {passed} checks");
