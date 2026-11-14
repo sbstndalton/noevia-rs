@@ -19,7 +19,8 @@
 //! Switch: `NOEVIA_CHAT_EXECUTOR` (config.rs): unset or `node` is today's relay; `native:<user id>,...`
 //! names accounts; `native` is everyone. The turn's cards use this front's approval registry (chat port S9,
 //! [`approvals`]); its chat-wide grants are core's to check, redeem and revoke (the tool bridges, D17).
-//! A Diary space and a Cowork start are never handed off (chat_turn.rs only calls here for a turn).
+//! The Diary space itself (`spaceId: 'diary'`, the companion's own exchange) and a Cowork start are never handed off
+//! (chat_turn.rs only calls here for a turn); Diary extras and Diary project turns are (track R16).
 //!
 //! What the turn needs of this process, and where it comes from:
 //! - the client's stream: NDJSON lines into the response body ([`Wire`]), which chat_wire.rs frames (its
@@ -34,10 +35,10 @@
 //!   the audit log, the transcript append and the tombstones, and the approval registry (S9).
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::task::{Context, Poll};
 use std::time::Duration;
 
@@ -424,7 +425,10 @@ async fn drive(
         // quiet: dropping core's stream here ends its turn, as the relay of a Node turn does (#679).
         let next = tokio::select! {
             f = core.frame() => f,
-            () = tx.closed() => return,
+            () = tx.closed() => {
+                journal_after_left(&app, &user, &mut frames, &mut core).await;
+                return;
+            }
         };
         let Some(frame) = next else {
             break None;
@@ -434,18 +438,28 @@ async fn drive(
             continue;
         };
         let mut handed = None;
+        let mut gone = false;
         for piece in frames.feed(&data) {
+            if gone {
+                // The client left (below): a frame already in this chunk handed a Diary journal over, which is
+                // finished here (track R16).
+                if let Piece::Prepared(p) = piece {
+                    Journal::finish_with(&app, &user, journal_handle(&p), Vec::new());
+                }
+                continue;
+            }
             match piece {
                 Piece::Forward(bytes) => {
                     lines.feed(&bytes);
-                    if !push(&tx, &queued, Bytes::from(bytes)) || !room(&tx, &queued).await {
-                        // The client left: closing core's stream ends its turn, which keeps it (#679).
-                        return;
-                    }
+                    // The client left: closing core's stream ends its turn, which keeps it (#679).
+                    gone = !push(&tx, &queued, Bytes::from(bytes)) || !room(&tx, &queued).await;
                 }
                 Piece::Prepared(p) => handed = Some(Some(p)),
                 Piece::Unreadable => handed = Some(None),
             }
+        }
+        if gone {
+            return;
         }
         if let Some(h) = handed {
             break h;
@@ -476,13 +490,16 @@ async fn drive(
         Ok(p) => p,
         Err(e) => {
             eprintln!("chat native: {}", e.0);
+            Journal::fail(&app, &user, journal_handle(&frame));
             return failed(&tx);
         }
     };
     let Some(data_dir) = app.config.data_dir.clone() else {
+        Journal::fail(&app, &user, p.diary_journal.clone());
         return failed(&tx);
     };
     let Ok(user_dir) = server_projects::store::user_dir(&data_dir, &user) else {
+        Journal::fail(&app, &user, p.diary_journal.clone());
         return failed(&tx);
     };
     // Track R8 P7a: the same turn prepared natively beside core's frame, compared and logged only.
@@ -497,7 +514,8 @@ async fn drive(
         tx,
         queued,
         saving: Mutex::new(Saving::new(TurnRecord::new(crate::identity::now_ms))),
-        partial_ended: Mutex::new(false),
+        partial: PartialGate::default(),
+        journal: OnceLock::new(),
         lease: Mutex::new(None),
         lease_token: Mutex::new(None),
         approvals,
@@ -506,9 +524,20 @@ async fn drive(
     for v in &forwarded {
         host.observe(v, false);
     }
-    let chat = p.record.then(|| p.chat_id.clone()).flatten();
+    // chat.cjs partialId: the chat's safe id; one with nothing left saves no partial.
+    let chat = p
+        .record
+        .then(|| p.chat_id.clone())
+        .flatten()
+        .filter(|c| !chat_turn::after::safe_chat_id(c).is_empty());
     if let Some(c) = &chat {
-        host.end_partial(&chat_turn::after::safe_chat_id(c));
+        // What core's saver left at the cut; the 4 s saver below goes on (noevia#2750: this once ended it).
+        clear_partial(&host.user_dir, &chat_turn::after::safe_chat_id(c));
+    }
+    // Track R16: a Diary extras preparation's recovery journal, fed every event from here on.
+    if let Some(handle) = &p.diary_journal {
+        let journal = Journal::start(Arc::clone(&host.app), host.user.clone(), handle.clone());
+        let _ = host.journal.set(journal);
     }
     let ticks = tokio::spawn(ticks(Arc::clone(&host), chat.clone()));
     // Node's `close` handler gives the lease back the moment the client leaves, before the turn's
@@ -524,9 +553,13 @@ async fn drive(
     let helpers = helpers();
     let ended = native::run(&*host, process, &helpers, &p).await;
     ticks.abort();
-    // A partial write in progress finishes before the turn's end is saved (review F1).
+    // A tick already writing may outlive the abort: the gate holds the turn's end until it is done (review F1).
     let _ = ticks.await;
     watcher.abort();
+    // handleChatTurn's finally finishes the Diary journal first (track R16).
+    if let Some(journal) = host.journal.get() {
+        journal.finish().await;
+    }
     let left = matches!(ended, native::Ended::Left) || host.left();
     let keep = Arc::clone(&host);
     let message = p.message.clone();
@@ -661,6 +694,237 @@ fn helpers() -> Helpers<'static> {
     }
 }
 
+/// The 4 s partial saver's gate (review F1): its ticks write until the turn's end has kept or cleared the
+/// partial, never after. Only the end closes it; the start of the turn only clears what core left (noevia#2750).
+#[derive(Default)]
+struct PartialGate(Mutex<bool>);
+
+impl PartialGate {
+    /// Runs `write` unless the turn's end came first (under the gate's lock, so the end cannot come between).
+    fn tick(&self, write: impl FnOnce()) {
+        let Ok(ended) = self.0.lock() else {
+            return;
+        };
+        if !*ended {
+            write();
+        }
+    }
+
+    /// The turn's end: `then` runs under the lock, and no tick writes after it.
+    fn end(&self, then: impl FnOnce()) {
+        let mut ended = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        *ended = true;
+        then();
+    }
+}
+
+/// core's diary-journal op (rust-chat-native.cjs, track R16).
+const JOURNAL_PATH: &str = "/internal/chat/native/diary-journal";
+/// The most events one journal call carries (core takes up to 10000; a tool result is at most 8000 units).
+const JOURNAL_BATCH: usize = 256;
+/// How long the turn's end waits for the journal's last call.
+const JOURNAL_FINISH: Duration = Duration::from_secs(3);
+/// How long a client gone before the hand-off leaves core's stream open for a frame already on the way.
+const JOURNAL_LEFT: Duration = Duration::from_millis(100);
+
+enum JournalItem {
+    Event(JValue),
+    Finish,
+}
+
+/// Track R16: a Diary extras preparation's recovery journal (core diary-jobs.cjs), held by core under the frame's
+/// handle (rust-chat-journal.cjs). Every event the turn sends goes to it in order, as chat.cjs `send` feeds it, through
+/// core's diary-journal op: one call at a time, each with what came while the last one ran. The turn's end finishes
+/// it. A call that fails stops the feeding, and the finish is still sent (without the events since): a record whose
+/// events were lost reads `uncertain` (diary-jobs.cjs finish).
+struct Journal {
+    tx: mpsc::UnboundedSender<JournalItem>,
+    task: Mutex<Option<tokio::task::JoinHandle<()>>>,
+}
+
+impl Journal {
+    fn start(app: Arc<App>, user: String, handle: String) -> Journal {
+        let (tx, mut rx) = mpsc::unbounded_channel::<JournalItem>();
+        let task = tokio::spawn(async move {
+            let mut live = true;
+            while let Some(first) = rx.recv().await {
+                let mut events = Vec::new();
+                let mut finish = false;
+                let mut next = Some(first);
+                while let Some(item) = next.take() {
+                    match item {
+                        JournalItem::Event(e) => events.push(e),
+                        JournalItem::Finish => finish = true,
+                    }
+                    if !finish && events.len() < JOURNAL_BATCH {
+                        next = rx.try_recv().ok();
+                    }
+                }
+                if !live && finish {
+                    events.clear();
+                }
+                if live || finish {
+                    let body = js::obj([
+                        ("user", js::s(user.clone())),
+                        ("handle", js::s(handle.clone())),
+                        ("events", JValue::Arr(events)),
+                        ("finish", JValue::Bool(finish)),
+                    ]);
+                    let answer = app
+                        .config
+                        .research
+                        .node_call_text(JOURNAL_PATH, js::stringify(&body), BRIDGE_TIMEOUT)
+                        .await;
+                    if !matches!(answer, Some((204, _))) {
+                        eprintln!(
+                            "chat native: the Diary journal stopped (status {:?})",
+                            answer.map(|(s, _)| s)
+                        );
+                        live = false;
+                    }
+                }
+                if finish {
+                    break;
+                }
+            }
+        });
+        Journal {
+            tx,
+            task: Mutex::new(Some(task)),
+        }
+    }
+
+    fn event(&self, event: &JValue) {
+        let _ = self.tx.send(JournalItem::Event(event.clone()));
+    }
+
+    /// A turn that ends before it runs (the frame unreadable, no account folder): the client got the failure text,
+    /// so the journal gets it too and is finished, as chat.cjs would journal its own error.
+    fn fail(app: &Arc<App>, user: &str, handle: Option<String>) {
+        let error = js::obj([
+            ("type", js::s("error")),
+            ("text", js::s(native::FAILED_TEXT)),
+        ]);
+        Journal::finish_with(app, user, handle, vec![error]);
+    }
+
+    /// One call: `events`, then the journal's finish (a turn that never ran here). Its answer is not waited for.
+    fn finish_with(app: &Arc<App>, user: &str, handle: Option<String>, events: Vec<JValue>) {
+        let Some(handle) = handle else { return };
+        let body = js::obj([
+            ("user", js::s(user)),
+            ("handle", js::s(handle)),
+            ("events", JValue::Arr(events)),
+            ("finish", JValue::Bool(true)),
+        ]);
+        let app = Arc::clone(app);
+        tokio::spawn(async move {
+            let _ = app
+                .config
+                .research
+                .node_call_text(JOURNAL_PATH, js::stringify(&body), BRIDGE_TIMEOUT)
+                .await;
+        });
+    }
+
+    /// The turn's end: what is left, then the journal's finish (waited for, at most [`JOURNAL_FINISH`]).
+    async fn finish(&self) {
+        let _ = self.tx.send(JournalItem::Finish);
+        let task = self.task.lock().ok().and_then(|mut t| t.take());
+        if let Some(task) = task {
+            let _ = tokio::time::timeout(JOURNAL_FINISH, task).await;
+        }
+    }
+}
+
+/// The client left while core was still preparing (#679: dropping core's stream ends its turn). Core may have
+/// handed the turn off just then, a Diary journal with it (its frame already on the way): what core sent within a
+/// moment is read for that frame, and its journal is finished, as Node's turn would end it (track R16).
+async fn journal_after_left(app: &Arc<App>, user: &str, frames: &mut Frames, core: &mut Body) {
+    use http_body_util::BodyExt;
+    let deadline = tokio::time::sleep(JOURNAL_LEFT);
+    tokio::pin!(deadline);
+    loop {
+        let next = tokio::select! {
+            f = core.frame() => f,
+            () = &mut deadline => return,
+        };
+        let Some(Ok(frame)) = next else { return };
+        let Ok(data) = frame.into_data() else {
+            continue;
+        };
+        for piece in frames.feed(&data) {
+            match piece {
+                Piece::Prepared(p) => {
+                    return Journal::finish_with(app, user, journal_handle(&p), Vec::new());
+                }
+                Piece::Unreadable => return,
+                Piece::Forward(_) => {}
+            }
+        }
+    }
+}
+
+/// The journal handle of a frame [`Prepared::read`] refused, when it names one.
+fn journal_handle(frame: &JValue) -> Option<String> {
+    frame
+        .get("turn")
+        .get("diaryJournal")
+        .as_str()
+        .filter(|h| h.len() == 32 && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')))
+        .map(str::to_string)
+}
+
+/// chat-partial.cjs endPartial (sbstndalton/noevia#2146): a finished reply's partial is removed; one that cannot be
+/// removed loses its `running` marker instead, so the history route does not take it for a reply still running here
+/// (now that the 4 s saver writes that marker again, noevia#2750).
+fn end_partial_file(user_dir: &Path, chat: &str) {
+    let path = server_projects::partial::file_for(user_dir, chat);
+    match std::fs::remove_file(&path) {
+        Ok(()) => return,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => eprintln!(
+            "chat native: could not remove a finished reply's partial; rewriting it without the running marker: {e}"
+        ),
+    }
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(JValue::Obj(items)) = wtf16::parse(&text) else {
+        return;
+    };
+    if !items.iter().any(|(k, _)| k == "running") {
+        return;
+    }
+    let ended = JValue::Obj(items.into_iter().filter(|(k, _)| k != "running").collect());
+    write_unmarked(&path, &js::stringify(&ended));
+}
+
+/// chat-partial.cjs writeUnmarked: atomically when the folder allows it, else in place. False when neither worked.
+fn write_unmarked(path: &Path, text: &str) -> bool {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if crate::gdrive::write_atomic(path, text).is_ok() {
+        return true;
+    }
+    match std::fs::write(path, text) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("chat native: could not rewrite a finished reply's partial either; its running marker stays: {e}");
+            false
+        }
+    }
+}
+
+/// Removes a chat's partial file (chat-partial.cjs clearPartial, at the start of a turn).
+fn clear_partial(user_dir: &Path, chat: &str) {
+    let path = server_projects::partial::file_for(user_dir, chat);
+    if std::fs::remove_file(&path).is_err() && path.exists() {
+        eprintln!("chat native: could not remove a finished reply's partial");
+    }
+}
+
 /// One native turn's side of this process.
 pub(crate) struct FrontHost {
     app: Arc<App>,
@@ -670,8 +934,10 @@ pub(crate) struct FrontHost {
     tx: mpsc::UnboundedSender<Bytes>,
     queued: Arc<Queued>,
     saving: Mutex<Saving>,
-    /// Set by the turn's end under its lock: a partial tick that comes later writes nothing (review F1).
-    partial_ended: Mutex<bool>,
+    /// Closed by the turn's end: a partial tick that comes later writes nothing (review F1).
+    partial: PartialGate,
+    /// A Diary extras preparation's recovery journal (track R16), set once at the turn's start.
+    journal: OnceLock<Journal>,
     lease: Mutex<Option<engine_admission::Lease>>,
     /// The turn's `x-noevia-lease` value, as [`Host::lease`] returned it (the load bridge carries it).
     lease_token: Mutex<Option<String>>,
@@ -701,12 +967,7 @@ impl FrontHost {
 
     /// The 4 s partial save: nothing once the turn's end has kept or cleared the partial.
     fn tick_partial(&self, safe: &str, file: &JValue) {
-        let Ok(ended) = self.partial_ended.lock() else {
-            return;
-        };
-        if !*ended {
-            self.write_partial(safe, file);
-        }
+        self.partial.tick(|| self.write_partial(safe, file));
     }
 
     fn write_partial(&self, safe: &str, file: &JValue) {
@@ -766,6 +1027,10 @@ impl Host for FrontHost {
 
     fn emit(&self, event: &JValue) {
         let left = self.left();
+        // chat.cjs `send` journals every event, the client gone or not.
+        if let Some(journal) = self.journal.get() {
+            journal.event(event);
+        }
         self.observe(event, left);
         if !left {
             let _ = push(
@@ -1593,18 +1858,17 @@ impl Keep for FrontHost {
     }
 
     fn keep_partial(&self, chat: &str, file: &JValue) {
-        let mut ended = self.partial_ended.lock().unwrap_or_else(|e| e.into_inner());
-        *ended = true;
-        self.write_partial(chat, file);
+        // chat-partial.cjs finish({ keep }): written without the running marker; if that fails, endPartial.
+        self.partial.end(|| {
+            let path = server_projects::partial::file_for(&self.user_dir, chat);
+            if !write_unmarked(&path, &js::stringify(file)) {
+                end_partial_file(&self.user_dir, chat);
+            }
+        });
     }
 
     fn end_partial(&self, chat: &str) {
-        let mut ended = self.partial_ended.lock().unwrap_or_else(|e| e.into_inner());
-        *ended = true;
-        let path = server_projects::partial::file_for(&self.user_dir, chat);
-        if std::fs::remove_file(&path).is_err() && path.exists() {
-            eprintln!("chat native: could not remove a finished reply's partial");
-        }
+        self.partial.end(|| end_partial_file(&self.user_dir, chat));
     }
 
     fn tombstoned(&self, chat: &str) -> bool {
@@ -1723,6 +1987,59 @@ mod tests {
         let q = question("qa-user", &no_chat).unwrap();
         assert_eq!((q.chat, q.scope, q.binding), (None, None, None));
         assert!(question("qa-user", &js::obj([("once", JValue::Bool(true))])).is_none());
+    }
+
+    #[test]
+    fn the_start_of_a_turn_clears_the_partial_and_the_saver_writes_until_the_end() {
+        // noevia#2750: the start-of-turn clear once closed the gate, so no 4 s tick ever wrote.
+        let dir = tempfile::tempdir().unwrap();
+        let path = server_projects::partial::file_for(dir.path(), "qa-chat-1");
+        let write = || {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "{}").unwrap();
+        };
+        write();
+        let gate = PartialGate::default();
+        clear_partial(dir.path(), "qa-chat-1");
+        assert!(!path.exists(), "core's partial is cleared at the start");
+        gate.tick(write);
+        assert!(path.exists(), "a tick after the start writes the partial");
+        gate.end(|| clear_partial(dir.path(), "qa-chat-1"));
+        assert!(!path.exists());
+        gate.tick(write);
+        assert!(!path.exists(), "no tick writes after the turn's end");
+        clear_partial(dir.path(), "qa-chat-1");
+    }
+
+    #[test]
+    fn a_partial_that_cannot_be_removed_loses_its_running_marker() {
+        // chat-partial.cjs endPartial (#2146): a folder that refuses the unlink keeps the file, unmarked.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = server_projects::partial::file_for(dir.path(), "qa-chat-2");
+        let folder = path.parent().unwrap().to_path_buf();
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"role":"assistant","content":"QA","running":{"start":"0123456789abcdef0123456789abcdef"},"savedAt":1}"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let refused = std::fs::File::create(folder.join("probe")).is_err();
+        if refused {
+            // The folder refuses the unlink and the rename: rewritten in place, without the marker.
+            end_partial_file(dir.path(), "qa-chat-2");
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                r#"{"role":"assistant","content":"QA","savedAt":1}"#
+            );
+        }
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // An ordinary end removes it; a missing file is nothing to do.
+        end_partial_file(dir.path(), "qa-chat-2");
+        assert!(!path.exists());
+        end_partial_file(dir.path(), "qa-chat-2");
+        assert!(!path.exists());
     }
 
     #[test]

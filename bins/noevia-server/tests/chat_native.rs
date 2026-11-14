@@ -188,6 +188,9 @@ struct Script {
     condensed: Vec<JValue>,
     /// The reasoner-trace calls (#740).
     traced: usize,
+    /// Track R16: the events core's diary-journal op was fed, in order, and whether it was finished.
+    journal: Vec<JValue>,
+    journal_finished: bool,
 }
 
 impl Default for Script {
@@ -218,6 +221,8 @@ impl Default for Script {
             condense_fails: false,
             condensed: Vec::new(),
             traced: 0,
+            journal: Vec::new(),
+            journal_finished: false,
         }
     }
 }
@@ -570,6 +575,29 @@ async fn core_service(
             sc.errors
                 .push(format!("{path}: user {}", js::stringify(sent.get("user"))));
         }
+    }
+    // Track R16: a Diary extras preparation's journal (core rust-chat-journal.cjs), held under the frame's handle:
+    // what the front feeds it is compared with what Node's `send` journaled after the cut (the case's `journal`).
+    if path == "/internal/chat/native/diary-journal" {
+        let want = sc
+            .case
+            .get("handoff")
+            .get("prepared")
+            .get("turn")
+            .get("diaryJournal")
+            .as_str()
+            .map(str::to_string);
+        if want.is_none() || sent.get("handle").as_str() != want.as_deref() || sc.journal_finished {
+            sc.errors.push(format!(
+                "{path}: handle {} (finished: {})",
+                js::stringify(sent.get("handle")),
+                sc.journal_finished
+            ));
+            return Ok(empty(404));
+        }
+        sc.journal.extend(arr(sent.get("events")));
+        sc.journal_finished = sent.get("finish") == &JValue::Bool(true);
+        return Ok(empty(204));
     }
     if path == "/internal/chat/gate" {
         if hold {
@@ -1606,6 +1634,10 @@ async fn run_case(
     if let JValue::Obj(files) = case.get("handoff").get("files") {
         let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
         for (name, content) in files {
+            // A Diary extras preparation's record (diary-conversations/<day>/<id>.json) is core's, in a folder.
+            if let Some(parent) = dir.join(name).parent() {
+                std::fs::create_dir_all(parent).unwrap();
+            }
             std::fs::write(dir.join(name), js::stringify(content)).unwrap();
         }
     }
@@ -1706,7 +1738,7 @@ async fn run_case(
     // The turn's end (the lease back, the save) runs as the stream ends, or after the client left;
     // wait for the files to settle, at most 5 s.
     let dir = server_projects::store::user_dir(&f.data, &f.user).unwrap();
-    let want_files: BTreeMap<String, String> = match case.get("files") {
+    let mut want_files: BTreeMap<String, String> = match case.get("files") {
         JValue::Obj(files) => files
             .iter()
             .map(|(k, v)| {
@@ -1717,6 +1749,30 @@ async fn run_case(
             .collect(),
         _ => BTreeMap::new(),
     };
+    // Track R16: a chat deleted while its turn ran is removed through the store at the turn's end
+    // (`transcripts.deleteChat`, unlisted, origin turn). Node's recording stubs that store; the front's is the
+    // real one (server-projects chat_delete), which removes the chat's context meter and partial. The
+    // tombstones file the recording lists is the account's, not a state file (`state_files`).
+    let deleted: Vec<String> = arr(case.get("stores"))
+        .iter()
+        .filter(|s| s.get("op").as_str() == Some("transcripts.deleteChat"))
+        .filter_map(|s| s.get("chatId").as_str().map(str::to_string))
+        .collect();
+    want_files.retain(|name, _| {
+        let state = (name.starts_with("context-") && name.ends_with(".json"))
+            || name == "skill-history.json"
+            || (name.starts_with("chat-partials/") && name.ends_with(".json"));
+        state
+            && !deleted.iter().any(|id| {
+                *name
+                    == format!(
+                        "context-{}.json",
+                        context_fit::fingerprint(&js::s(id.as_str()))
+                    )
+                    || Path::new(name)
+                        == server_projects::partial::file_for(Path::new(""), id).as_path()
+            })
+    });
     let leased = !input.get("leaseRefusal").is_object();
     // The reply a leaving client's turn kept, where Node's store took it: saved at the turn's very
     // end (after the lease went back), so the wait below includes it.
@@ -1740,7 +1796,12 @@ async fn run_case(
             .as_ref()
             .is_none_or(|want| kept_now(window).ok().as_ref() == Some(want));
         let released = !leased || model_lease_released(&script.lock().unwrap());
-        if (got == want_files && released && kept) || tokio::time::Instant::now() >= deadline {
+        // Track R16: a Diary journal's finish is the turn's last call to core.
+        let journaled = !matches!(case.get("journal"), JValue::Arr(_))
+            || script.lock().unwrap().journal_finished;
+        if (got == want_files && released && kept && journaled)
+            || tokio::time::Instant::now() >= deadline
+        {
             break got;
         }
         tokio::time::sleep(Duration::from_millis(50)).await;
@@ -1815,6 +1876,18 @@ async fn run_case(
     // The fakes' contract checks, the approval cards, the tools run, every recorded answer asked for.
     if !sc.errors.is_empty() {
         return Err(format!("bridge contract: {:?}", sc.errors));
+    }
+    // Track R16: every event of the turn after the cut, in Node's order, fed to the preparation's journal, then its
+    // finish; nothing for a turn without one.
+    let want_journal = texts(&arr(case.get("journal")), "", (0.0, 0.0));
+    let got_journal = texts(&sc.journal, &f.user, window);
+    if got_journal != want_journal
+        || sc.journal_finished != matches!(case.get("journal"), JValue::Arr(_))
+    {
+        return Err(format!(
+            "the Diary journal (finished: {}):\n front: {got_journal:?}\n node:  {want_journal:?}",
+            sc.journal_finished
+        ));
     }
     // The grant revokes Node's turn made, asked of core's revoke bridge (Node's revokeChatGrant).
     let want_revokes: Vec<String> = arr(case.get("stores"))

@@ -30,11 +30,17 @@ pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// are); `supervise`, step supervision after a tool round ([`crate::host::Host::supervise`]); `tool-gate`, the tool
 /// gate's decision (`require` mode: `tool_choice` on the first model turn, one retry on a miss; `prefetch` mode: the
 /// read run before the model); `reasoner`, the framing reasoner's packet for that prefetched read on a framed chat
-/// (#740, [`crate::host::Host::condense`]). Without them core keeps a turn whose project has skills, that offers the page save,
-/// that runs with the provenance policy on, whose tools routing narrowed, that retrieved images, that runs while step
-/// supervision is on, whose tool gate decided, or whose prefetch the framing reasoner would condense.
+/// (#740, [`crate::host::Host::condense`]); `deleted`, a chat deleted while its turn was prepared (the turn's end removes
+/// its state again, [`crate::after`]); `diary`, a Diary turn (the extras project or a `diary…` space: its Diary tools
+/// run through core's execute bridge, and the frame says what differs: no record, no supervision, no title, a declined
+/// write does not end the reply); `diary-journal`, a Diary extras preparation the client can recover (core holds its
+/// recovery journal under the frame's `turn.diaryJournal` handle; every event the turn sends goes to it through core's
+/// diary-journal op, and the turn's end finishes it). Without them core keeps a turn whose project has skills, that
+/// offers the page save, that runs with the provenance policy on, whose tools routing narrowed, that retrieved images,
+/// that runs while step supervision is on, whose tool gate decided, whose prefetch the framing reasoner would
+/// condense, whose chat was deleted meanwhile, that is a Diary turn, or that is a recoverable Diary extras preparation.
 pub const HANDOFF_CAPS: &str =
-    "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate,reasoner";
+    "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate,reasoner,deleted,diary,diary-journal";
 
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]

@@ -97,6 +97,10 @@ const SOURCES = {
   'server/rust-approval-registry.cjs': null,
   'server/tool-write-fence.cjs': null,
   'server/dav-parse.lock': null,
+  // Track R16: the frame and its refusals, a Diary extras preparation's journal and its handle.
+  'server/rust-chat-native.cjs': null,
+  'server/diary-jobs.cjs': null,
+  'server/rust-chat-journal.cjs': null,
 };
 for (const rel of Object.keys(SOURCES)) {
   SOURCES[rel] = crypto.createHash('sha256').update(fs.readFileSync(path.join(core, rel))).digest('hex');
@@ -153,6 +157,15 @@ const chatLists = require(path.join(server, 'chat-lists.cjs'));
 const realReadTombstones = chatLists.readTombstones;
 let onTombstones = null;
 chatLists.readTombstones = (dir) => { const ids = realReadTombstones(dir); onTombstones?.(ids); return ids; };
+// A Diary extras preparation's recovery journal (diary-jobs.cjs, track R16): every event chat.cjs `send` feeds it after
+// the cut is recorded (`journal`), the events the front's diary-journal op must feed it in the same order.
+const diaryJobs = require(path.join(server, 'diary-jobs.cjs'));
+const realJobStart = diaryJobs.start;
+let onJournal = null;
+diaryJobs.start = (...args) => {
+  const job = realJobStart(...args);
+  return { event: (e) => { onJournal?.(e); return job.event(e); }, finish: () => job.finish() };
+};
 // A project file edit's resolutions (chat.cjs calls project-edit-target.cjs resolveEditTarget before the card, after
 // the answer and before the run), each logged as the edit-target bridge answers it. A case's `editChanges[k]` is
 // what the project looks like (fields over the stored ones) at the k-th resolution: its files changed meanwhile.
@@ -307,7 +320,7 @@ async function runTurn(c, { handoff = false } = {}) {
     // (rust-chat-native.cjs: executeToolCall, writeTargetFor), so its replay gets Node's own answers.
     // `stubs`: what the turn asked of the stubs after its preparation (from the line the hand-off would cut at,
     // chat.cjs's createToolExchange) and what they answered, so the replay answers the same.
-    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [], stubs: [] };
+    const log = { requests: [], stores: [], approvals: [], executions: [], bridge: [], stubs: [], journal: [] };
     const store = (op, args) => log.stores.push({ op, ...args });
     let cut = false;
     const stub = (op, entry) => { if (cut) log.stubs.push({ op, ...entry }); return entry.answer; };
@@ -345,6 +358,9 @@ async function runTurn(c, { handoff = false } = {}) {
     const registry = createApprovalRegistry({ approvals: front, log: () => {}, now: () => FIXED_NOW, monotonic: () => 0,
       schedule: () => ({ clear() {} }) });
     onTombstones = (ids) => stub('tombstones', { answer: [...ids].sort() });
+    onJournal = (event) => { if (cut) log.journal.push(event); };
+    // `tombstoned`: the chat was deleted while the turn was prepared (track R16): its tombstone is in the workspace.
+    if (c.tombstoned) chatLists.addTombstone(dir, 'qa-chat-1');
     let editResolutions = 0;
     onEditTarget = (proj, rawArgs, options) => {
       const k = editResolutions++;
@@ -452,6 +468,9 @@ async function runTurn(c, { handoff = false } = {}) {
       if (line.startsWith(': ')) { out.keepAlives++; return true; }
       if (!line.startsWith('data: ') || !line.endsWith('\n\n')) throw new Error(`unexpected frame ${JSON.stringify(line)}`);
       out.events.push(JSON.parse(line.slice(6)));
+      // The store calls core made before its `prepared` frame (handleChatTurn's finally runs after it: a deleted
+      // chat's cleanup at the cut is core's, not the native turn's).
+      if (out.events[out.events.length - 1]?.type === 'prepared') out.storesAtFrame = log.stores.length;
       return true;
     };
     // As http.ServerResponse: finish and close come after end() returns; a destroyed response emits neither again.
@@ -483,7 +502,8 @@ async function runTurn(c, { handoff = false } = {}) {
       } }, prefill: { recordSample() {} },
       reduceToolResult: require(path.join(server, 'tool-result-reduce.cjs')).reduceToolResult,
       HISTORY_CAP: 20, DEFAULT_PROVIDER_ID: 'default', DIARY_BASE: 'http://qa-diary.invalid', TOOL_RESULT_CAP: 8000,
-      authService: { audit: (event, actor, subject, details) => store('audit', { event, actor, subject, details }), diaryEnabled: () => false },
+      // `diaryEnabled`: the account has the Diary add-on (a Diary extras turn, track R16).
+      authService: { audit: (event, actor, subject, details) => store('audit', { event, actor, subject, details }), diaryEnabled: () => c.diaryEnabled === true },
       toolPolicy: { mode: (_user, tool, write) => stub('policy', { name: tool, write, answer: policyFor(tool, write) }) },
       modelManager: {
         enabled: true,
@@ -597,7 +617,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate', 'reasoner']), supervising: () => c.supervise !== undefined } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise', 'tool-gate', 'reasoner', 'deleted', 'diary', 'diary-journal']), supervising: () => c.supervise !== undefined } } : {}),
       // `supervise`: step supervision is on (features.stepSupervision); the decision service answers the k-th question
       // with c.supervise[k] (step-supervision.cjs's own rules apply). Each decide is recorded as the front's supervise
       // op sees it: its round, goal, write flag and the outputs the supervisor reads, and the action it answered.
@@ -636,7 +656,7 @@ async function runTurn(c, { handoff = false } = {}) {
       const refused = logged.map((l) => /^\[chat\] native executor not used for this turn: (.+)$/.exec(l)?.[1]).find(Boolean) || null;
       // `requests`, `stores`: how many engine requests and store calls came before the frame (a Vision role's description).
       return { prepared, refused, before: prepared ? out.events.length - 1 : null, requests: prepared ? log.requests.length : null,
-        stores: prepared ? log.stores.length : null,
+        stores: prepared ? out.storesAtFrame : null,
         // What core wrote on the wire for it, frame by frame as res.write got them (the front's frame splitter reads these).
         raw: prepared ? out.raw : null,
         // What the preparation wrote to the workspace (a pinned skill's ledger entry): the native turn starts from it.
@@ -654,10 +674,12 @@ async function runTurn(c, { handoff = false } = {}) {
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
         retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, supervise: c.supervise || null, gate: c.gate || null, reasoner: c.reasoner || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
+        ...(c.tombstoned ? { tombstoned: true } : {}), ...(c.diaryEnabled ? { diaryEnabled: true } : {}),
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
       http: out.http, refusal: out.refusal, events: out.events,
       requests: log.requests, approvals: log.approvals, executions: log.executions, stores: log.stores, bridge: log.bridge, stubs: log.stubs,
+        ...(log.journal.length ? { journal: log.journal } : {}),
       files: listFiles(dir),
       record: { assistantEntry: record.assistantEntry(), partialEntry: record.partialEntry() },
     };
@@ -1221,6 +1243,23 @@ const CASES = [
   { name: 'prod_flags_escalate_under_grant', about: 'Under "Allow for this chat" a clean write is redeemed without a card; the supervisor then stops confidently: the reply pauses saying one change was saved.',
     provenance: true, chatWide: true, supervise: [{ action: 'escalate', scores: { continue: 0.1, verify: 0.1, escalate: 0.8 } }], narrow: null,
     rounds: [{ frames: [toolCall('drive_create_file', '{"name":"qa-own.txt","content":"QA own words.","destination":"qa-folder/notes"}'), finish('tool_calls')] }] },
+  // Track R16: the refusals 'deleted' and 'diary' lifted for a front naming them.
+  { name: 'deleted_chat_read', about: 'A chat deleted while its turn was prepared: the turn runs as any other (a read, then the answer, the context state written), and its end removes the chat through the store (unlisted, origin turn).',
+    tombstoned: true,
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-d1"}'), finish('tool_calls')] }, answer('Read before the chat went.')] },
+  { name: 'diary_extras_decline_goes_on', about: 'A Diary extras turn (not a recoverable preparation) with step supervision on and titles wired: no turn record, no supervisor question, no title; a declined write does not end the reply, the next round answers.',
+    diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' }, body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-1' },
+    supervise: [{ action: 'continue' }], titles: { autoNamed: true }, decision: 'deny',
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y1"}'), finish('tool_calls')] },
+      { frames: [toolCall('drive_trash_file', '{"fileId":"qa-file-y2"}', 'qa-call-2'), finish('tool_calls')] },
+      answer('I left the file where it is.')] },
+  { name: 'diary_project_chat', about: 'A chat of the Diary extras project outside a Diary space, titles wired and supervision on: it keeps its turn record and its supervisor (the space is not a Diary one) but gets no title.',
+    diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' }, supervise: [{ action: 'continue' }], titles: { autoNamed: true },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y3"}'), finish('tool_calls')] }, answer('Noted from the file.')] },
+  { name: 'diary_extras_preparation_journal', about: 'A Diary extras preparation the client can recover (recoveryId): every event after the cut goes into its journal, which ends complete; a read, then the answer.',
+    diaryEnabled: true, project: { id: 'cowork-diary-extras', name: 'QA Diary extras' },
+    body: { spaceId: 'diary-extras', extrasEnabled: true, sessionId: 'qa-session-2', recoveryId: 'qa-preparation-0002', entryDay: '2026-11-13' },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-y4"}'), finish('tool_calls')] }, answer('Prepared from the file.')] },
 ];
 
 (async () => {
@@ -1231,6 +1270,10 @@ const CASES = [
   for (const c of CASES.filter((x) => !process.env.RECORD_ONLY || x.name === process.env.RECORD_ONLY)) {
     const turn = await runTurn(c);
     if (withHandoff && turn.http) turn.handoff = await runTurn(c, { handoff: true });
+    // A hand-off that held a Diary journal (track R16): nothing feeds it here, so it is let go of, as a fresh process
+    // would not hold it (the next case would mint the same counted handle).
+    const held = turn.handoff?.prepared?.turn?.diaryJournal;
+    if (held) require(path.join(server, 'rust-chat-journal.cjs')).journals.release(held);
     cases.push(turn);
   }
   const tools = {};
@@ -1255,7 +1298,12 @@ const CASES = [
   const check = process.argv.indexOf('--check');
   if (check > 0) {
     const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
-    if (committed !== text) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
+    if (committed !== text) {
+      // RECORD_FRESH=<path>: the fresh recording is written there too (CI uploads it when no host can run Node).
+      if (process.env.RECORD_FRESH) fs.writeFileSync(process.env.RECORD_FRESH, text);
+      process.stderr.write('the recording differs from the committed fixture: record it again\n');
+      process.exit(1);
+    }
     process.stderr.write(`ok: ${cases.length} turns recorded as committed\n`);
   } else process.stdout.write(text);
   // A turn leaves no timers behind; exit even if a module keeps a handle (the partial timer is unref'd).

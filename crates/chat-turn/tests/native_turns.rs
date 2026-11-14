@@ -996,7 +996,17 @@ impl Keep for Script {
     }
 
     fn delete_unlisted(&self, chat: &str) {
-        self.store("transcripts.deleteChat", vec![("chatId", js::s(chat))]);
+        // The store's delete of a chat no list holds, as core calls it (handleChatTurn's finally).
+        self.store(
+            "transcripts.deleteChat",
+            vec![
+                ("chatId", js::s(chat)),
+                (
+                    "options",
+                    js::obj([("kind", js::s("unlisted")), ("origin", js::s("turn"))]),
+                ),
+            ],
+        );
     }
 }
 
@@ -1254,9 +1264,20 @@ fn the_native_continuation_is_node_after_the_cut() {
             let JValue::Obj(files) = c.get("files") else {
                 panic!()
             };
-            let mine = script.files.lock().unwrap().clone();
+            // A Diary extras preparation's record (diary-conversations/) is core's own: the front feeds it through
+            // core's diary-journal op (track R16), whose events the front's end-to-end test compares.
+            let core_own = |k: &str| k.starts_with("diary-conversations/");
+            let mine: BTreeMap<String, String> = script
+                .files
+                .lock()
+                .unwrap()
+                .clone()
+                .into_iter()
+                .filter(|(k, _)| !core_own(k))
+                .collect();
             let want: BTreeMap<String, String> = files
                 .iter()
+                .filter(|(k, _)| !core_own(k))
                 .map(|(k, v)| (k.clone(), js::stringify(v)))
                 .collect();
             assert_eq!(mine, want, "{name}: workspace files");
@@ -1264,7 +1285,8 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 158, "{ran:?}");
+    // R15's 158, and track R16's four: a deleted chat, two Diary turns, a Diary extras preparation.
+    assert_eq!(ran.len(), 162, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

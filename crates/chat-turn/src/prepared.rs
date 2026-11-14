@@ -104,6 +104,9 @@ pub struct Prepared {
     /// The project's instruction skills; `None` without a project (and from an older core, which hands off no
     /// turn whose project has skills).
     pub skills: Option<Skills>,
+    /// Track R16: the handle core holds a Diary extras preparation's recovery journal under (rust-chat-journal.cjs);
+    /// every event the turn sends goes to it, then the turn's end finishes it. `None` for every other turn.
+    pub diary_journal: Option<String>,
 }
 
 /// The project's whole tool selection, as chat.cjs resolves it when the model calls `more_tools`.
@@ -355,6 +358,20 @@ impl Prepared {
                     .ok_or_else(|| Unreadable("prepared.turn.sources is not readable".into()))?,
             },
             skills: skills(frame.get("skills"))?,
+            diary_journal: match turn.get("diaryJournal") {
+                JValue::Undefined | JValue::Null => None,
+                JValue::Str(h)
+                    if h.len() == 32
+                        && h.bytes().all(|b| matches!(b, b'0'..=b'9' | b'a'..=b'f')) =>
+                {
+                    Some(h.clone())
+                }
+                _ => {
+                    return Err(Unreadable(
+                        "prepared.turn.diaryJournal is not a handle".into(),
+                    ))
+                }
+            },
         };
         // chat.cjs never forces or prefetches a write (`forcedTool` is an offered read): a frame naming one, or the
         // once-only page save, is refused rather than run without its card (R15 review).

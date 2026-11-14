@@ -145,6 +145,11 @@ const out = `{"version":1,"generator":"crates/chat-turn/tests/record_sources.cjs
 const check = process.argv.indexOf('--check');
 if (check > 0) {
   const committed = fs.readFileSync(process.argv[check + 1], 'utf8');
-  if (committed !== out) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
+  if (committed !== out) {
+    // RECORD_FRESH=<path>: the fresh recording is written there too (CI uploads it when no host can run Node).
+    if (process.env.RECORD_FRESH) fs.writeFileSync(process.env.RECORD_FRESH, out);
+    process.stderr.write('the recording differs from the committed fixture: record it again\n');
+    process.exit(1);
+  }
   process.stderr.write(`ok: ${cases.length} attributions recorded as committed\n`);
 } else process.stdout.write(out);
