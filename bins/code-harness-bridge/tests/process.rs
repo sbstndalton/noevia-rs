@@ -141,7 +141,7 @@ impl Run {
 
     /// Wait for a client message matching `want`; every message read is kept in order.
     fn wait_for(&mut self, what: &str, want: impl Fn(&Value) -> bool) -> Value {
-        if let Some(found) = self.seen.iter().find(|m| want(m)) {
+        if let Some(found) = self.seen.iter().find(|m| want(*m)) {
             return found.clone();
         }
         let deadline = Instant::now() + WAIT;
@@ -380,7 +380,7 @@ fn tempdir() -> tempfile::TempDir {
 
 /// What each scenario must show natively (independent of the oracle).
 fn check(name: &str, t: &Transcript) {
-    let reply = |id: i64| t.client.iter().find(|m| is_reply(id)(m)).cloned();
+    let reply = |id: i64| t.client.iter().find(|m| is_reply(id)(*m)).cloned();
     let stop = |id: i64| reply(id).and_then(|m| m.pointer("/result/stopReason").cloned());
     assert_eq!(t.exit, Some(0), "{name}: {t:?}");
     match name {

@@ -26,7 +26,7 @@
 //! - a refusal reason for the gate is kept per tool call id, at most 50, oldest first out, and is
 //!   read once.
 //!
-//! Differences from the reference, each a reference bug (filed) or a choice named here:
+//! Differences from the reference, each a reference bug (noevia#2762) or a choice named here:
 //! - a client line or harness line that is JSON `null` is ignored (the reference throws on
 //!   `null.id` / `null.type`, an uncaught exception that kills the bridge);
 //! - a client method named after an `Object.prototype` member (`toString`, `constructor`,
