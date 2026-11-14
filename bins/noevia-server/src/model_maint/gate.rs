@@ -579,6 +579,28 @@ impl Shared {
             .is_none_or(|(a, g)| a.covers(&g.id, g.generation, step))
     }
 
+    /// inference-maintenance.cjs `assertCovered(step)` (Delta review P2): not lost, the last
+    /// confirmation (and the authority's lease) not lapsing within the margin, and the step plus the
+    /// margin inside the hard limit. A long step is covered by renewal, not by its whole length
+    /// fitting one confirmation. Always true for the gate's hold.
+    fn covers(&self, step: Duration) -> bool {
+        let Some(ttl) = self.lease_ttl else {
+            return true;
+        };
+        let now = Instant::now();
+        !self.lost.load(Ordering::Acquire)
+            && self.auth.as_ref().is_none_or(|(a, g)| {
+                a.covers_step(&g.id, g.generation, STEP_MARGIN, step)
+            })
+            && self
+                .confirmed
+                .lock()
+                .is_ok_and(|at| now + STEP_MARGIN < *at + ttl)
+            && self
+                .lease_end
+                .is_none_or(|end| now + step + STEP_MARGIN < end)
+    }
+
     /// Gives the authority's lease back at once; idempotent, synchronous.
     fn release_authority(&self) {
         if let Some((a, g)) = self.auth.as_ref() {
@@ -853,6 +875,14 @@ impl Hold {
                 .lock()
                 .is_ok_and(|at| covered(*at + ttl))
             && self.shared.lease_end.is_none_or(covered)
+    }
+
+    /// Node's `assertCovered(step)` ([`Shared::covers`]): the rule for a step whose calls end when
+    /// the hold stops covering even a zero-length step (`!covers(ZERO)`: Node's `lose()` at the
+    /// margin), as the native auto-tune runner's calls do. A call that cannot be ended that way
+    /// must use the stricter [`Hold::may_start`] (sbstndalton/noevia#2641).
+    pub fn covers(&self, step: Duration) -> bool {
+        !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step)
     }
 
     /// Whether the hold still excludes everyone else: not lost, and for Node's lease, Node's last
@@ -1233,6 +1263,43 @@ mod tests {
         );
         shared.node_renewal_refused();
         assert!(shared.lost.load(Ordering::Acquire));
+    }
+
+    /// #2550: Node's `assertCovered(step)` rule. On a Node lease (TTL 180 s, renewed every 10 s)
+    /// the native runner's 600 s load and 180 s smoke steps start, as in Node (the whole-step rule
+    /// of `may_start` never could); a step past the hard cap, a lapse within the 15 s margin and a
+    /// lost hold do not. The gate's own hold always covers.
+    #[test]
+    fn covers_is_nodes_assert_covered_rule() {
+        let s = |end: u64| {
+            let now = Instant::now();
+            Shared::new(
+                Some("qa-lease".into()),
+                now + Duration::from_secs(3600),
+                Some(Duration::from_secs(180)),
+                Some(now + Duration::from_secs(end)),
+                None,
+            )
+        };
+        let hour = s(3600);
+        assert!(hour.covers(Duration::from_secs(600)));
+        assert!(hour.covers(Duration::from_secs(180)));
+        let short = s(160);
+        assert!(short.covers(Duration::from_secs(140)));
+        assert!(!short.covers(Duration::from_secs(150)), "the step past the hard cap");
+        let lapsing = s(3600);
+        if let (Ok(mut at), Some(old)) = (
+            lapsing.confirmed.lock(),
+            Instant::now().checked_sub(Duration::from_secs(170)),
+        ) {
+            *at = old;
+        }
+        assert!(!lapsing.covers(Duration::ZERO), "a lapse within the margin");
+        let lost = s(3600);
+        lost.lost.store(true, Ordering::Release);
+        assert!(!lost.covers(Duration::ZERO));
+        let gate = Shared::new(None, Instant::now(), None, None, None);
+        assert!(gate.covers(Duration::from_secs(86_400)));
     }
 
     // The same test-only overlay compiles against the published pre-fix source.

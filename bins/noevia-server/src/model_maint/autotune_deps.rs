@@ -318,12 +318,13 @@ pub struct FrontEngine {
     facts: Arc<Mutex<(f64, Option<std::collections::HashSet<String>>)>>,
 }
 
-/// Ends when `hold` no longer excludes everyone (never without a hold): the lease's loss signal
-/// Node folds into every covered call's fetch signal (`dispatchSignal`).
+/// Ends when `hold` no longer covers even a zero-length step (never without a hold): lost, or its
+/// lease lapsing within the margin, which is when Node's `lose()` aborts the loss signal it folds
+/// into every covered call's fetch signal (`dispatchSignal`). Calls end 15 s before the lease can.
 async fn hold_lost(hold: Option<&Arc<Hold>>) {
     match hold {
         Some(h) => loop {
-            if !h.excluded() {
+            if !h.covers(Duration::ZERO) {
                 return;
             }
             tokio::time::sleep(LOSS_POLL).await;
@@ -332,10 +333,12 @@ async fn hold_lost(hold: Option<&Arc<Hold>>) {
     }
 }
 
-/// `assertCovered(step)` for the hold in `current`.
+/// `assertCovered(step)` for the hold in `current`: Node's rule ([`Hold::covers`]), since every
+/// call it admits ends at the margin ([`hold_lost`]); the stricter whole-step rule refused the
+/// runner's 600 s load and 180 s smoke steps on any Node-lease hold (TTL 180 s).
 fn covered(current: &Current, step: Duration) -> Result<(), Fail> {
     match current.get() {
-        Some(hold) if !hold.may_start(step) => Err(coverage_error()),
+        Some(hold) if !hold.covers(step) => Err(coverage_error()),
         _ => Ok(()),
     }
 }
@@ -534,7 +537,7 @@ impl super::autotune_context::Body for FrontBody {
         if self.abort.aborted() {
             return Err(fetch_failed(Some(&self.abort)));
         }
-        if self.hold.as_ref().is_some_and(|h| !h.excluded()) {
+        if self.hold.as_ref().is_some_and(|h| !h.covers(Duration::ZERO)) {
             return Err(coverage_error());
         }
         tokio::select! {
@@ -747,7 +750,7 @@ impl Deps for FrontDeps {
                 self.require_recovery(&key, APPLY_RECOVERY_REASON);
                 return Err(coverage_error());
             }
-            Ok(_) if !hold.excluded() => return Err(coverage_error()),
+            Ok(_) if !hold.covers(Duration::ZERO) => return Err(coverage_error()),
             Ok(reply) => reply,
         };
         let mut out = JValue::obj([
@@ -930,7 +933,7 @@ impl Deps for FrontDeps {
     }
 
     fn coverage_lost(&self) -> bool {
-        self.current.get().is_some_and(|h| !h.excluded())
+        self.current.get().is_some_and(|h| !h.covers(Duration::ZERO))
     }
 
     fn recoverable(&self) -> bool {
