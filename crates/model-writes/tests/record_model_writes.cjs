@@ -37,7 +37,10 @@ if (!checkout) {
 const root = path.resolve(checkout);
 const server = path.join(root, 'server');
 for (const k of ['log', 'info', 'warn', 'error', 'debug']) console[k] = (...a) => process.stderr.write(`${a.map(String).join(' ')}\n`);
-const SOURCE_FILES = ['server/routes/models.cjs', 'server/inference-budget.cjs', 'server/idle-unload-setting.cjs', 'server/http.cjs'];
+// llamacpp-manager.cjs is not run (its writePresets is stubbed by its own sequence below), but a change to it must
+// force a new recording.
+const SOURCE_FILES = ['server/routes/models.cjs', 'server/inference-budget.cjs', 'server/idle-unload-setting.cjs', 'server/http.cjs',
+  'server/llamacpp-manager.cjs'];
 const sources = Object.fromEntries(SOURCE_FILES.map((f) => [f, crypto.createHash('sha256').update(fs.readFileSync(path.join(root, f))).digest('hex')]));
 const req = (f) => require(path.join(server, f));
 const { createInferenceBudget, hostRamGib } = req('inference-budget.cjs');
@@ -79,10 +82,17 @@ const viaJson = (v) => (v === undefined ? undefined : JSON.parse(JSON.stringify(
 const clean = (o) => Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 const meminfoText = (kib) => `MemTotal:       ${kib} kB\nMemFree:         1 kB\nMemAvailable:   1 kB\n`;
 
+// A body of exactly `total` bytes: `{"budgetGib":12,"seconds":600,"pad":"xxx…"}`.
+function padded(total) {
+  const head = '{"budgetGib":12,"seconds":600,"pad":"', tail = '"}';
+  return head + 'x'.repeat(total - head.length - tail.length) + tail;
+}
+const bytesOf = (c) => (c.base64 !== undefined ? Buffer.from(c.base64, 'base64') : c.padded !== undefined ? Buffer.from(padded(c.padded), 'utf8') : c.body === undefined ? undefined : Buffer.from(c.body, 'utf8'));
+
 async function run(method, p, role, rawBody, deps) {
   const out = { headers: {} };
   const res = { setHeader: (k, v) => { out.headers[k] = v; } };
-  const chunks = rawBody === undefined ? [] : [Buffer.from(rawBody, 'utf8')];
+  const chunks = rawBody === undefined ? [] : [rawBody];
   const reqStub = { method, async *[Symbol.asyncIterator]() { for (const c of chunks) yield c; } };
   const jsonStub = (r, status, body) => { out.status = status; out.body = viaJson(body); };
   const service = { invalidateModelReads: () => { out.invalidated = (out.invalidated || 0) + 1; } };
@@ -119,9 +129,10 @@ async function addBudget(c) {
   const logs = [];
   const b = c.missing ? null : createInferenceBudget({ store, env: viaJson(c.env), readMeminfo: () => { if (c.mem === null) throw Error('ENOENT'); return c.mem; },
     audit: (...a) => audit.push(viaJson(a)), log: (m) => logs.push(m) });
-  const out = await run(c.method, '/api/models/inference-budget', c.role, c.body, { budget: b });
-  // The pad case is too large to keep: its length and a hash stand for it.
-  const request = c.body !== undefined && c.body.length > 4096 ? { requestBytes: Buffer.byteLength(c.body), requestSha256: crypto.createHash('sha256').update(c.body).digest('hex') } : { request: c.body };
+  const out = await run(c.method, '/api/models/inference-budget', c.role, bytesOf(c), { budget: b });
+  // A large body is not kept: its length and a hash stand for it (the padded ones are rebuilt by the replay).
+  const request = c.padded !== undefined ? { requestPadded: c.padded } : c.base64 !== undefined ? { requestBase64: c.base64 }
+    : c.body !== undefined && c.body.length > 4096 ? { requestBytes: Buffer.byteLength(c.body), requestSha256: crypto.createHash('sha256').update(c.body).digest('hex') } : { request: c.body };
   budget.push({ ...clean({ env: c.env, row: c.row, mem: c.mem, method: c.method, role: c.role, missing: c.missing }), ...request, ...out,
     rowAfter: rows.get('inference:memory-budget') ?? null, audit, logs: logs.length });
 }
@@ -137,7 +148,7 @@ const PUTS = ['throw', replyOf(404, {}), replyOf(405, {}), replyOf(400, { error:
   replyOf(200, null), replyOf(200, 'qa'), ...VIEWS.slice(0, 7).map((v) => replyOf(200, v)),
   ...['written', 'unchanged', 'failed', 'qa', undefined].map((preset) => replyOf(200, { ...VIEWS[1], preset })),
   replyOf(200, { ...VIEWS[2], preset: 'written' }), replyOf(200, { ...VIEWS[0], preset: 'unchanged' })];
-const WRITERS = [null, 'refused', 'failed', 'coverage', 'held'];
+const WRITERS = [null, 'refused', 'failed', 'uncovered', 'coverage', 'held'];
 const RELOADS = [replyOf(200, { reloaded: true }), replyOf(409, { error: 'A model is loaded. Unload it to apply the new settings.', loaded: ['qa-model', 5, 'qa-two'] }),
   replyOf(409, { error: 'qa', loaded: 'qa' }), replyOf(500, {}), { ok: false }, null];
 const ROUTER_TEXTS = [null, 'throw', '[*]\nsleep-idle-seconds = 600\n', '[*]\n--sleep-idle-seconds=1800\n[qa]\nmodel=/m\n', '[*]\nsleep-idle-seconds = 0x10\n',
@@ -157,7 +168,8 @@ async function addIdle(c) {
     return viaJson(scripted);
   };
   let writePresets = null;
-  if (c.writer === 'refused') writePresets = async () => { throw Object.assign(Error('held'), { status: 409, holdRefused: true }); };
+  if (c.writer === 'uncovered') writePresets = async () => { throw Object.assign(Error('The model service stopped confirming that chat is held back, so the reload stopped. Try again shortly.'), { status: 503, coverageLost: true }); };
+  else if (c.writer === 'refused') writePresets = async () => { throw Object.assign(Error('held'), { status: 409, holdRefused: true }); };
   else if (c.writer === 'failed') writePresets = async () => { throw Object.assign(Error('The model service could not confirm that chat is idle, so nothing was changed. Try again shortly.'), { status: 503 }); };
   else if (c.writer === 'coverage') writePresets = async (write, reloadIf) => { const w = await write(); if (!reloadIf(w)) return { written: w, reload: null }; throw Object.assign(Error('The model service stopped confirming that chat is held back, so the reload stopped. Try again shortly.'), { status: 503, coverageLost: true }); };
   else if (c.writer === 'held') writePresets = async (write, reloadIf) => { const w = await write(); if (!reloadIf(w)) return { written: w, reload: null }; return { written: w, reload: viaJson(c.reload) ?? { ok: false } }; };
@@ -165,10 +177,10 @@ async function addIdle(c) {
     reloadPresets: c.reloader ? async () => { calls.push({ reload: true }); return viaJson(c.reload); } : null,
     writePresets,
     presetsInRouter: async () => { calls.push({ routerText: true }); if (c.routerText === 'throw') throw Error('qa'); return c.routerText; },
-    audit: (...a) => audit.push(viaJson(a)) });
-  const out = await run(c.method, '/api/models/idle-unload', c.role, c.body, { idle: setting });
-  idle.push({ ...clean({ env: c.env, method: c.method, role: c.role, missing: c.missing, request: c.body, get: c.get, put: c.put, writer: c.writer,
-    reloader: c.reloader, reload: c.reload, routerText: c.routerText }), ...out, calls, audit });
+    audit: (...a) => { calls.push({ audit: viaJson(a) }); if (c.auditThrows) throw Error('qa: the audit table is unavailable'); audit.push(viaJson(a)); } });
+  const out = await run(c.method, '/api/models/idle-unload', c.role, bytesOf(c), { idle: setting });
+  idle.push({ ...clean({ env: c.env, method: c.method, role: c.role, missing: c.missing, request: c.body, requestBase64: c.base64, requestPadded: c.padded,
+    get: c.get, put: c.put, writer: c.writer, reloader: c.reloader, reload: c.reload, routerText: c.routerText, auditThrows: c.auditThrows }), ...out, calls, audit });
 }
 
 (async () => {
@@ -178,6 +190,11 @@ async function addIdle(c) {
   }
   await addBudget({ env: {}, mem: MEMS[0], method: 'PUT', role: 'admin', body: '{"budgetGib":12}', missing: true });
   for (const body of BODIES) await addBudget({ env: {}, mem: MEMS[0], method: 'PUT', role: 'admin', body });
+  // Raw bytes: invalid UTF-8 inside a string (read as U+FFFD) and inside a number (invalid JSON); the 1 MiB edge.
+  const raw = [Buffer.concat([Buffer.from('{"budgetGib":12,"x":"'), Buffer.from([0xff, 0xc3, 0x28, 0xe2, 0x82]), Buffer.from('"}')]),
+    Buffer.concat([Buffer.from('{"budgetGib":1'), Buffer.from([0xff]), Buffer.from('2}')]), Buffer.from([0xef, 0xbb, 0xbf, 0x7b, 0x7d])];
+  for (const b of raw) await addBudget({ env: {}, mem: MEMS[0], method: 'PUT', role: 'admin', base64: b.toString('base64') });
+  for (const total of [1024 * 1024 - 1, 1024 * 1024, 1024 * 1024 + 1]) await addBudget({ env: {}, mem: MEMS[0], method: 'PUT', role: 'admin', padded: total });
   for (let n = 0; n < 300; n += 1) {
     await addBudget({ env: pick(BUDGET_ENVS), row: pick(ROWS), mem: pick(MEMS), method: 'PUT', role: 'admin', body: rand() < 0.7 ? JSON.stringify({ budgetGib: pick(NUMBERS) }) : pick(BODIES.slice(0, -1)) });
   }
@@ -185,6 +202,13 @@ async function addIdle(c) {
   await addIdle({ env: {}, method: 'PUT', role: 'admin', body: '{"seconds":600}', missing: true });
   for (const body of SECONDS_BODIES) {
     await addIdle({ env: { MODEL_LOADER_URL: 'http://qa-loader.invalid/' }, method: 'PUT', role: 'admin', body, get: GETS[1], put: replyOf(200, { ...VIEWS[1], preset: 'written' }), writer: 'held', reload: RELOADS[0], routerText: ROUTER_TEXTS[2] });
+  }
+  const sure = { env: { MODEL_LOADER_URL: 'http://qa-loader.invalid' }, method: 'PUT', role: 'admin', get: GETS[1], put: replyOf(200, { ...VIEWS[1], preset: 'written' }), routerText: ROUTER_TEXTS[2] };
+  for (const total of [1024 * 1024, 1024 * 1024 + 1]) await addIdle({ ...sure, padded: total, writer: 'held', reload: RELOADS[0] });
+  await addIdle({ ...sure, base64: Buffer.concat([Buffer.from('{"seconds":600,"x":"'), Buffer.from([0xff]), Buffer.from('"}')]).toString('base64'), writer: 'held', reload: RELOADS[0] });
+  for (const writer of ['held', null]) for (const reload of [RELOADS[0], RELOADS[1]]) {
+    await addIdle({ ...sure, body: '{"seconds":600}', writer, reloader: writer === null ? true : undefined, reload, auditThrows: true });
+    await addIdle({ ...sure, body: '{"seconds":600}', writer, reloader: writer === null ? true : undefined, reload });
   }
   for (let n = 0; n < 500; n += 1) {
     const writer = pick(WRITERS);
