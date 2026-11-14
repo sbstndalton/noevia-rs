@@ -355,10 +355,10 @@ impl<F: Fetch> HealthCache<F> {
         let value = cell
             .get_or_init(|| async {
                 let first = self.probe_url(&url, &opts.headers).await;
-                let result = match (&fallback, first.state, first.reason.as_deref()) {
-                    (Some(f), State::Down, Some("http-404")) => {
-                        self.probe_url(f, &opts.headers).await
-                    }
+                let not_found =
+                    first.state == State::Down && first.reason.as_deref() == Some("http-404");
+                let result = match &fallback {
+                    Some(f) if not_found => self.probe_url(f, &opts.headers).await,
                     _ => first,
                 };
                 let out = Probe {
@@ -427,7 +427,8 @@ fn classify(e: &reqwest::Error) -> FetchError {
     if model_stream::net::refused_in_chain(e) {
         return FetchError::NotOnThisNetwork;
     }
-    let mut at: Option<&(dyn std::error::Error + 'static)> = Some(e);
+    let mut at: Option<&(dyn std::error::Error + 'static)> =
+        Some(e as &(dyn std::error::Error + 'static));
     while let Some(err) = at {
         if let Some(io) = err.downcast_ref::<std::io::Error>() {
             match io.kind() {

@@ -16,7 +16,7 @@
 //! service owns them (noevia-server machine_service.rs `turnBegin`/`turnEnd`, which also stops a measurement on that
 //! machine); a wiring takes the turn there, around the request, as chat.cjs `holdMachine` does.
 //!
-//! Every request goes through [`Fetch`]; [`NetFetch`] is the on-this-network client (model_stream::net: the
+//! Every request goes through [`Fetch`]; [`crate::machine_health::NetFetch`] is the on-this-network client (model_stream::net: the
 //! address checked at connect time, no redirect, no proxy) with a deadline and a body cap.
 use crate::machine_health::{Fetch, FetchError, HealthCache, ProbeOptions};
 use crate::machines::Target;
@@ -209,13 +209,16 @@ pub fn model_ids(body: &JValue) -> Vec<String> {
     for r in rows {
         // `typeof r === 'string' ? r : r?.id ?? r?.model ?? r?.name`: `??` passes over null and undefined only.
         let id = match r {
-            JValue::Str(_) => r,
-            _ => [r.get("id"), r.get("model"), r.get("name")]
+            JValue::Str(id) => Some(id),
+            _ => match [r.get("id"), r.get("model"), r.get("name")]
                 .into_iter()
                 .find(|v| !v.is_nullish())
-                .unwrap_or(&JValue::Undefined),
+            {
+                Some(JValue::Str(id)) => Some(id),
+                _ => None,
+            },
         };
-        if let JValue::Str(id) = id {
+        if let Some(id) = id {
             let clean = !js_trim(id).is_empty()
                 && wtf16::len(id) <= 200
                 && !id.chars().any(|c| (c as u32) < 0x20 || c as u32 == 0x7f);
@@ -391,7 +394,9 @@ pub fn not_sent(ready: &Ready, routed_role: Option<&str>, t: &Target) -> Option<
     let Ready::Refused { state, code, error } = ready else {
         return None;
     };
-    let role = routed_role.filter(|r| !r.is_empty()).unwrap_or(&t.role);
+    let role = routed_role
+        .filter(|r| !r.is_empty())
+        .unwrap_or(t.role.as_str());
     Some(NotSent {
         status: 503,
         code: *code,
@@ -672,7 +677,7 @@ impl<F: Fetch> MachineTurns<F> {
 
     /// core `propsFacts(t)`: one GET of the machine's `/props` for the model; `None` for a non-2xx answer, `Err`
     /// for no answer, an oversized or unparsable body.
-    pub async fn props_facts(&self, t: &Target) -> Result<Option<PropsFacts>, ()> {
+    async fn props_facts(&self, t: &Target) -> Result<Option<PropsFacts>, ()> {
         let url = format!(
             "{}/props?model={}",
             t.base_url,
