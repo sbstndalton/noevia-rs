@@ -811,23 +811,40 @@ fn make_day(year: i64, month: i64, date: i64) -> Option<f64> {
     Some((day_from_year - 1) as f64 + date as f64)
 }
 
-/// The local wall-clock milliseconds `local` as UTC milliseconds, in this process's zone. A time in
-/// a gap reads with the offset before it and an ambiguous one takes the earlier instant, as V8's
-/// DateCache::ToUTC does.
+/// The local wall-clock milliseconds `local` as UTC milliseconds, in this process's zone, as V8
+/// reads it (ICU `getOffsetFromLocal` with the former offset for both a skipped and a repeated wall
+/// time): an ambiguous time takes the earlier instant, and a time in a gap reads with the offset in
+/// force before the gap (noevia#2344: guessing the offset at the wall clock read as UTC got both
+/// wrong in zones east of UTC).
 fn local_to_utc(local: f64) -> f64 {
-    let ms = local as i64;
-    let guess = offset_at(ms);
-    // Two passes, as V8 does: the offset at the guessed instant, then at the corrected one.
-    let first = ms - guess * 1000;
-    let second = offset_at(first);
-    // Prefer the earlier instant when both offsets describe the same wall time.
-    let mut best = None;
-    for c in [ms - second * 1000, first] {
-        if c + offset_at(c) * 1000 == ms {
-            best = Some(best.map_or(c, |b: i64| b.min(c)));
+    local_to_utc_in(local as i64, offset_at) as f64
+}
+
+/// `local_to_utc` over an offset function (seconds east of UTC at an instant).
+fn local_to_utc_in(ms: i64, offset_at: impl Fn(i64) -> i64) -> i64 {
+    const DAY_MS: i64 = 86_400_000;
+    // Every offset in force within a day of the wall time: any instant that shows this wall time
+    // uses one of them (zones change their offset less than once a day).
+    let offsets = [
+        offset_at(ms - DAY_MS),
+        offset_at(ms),
+        offset_at(ms + DAY_MS),
+    ];
+    let candidates = offsets.map(|o| ms - o * 1000);
+    let shown = candidates
+        .iter()
+        .copied()
+        .filter(|&c| c + offset_at(c) * 1000 == ms)
+        .min();
+    match shown {
+        Some(c) => c,
+        // A skipped wall time: the earliest candidate lies before the gap, so its offset is the one
+        // in force before the change.
+        None => {
+            let before = candidates.iter().copied().min().unwrap_or(ms);
+            ms - offset_at(before) * 1000
         }
     }
-    best.unwrap_or(first) as f64
 }
 
 /// This process's UTC offset in seconds at the instant `ms`. chrono reaches about ±262,000 years,
@@ -934,6 +951,96 @@ pub fn iso(t: f64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A zone's offset (seconds east of UTC): `standard` before `start` and from `end` on, `summer`
+    /// in between (UTC milliseconds).
+    fn zone(standard: i64, summer: i64, start: i64, end: i64) -> impl Fn(i64) -> i64 {
+        move |t| {
+            if (start..end).contains(&t) {
+                summer
+            } else {
+                standard
+            }
+        }
+    }
+
+    #[allow(clippy::unwrap_used)]
+    fn wall(text: &str) -> i64 {
+        // A zone-less wall time spelled with Z: its fields as UTC milliseconds.
+        parse(&format!("{text}Z")).unwrap() as i64
+    }
+
+    #[allow(clippy::unwrap_used)]
+    fn at(text: &str) -> String {
+        iso(parse(text).unwrap())
+    }
+
+    #[test]
+    fn local_times_around_dst_changes_east_of_utc_read_as_v8_does() {
+        // noevia#2344, Node's answers. Europe/Berlin 2026: +1 h, +2 h from 29 March 01:00Z to
+        // 25 October 01:00Z.
+        let berlin = zone(
+            3600,
+            7200,
+            wall("2026-03-29T01:00"),
+            wall("2026-10-25T01:00"),
+        );
+        let local = |text: &str, z: &dyn Fn(i64) -> i64| iso(local_to_utc_in(wall(text), z) as f64);
+        // In the gap: the offset before it.
+        assert_eq!(local("2026-03-29T02:30", &berlin), at("2026-03-29T01:30Z"));
+        // Repeated: the earlier instant (summer time).
+        assert_eq!(local("2026-10-25T02:30", &berlin), at("2026-10-25T00:30Z"));
+        // Either side.
+        assert_eq!(local("2026-03-29T01:59", &berlin), at("2026-03-29T00:59Z"));
+        assert_eq!(local("2026-03-29T03:00", &berlin), at("2026-03-29T01:00Z"));
+        assert_eq!(local("2026-10-25T01:59", &berlin), at("2026-10-24T23:59Z"));
+        assert_eq!(local("2026-10-25T03:00", &berlin), at("2026-10-25T02:00Z"));
+        // Australia/Lord_Howe 2026: +10:30, +11:00 until 4 April 15:00Z and from 3 October 15:30Z
+        // (a half-hour change).
+        let lord_howe = |t: i64| {
+            if (wall("2026-04-04T15:00")..wall("2026-10-03T15:30")).contains(&t) {
+                37_800
+            } else {
+                39_600
+            }
+        };
+        assert_eq!(
+            local("2026-04-05T01:45", &lord_howe),
+            at("2026-04-04T14:45Z")
+        );
+        assert_eq!(
+            local("2026-10-04T02:15", &lord_howe),
+            at("2026-10-03T15:45Z")
+        );
+        assert_eq!(
+            local("2026-10-04T02:30", &lord_howe),
+            at("2026-10-03T15:30Z")
+        );
+        assert_eq!(
+            local("2026-04-05T02:00", &lord_howe),
+            at("2026-04-04T15:30Z")
+        );
+    }
+
+    #[test]
+    fn local_times_around_dst_changes_west_of_utc_keep_v8s_answers() {
+        // America/New_York 2026: -5 h, -4 h from 8 March 07:00Z to 1 November 06:00Z.
+        let new_york = zone(
+            -18_000,
+            -14_400,
+            wall("2026-03-08T07:00"),
+            wall("2026-11-01T06:00"),
+        );
+        let local = |text: &str| iso(local_to_utc_in(wall(text), &new_york) as f64);
+        assert_eq!(local("2026-03-08T02:30"), at("2026-03-08T07:30Z"));
+        assert_eq!(local("2026-11-01T01:30"), at("2026-11-01T05:30Z"));
+        assert_eq!(local("2026-06-15T12:00"), at("2026-06-15T16:00Z"));
+        // A fixed zone.
+        assert_eq!(
+            iso(local_to_utc_in(wall("2026-06-15T12:00"), |_| 0) as f64),
+            at("2026-06-15T12:00Z")
+        );
+    }
 
     fn utc(text: &str) -> Option<String> {
         parse(text).map(iso)

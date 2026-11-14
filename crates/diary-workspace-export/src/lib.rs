@@ -1,8 +1,7 @@
 //! Bounded, filesystem-free authoring of Diary workspace ZIP exports (#1071).
 //! See README.md for the versioned stdin framing and refusal contract.
 #![forbid(unsafe_code)]
-use serde::{Deserialize, Serialize};
-use serde_json::{json, Value};
+use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io::Read;
@@ -141,28 +140,38 @@ pub fn export(mut input: impl Read) -> Result<Vec<u8>, Reject> {
     if input.read(&mut extra).map_err(|_| Reject::Frame)? != 0 {
         return Err(Reject::Frame);
     }
-    let records: Vec<Value> = files.iter().map(|(path, data)| {
-        json!({"path": path, "bytes": data.len(), "sha256": format!("{:x}", Sha256::digest(data))})
-    }).collect();
-    #[derive(Serialize)]
-    struct Manifest<'a> {
-        format: &'static str,
-        settings: &'a serde_json::value::RawValue,
-        directories: &'a BTreeSet<String>,
-        #[serde(rename = "fileCount")]
-        file_count: usize,
-        bytes: usize,
-        files: Vec<Value>,
-    }
-    let manifest = Manifest {
-        format: "noevia-workspace-v1",
-        settings: &header.settings,
-        directories: &dirs,
-        file_count: files.len(),
-        bytes: total,
-        files: records,
-    };
-    let manifest = serde_json::to_vec_pretty(&manifest).map_err(|_| Reject::Manifest)?;
+    // The Python exporter's manifest, byte for byte (noevia#2652):
+    // json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2).
+    let records = files
+        .iter()
+        .map(|(path, data)| {
+            Py::Dict(vec![
+                ("path".into(), Py::Text(path.clone())),
+                ("bytes".into(), Py::Number(data.len().to_string())),
+                (
+                    "sha256".into(),
+                    Py::Text(format!("{:x}", Sha256::digest(data))),
+                ),
+            ])
+        })
+        .collect();
+    let manifest = Py::Dict(vec![
+        ("format".into(), Py::Text("noevia-workspace-v1".into())),
+        (
+            "settings".into(),
+            Py::read(header.settings.get()).ok_or(Reject::Manifest)?,
+        ),
+        (
+            "directories".into(),
+            Py::List(dirs.iter().cloned().map(Py::Text).collect()),
+        ),
+        ("fileCount".into(), Py::Number(files.len().to_string())),
+        ("bytes".into(), Py::Number(total.to_string())),
+        ("files".into(), Py::List(records)),
+    ]);
+    let mut text = String::new();
+    manifest.dump(0, &mut text);
+    let manifest = text.into_bytes();
     if manifest.len() > MAX_MANIFEST {
         return Err(Reject::Manifest);
     }
@@ -176,6 +185,196 @@ pub fn export(mut input: impl Read) -> Result<Vec<u8>, Reject> {
         zip.entry(&format!("workspace/{path}"), &data, false)?;
     }
     zip.finish()
+}
+
+/// A JSON value as Python's `json` module holds and writes it, for the manifest. A number keeps the
+/// text it was read with: the header's numbers were written by Python's `json.dumps`, which writes
+/// the same number the same way again (a float's `repr`, an int of any size).
+enum Py {
+    Literal(&'static str),
+    Number(String),
+    Text(String),
+    List(Vec<Py>),
+    Dict(Vec<(String, Py)>),
+}
+impl Py {
+    /// The value of one complete JSON text; `None` when it is not one.
+    fn read(text: &str) -> Option<Py> {
+        let mut cursor = Cursor { text, at: 0 };
+        let value = cursor.value(0)?;
+        cursor.space();
+        (cursor.at == text.len()).then_some(value)
+    }
+    /// `json.dumps(self, ensure_ascii=False, sort_keys=True, indent=2)` at nesting `level`: keys in
+    /// code point order (the last of a repeated key wins, as `json.loads` keeps it), `,` and `: `
+    /// separators, an empty list or object on one line, no final newline.
+    fn dump(&self, level: usize, out: &mut String) {
+        let line = |out: &mut String, level: usize| {
+            out.push('\n');
+            out.extend(std::iter::repeat_n("  ", level));
+        };
+        match self {
+            Py::Literal(text) => out.push_str(text),
+            Py::Number(text) => out.push_str(text),
+            Py::Text(text) => py_string(text, out),
+            Py::List(items) if items.is_empty() => out.push_str("[]"),
+            Py::List(items) => {
+                out.push('[');
+                for (n, item) in items.iter().enumerate() {
+                    if n > 0 {
+                        out.push(',');
+                    }
+                    line(out, level + 1);
+                    item.dump(level + 1, out);
+                }
+                line(out, level);
+                out.push(']');
+            }
+            Py::Dict(items) if items.is_empty() => out.push_str("{}"),
+            Py::Dict(items) => {
+                let sorted: BTreeMap<&str, &Py> =
+                    items.iter().map(|(k, v)| (k.as_str(), v)).collect();
+                out.push('{');
+                for (n, (key, value)) in sorted.into_iter().enumerate() {
+                    if n > 0 {
+                        out.push(',');
+                    }
+                    line(out, level + 1);
+                    py_string(key, out);
+                    out.push_str(": ");
+                    value.dump(level + 1, out);
+                }
+                line(out, level);
+                out.push('}');
+            }
+        }
+    }
+}
+/// Python's string encoder with `ensure_ascii=False`: `"`, `\\`, `\b`, `\f`, `\n`, `\r`, `\t`
+/// escaped by name, other controls below U+0020 as `\u00XX`, everything else as it is.
+fn py_string(text: &str, out: &mut String) {
+    out.push('"');
+    for c in text.chars() {
+        match c {
+            '"' => out.push_str("\\\""),
+            '\\' => out.push_str("\\\\"),
+            '\n' => out.push_str("\\n"),
+            '\r' => out.push_str("\\r"),
+            '\t' => out.push_str("\\t"),
+            '\u{8}' => out.push_str("\\b"),
+            '\u{c}' => out.push_str("\\f"),
+            c if u32::from(c) < 0x20 => out.push_str(&format!("\\u{:04x}", u32::from(c))),
+            c => out.push(c),
+        }
+    }
+    out.push('"');
+}
+/// A reader over JSON text serde_json already accepted (the header's `settings`).
+struct Cursor<'a> {
+    text: &'a str,
+    at: usize,
+}
+impl Cursor<'_> {
+    fn peek(&self) -> Option<u8> {
+        self.text.as_bytes().get(self.at).copied()
+    }
+    fn space(&mut self) {
+        while matches!(self.peek(), Some(b' ' | b'\t' | b'\n' | b'\r')) {
+            self.at += 1;
+        }
+    }
+    fn value(&mut self, depth: usize) -> Option<Py> {
+        // serde_json refuses nesting past 128 levels before this runs.
+        if depth > 256 {
+            return None;
+        }
+        self.space();
+        match self.peek()? {
+            b'{' => {
+                self.at += 1;
+                let mut items = Vec::new();
+                self.space();
+                if self.peek() == Some(b'}') {
+                    self.at += 1;
+                    return Some(Py::Dict(items));
+                }
+                loop {
+                    self.space();
+                    let key = self.string()?;
+                    self.space();
+                    (self.peek() == Some(b':')).then_some(())?;
+                    self.at += 1;
+                    items.push((key, self.value(depth + 1)?));
+                    self.space();
+                    match self.peek()? {
+                        b',' => self.at += 1,
+                        b'}' => {
+                            self.at += 1;
+                            return Some(Py::Dict(items));
+                        }
+                        _ => return None,
+                    }
+                }
+            }
+            b'[' => {
+                self.at += 1;
+                let mut items = Vec::new();
+                self.space();
+                if self.peek() == Some(b']') {
+                    self.at += 1;
+                    return Some(Py::List(items));
+                }
+                loop {
+                    items.push(self.value(depth + 1)?);
+                    self.space();
+                    match self.peek()? {
+                        b',' => self.at += 1,
+                        b']' => {
+                            self.at += 1;
+                            return Some(Py::List(items));
+                        }
+                        _ => return None,
+                    }
+                }
+            }
+            b'"' => self.string().map(Py::Text),
+            _ => {
+                for word in ["true", "false", "null"] {
+                    if self.text.get(self.at..)?.starts_with(word) {
+                        self.at += word.len();
+                        return Some(Py::Literal(word));
+                    }
+                }
+                let start = self.at;
+                while matches!(
+                    self.peek(),
+                    Some(b'-' | b'+' | b'.' | b'e' | b'E' | b'0'..=b'9')
+                ) {
+                    self.at += 1;
+                }
+                let number = self.text.get(start..self.at)?;
+                serde_json::from_str::<serde::de::IgnoredAny>(number).ok()?;
+                Some(Py::Number(number.to_owned()))
+            }
+        }
+    }
+    /// One string token, decoded.
+    fn string(&mut self) -> Option<String> {
+        (self.peek() == Some(b'"')).then_some(())?;
+        let start = self.at;
+        self.at += 1;
+        loop {
+            match self.peek()? {
+                b'\\' => self.at += 2,
+                b'"' => {
+                    self.at += 1;
+                    break;
+                }
+                _ => self.at += 1,
+            }
+        }
+        serde_json::from_str(self.text.get(start..self.at)?).ok()
+    }
 }
 
 #[derive(Default)]

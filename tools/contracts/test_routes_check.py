@@ -122,6 +122,24 @@ class RoutesCheck(unittest.TestCase):
         r = self.with_rows(("/api/x", "rust", '["GET"]'), ("/api/x", "node", '["POST"]'))
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
 
+    # sbstndalton/noevia#2705 item 1: the two clash kinds the first check missed.
+    def test_an_optional_suffix_row_and_its_bare_path_clash(self):
+        r = self.with_rows(("/api/integrations/storage/files", "rust", '["GET"]'))
+        self.assertEqual(r.returncode, 1, r.stdout)
+        self.assertIn("/api/integrations/storage/files", r.stdout)
+
+    def test_an_optional_suffix_row_and_its_bare_path_with_disjoint_methods_pass(self):
+        rows = [{"path": "/api/z{*?}", "owner": "rust", "methods": ["GET"]}, {"path": "/api/z", "owner": "node", "methods": ["PUT"]}]
+        self.assertEqual(routes_check.overlapping_rows(rows), [])
+
+    def test_methods_compare_case_insensitively(self):
+        r = self.with_rows(("/api/x", "rust", '["get"]'), ("/api/x", "node", '["GET"]'))
+        self.assertEqual(r.returncode, 1, r.stdout)
+
+    def test_two_optional_suffix_rows_are_reported_once(self):
+        rows = [{"path": "/api/y{*?}", "owner": "node"}, {"path": "/api/y{*?}", "owner": "rust"}]
+        self.assertEqual(len(routes_check.overlapping_rows(rows)), 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -50,11 +50,16 @@ fn restore_large_namespace_is_bounded() {
     // not on the disk. Every restored file is fsynced, and 5000 fsyncs alone take 25 s on a
     // slow disk and more than 5 s on a busy shared runner, so the namespace lives on tmpfs when
     // there is one (fsync is nearly free there).
-    // About 21 MiB there (a 4 KiB page per file); a /dev/shm that is missing or not writable
-    // falls back to the ordinary temp directory.
-    let dir = tempfile::tempdir_in(Path::new("/dev/shm"))
-        .or_else(|_| tempfile::tempdir())
-        .unwrap();
+    // About 21 MiB there (a 4 KiB page per file); a /dev/shm that is missing, not writable or
+    // without room for it falls back to the ordinary temp directory (noevia#2684 item 2: a nearly
+    // full /dev/shm failed the restore with ENOSPC, which read like the old timing flake).
+    let shm = Path::new("/dev/shm");
+    let dir = if free_bytes(shm).is_some_and(|free| free >= 64 * 1024 * 1024) {
+        tempfile::tempdir_in(shm).or_else(|_| tempfile::tempdir())
+    } else {
+        tempfile::tempdir()
+    }
+    .unwrap();
     let tenant = "00000000-0000-4000-8000-000000000123";
     let object = format!("noevia-backups/{tenant}/objects/synthetic/payload");
     let source = dir.path().join(&object);
@@ -79,8 +84,10 @@ fn restore_large_namespace_is_bounded() {
         .unwrap();
     assert!(
         out.status.success(),
-        "restore exceeded five seconds or failed: {:?}",
-        out.status.code()
+        "restore exceeded five seconds or failed: {:?} in {}: {}",
+        out.status.code(),
+        dir.path().display(),
+        String::from_utf8_lossy(&out.stderr)
     );
     assert!(now.elapsed().as_secs() < 6);
     let result: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
@@ -94,4 +101,29 @@ fn restore_large_namespace_is_bounded() {
         fs::read_dir(destination.join("dirs")).unwrap().count(),
         5000
     );
+}
+
+/// Free bytes for an unprivileged writer on the file system holding `path` (`df`'s available
+/// column); `None` when it cannot be read.
+fn free_bytes(path: &Path) -> Option<u64> {
+    let out = Command::new("df")
+        .args(["--output=avail", "-B1"])
+        .arg(path)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .nth(1)?
+        .trim()
+        .parse()
+        .ok()
+}
+
+#[test]
+fn free_bytes_reads_the_temp_directory_and_refuses_a_missing_path() {
+    assert!(free_bytes(&std::env::temp_dir()).is_some_and(|free| free > 0));
+    assert_eq!(free_bytes(Path::new("/nonexistent-qa-path-2684")), None);
 }

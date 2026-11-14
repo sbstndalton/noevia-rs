@@ -168,3 +168,79 @@ fn exact_file_count_boundary_and_path_cases() {
         assert_eq!(export(frame(input, &[]).as_slice()), Err(Reject::Path));
     }
 }
+
+/// The stored data of the archive's first entry (manifest.json): a 30-byte local header with the
+/// size at 18 and the name length at 26, no extra field.
+fn first_entry(zip: &[u8]) -> (&str, &[u8]) {
+    let size = u32::from_le_bytes(zip[18..22].try_into().unwrap()) as usize;
+    let name = u16::from_le_bytes(zip[26..28].try_into().unwrap()) as usize;
+    assert_eq!(&zip[28..30], &[0, 0]);
+    (
+        std::str::from_utf8(&zip[30..30 + name]).unwrap(),
+        &zip[30 + name..30 + name + size],
+    )
+}
+
+#[test]
+fn the_manifest_is_the_python_exporters_bytes() {
+    // noevia#2652. Both texts are Python's own (python3, stdlib json): the header's settings as
+    // workspace_export_native.py writes them, json.dumps(settings, ensure_ascii=False,
+    // allow_nan=False, separators=(',', ':')), and the manifest workspace_export.py writes for the
+    // same snapshot, json.dumps(manifest, ensure_ascii=False, sort_keys=True, indent=2). The
+    // settings were {"zeta": 1, "alpha": {"b": [1.5, 1e-07, 1e16, -0.0, 12345678901234567890123],
+    // "a": "月\u0001\"x\\\u007f "}, "Mid": True, "n": None, "e": [], "o": {}}.
+    let end = "\u{7f}\u{2028}";
+    let settings = r#"{"zeta":1,"alpha":{"b":[1.5,1e-07,1e+16,-0.0,12345678901234567890123],"a":"月\u0001\"x\\<END>"},"Mid":true,"n":null,"e":[],"o":{}}"#.replace("<END>", end);
+    let header = format!(
+        r#"{{"settings":{settings},"directories":["empty/nested"],"files":[{{"path":"a.txt","bytes":0}},{{"path":"日記/note.md","bytes":5}}]}}"#
+    );
+    let mut input = MAGIC.to_vec();
+    input.extend((header.len() as u32).to_be_bytes());
+    input.extend(header.as_bytes());
+    input.extend(b"hello");
+    let zip = export(input.as_slice()).unwrap();
+    workspace_restore_verify::verify(&zip).unwrap();
+    let want = r#"{
+  "bytes": 5,
+  "directories": [
+    "empty",
+    "empty/nested",
+    "日記"
+  ],
+  "fileCount": 2,
+  "files": [
+    {
+      "bytes": 0,
+      "path": "a.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "bytes": 5,
+      "path": "日記/note.md",
+      "sha256": "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824"
+    }
+  ],
+  "format": "noevia-workspace-v1",
+  "settings": {
+    "Mid": true,
+    "alpha": {
+      "a": "月\u0001\"x\\<END>",
+      "b": [
+        1.5,
+        1e-07,
+        1e+16,
+        -0.0,
+        12345678901234567890123
+      ]
+    },
+    "e": [],
+    "n": null,
+    "o": {},
+    "zeta": 1
+  }
+}"#
+    .replace("<END>", end);
+    let (name, manifest) = first_entry(&zip);
+    assert_eq!(name, "manifest.json");
+    assert_eq!(std::str::from_utf8(manifest).unwrap(), want);
+}

@@ -841,6 +841,61 @@ async fn exchange(
 mod tests {
     use super::*;
     use js_json::wtf16;
+    // noevia#2349, a named difference (contracts/http/README.md, the Diary local exchange, (7)):
+    // core's Number() threw on these (500 unstreamed, the interrupted event streamed); here they
+    // are no wait, and the refusal stays the one named.
+    #[test]
+    fn a_retry_after_object_with_its_own_to_string_is_no_wait() {
+        for wait in [
+            r#"{"toString":1}"#,
+            r#"{"toString":"5","valueOf":2}"#,
+            r#"[{"toString":1}]"#,
+        ] {
+            let detail = wtf16::parse(&format!(
+                r#"{{"detail":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":{wait}}}"#
+            ))
+            .unwrap();
+            let event = http_stream_failure(429, &detail, Some("9")).unwrap();
+            assert_eq!(
+                event.get("code").as_str(),
+                Some("storageThrottled"),
+                "{wait}"
+            );
+            assert!(
+                matches!(event.get("retryAfter"), JValue::Undefined),
+                "{wait}"
+            );
+            let (body, after) = json_failure(Some(&format!(
+                r#"{{"detail":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":{wait}}}"#
+            )));
+            assert_eq!(
+                (body.as_str(), after),
+                (
+                    r#"{"error":"Storage is limiting sign-ins","code":"storageThrottled"}"#,
+                    None
+                ),
+                "{wait}"
+            );
+            // Streamed, core read it for every refusal (the interrupted event); here only a
+            // throttled one reads it, so the other named refusals stay as they are.
+            for (status, code, want) in [
+                (401, "storageLoginRejected", "storageLoginRejected"),
+                (424, "", "storageLoginRejected"),
+                (503, "", "diaryUnavailable"),
+            ] {
+                let detail = wtf16::parse(&format!(
+                    r#"{{"detail":"refused","code":"{code}","retryAfter":{wait}}}"#
+                ))
+                .unwrap();
+                let event = http_stream_failure(status, &detail, None).unwrap();
+                assert_eq!(event.get("code").as_str(), Some(want), "{status} {wait}");
+                assert!(
+                    matches!(event.get("retryAfter"), JValue::Undefined),
+                    "{status} {wait}"
+                );
+            }
+        }
+    }
     fn fixtures() -> JValue {
         wtf16::parse(include_str!("../tests/fixtures/local-exchange-node.json")).unwrap()
     }

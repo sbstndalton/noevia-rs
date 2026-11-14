@@ -350,24 +350,28 @@ impl Backend for AppBackend {
         };
         tokio::task::spawn_blocking(move || {
             let feature = server_features::Feature::DiaryMcpWrite;
-            let spec = server_features::spec(feature);
             let index = server_features::Feature::ALL
                 .iter()
                 .position(|f| *f == feature);
             let env = index.and_then(|i| app.config.feature_context_env.get(i).copied().flatten());
-            let stored = app.writes.writer().ok().and_then(|w| {
-                w.read(|r| {
-                    r.row(
-                        "SELECT CASE WHEN typeof(value)='text' AND value IN ('true','false') THEN value ELSE NULL END FROM settings WHERE key=?1",
-                        [spec.setting],
-                        |row| row.get::<_, Option<String>>(0),
-                    )
-                })
-                .ok()
-                .flatten()
-                .flatten()
+            let writer = app.writes.writer().ok();
+            // features.cjs `selected`: the typed row, then the declared legacy row.
+            let stored = writer.as_ref().and_then(|w| {
+                w.read(|r| server_account::feature_context::startup::selected(r, feature))
+                    .ok()
+                    .flatten()
             });
-            server_features::evaluate(feature, env, stored.as_deref(), true).enabled
+            // The value core read at its start, as its registration reported it. A front paired
+            // with core (a feature context) whose registration cannot be read now answers off,
+            // as features.rs does: core's own value is unknown, and the selected one may be newer.
+            let boot = app.feature_context.as_ref().map(|context| {
+                let controller = context.controller();
+                writer
+                    .as_ref()
+                    .and_then(|w| w.read(|r| controller.view(r)).ok())
+                    .is_some_and(|view| view.facts.restart[0])
+            });
+            diary_write_construction_value(env, stored, boot)
         })
         .await
         .unwrap_or(false)
@@ -548,5 +552,72 @@ impl Backend for AppBackend {
             &self.open
         };
         crate::mcp_egress::list_tools(egress, &server.url, headers, &mcp.rpc_id).await
+    }
+}
+
+/// core's `features.diaryMcpWrite` construction value: `selected('diaryMcpWrite').value` read at
+/// core's start. diaryMcpWrite is a restart flag, so its answer is the boot value core registered
+/// (`facts.restart[0]`, false while a registration cannot be read); with no feature context at
+/// all (`boot` None), the selected value (env, else the admin setting, else the default) stands in
+/// for it. Never `evaluate` without a boot value: a restart flag's answer is then always off.
+fn diary_write_construction_value(
+    env: Option<bool>,
+    stored: Option<bool>,
+    boot: Option<bool>,
+) -> bool {
+    let feature = server_features::Feature::DiaryMcpWrite;
+    let stored = stored.map(|on| if on { "true" } else { "false" });
+    let selected = server_features::evaluate_with_context(
+        feature,
+        env,
+        stored,
+        server_features::Availability::Unknown,
+        None,
+    )
+    .value;
+    server_features::evaluate_with_context(
+        feature,
+        env,
+        stored,
+        server_features::Availability::Unknown,
+        Some(boot.unwrap_or(selected)),
+    )
+    .enabled
+}
+
+#[cfg(test)]
+mod tests {
+    use super::diary_write_construction_value as value;
+
+    // noevia#2666: the old answer, `evaluate(DiaryMcpWrite, env, stored, true).enabled`, was false
+    // here, so the Diary box never got its write tools.
+    #[test]
+    fn diary_mcp_write_on_by_env_gives_the_write_tools() {
+        assert!(value(Some(true), None, None));
+        assert!(value(Some(true), Some(false), None));
+        assert!(value(None, Some(true), None));
+    }
+
+    #[test]
+    fn diary_mcp_write_answers_cores_boot_value_when_registered() {
+        // Turned on after core started: core keeps its start value until a restart.
+        assert!(!value(None, Some(true), Some(false)));
+        assert!(value(None, Some(false), Some(true)));
+        assert!(value(Some(true), None, Some(true)));
+    }
+
+    #[test]
+    fn diary_mcp_write_is_off_while_a_paired_registration_cannot_be_read() {
+        // The backend passes Some(false) then: the switch turned on since core started is not
+        // core's value yet.
+        assert!(!value(None, Some(true), Some(false)));
+        assert!(!value(Some(true), None, Some(false)));
+    }
+
+    #[test]
+    fn diary_mcp_write_stays_off_by_default() {
+        assert!(!value(None, None, None));
+        assert!(!value(Some(false), Some(true), None));
+        assert!(!value(None, Some(false), None));
     }
 }
