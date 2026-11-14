@@ -211,6 +211,15 @@ pub async fn serve(
         Ok(Err(r)) => return r.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
+    // routes/models.cjs (#1461, #2618): Core ran these for every request it served here but a GET
+    // or HEAD: the shared model reads dropped first (whoever asked), then, past its 403, the cached
+    // folder scan (not for OPTIONS). Best effort: the next read refreshes either way. An applied
+    // commit clears the scan once more (Core's resume bridge, or `autotune_runner::call` for the
+    // native runner), as it does under Core's bridge today.
+    let write = parts.method != Method::GET && parts.method != Method::HEAD;
+    if write {
+        crate::auto_roles_routes::invalidate_model_reads(app).await;
+    }
     if id.user.role != server_auth::Role::Admin {
         return error(
             403,
@@ -220,6 +229,9 @@ pub async fn serve(
                 "administrator required"
             },
         );
+    }
+    if write && parts.method != Method::OPTIONS {
+        crate::model_manager_scan::clear(app).await;
     }
     let Some((200, mut facts)) = call(app, FACTS, &serde_json::json!({})).await else {
         return fault(Fault::State);

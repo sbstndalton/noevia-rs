@@ -1,0 +1,17 @@
+[package]
+name = "kiwix-tools"
+version = "0.1.0"
+description = "The offline Wikipedia built-in toolbox of noevia-core server/kiwix.cjs (wikipedia_search, wikipedia_read over an internal kiwix-serve), without its HTTP client"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+prompt-framing = { path = "../prompt-framing" }
+research-core = { path = "../research-core" }
+url = "2"
