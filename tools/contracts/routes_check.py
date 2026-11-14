@@ -122,17 +122,28 @@ def shape(path):
 
 
 def overlapping_rows(routes):
-    """Pairs of rows that name the same path shape and share a method (no `methods` = all)."""
+    """Pairs of rows that name the same path shape and share a method (no `methods` = all).
+
+    A row ending in the optional suffix {*?} also names its bare path (/api/x/files{*?} answers
+    /api/x/files), and methods compare case-insensitively (`get` is GET).
+    """
     by_shape = {}
     for r in routes:
         if isinstance(r.get("path"), str):
-            by_shape.setdefault(shape(r["path"]), []).append(r)
-    found = []
+            shapes = {shape(r["path"])}
+            if r["path"].endswith("{*?}"):
+                shapes.add(shape(r["path"][: -len("{*?}")]))
+            for s in shapes:
+                by_shape.setdefault(s, []).append(r)
+    found, seen = [], set()
     for rows in by_shape.values():
         for i, a in enumerate(rows):
             for b in rows[i + 1:]:
+                if (id(a), id(b)) in seen:
+                    continue
                 ma, mb = a.get("methods"), b.get("methods")
-                if ma is None or mb is None or set(ma) & set(mb):
+                if ma is None or mb is None or {m.upper() for m in ma} & {m.upper() for m in mb}:
+                    seen.add((id(a), id(b)))
                     found.append((a, b))
     return found
 
