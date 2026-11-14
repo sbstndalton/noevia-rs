@@ -44,12 +44,12 @@ const LOADED: &str = "A model is loaded. Unload it to apply the new settings.";
 const IN_PROGRESS: &str = "Requests are in progress. Try again when chats finish.";
 const NOT_RELOADED: &str = "The engine did not reload its settings. Check the Hardware tab.";
 const COULD_NOT: &str = "Could not reload model profiles.";
-const NO_ARBITER: &str = "The model service could not confirm that chat is idle, so nothing was changed. Try again shortly.";
+pub(super) const NO_ARBITER: &str = "The model service could not confirm that chat is idle, so nothing was changed. Try again shortly.";
 const LEASE_LOST: &str = "The model service stopped confirming that chat is held back, so the reload stopped. Try again shortly.";
 const NEEDS_TOKEN: &str = "An inference gate fronts the engine and INFERENCE_GATE_ADMIN_TOKEN is not set, so a reload that unloads models is refused.";
 /// `POST /models/unload` and `GET /models?reload=1`, as the router client bounds them, plus the rest.
 const UNLOAD_LIMIT: Duration = Duration::from_secs(60);
-const RELOAD_LIMIT: Duration = Duration::from_secs(120);
+pub(super) const RELOAD_LIMIT: Duration = Duration::from_secs(120);
 const PRESETS_BUSY: &str = "Models are busy, so nothing was changed. Try again shortly.";
 const OTHER_STEPS: Duration = Duration::from_secs(60);
 

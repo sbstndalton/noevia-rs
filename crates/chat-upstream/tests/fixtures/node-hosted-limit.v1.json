@@ -1,0 +1,447 @@
+{
+ "version": 1,
+ "generator": "crates/chat-upstream/tests/record_hosted_limit.cjs",
+ "sources": {
+  "server/chat-context.cjs": "b7b804906d9d874fbcadecbe248b8bb718e96feb0f07de670f6a1c88d8863f51",
+  "server/providers.cjs": "3c3e3e4f3b1288f63a1ea90887b0252ea7a774a5e2d610b19cc83cbf349cc989"
+ },
+ "hostedDefault": 32768,
+ "local": {
+  "limit": 8192,
+  "limitSource": "Conservative fallback; backend limit unavailable"
+ },
+ "cases": [
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\"}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\"}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":null}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":null}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":true}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":true}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":false}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":false}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":0}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":0}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":0}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":0}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2047}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2047}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2047.5}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2047.5}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2048}",
+   "manager": "none",
+   "limit": 2048,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2048}",
+   "manager": "off",
+   "limit": 2048,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2048.5}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2048.5}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2049}",
+   "manager": "none",
+   "limit": 2049,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2049}",
+   "manager": "off",
+   "limit": 2049,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":4096}",
+   "manager": "none",
+   "limit": 4096,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":4096}",
+   "manager": "off",
+   "limit": 4096,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":8192}",
+   "manager": "none",
+   "limit": 8192,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":8192}",
+   "manager": "off",
+   "limit": 8192,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":32768}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":32768}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":131072}",
+   "manager": "none",
+   "limit": 131072,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":131072}",
+   "manager": "off",
+   "limit": 131072,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1000000}",
+   "manager": "none",
+   "limit": 1000000,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1000000}",
+   "manager": "off",
+   "limit": 1000000,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1999999}",
+   "manager": "none",
+   "limit": 1999999,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1999999}",
+   "manager": "off",
+   "limit": 1999999,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2000000}",
+   "manager": "none",
+   "limit": 2000000,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2000000}",
+   "manager": "off",
+   "limit": 2000000,
+   "limitSource": "Provider setting"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2000000.5}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2000000.5}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2000001}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":2000001}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":4294967296}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":4294967296}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":9007199254740991}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":9007199254740991}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":9007199254740992}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":9007199254740992}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1e+21}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1e+21}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":-2048}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":-2048}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":-4096}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":-4096}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1e-7}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":1e-7}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":4096.000000001}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":4096.000000001}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":\"4096\"}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":\"4096\"}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":\"\"}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":\"\"}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":\" 4096\"}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":\" 4096\"}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":[]}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":[]}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":[4096]}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":[4096]}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":{}}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":{}}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":{\"value\":4096}}",
+   "manager": "none",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  },
+  {
+   "row": "{\"id\":\"qa-provider\",\"label\":\"QA Provider\",\"baseUrl\":\"https://qa-provider.example/v1\",\"apiKey\":\"qa-key\",\"contextTokens\":{\"value\":4096}}",
+   "manager": "off",
+   "limit": 32768,
+   "limitSource": "Default for hosted providers"
+  }
+ ]
+}

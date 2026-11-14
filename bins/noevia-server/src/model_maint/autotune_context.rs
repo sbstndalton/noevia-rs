@@ -1734,19 +1734,17 @@ impl<E: Engine, H: Hooks + 'static> Core<E, H> {
         let mut progress = Progress::default();
         while let Some(chunk) = response.read().await? {
             let fed = reader.feed(&chunk, &mut || self.engine.now(), &mut progress);
+            // #2619 (llamacpp-calibration.cjs:298-300): Node saves at the event a save falls due on,
+            // inside its read loop, so the job holds the step as it was then; the rest of the chunk
+            // (or the stop it ends in) comes after that save.
+            if let Some(at_save) = reader.take_due_save() {
+                self.show_progress(slot, index, &at_save);
+                self.save();
+            }
             self.show_progress(slot, index, &progress);
             match fed {
-                Feed::Continue { save } => {
-                    if save {
-                        self.save();
-                    }
-                }
+                Feed::Continue { .. } => {}
                 Feed::Stop(outcome) => {
-                    // Node's loop saved earlier in this chunk, then stopped.
-                    if let Some(at_save) = reader.take_due_save() {
-                        self.show_progress(slot, index, &at_save);
-                        self.save();
-                    }
                     abort.abort();
                     progress.eta_seconds = None;
                     self.show_progress(slot, index, &progress);

@@ -319,7 +319,7 @@ fn every_whole_turn_record_replays() {
     }
     assert_eq!(
         (appended, files),
-        (3, 1),
-        "three turns whose client left, one kept as a file"
+        (4, 1),
+        "four turns whose client left (one inside the reasoner's condense, noevia#2663), one kept as a file"
     );
 }
