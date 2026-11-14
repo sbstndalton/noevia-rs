@@ -1995,8 +1995,10 @@ pub(crate) mod tests {
     #[test]
     fn the_large_lock_waits_then_is_busy() {
         let _s = SERIAL.lock().unwrap_or_else(|p| p.into_inner());
+        // Only the threads that must be busy wait briefly; this thread's own takes wait long enough
+        // for a parallel test's hold of the process-wide lock to end.
         let short = || TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_millis(50))));
-        short();
+        TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_secs(5))));
         let first = large_lock(LARGE_BYTES + 1, None).unwrap();
         assert!(large_lock(10, None).is_ok());
         // Another thread waits, then is busy.
@@ -2072,10 +2074,10 @@ pub(crate) mod tests {
         );
         assert!(started.elapsed() >= Duration::from_millis(250));
         // A failed file take frees this process's turn.
+        TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_secs(5))));
         assert!(large_lock(LARGE_BYTES + 1, None).is_ok());
         std::fs::write(file.with_extension("release"), b"1").unwrap();
         assert!(child.wait().unwrap().success());
-        TEST_ACQUIRE_WAIT.with(|w| w.set(Some(Duration::from_millis(5000))));
         let hold = large_lock(LARGE_BYTES + 1, Some(&file));
         assert!(hold.is_ok(), "free once the other process lets go");
     }
