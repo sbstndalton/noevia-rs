@@ -5,7 +5,7 @@
   "server/ssrf.cjs": "a4eb5e36b57940bbecd4695158cc10c98cb98082334e9de945cef9644889dae4",
   "server/providers.cjs": "3c3e3e4f3b1288f63a1ea90887b0252ea7a774a5e2d610b19cc83cbf349cc989",
   "server/chat-machines.cjs": "f2dd2ae13892279f6d9f09acb5b977effc1bc6bbfae4ce4114698ad247a17855",
-  "server/rust-chat-native.cjs": "dec3f3498a3c4b7b96b8d038219d468aaa3dbd78bf236067884e78f2cde1ae50"
+  "server/rust-chat-native.cjs": "589255bae395be65356e1c597699fc6437dbf4cc4a7d10de3115e79418e8201f"
  },
  "targets": [
   {
