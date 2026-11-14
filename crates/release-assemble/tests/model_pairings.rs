@@ -702,3 +702,28 @@ fn a_commented_require_is_not_a_load() {
     let err = model_pairings::model_manager_pairing(t.path()).expect_err("refused");
     assert_eq!(err, "model manager proxy pairing: Core's index.cjs could not be read");
 }
+
+#[test]
+fn cli_core_requires_code_body_and_pairing_names() {
+    let t = tree_with(&[
+        ("core/server/index.cjs", "const a = require('./a.cjs');\n// require('./b.cjs')\n"),
+        ("x.rs", "a\n// b\nc\n#[cfg(test)]\nmod tests {}\n"),
+    ]);
+    let bin = env!("CARGO_BIN_EXE_release-assemble");
+    let run = |args: &[&str]| Command::new(bin).args(args).output().expect("the binary runs");
+    let index = t.path().join("core/server/index.cjs");
+    let index = index.to_str().expect("a UTF-8 path");
+    for (module, want) in [("./a.cjs", "yes"), ("./b.cjs", "no")] {
+        let out = run(&["core-requires", index, module]);
+        assert!(out.status.success());
+        assert_eq!(String::from_utf8_lossy(&out.stdout), want);
+    }
+    let x = t.path().join("x.rs");
+    let out = run(&["code-body", x.to_str().expect("a UTF-8 path")]);
+    assert_eq!(String::from_utf8_lossy(&out.stdout), "a\nc\n");
+    let tree = t.path().to_str().expect("a UTF-8 path");
+    for (name, _) in model_pairings::ALL {
+        let out = run(&["pairing", name, tree]);
+        assert_eq!(out.status.code(), Some(0), "pairing {name}");
+    }
+}
