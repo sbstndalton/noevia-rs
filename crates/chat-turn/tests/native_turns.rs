@@ -1221,7 +1221,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 130, "{ran:?}");
+    assert_eq!(ran.len(), 132, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

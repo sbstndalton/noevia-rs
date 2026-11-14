@@ -594,6 +594,9 @@ async function runTurn(c, { handoff = false } = {}) {
             return c.supervise[Math.min(k++, c.supervise.length - 1)];
           } } });
         return { decide: async (input) => {
+          // With the turn's signal aborted (the client left) the supervisor answers at once, asking and logging
+          // nothing: no question for the front's op either.
+          if (input.signal?.aborted) return real.decide(input);
           outputs = input.messages.filter((m) => m.role === 'tool' || m.role === 'assistant').slice(-8)
             .map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 1500) : '' }));
           goal = typeof input.goal === 'string' ? input.goal.slice(0, 1500) : '';
@@ -1070,10 +1073,16 @@ const CASES = [
     // The earlier answer: 16 units, then emoji pairs, so the cut at 1500 falls between two pairs (counted in UTF-16
     // units; a split pair would leave a lone surrogate, which the serde_json fixture readers refuse).
     toolResults: { drive_read_file: `${'QA long line. '.repeat(120)}QA tail.` },
-    body: { history: [{ role: 'user', content: 'QA earlier question.' }, { role: 'assistant', content: 'QA earlier answer.' }, { role: 'user', content: 'QA second question.' }, { role: 'assistant', content: `QA long answer: ${'\u{1F600}'.repeat(800)}` }] },
+    body: { history: [...Array.from({ length: 7 }, (_, i) => [{ role: 'user', content: `QA earlier question ${i + 1}.` }, { role: 'assistant', content: `QA earlier answer ${i + 1}.` }]).flat(),
+      { role: 'user', content: 'QA second question.' }, { role: 'assistant', content: `QA long answer: ${'\u{1F600}'.repeat(800)}` }] },
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s9"}'), finish('tool_calls')] }, answer('Read the long one.')] },
   { name: 'supervise_error_result', about: 'A failed call: its result reaches the supervisor framed, so its ERROR guard does not see it (noevia#2656); a confident stop pauses the reply.', supervise: [{ action: 'escalate', scores: { continue: 0.1, verify: 0.1, escalate: 0.8 } }],
     rounds: [{ frames: [toolCall('qa_missing_tool', '{}'), finish('tool_calls')] }] },
+  { name: 'supervise_long_message', about: 'A message longer than the supervisor reads: its goal is the first 1500 UTF-16 units.', supervise: [{ action: 'continue' }],
+    body: { message: `QA long request ${'q'.repeat(1700)}` },
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s10"}'), finish('tool_calls')] }, answer('Read for the long request.')] },
+  { name: 'supervise_left_in_tool', about: 'The client leaves while the round\'s tool runs: the supervisor is not asked.', supervise: [{ action: 'verify' }], leaveInTool: 'drive_read_file',
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s11"}'), finish('tool_calls')] }] },
   { name: 'supervise_two_rounds', about: 'Two tool rounds: the supervisor is asked after each (round 0 and 1), not after the last.', supervise: [{ action: 'continue' }, { action: 'verify' }],
     rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s5"}'), finish('tool_calls')] },
       { frames: [toolCall('drive_search_files', '{"query":"QA"}', 'qa-call-2'), finish('tool_calls')] },
