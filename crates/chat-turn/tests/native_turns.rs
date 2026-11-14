@@ -1197,7 +1197,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 100, "{ran:?}");
+    assert_eq!(ran.len(), 103, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
@@ -1626,4 +1626,37 @@ fn the_frame_reader_finds_every_recorded_hand_off() {
             );
         }
     }
+}
+
+/// #769 (R15): a frame with the provenance policy on says `provenance: true`; any other present value refuses the
+/// frame (it is never read as "off"), and a frame without the key is a turn without the policy.
+#[test]
+fn the_provenance_flag_is_true_or_absent() {
+    let fixture = wtf16::parse(common::FIXTURE).unwrap();
+    let JValue::Arr(cases) = fixture.get("cases") else {
+        panic!()
+    };
+    let case = |name: &str| {
+        cases
+            .iter()
+            .find(|c| c.get("name").as_str() == Some(name))
+            .unwrap()
+            .clone()
+    };
+    let frame = case("provenance_answer")
+        .get("handoff")
+        .get("prepared")
+        .clone();
+    assert!(Prepared::read(&frame).unwrap().provenance);
+    for bad in [js::s("true"), js::n(1.0), JValue::Null, JValue::Bool(false)] {
+        let mut f = frame.clone();
+        js::set(&mut f, "provenance", bad.clone());
+        assert!(Prepared::read(&f).is_err(), "{bad:?}");
+    }
+    let plain = case("plain");
+    assert!(
+        !Prepared::read(plain.get("handoff").get("prepared"))
+            .unwrap()
+            .provenance
+    );
 }
