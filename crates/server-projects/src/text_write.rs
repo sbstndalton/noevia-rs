@@ -24,8 +24,16 @@
 //!   `null/<group>/<name>` in storage, then recorded it under that name: a bug not copied).
 //! - Storage the front cannot use now ([`Storage::Refused`]: no admission slot, an endpoint the
 //!   account may not reach, a connection row that cannot be read) refuses every write with its own
-//!   text, before anything is checked or written; core would have tried and failed (or, for an
-//!   unreadable row, written locally).
+//!   text, after the name and the edit checks and before any storage step; core would have tried
+//!   and failed (or, for an unreadable row, written locally).
+//! - A name holding a lone surrogate is refused: core's storage path held it as U+FFFD and its list
+//!   as itself, so the two named different files.
+//! - Refusals core has no text for, each before anything is recorded: the list cannot be saved
+//!   (core's unawaited save logged it and the tool reported success; an in-place edit says the
+//!   stored file was replaced), the extraction queue cannot be written (the upload's text), and a
+//!   local disk failure.
+//! - A create's new storage folder is recorded at once (core held it in memory until its save);
+//!   the cleanup at the end (`pruneDocuments`) saves the list when it removed something.
 //! - Core's save rewrote the whole list (every project's load fix-ups, every project's skills
 //!   reconciled); here only this project is changed.
 //! - multimodal-rag's `sourceChanged` nudge is the outbox index job's (as for an upload).
@@ -460,6 +468,9 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
         let Some(folder) = ensure_folder(env, remote, id, &project) else {
             return Err(format!("Could not create this project's storage folder, so \"{name}\" was not created. Nothing was saved. Check the storage connection and try again."));
         };
+        // Recorded at once (core held it on the project it kept in memory), so a retry after a
+        // refused write uses this folder instead of making another.
+        record_folder(env, &dir, id, &folder, false)?;
         store::set(&mut project, "projectFolder", JValue::Str(folder));
     }
     let project_folder = folder_of(&project).unwrap_or_default();
@@ -599,6 +610,15 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             Some("the project could not be saved; the project list was not changed".to_owned())
         }
     };
+    // An in-place edit has already replaced the stored bytes: say so, so a retry is not refused as
+    // "changed in storage" without the reason.
+    let failed = failed.map(|m| {
+        if is_edit && remote.is_some() && !adopt {
+            format!("\"{stored}\" was saved in storage, but {m}. Sync this project's Sources to pick it up.")
+        } else {
+            m
+        }
+    });
     if let Some(m) = failed {
         if let Some(earlier) = earlier {
             crate::upload::restore_job(&dir, id, &file_name, earlier);
@@ -922,6 +942,11 @@ mod tests {
     /// Core keeps the plain copy when the adopt made the folder (module header): the port's saved
     /// project is core's without it, and its index work adds the copy's `unindex`.
     const FIXED_ADOPT_COPY: &[&str] = &["adopt-makes-folder"];
+    /// A create whose new folder was made before its write failed: recorded at once here (core held
+    /// it in memory), so projects.json gains the project's `projectFolder`.
+    const FIXED_FOLDER_KEPT: &[&str] = &["create-no-folder-write-fails"];
+    /// Refused here, written by core (a lone surrogate in the name; module header).
+    const REFUSED_HERE: &[&str] = &["create-lone-surrogate-name"];
 
     #[test]
     fn every_write_answers_as_core() {
@@ -993,6 +1018,14 @@ mod tests {
                 &edit,
             );
             let node = c.get("node");
+            if REFUSED_HERE.contains(&name) {
+                assert!(got.is_err(), "{name}: refused here");
+                assert!(script.calls.borrow().is_empty(), "{name}: no storage call");
+                assert_eq!(std::fs::read_to_string(dir.join("projects.json")).unwrap(), before, "{name}");
+                assert!(outbox::jobs(&dir).unwrap().is_empty(), "{name}: no index work");
+                checked += 1;
+                continue;
+            }
             match (node.get("error").as_str(), &got) {
                 (Some(want), Err(m)) => assert_eq!(m, want, "{name}: error"),
                 (None, Ok(file)) => {
@@ -1027,7 +1060,19 @@ mod tests {
                 "{name}: storage calls"
             );
             let after = std::fs::read_to_string(dir.join("projects.json")).unwrap();
+            // Every other project stays as it was.
+            let (was, now) = (wtf16::parse(&before).unwrap(), wtf16::parse(&after).unwrap());
+            for p in arr(now.get("projects")).iter().filter(|p| p.get("id") != call.get("project")) {
+                let old = arr(was.get("projects")).iter().find(|o| o.get("id") == p.get("id")).unwrap();
+                assert_eq!(json(p), json(old), "{name}: another project changed");
+            }
             match node.get("project").as_str() {
+                None if FIXED_FOLDER_KEPT.contains(&name) => {
+                    let p = arr(now.get("projects")).iter().find(|p| p.get("id") == call.get("project")).unwrap();
+                    let mut want = arr(was.get("projects")).iter().find(|o| o.get("id") == call.get("project")).unwrap().clone();
+                    store::set(&mut want, "projectFolder", JValue::Str(format!("{root_folder}/{}", call.get("project").as_str().unwrap())));
+                    assert_eq!(json(p), json(&want), "{name}: the folder is kept");
+                }
                 None => assert_eq!(after, before, "{name}: projects.json changed"),
                 Some(want) => {
                     let saved = wtf16::parse(&after).unwrap();
@@ -1072,5 +1117,82 @@ mod tests {
             checked += 1;
         }
         assert!(checked >= 30, "{checked}");
+    }
+
+    struct DoclingDown;
+    impl Engine for DoclingDown {
+        fn docling_configured(&self) -> bool {
+            true
+        }
+        fn docling(&self, _: &str, _: &[u8], _: bool, _: Option<(u32, u32)>) -> Result<JValue, EngineError> {
+            Err(EngineError { message: "docling is down".into(), status: Some(503), ..Default::default() })
+        }
+        fn docling_ranges(&self, _: usize) -> Option<bool> {
+            None
+        }
+        fn ocr_configured(&self) -> bool {
+            false
+        }
+        fn ocr_pages(&self, _: &[u8], _: &[u32], _: Option<u32>, _: Option<u64>) -> Result<Vec<JValue>, EngineError> {
+            Err(EngineError::new("no ocr"))
+        }
+        fn ocr_caps(&self) -> Option<OcrCaps> {
+            None
+        }
+        fn multimodal(&self) -> bool {
+            false
+        }
+        fn busy_waits(&self) -> Vec<Duration> {
+            Vec::new()
+        }
+    }
+
+    fn rig(projects: &str) -> (tempfile::TempDir, std::path::PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        let dir = root.path().join("users").join("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("projects.json"), projects).unwrap();
+        (root, dir)
+    }
+
+    #[test]
+    fn a_document_whose_reader_is_down_is_queued_before_its_record() {
+        let (root, dir) = rig(r#"{"projects":[{"id":"qa-p","name":"QA","modes":["chat"],"chats":[],"files":[]}]}"#);
+        let env = Env {
+            ctx: Ctx { data_dir: root.path(), user_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", switch: server_store::RustProjects::owned(), now_ms: 1 },
+            storage: &Storage::None,
+            engine: &DoclingDown,
+            limits: &Limits::from_env(),
+            project_root: "noevia projects",
+            lock_wait: Duration::from_secs(5),
+        };
+        let file = write_text(&env, "qa-p", "page.html", "<p>QA page</p>", &Edit::default());
+        let Ok(file) = file else { panic!("{file:?}") };
+        assert!(file.get("document").truthy(), "{}", json(&file));
+        assert!(crate::extract_queue::pending(&dir, "qa-p", "page.html").is_some(), "the job is written");
+        let saved = wtf16::parse(&std::fs::read_to_string(dir.join("projects.json")).unwrap()).unwrap();
+        let listed = arr(arr(saved.get("projects"))[0].get("files")).iter().any(|f| f.get("name").as_str() == Some("page.html"));
+        assert!(listed, "and the record says so");
+    }
+
+    #[test]
+    fn storage_the_front_cannot_use_refuses_every_write() {
+        let (root, dir) = rig(r#"{"projects":[{"id":"qa-p","name":"QA","modes":["chat"],"chats":[],"files":[]}]}"#);
+        let before = std::fs::read_to_string(dir.join("projects.json")).unwrap();
+        let storage = Storage::Refused(503, "Storage is busy; try again shortly.");
+        let env = Env {
+            ctx: Ctx { data_dir: root.path(), user_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", switch: server_store::RustProjects::owned(), now_ms: 1 },
+            storage: &storage,
+            engine: &NoEngine,
+            limits: &Limits::from_env(),
+            project_root: "noevia projects",
+            lock_wait: Duration::from_secs(5),
+        };
+        assert_eq!(
+            write_text(&env, "qa-p", "new.md", "QA", &Edit::default()),
+            Err("Storage is busy; try again shortly.".to_owned())
+        );
+        assert_eq!(std::fs::read_to_string(dir.join("projects.json")).unwrap(), before);
+        assert!(outbox::jobs(&dir).unwrap().is_empty());
     }
 }

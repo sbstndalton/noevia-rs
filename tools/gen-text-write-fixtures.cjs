@@ -126,6 +126,10 @@ add('adopt-empty-account', [alpha()], DAV, stored(), adoptPlain('qa-alpha', { ad
 add('adopt-write-unknown', [alpha()], DAV, stored({ fail: { write: { [`${F}/Text/plain.txt`]: err(502, 'connection lost', { code: 'unknown' }) } } }), adoptPlain('qa-alpha'));
 add('adopt-version-fails', [alpha()], DAV, stored({ fail: { version: { [`${F}/Text/plain.txt`]: err(502, 'storage returned 503', { upstream: 503 }) } } }), adoptPlain('qa-alpha'));
 add('edit-stored-unsupported', [alpha()], DAV, stored({ fail: { version: { [`${F}/Text/notes.md`]: err(400, 'this storage cannot report a file version', { code: 'unsupported' }) } } }), editNotes('QA x'));
+add('create-two-projects', [alpha(), bare()], DAV, stored(), { project: 'qa-bare', name: 'new.md', text: 'QA', options: {} });
+add('create-no-folder-write-fails', [bare()], DAV, { files: {}, dirs: [], fail: { write: { [`${ROOT}/qa-bare/Text/new.md`]: err(502, 'storage returned 500', { upstream: 500 }) } } }, { project: 'qa-bare', name: 'new.md', text: 'QA', options: {} });
+add('adopt-makes-folder-then-exists', [bare()], DAV, { files: { [`${ROOT}/qa-bare/Text/plain.txt`]: { text: 'QA there', etag: '"qa-etag-p"' } }, dirs: [], fail: {} }, adoptPlain('qa-bare'));
+add('create-lone-surrogate-name', [bare()], null, null, { project: 'qa-bare', name: 'qa\ud800.md', text: 'QA', options: {} });
 add('edit-stored-read-403', [alpha()], DAV, stored({ fail: { read: { [`${F}/Text/notes.md`]: err(502, 'storage returned 403', { upstream: 403 }) } } }), editNotes('QA x'));
 
 // ── The scripted storage ─────────────────────────────────────────────────────

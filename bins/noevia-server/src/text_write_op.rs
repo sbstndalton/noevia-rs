@@ -30,7 +30,7 @@ use crate::App;
 pub const PATH: &str = "/v1/projects/text-write";
 /// The body cap: core's upload cap for the text (25 MB) after JSON escaping (at most 6 bytes per
 /// byte for control characters), plus the options.
-const BODY_CAP: usize = 25 * 1024 * 1024 * 6 + 1024 * 1024;
+const BODY_CAP: usize = 25 * 1024 * 1024 * 6 + 2 * 1024 * 1024;
 
 fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
     let mut res = Response::new(Body::from(wtf16::stringify(body).unwrap_or_default()));
@@ -95,30 +95,32 @@ async fn serve(
     let Some(app) = app else {
         return error(StatusCode::SERVICE_UNAVAILABLE, "unavailable");
     };
-    let body = match wtf16::parse(&String::from_utf8_lossy(&raw)) {
-        Ok(b @ JValue::Obj(_)) => b,
-        _ => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
-    };
-    let text_of = |k: &str| body.get(k).as_str().map(str::to_owned);
-    let (Some(user), Some(project), Some(name), Some(text)) = (
-        text_of("user").filter(|u| server_projects::store::user_dir(&store.data_dir, u).is_ok()),
-        text_of("project").filter(|p| !p.is_empty()),
-        text_of("name"),
-        text_of("text"),
-    ) else {
-        return error(
-            StatusCode::BAD_REQUEST,
-            "user, project, name and text are required",
-        );
-    };
-    let edit = Edit {
-        expect_name: body.get("expectName").clone(),
-        expect_content: body.get("expectContent").clone(),
-        expect_attachment: body.get("expectAttachment").clone(),
-        adopt_to: body.get("adoptTo").clone(),
-        adopt_account: body.get("adoptAccount").clone(),
-    };
+    if cfg!(not(feature = "rust-storage-browse")) {
+        // Without the storage client the write could not reach the account's storage.
+        return error(StatusCode::SERVICE_UNAVAILABLE, "unavailable");
+    }
+    // The body (up to ~150 MB) is parsed off the async runtime.
     let done = tokio::task::spawn_blocking(move || {
+        let body = match wtf16::parse(&String::from_utf8_lossy(&raw)) {
+            Ok(b @ JValue::Obj(_)) => b,
+            _ => return error(StatusCode::BAD_REQUEST, "invalid JSON"),
+        };
+        let text_of = |k: &str| body.get(k).as_str().map(str::to_owned);
+        let (Some(user), Some(project), Some(name), Some(text)) = (
+            text_of("user").filter(|u| server_projects::store::user_dir(&store.data_dir, u).is_ok()),
+            text_of("project").filter(|p| !p.is_empty()),
+            text_of("name"),
+            text_of("text"),
+        ) else {
+            return error(StatusCode::BAD_REQUEST, "user, project, name and text are required");
+        };
+        let edit = Edit {
+            expect_name: body.get("expectName").clone(),
+            expect_content: body.get("expectContent").clone(),
+            expect_attachment: body.get("expectAttachment").clone(),
+            adopt_to: body.get("adoptTo").clone(),
+            adopt_account: body.get("adoptAccount").clone(),
+        };
         let role = match account_role(&app, &user) {
             Ok(Some(role)) => role,
             Ok(None) => return error(StatusCode::NOT_FOUND, "no such account"),
