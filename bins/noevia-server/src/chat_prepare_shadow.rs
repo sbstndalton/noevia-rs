@@ -144,11 +144,9 @@ fn settings_rows(app: &App) -> Option<(JValue, JValue)> {
             .writer()
             .ok()?
             .read(|r| {
-                r.row(
-                    "SELECT value FROM settings WHERE key=?1",
-                    [key],
-                    |row| row.get::<_, Option<String>>(0),
-                )
+                r.row("SELECT value FROM settings WHERE key=?1", [key], |row| {
+                    row.get::<_, Option<String>>(0)
+                })
             })
             .ok()?;
         Some(match row {
@@ -509,10 +507,24 @@ mod tests {
             };
             let tz = input.get("tz").as_str().unwrap();
             let rows = (
-                input.get("settings").get("reasoning_effort_default").clone(),
-                input.get("settings").get("auto_sampling_presets_enabled").clone(),
+                input
+                    .get("settings")
+                    .get("reasoning_effort_default")
+                    .clone(),
+                input
+                    .get("settings")
+                    .get("auto_sampling_presets_enabled")
+                    .clone(),
             );
-            let verdict = run(&dir, body.as_bytes(), frame, tz, flags, Some(&boxes), Some(&rows));
+            let verdict = run(
+                &dir,
+                body.as_bytes(),
+                frame,
+                tz,
+                flags,
+                Some(&boxes),
+                Some(&rows),
+            );
             assert_eq!(
                 verdict,
                 Verdict::Match,

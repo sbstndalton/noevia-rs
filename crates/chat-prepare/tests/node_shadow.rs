@@ -356,8 +356,12 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
         .map(|t| t.get("prepared"))
         .filter(|p| p.is_object())
         .collect();
-    assert!(frames.iter().any(|p| p.get("effort").as_str() == Some("high")));
-    assert!(frames.iter().any(|p| p.get("effort").as_str() == Some("low")));
+    assert!(frames
+        .iter()
+        .any(|p| p.get("effort").as_str() == Some("high")));
+    assert!(frames
+        .iter()
+        .any(|p| p.get("effort").as_str() == Some("low")));
     assert!(frames
         .iter()
         .any(|p| matches!(p.get("sampling"), JValue::Obj(items) if !items.is_empty())));

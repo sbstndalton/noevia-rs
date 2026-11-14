@@ -58,6 +58,9 @@ pub struct ShadowTurn<'a> {
     /// The settings rows chat.cjs reads for the effort and the sampling presets, when the caller
     /// could read them; without them those three fields are not compared.
     pub settings: Option<Settings<'a>>,
+    /// The history replay's `knownTool` and `carryOrphanTool` over the server's toolboxes, when the
+    /// caller has them; without them a history that asks either is skipped.
+    pub catalogue: Option<Catalogue<'a>>,
 }
 
 /// The settings table's `reasoning_effort_default` and `auto_sampling_presets_enabled` values
@@ -66,9 +69,6 @@ pub struct ShadowTurn<'a> {
 pub struct Settings<'a> {
     pub effort_default: &'a JValue,
     pub sampling_presets: &'a JValue,
-    /// The history replay's `knownTool` and `carryOrphanTool` over the server's toolboxes, when the
-    /// caller has them; without them a history that asks either is skipped.
-    pub catalogue: Option<Catalogue<'a>>,
 }
 
 /// One of the replay's questions about a tool name.
