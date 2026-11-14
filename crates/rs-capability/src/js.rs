@@ -80,6 +80,22 @@ pub(crate) fn basename(path: &str) -> &str {
     }
 }
 
+/// JavaScript `\s`, its negation and `.` as regex classes, so the ported patterns keep their meaning on unusual
+/// characters: `\s`, `\S` and `%DOT%` in a pattern are rewritten to these.
+const WS: &str = r"[\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]";
+const NOT_WS: &str =
+    r"[^\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]";
+const DOT: &str = r"[^\n\r\x{2028}\x{2029}]";
+
+pub(crate) fn pattern(
+    cell: &'static std::sync::OnceLock<Option<regex::Regex>>,
+    source: &str,
+) -> Result<&'static regex::Regex, String> {
+    cell.get_or_init(|| regex::Regex::new(&source.replace("\\S", NOT_WS).replace("\\s", WS).replace("%DOT%", DOT)).ok())
+        .as_ref()
+        .ok_or_else(|| "internal pattern".to_string())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -105,5 +121,8 @@ mod tests {
         assert!(is_space('\u{feff}'));
         assert!(!is_space('\u{85}'));
         assert_eq!(trim("\u{a0} x \u{2028}"), "x");
+        static CELL: std::sync::OnceLock<Option<regex::Regex>> = std::sync::OnceLock::new();
+        let re = pattern(&CELL, r"^\s+\S$");
+        assert!(re.is_ok_and(|r| r.is_match("\u{feff}x") && !r.is_match("\u{85}x")));
     }
 }
