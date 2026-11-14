@@ -139,3 +139,26 @@ pub(crate) fn snapshot(store: &Store, owner: &str) -> Result<Option<Snapshot>, P
         Ok(rows.pop().transpose())
     }).map_err(|_| ProjectionError::Unavailable)?
 }
+
+/// A connection's non-secret fields, as core's `authService.getStorage(userId)` returns them
+/// beside the secret (the region as stored; core normalises it with `normalizeS3Region`).
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Account {
+    pub kind: String,
+    pub base_url: String,
+    pub bucket: String,
+    pub region: String,
+    pub username: String,
+}
+
+/// The account's connection row without its secret (the ciphertext is read and dropped, never
+/// opened); `None` when the account has none (core's `local` default).
+pub fn account(store: &Store, owner: &str) -> Result<Option<Account>, ProjectionError> {
+    Ok(snapshot(store, owner)?.map(|s| Account {
+        kind: s.kind,
+        base_url: s.base_url,
+        bucket: s.bucket,
+        region: s.region,
+        username: s.username,
+    }))
+}

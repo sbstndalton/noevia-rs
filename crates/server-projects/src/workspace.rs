@@ -63,7 +63,7 @@ fn migrate_modes(project: &mut JValue) {
 /// What core's workspace load (workspace.cjs) makes of a stored project before any route sees it:
 /// a null or primitive entry of `files` dropped (#1236), the retired `lemonade` provider id read as
 /// the default's, and the `modes` migration (#1576).
-fn loaded(mut project: JValue, default_provider: &str) -> JValue {
+pub(crate) fn loaded(mut project: JValue, default_provider: &str) -> JValue {
     if let JValue::Arr(files) = project.get("files") {
         let kept: Vec<JValue> = files
             .iter()
