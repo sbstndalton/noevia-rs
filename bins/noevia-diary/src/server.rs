@@ -442,7 +442,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
 
 // ---------------------------------------------------------------- handling
 
-fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
+pub(crate) fn check_auth(app: &App, headers: &HeaderMap) -> Result<bool, ()> {
     if app.auth_token.is_empty() {
         return Ok(true);
     }

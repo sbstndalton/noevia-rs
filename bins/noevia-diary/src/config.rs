@@ -67,6 +67,10 @@ pub struct Config {
     /// writes the front serves natively under the writer slot the child leases.
     #[serde(default)]
     pub native_writers: Vec<String>,
+    /// R9 main mode, S4: the child's embedding configuration subset (rust_parent.EMBEDDING_KEYS)
+    /// when its DIARY_RUST_EMBEDDING=on: this process then owns the embedding configuration.
+    #[serde(default)]
+    pub embedding: Option<serde_json::Value>,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

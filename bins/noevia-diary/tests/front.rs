@@ -109,7 +109,10 @@ async fn stub_child() -> (u16, Log) {
         let log = l2.clone();
         async move {
             let (parts, body) = req.into_parts();
-            let body = axum::body::to_bytes(body, usize::MAX).await.unwrap().to_vec();
+            let body = axum::body::to_bytes(body, usize::MAX)
+                .await
+                .unwrap()
+                .to_vec();
             log.lock().unwrap().push(Seen {
                 method: parts.method.to_string(),
                 target: parts.uri.to_string(),
@@ -348,9 +351,11 @@ async fn the_parent_is_the_only_verifier_and_nonce_owner() {
             .send()
     };
     // A forged assertion is refused here; the child never sees it.
-    let r = send("v2.1.00000000000000000000000000000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into())
-        .await
-        .unwrap();
+    let r = send(
+        "v2.1.00000000000000000000000000000000.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA".into(),
+    )
+    .await
+    .unwrap();
     assert_eq!(r.status(), 401);
     assert_eq!(
         r.text().await.unwrap(),
@@ -410,7 +415,10 @@ async fn the_parent_is_the_only_verifier_and_nonce_owner() {
 async fn native_reads_wait_for_the_childs_recovered_stamp() {
     let dir = tempfile::tempdir().unwrap();
     let day = "## Sunday, January 6, 2030\n\n### 09:15 — walk\n\n**Me:** Walked by the river.\n\n**Assistant:** Noted.\n\n<!-- xid:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee -->\n";
-    managed_tenant(dir.path(), &[("Entries/2030/January/January 6, 2030.md", day)]);
+    managed_tenant(
+        dir.path(),
+        &[("Entries/2030/January/January 6, 2030.md", day)],
+    );
     let s = start(dir.path(), KEY, true).await;
     let client = reqwest::Client::new();
     let get = || {
@@ -456,7 +464,10 @@ async fn native_reads_wait_for_the_childs_recovered_stamp() {
         .post(format!("http://{}/nostamp", s.public))
         .header("authorization", format!("Bearer {TOKEN}"))
         .header("x-cowork-user-id", UID)
-        .header("x-cowork-tenant-assertion", sign("POST", "/nostamp", "", b""))
+        .header(
+            "x-cowork-tenant-assertion",
+            sign("POST", "/nostamp", "", b""),
+        )
         .send()
         .await
         .unwrap();
@@ -660,7 +671,8 @@ async fn the_child_leases_the_writer_slot_and_native_writes_wait_for_it() {
         .await
         .unwrap();
     assert_eq!(r.status(), 200);
-    let id: String = serde_json::from_str::<serde_json::Value>(&r.text().await.unwrap()).unwrap()["lease"]
+    let id: String = serde_json::from_str::<serde_json::Value>(&r.text().await.unwrap()).unwrap()
+        ["lease"]
         .as_str()
         .unwrap()
         .to_string();
@@ -747,7 +759,8 @@ async fn the_child_leases_the_writer_slot_and_native_writes_wait_for_it() {
         .await
         .unwrap();
     assert_eq!(r.status(), 200);
-    let held: String = serde_json::from_str::<serde_json::Value>(&r.text().await.unwrap()).unwrap()["lease"]
+    let held: String = serde_json::from_str::<serde_json::Value>(&r.text().await.unwrap()).unwrap()
+        ["lease"]
         .as_str()
         .unwrap()
         .to_string();
@@ -784,7 +797,10 @@ async fn the_child_leases_the_writer_slot_and_native_writes_wait_for_it() {
     assert!(t.elapsed() < std::time::Duration::from_secs(2));
     // A caller whose reply was lost returns its lease by its holder nonce.
     let r = c
-        .delete(format!("http://{}/internal/lease?holder=qa-holder", s.control))
+        .delete(format!(
+            "http://{}/internal/lease?holder=qa-holder",
+            s.control
+        ))
         .header("x-noevia-diary-control", CTL)
         .send()
         .await
@@ -845,7 +861,12 @@ fn leases_joins_and_fences_share_one_slot() {
         .is_err());
     // Another tenant is independent.
     assert!(w
-        .with_lock_as("1c6f7d2f-4b3e-4d9f-8a21-2b3c4d5e6f70", None, Some(Duration::ZERO), |_| ())
+        .with_lock_as(
+            "1c6f7d2f-4b3e-4d9f-8a21-2b3c4d5e6f70",
+            None,
+            Some(Duration::ZERO),
+            |_| ()
+        )
         .is_ok());
     // Python deletes under its lease: the fence does not wait for its own caller.
     w.fence_as(UID, Some(id));
@@ -865,7 +886,8 @@ fn leases_joins_and_fences_share_one_slot() {
     // Fenced: native work refuses, a lease is still granted (Python's own deletion and 410s).
     assert!(w.lease_release(id));
     assert_eq!(
-        w.with_lock_as(UID, None, Some(Duration::ZERO), |_| ()).err(),
+        w.with_lock_as(UID, None, Some(Duration::ZERO), |_| ())
+            .err(),
         Some(Refused::Fenced)
     );
     assert!(w.with_lock(UID, |_| ()).is_none());
@@ -916,8 +938,7 @@ async fn the_child_gets_the_exact_request_target() {
     let seen = s.log.lock().unwrap();
     assert_eq!(
         seen[0].target,
-        "http://127.0.0.1/x/../api/%2e%2e/health?q='a'&r=%27"
-            .replace("http://127.0.0.1", "")
+        "http://127.0.0.1/x/../api/%2e%2e/health?q='a'&r=%27".replace("http://127.0.0.1", "")
     );
     assert_eq!(seen[0].header("host"), Some("diary"));
 }

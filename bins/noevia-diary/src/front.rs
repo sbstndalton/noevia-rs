@@ -137,6 +137,9 @@ pub struct Front {
     /// S3: per tenant, (native writes served, the highest of them the child has been told of).
     written: Mutex<HashMap<String, (u64, u64)>>,
     write_wait: Duration,
+    /// S4: this run's epoch for the embedding snapshot (handed to the child), and the owner.
+    pub embedding_epoch: String,
+    owner: OnceLock<Arc<crate::embedding_owner::Owner>>,
     http: Client<HttpConnector, Body>,
 }
 
@@ -160,6 +163,8 @@ impl Front {
             recovered: Mutex::new(HashMap::new()),
             written: Mutex::new(HashMap::new()),
             write_wait: WRITE_WAIT,
+            embedding_epoch: random_hex(16).unwrap_or_default(),
+            owner: OnceLock::new(),
             http,
         }
     }
@@ -188,11 +193,27 @@ impl Front {
         }
         let routes = cfg.native_routes.clone();
         let writers = cfg.native_writers.clone();
+        let embedding = cfg.embedding.clone();
+        if embedding.is_some() && self.embedding_epoch.is_empty() {
+            return Err("no embedding epoch for the child");
+        }
         let mut app = App::new(cfg);
         app.write_wait = Some(self.write_wait);
+        let app = Arc::new(app);
         self.app
-            .set(Arc::new(app))
+            .set(app.clone())
             .map_err(|_| "start-up config already installed")?;
+        if let Some(e) = embedding {
+            match crate::embedding_owner::Owner::start(app, &e, self.embedding_epoch.clone()) {
+                Ok(owner) => {
+                    let _ = self.owner.set(owner);
+                }
+                Err(err) => {
+                    eprintln!("noevia-diary: the embedding configuration cannot be owned here: {err}");
+                    return Err("embedding owner not started");
+                }
+            }
+        }
         let _ = self.native_writers.set(writers);
         self.native_routes
             .set(routes)
@@ -384,8 +405,31 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         false
     };
 
-    // A native read: no body, a read route, served here unless it declines.
     let path = server::decoded_path(&raw_path);
+    // S4: the embedding endpoints are this process's while it owns the configuration (never the
+    // child's, which only follows it).
+    if let Some(owner) = front.owner.get() {
+        if path == "/api/internal/embedding"
+            && (parts.method == Method::GET || parts.method == Method::POST)
+        {
+            let bytes = match (buffered.take(), stream.take()) {
+                (Some(b), _) => b,
+                (None, Some(s)) => match tokio::time::timeout(
+                    BODY_DEADLINE,
+                    axum::body::to_bytes(s, server::MAX_BODY),
+                )
+                .await
+                {
+                    Ok(Ok(b)) => b,
+                    Ok(Err(_)) => return raw(413, TOO_LARGE),
+                    Err(_) => return raw(408, BODY_TIMEOUT),
+                },
+                (None, None) => axum::body::Bytes::new(),
+            };
+            return owner.route(&app, &parts.method, &parts.headers, &bytes).await;
+        }
+    }
+    // A native read: no body, a read route, served here unless it declines.
     let named = front
         .native_routes
         .get()
@@ -648,6 +692,7 @@ pub fn child_handshake(front: &Front, control_port: u16) -> String {
         "control_token": front.control_token,
         "parent_secret": front.secret,
         "control_port": control_port,
+        "embedding_epoch": front.embedding_epoch,
     })
     .to_string()
 }

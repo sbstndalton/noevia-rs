@@ -901,6 +901,12 @@ impl<'h> Journal<'h> {
         self.primary_reservation(|r| r.publish(effect))
     }
 
+    /// R9 S4: an index write of the embedding migration under the primary reservation (Python's
+    /// `tenant_writer.index_publication`: refused while a backup effect is unsettled).
+    pub fn publish_effect<T>(&self, effect: impl FnOnce() -> Result<T, Error>) -> Result<T, Error> {
+        self.publication(effect)
+    }
+
     pub fn enqueue(&self, kind: &str, payload: &str) -> Result<String, Error> {
         self.publication(|| {
             let id = uuid4()?;
