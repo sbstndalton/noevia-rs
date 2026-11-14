@@ -16,8 +16,11 @@
 //!   filter, `move_capability`) and the first pairings built on them (feature, model reads).
 //!
 //! - [`guard`] (council p8) also: the four project pairings (source reads, create/delete, file delete,
-//!   configuration); [`bridged`]: the calibration cancel and start/read pairings and the code egress issuer
-//!   pairing, with `code_has` over real EREs.
+//!   configuration); [`bridged`]: the calibration cancel and start/read, code egress issuer, deep research,
+//!   task read and model scan read pairings, with `code_has` over real EREs.
+//!
+//! - [`guard`] (council p10) also: the document page reader, conversation import, document upload, public
+//!   page and plugin directory pairings.
 //!
 //! - [`facts`] (council p10): the eight single-path pairings whose Core side is a refusal module plus a
 //!   facts or state bridge (auto-tune settings, dismissal, resume, cancellation and untuned discovery;

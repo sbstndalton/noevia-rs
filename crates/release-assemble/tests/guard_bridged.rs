@@ -1,7 +1,8 @@
-//! The bridged pairings (calibration cancel, calibration start/read, code egress issuer) against their
-//! verbatim guard blocks (`fixtures/assemble-release-pairings-excerpt.sh`), run under `set -euo pipefail`
-//! with the verbatim primitives and the script's `die`, over generated release trees: the verdict and the
-//! refusal text must be equal, and every verdict of each guard must be reached.
+//! The bridged pairings (calibration cancel, calibration start/read, code egress issuer, deep research,
+//! task reads, model scan read) against their verbatim guard blocks
+//! (`fixtures/assemble-release-pairings-excerpt.sh`), run under `set -euo pipefail` with the verbatim
+//! primitives and the script's `die`, over generated release trees: the verdict and the refusal text must
+//! be equal, and every verdict of each guard must be reached. The facts pairings are in `guard_facts.rs`.
 //! `RELEASE_ASSEMBLE_GUARD_ROUNDS` sets the number of trees per pairing (default 400).
 #![cfg(unix)]
 #![allow(clippy::indexing_slicing, clippy::expect_used)]

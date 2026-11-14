@@ -1,9 +1,11 @@
 //! The pairings whose Core side is a refusal module plus a state bridge (council p8): calibration cancel
-//! (#2292), calibration start/read (#2303) and the code egress issuer (row V). Unlike the namespace
-//! pairings in [`crate::guard`], the route rows are checked against whichever owner the pair names (Rust's
-//! for every method with the new pair, Node's with the old), and the moved pair proves its Core wiring
-//! with `code_has` regexes, `code_lines` and the captured front secret. Each is a port of its top-level
-//! block in `assemble-release.sh`, compared with the verbatim block by `tests/guard_bridged.rs`.
+//! (#2292), calibration start/read (#2303), the code egress issuer (row V), deep research (#2218), the Code
+//! and Browser task reads (#2257) and the model scan read (#2304). Unlike the namespace pairings in
+//! [`crate::guard`], the route rows are checked against whichever owner the pair names (Rust's for the moved
+//! methods with the new pair, Node's with the old), and the moved pair proves its Core wiring with
+//! `code_has` regexes, `code_lines` and the captured front secret. The single-path facts and state bridge
+//! pairings built on the same primitives are in [`crate::facts`]. Each is a port of its top-level block in
+//! `assemble-release.sh`, compared with the verbatim block by `tests/guard_bridged.rs`.
 //! Inert: nothing in the release path calls this yet.
 
 use crate::guard::{
