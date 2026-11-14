@@ -17,6 +17,13 @@
 //! * [`delete_list`]: the safe delete list as Markdown, with the pairing lines in noevia's supervisor and assembler a
 //!   deletion must change in the same step.
 //!
+//! Council p5 (sbstndalton/noevia#2700, #2713) added what a deletion train needs before it trusts a verdict: each
+//! stub's exported `OWNED_ROUTES` (an owned route without a recorded refusal is [`Verdict::Incomplete`]), the core
+//! lines outside the stubs that still name a refused route ([`Verdict::GuardsHandler`]: a direct request to Node
+//! would reach that handler once the stub is gone), any switch the file names keeps it ([`Verdict::SwitchGated`]), and
+//! [`Manifest`]: the front's own `noevia-server --owned-routes` list as a [`Front`], so the verdicts can be recomputed
+//! from the binary a train ships instead of from a test inside noevia-server.
+//!
 //! It has no I/O and no production caller: an inert leaf crate.
 
 use serde::Deserialize;
@@ -39,6 +46,12 @@ pub struct Recording {
     #[serde(default)]
     pub noevia: String,
     pub methods: Vec<String>,
+    /// SHA-256 of the noevia-rs contracts/http/routes.toml the probes were made from.
+    #[serde(default)]
+    pub routes_toml_sha256: Option<String>,
+    /// The ids every route parameter was filled with (a plain one and a UUID).
+    #[serde(default)]
+    pub fills: Vec<String>,
     /// How many distinct paths were probed.
     pub probes: usize,
     pub stubs: Vec<Stub>,
@@ -82,6 +95,13 @@ pub struct Stub {
     /// Recordings under a switch value that changed the answer.
     #[serde(default)]
     pub switched: Vec<Switched>,
+    /// The stub's exported `OWNED_ROUTES` (`ALL /p` or `METHOD /p`, routes.toml spelling); `None` when it exports none.
+    #[serde(default)]
+    pub owned_routes: Option<Vec<String>>,
+    /// Per refused routes.toml pattern, the `file:line`s outside the stubs in core's server/ that still name it (a
+    /// handler or matcher). Over-reported on purpose: the line only has to contain the pattern's literal pieces.
+    #[serde(default)]
+    pub behind: BTreeMap<String, Vec<String>>,
     /// The recorder could not load the file.
     #[serde(default)]
     pub error: Option<String>,
@@ -151,6 +171,13 @@ pub enum Verdict {
     Live { leaks: Vec<(String, String)> },
     /// Nothing recorded (the recorder failed or the stub refuses nothing it could ask). Keep.
     Unrecorded,
+    /// The stub's `OWNED_ROUTES` names routes it was never seen refusing (a parameter shape or method the probes
+    /// missed): the recording is partial for this stub. Keep until it is recorded.
+    Incomplete { missing: Vec<String> },
+    /// Every refusal is answered by the front, but core still has a handler (or matcher) for a refused route outside
+    /// the stubs: deleting the stub alone would let a direct request to Node's port run it. Delete the handler first
+    /// (or in the same step), then re-record.
+    GuardsHandler { handlers: Vec<String> },
 }
 
 impl Verdict {
@@ -161,6 +188,8 @@ impl Verdict {
             Verdict::SwitchGated => "keep (switch)",
             Verdict::Live { .. } => "keep (live)",
             Verdict::Unrecorded => "keep (unrecorded)",
+            Verdict::Incomplete { .. } => "keep (partly recorded)",
+            Verdict::GuardsHandler { .. } => "delete with handler",
         }
     }
 }
@@ -228,6 +257,63 @@ pub fn leaks(stub: &Stub, front: &dyn Front) -> Vec<(String, String)> {
         .collect()
 }
 
+/// A pattern in the assembler's normal form: every `{…}` is `{}` (deploy/tools/assemble-release.sh
+/// `project_routes_core`, `sed 's/{[^}]*}/{}/g'`), so two spellings of one parameter compare equal.
+pub fn normalised(pattern: &str) -> String {
+    let mut out = String::with_capacity(pattern.len());
+    let mut rest = pattern;
+    while let Some(start) = rest.find('{') {
+        out.push_str(&rest[..start]);
+        match rest[start..].find('}') {
+            Some(len) => {
+                out.push_str("{}");
+                rest = &rest[start + len + 1..];
+            }
+            None => {
+                out.push_str(&rest[start..]);
+                return out;
+            }
+        }
+    }
+    out.push_str(rest);
+    out
+}
+
+/// One `OWNED_ROUTES` entry as `(method or "ALL", normalised pattern)`; `None` for a malformed entry.
+pub fn owned_entry(entry: &str) -> Option<(&str, String)> {
+    let (method, pattern) = entry.split_once(' ')?;
+    (pattern.starts_with('/') && !method.is_empty()).then(|| (method, normalised(pattern)))
+}
+
+/// The stub's `OWNED_ROUTES` entries it was never recorded refusing: `METHOD /p` needs a refusal of that method on a
+/// probe of `/p`, `ALL /p` one of every method. A malformed entry is missing too.
+pub fn unrecorded_owned(stub: &Stub) -> Vec<String> {
+    let Some(owned) = &stub.owned_routes else {
+        return Vec::new();
+    };
+    let refused: BTreeSet<(&str, String)> = stub
+        .refusals
+        .iter()
+        .filter(|r| r.error.is_none())
+        .filter_map(|r| Some((r.method.as_str(), normalised(r.pattern.as_deref()?))))
+        .collect();
+    owned
+        .iter()
+        .filter(|entry| match owned_entry(entry) {
+            None => true,
+            Some(("ALL", p)) => !METHODS.iter().all(|m| refused.contains(&(*m, p.clone()))),
+            Some((m, p)) => !refused.contains(&(m, p)),
+        })
+        .cloned()
+        .collect()
+}
+
+/// The core lines behind the stub's refused routes (see [`Stub::behind`]), deduplicated and sorted.
+pub fn handlers_behind(stub: &Stub) -> Vec<String> {
+    let set: BTreeSet<&String> = stub.behind.values().flatten().collect();
+    set.into_iter().cloned().collect()
+}
+
 /// One verdict per stub, in core's request-chain order.
 pub fn classify(rec: &Recording, front: &dyn Front) -> Vec<Assessment> {
     rec.stubs
@@ -235,15 +321,23 @@ pub fn classify(rec: &Recording, front: &dyn Front) -> Vec<Assessment> {
         .map(|s| {
             let verdict = if s.error.is_some() || s.refusals.iter().any(|r| r.error.is_some()) {
                 Verdict::Unrecorded
-            } else if !s.switched.is_empty() || (s.refusals.is_empty() && !s.env.is_empty()) {
+            } else if !s.switched.is_empty() || !s.env.is_empty() {
+                // sbstndalton/noevia#2713 item 3: a named switch keeps the stub, whether or not the recorded values
+                // changed its answer (the PinTable skips the same stubs).
                 Verdict::SwitchGated
             } else if s.refusals.is_empty() {
                 Verdict::Unrecorded
             } else {
                 let leaks = leaks(s, front);
                 let others = other_importers(s);
-                if !leaks.is_empty() {
+                let missing = unrecorded_owned(s);
+                let handlers = handlers_behind(s);
+                if !missing.is_empty() {
+                    Verdict::Incomplete { missing }
+                } else if !leaks.is_empty() {
                     Verdict::Live { leaks }
+                } else if !handlers.is_empty() {
+                    Verdict::GuardsHandler { handlers }
                 } else if is_dedicated(s) && others.is_empty() {
                     Verdict::DeleteFile
                 } else {
@@ -265,7 +359,9 @@ pub fn classify(rec: &Recording, front: &dyn Front) -> Vec<Assessment> {
         .collect()
 }
 
-/// A reply exactly as Node wrote it.
+/// A reply as the stub wrote it. Node's response also carries `publicHeaders(res)` (CSP, HSTS, X-Frame-Options, …)
+/// and `X-Noevia-API: 1` on `/api` paths, set outside the stub and not recorded here (sbstndalton/noevia#2713 item
+/// 5): a step that pins replies from this table must add the front's own public headers.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Reply {
     pub status: u16,
@@ -377,6 +473,8 @@ pub struct Totals {
     pub delete_file: usize,
     pub delete_file_lines: usize,
     pub delete_function: usize,
+    /// Deletable once the named core handler goes too ([`Verdict::GuardsHandler`]).
+    pub with_handler: usize,
     pub keep: usize,
 }
 
@@ -389,6 +487,7 @@ pub fn totals(list: &[Assessment]) -> Totals {
                 t.delete_file_lines += a.lines;
             }
             Verdict::DeleteFunction { .. } => t.delete_function += 1,
+            Verdict::GuardsHandler { .. } => t.with_handler += 1,
             _ => t.keep += 1,
         }
     }
@@ -403,16 +502,18 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
     let _ = writeln!(out);
     let _ = writeln!(
         out,
-        "Recorded from noevia-core `{}` (pairing lines from noevia `{}`) by `{}`; verdicts from the front's own dispatch \
-         with every switch off (`crates/route-pins`). {} stubs: {} files can go ({} lines), {} refusal functions can go \
-         from files that stay, {} stay.",
+        "Recorded from noevia-core `{}` (pairing lines from noevia `{}`, routes.toml sha256 `{}`) by `{}`; verdicts from \
+         the front's own dispatch with every switch off (`crates/route-pins`). {} stubs: {} files can go ({} lines), {} \
+         refusal functions can go from files that stay, {} can go only with the core handler they guard, {} stay.",
         short(&rec.core),
         short(&rec.noevia),
+        short(rec.routes_toml_sha256.as_deref().unwrap_or("unknown")),
         rec.generator,
         list.len(),
         t.delete_file,
         t.delete_file_lines,
         t.delete_function,
+        t.with_handler,
         t.keep
     );
     let _ = writeln!(out);
@@ -462,6 +563,14 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
                     .join(", ")
             ),
             Verdict::Unrecorded => "nothing recorded".to_string(),
+            Verdict::Incomplete { missing } => {
+                format!("OWNED_ROUTES not recorded: {}", missing.join(", "))
+            }
+            Verdict::GuardsHandler { handlers } => format!(
+                "core still names the route at {}; pairing: {}",
+                handlers.join(", "),
+                none_or(&a.pairing)
+            ),
         };
         let _ = writeln!(
             out,
@@ -475,6 +584,112 @@ pub fn delete_list(rec: &Recording, list: &[Assessment]) -> String {
         );
     }
     out
+}
+
+/// The front's owned-route manifest (`noevia-server --owned-routes`: one `METHOD pattern` per line), as a [`Front`]
+/// over a recording: a probe is answered when the front lists its method on the probe's routes.toml pattern. Trailing
+/// slash probes are never answered (the manifest lists patterns, not the matcher's slash tolerance), so they show as
+/// [`Verdict::Live`] leaks: the conservative direction.
+#[derive(Debug, Clone, Default)]
+pub struct Manifest {
+    pairs: BTreeSet<(String, String)>,
+}
+
+impl Manifest {
+    /// Parses the manifest text; a line that is not `METHOD /pattern` is an error (a truncated or foreign file must
+    /// not read as "the front owns nothing").
+    pub fn parse(text: &str) -> Result<Manifest, String> {
+        let mut pairs = BTreeSet::new();
+        for (i, line) in text.lines().enumerate() {
+            let line = line.trim_end_matches('\r');
+            if line.is_empty() {
+                continue;
+            }
+            match line.split_once(' ') {
+                Some((m, p))
+                    if METHODS.contains(&m) && p.starts_with('/') && !p.contains(char::is_whitespace) =>
+                {
+                    pairs.insert((m.to_string(), normalised(p)));
+                }
+                _ => return Err(format!("line {}: not `METHOD /pattern`: {line:?}", i + 1)),
+            }
+        }
+        if pairs.is_empty() {
+            return Err("empty manifest".to_string());
+        }
+        Ok(Manifest { pairs })
+    }
+
+    pub fn len(&self) -> usize {
+        self.pairs.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.pairs.is_empty()
+    }
+
+    /// Whether the front lists `method` on `pattern` (any parameter spelling).
+    pub fn owns(&self, method: &str, pattern: &str) -> bool {
+        self.pairs
+            .contains(&(method.to_string(), normalised(pattern)))
+    }
+
+    /// This manifest as a [`Front`] for `rec`'s probes.
+    pub fn front<'a>(&'a self, rec: &'a Recording) -> ManifestFront<'a> {
+        let mut pattern_of = BTreeMap::new();
+        for s in &rec.stubs {
+            for r in s
+                .refusals
+                .iter()
+                .chain(s.switched.iter().flat_map(|w| w.refusals.iter()))
+            {
+                if let Some(p) = &r.pattern {
+                    pattern_of.entry(r.path.clone()).or_insert_with(|| p.clone());
+                }
+            }
+        }
+        ManifestFront {
+            manifest: self,
+            pattern_of,
+        }
+    }
+
+    /// `OWNED_ROUTES` entries (`stub file`, entry) the front does not list: a stub refusing a route nobody answers.
+    /// `ALL /p` needs every method listed.
+    pub fn unowned_claims(&self, rec: &Recording) -> Vec<(String, String)> {
+        let mut out = Vec::new();
+        for s in &rec.stubs {
+            for entry in s.owned_routes.iter().flatten() {
+                let owned = match owned_entry(entry) {
+                    None => false,
+                    Some(("ALL", p)) => METHODS.iter().all(|m| self.owns(m, &p)),
+                    Some((m, p)) => self.owns(m, &p),
+                };
+                if !owned {
+                    out.push((s.file.clone(), entry.clone()));
+                }
+            }
+        }
+        out
+    }
+}
+
+/// [`Manifest::front`].
+#[derive(Debug, Clone)]
+pub struct ManifestFront<'a> {
+    manifest: &'a Manifest,
+    pattern_of: BTreeMap<String, String>,
+}
+
+impl Front for ManifestFront<'_> {
+    fn answers(&self, method: &str, path: &str) -> bool {
+        if path.len() > 1 && path.ends_with('/') {
+            return false;
+        }
+        self.pattern_of
+            .get(path)
+            .is_some_and(|p| self.manifest.owns(method, p))
+    }
 }
 
 fn none_or(v: &[String]) -> String {

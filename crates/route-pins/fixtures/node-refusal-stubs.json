@@ -1,7 +1,12 @@
 {
  "generator": "tools/gen-node-refusal-stubs.cjs",
- "core": "2ac7700726362aade5bfff79ac4701406f68f810",
- "noevia": "11bf2da72dd69cc86ac89e85d2f9524b5e781bd2",
+ "core": "6809eca6c46a1392b9149ed47a643e218d86bc35",
+ "noevia": "unknown",
+ "routes_toml_sha256": "9ee155882510d229904459d1ce8b3e947c3a47959c52655098c7c1af03cdfa6c",
+ "fills": [
+  "qa-1",
+  "00000000-0000-4000-8000-000000000001"
+ ],
  "methods": [
   "GET",
   "HEAD",
@@ -11,7 +16,7 @@
   "DELETE",
   "OPTIONS"
  ],
- "probes": 421,
+ "probes": 527,
  "stubs": [
   {
    "file": "server/rust-auto-roles-write.cjs",
@@ -36,10 +41,79 @@
     "refuseOwned"
    ],
    "pairing": [
+    "build/web-supervisor.sh:342",
+    "build/web-supervisor.sh:347",
+    "build/web-supervisor.sh:348",
     "build/web-supervisor.sh:351",
+    "build/web-supervisor.sh:355",
+    "build/web-supervisor.sh:356",
+    "deploy/tools/assemble-release.sh:2569",
+    "deploy/tools/assemble-release.sh:2574",
+    "deploy/tools/assemble-release.sh:2575",
+    "deploy/tools/assemble-release.sh:2668",
+    "deploy/tools/assemble-release.sh:2671",
+    "deploy/tools/assemble-release.sh:2680",
     "deploy/tools/assemble-release.sh:2683",
-    "deploy/tools/assemble-release.sh:2688"
+    "deploy/tools/assemble-release.sh:2688",
+    "deploy/tools/test-assemble-release.sh:5789",
+    "deploy/tools/test-assemble-release.sh:5790",
+    "deploy/tools/test-assemble-release.sh:5792",
+    "deploy/tools/test-assemble-release.sh:5804",
+    "deploy/tools/test-assemble-release.sh:5815",
+    "deploy/tools/test-assemble-release.sh:5816",
+    "deploy/tools/test-assemble-release.sh:5817",
+    "deploy/tools/test-assemble-release.sh:5818",
+    "deploy/tools/test-assemble-release.sh:5819",
+    "deploy/tools/test-assemble-release.sh:5820",
+    "deploy/tools/test-assemble-release.sh:5830",
+    "deploy/tools/test-assemble-release.sh:5832",
+    "deploy/tools/test-assemble-release.sh:5833",
+    "deploy/tools/test-assemble-release.sh:5834",
+    "deploy/tools/test-assemble-release.sh:5835",
+    "deploy/tools/test-assemble-release.sh:5836",
+    "deploy/tools/test-assemble-release.sh:5837",
+    "deploy/tools/test-assemble-release.sh:5838",
+    "deploy/tools/test-assemble-release.sh:5839",
+    "deploy/tools/test-assemble-release.sh:5840",
+    "deploy/tools/test-assemble-release.sh:5841",
+    "deploy/tools/test-assemble-release.sh:5842",
+    "deploy/tools/test-assemble-release.sh:5855",
+    "deploy/tools/test-auto-roles-pairing.sh:18",
+    "deploy/tools/test-auto-roles-pairing.sh:30",
+    "deploy/tools/test-auto-roles-pairing.sh:31",
+    "deploy/tools/test-auto-roles-pairing.sh:32",
+    "deploy/tools/test-auto-roles-pairing.sh:33",
+    "deploy/tools/test-auto-roles-pairing.sh:34",
+    "deploy/tools/test-auto-roles-pairing.sh:35",
+    "deploy/tools/test-auto-roles-pairing.sh:36",
+    "deploy/tools/test-auto-roles-pairing.sh:40",
+    "deploy/tools/test-auto-roles-pairing.sh:41",
+    "deploy/tools/test-auto-roles-pairing.sh:42",
+    "deploy/tools/test-auto-roles-pairing.sh:43",
+    "deploy/tools/test-auto-roles-pairing.sh:44",
+    "deploy/tools/test-web-supervisor.sh:568",
+    "deploy/tools/test-web-supervisor.sh:573",
+    "deploy/tools/test-web-supervisor.sh:575",
+    "deploy/tools/test-web-supervisor.sh:577",
+    "deploy/tools/test-web-supervisor.sh:583",
+    "deploy/tools/test-web-supervisor.sh:584",
+    "deploy/tools/test-web-supervisor.sh:585",
+    "deploy/tools/test-web-supervisor.sh:586",
+    "deploy/tools/test-web-supervisor.sh:588",
+    "deploy/tools/test-web-supervisor.sh:589",
+    "deploy/tools/test-web-supervisor.sh:596",
+    "deploy/tools/test-web-supervisor.sh:597",
+    "deploy/tools/test-web-supervisor.sh:598",
+    "deploy/tools/test-web-supervisor.sh:604",
+    "deploy/tools/test-web-supervisor.sh:605",
+    "deploy/tools/test-web-supervisor.sh:608",
+    "deploy/tools/test-web-supervisor.sh:611"
    ],
+   "behind": {
+    "/api/auto-roles": [
+     "server/routes/models.cjs:238"
+    ]
+   },
    "refusals": [
     {
      "method": "PUT",
@@ -57,6 +131,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -78,9 +153,37 @@
     "build/web-supervisor.sh:309",
     "deploy/tools/assemble-release.sh:1696",
     "deploy/tools/assemble-release.sh:1714",
-    "deploy/tools/assemble-release.sh:1730"
+    "deploy/tools/assemble-release.sh:1730",
+    "deploy/tools/test-assemble-release.sh:2560",
+    "deploy/tools/test-assemble-release.sh:2572",
+    "deploy/tools/test-assemble-release.sh:2609",
+    "deploy/tools/test-assemble-release.sh:2610",
+    "deploy/tools/test-assemble-release.sh:2613",
+    "deploy/tools/test-assemble-release.sh:2625",
+    "deploy/tools/test-assemble-release.sh:2654",
+    "deploy/tools/test-assemble-release.sh:2667",
+    "deploy/tools/test-assemble-release.sh:2668",
+    "deploy/tools/test-assemble-release.sh:2855",
+    "deploy/tools/test-assemble-release.sh:2889",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "POST",
+     "path": "/api/tool-approvals/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/tool-approvals/{approvalId}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Tool approval decisions are owned by the Rust front.\",\"code\":\"RUST_TOOL_APPROVALS_OWNED\"}",
+     "body": {
+      "error": "Tool approval decisions are owned by the Rust front.",
+      "code": "RUST_TOOL_APPROVALS_OWNED"
+     }
+    },
     {
      "method": "POST",
      "path": "/api/tool-approvals/qa-1",
@@ -96,6 +199,9 @@
       "code": "RUST_TOOL_APPROVALS_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "POST /api/tool-approvals/{approvalId}"
    ],
    "switched": []
   },
@@ -130,9 +236,28 @@
     "deploy/tools/assemble-release.sh:2018",
     "deploy/tools/assemble-release.sh:2030",
     "deploy/tools/assemble-release.sh:2031",
-    "deploy/tools/assemble-release.sh:2032"
+    "deploy/tools/assemble-release.sh:2032",
+    "deploy/tools/test-assemble-release.sh:3171",
+    "deploy/tools/test-assemble-release.sh:3172",
+    "deploy/tools/test-assemble-release.sh:3181",
+    "deploy/tools/test-assemble-release.sh:3182",
+    "deploy/tools/test-assemble-release.sh:3183",
+    "deploy/tools/test-assemble-release.sh:3184",
+    "deploy/tools/test-assemble-release.sh:3190",
+    "deploy/tools/test-assemble-release.sh:3191",
+    "deploy/tools/test-assemble-release.sh:3198",
+    "deploy/tools/test-assemble-release.sh:3200",
+    "deploy/tools/test-assemble-release.sh:3204",
+    "deploy/tools/test-assemble-release.sh:3206",
+    "deploy/tools/test-assemble-release.sh:3210",
+    "deploy/tools/test-assemble-release.sh:3214",
+    "deploy/tools/test-assemble-release.sh:3216",
+    "deploy/tools/test-assemble-release.sh:3222",
+    "deploy/tools/test-assemble-release.sh:3228"
    ],
+   "behind": {},
    "refusals": [],
+   "owned_routes": null,
    "switched": [
     {
      "env": {
@@ -207,8 +332,17 @@
    "pairing": [
     "build/web-supervisor.sh:297",
     "deploy/tools/assemble-release.sh:2065",
-    "deploy/tools/assemble-release.sh:2079"
+    "deploy/tools/assemble-release.sh:2079",
+    "deploy/tools/test-assemble-release.sh:3312",
+    "deploy/tools/test-assemble-release.sh:3324",
+    "deploy/tools/test-assemble-release.sh:3346",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/models/idle-unload": [
+     "server/routes/models.cjs:481"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -224,6 +358,9 @@
       "error": "The Rust front owns the idle unload setting read."
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/models/idle-unload"
    ],
    "switched": []
   },
@@ -245,8 +382,15 @@
    "pairing": [
     "build/web-supervisor.sh:299",
     "deploy/tools/assemble-release.sh:2169",
-    "deploy/tools/assemble-release.sh:2183"
+    "deploy/tools/assemble-release.sh:2183",
+    "deploy/tools/test-assemble-release.sh:3403",
+    "deploy/tools/test-assemble-release.sh:3410",
+    "deploy/tools/test-assemble-release.sh:3426",
+    "deploy/tools/test-assemble-release.sh:3433",
+    "deploy/tools/test-assemble-release.sh:3498",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -262,6 +406,9 @@
       "error": "The Rust front owns model download reads."
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/models/downloads"
    ],
    "switched": []
   },
@@ -283,8 +430,20 @@
    "pairing": [
     "build/web-supervisor.sh:296",
     "deploy/tools/assemble-release.sh:1828",
-    "deploy/tools/assemble-release.sh:1872"
+    "deploy/tools/assemble-release.sh:1872",
+    "deploy/tools/test-assemble-release.sh:2970",
+    "deploy/tools/test-assemble-release.sh:2986",
+    "deploy/tools/test-assemble-release.sh:3273",
+    "deploy/tools/test-assemble-release.sh:3274",
+    "deploy/tools/test-assemble-release.sh:3276",
+    "deploy/tools/test-assemble-release.sh:3304",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/models/autotune": [
+     "server/routes/models.cjs:453"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -300,6 +459,9 @@
       "error": "The Rust front owns auto-tune status."
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/models/autotune"
    ],
    "switched": []
   },
@@ -321,8 +483,20 @@
    "pairing": [
     "build/web-supervisor.sh:300",
     "deploy/tools/assemble-release.sh:2200",
-    "deploy/tools/assemble-release.sh:2214"
+    "deploy/tools/assemble-release.sh:2214",
+    "deploy/tools/test-assemble-release.sh:3511",
+    "deploy/tools/test-assemble-release.sh:3518",
+    "deploy/tools/test-assemble-release.sh:3534",
+    "deploy/tools/test-assemble-release.sh:3537",
+    "deploy/tools/test-assemble-release.sh:3544",
+    "deploy/tools/test-assemble-release.sh:3561",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/models/preset": [
+     "server/routes/models.cjs:493"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -338,6 +512,9 @@
       "error": "The Rust front owns preset reads."
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/models/preset"
    ],
    "switched": []
   },
@@ -359,8 +536,16 @@
    "pairing": [
     "build/web-supervisor.sh:301",
     "deploy/tools/assemble-release.sh:2269",
-    "deploy/tools/assemble-release.sh:2283"
+    "deploy/tools/assemble-release.sh:2283",
+    "deploy/tools/test-assemble-release.sh:3734",
+    "deploy/tools/test-assemble-release.sh:3748",
+    "deploy/tools/test-assemble-release.sh:3782",
+    "deploy/tools/test-assemble-release.sh:3783",
+    "deploy/tools/test-assemble-release.sh:3785",
+    "deploy/tools/test-assemble-release.sh:3810",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -460,6 +645,9 @@
       "error": "The Rust front owns auto-tune resume."
      }
     }
+   ],
+   "owned_routes": [
+    "ALL /api/models/autotune/resume"
    ],
    "switched": []
   },
@@ -480,8 +668,16 @@
    "pairing": [
     "build/web-supervisor.sh:303",
     "deploy/tools/assemble-release.sh:2234",
-    "deploy/tools/assemble-release.sh:2248"
+    "deploy/tools/assemble-release.sh:2248",
+    "deploy/tools/test-assemble-release.sh:3574",
+    "deploy/tools/test-assemble-release.sh:3588",
+    "deploy/tools/test-assemble-release.sh:3627",
+    "deploy/tools/test-assemble-release.sh:3628",
+    "deploy/tools/test-assemble-release.sh:3630",
+    "deploy/tools/test-assemble-release.sh:3655",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -588,6 +784,9 @@
       "code": "RUST_AUTOTUNE_CLEAR_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "ALL /api/models/autotune/clear"
    ],
    "switched": []
   },
@@ -609,8 +808,16 @@
    "pairing": [
     "build/web-supervisor.sh:306",
     "deploy/tools/assemble-release.sh:2365",
-    "deploy/tools/assemble-release.sh:2379"
+    "deploy/tools/assemble-release.sh:2379",
+    "deploy/tools/test-assemble-release.sh:4340",
+    "deploy/tools/test-assemble-release.sh:4354",
+    "deploy/tools/test-assemble-release.sh:4410",
+    "deploy/tools/test-assemble-release.sh:4411",
+    "deploy/tools/test-assemble-release.sh:4413",
+    "deploy/tools/test-assemble-release.sh:4438",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -717,6 +924,9 @@
       "code": "RUST_AUTOTUNE_UNTUNED_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "ALL /api/models/autotune/untuned"
    ],
    "switched": []
   },
@@ -758,7 +968,20 @@
     "refuseRustStorageRead",
     "settingsStore"
    ],
-   "pairing": [],
+   "pairing": [
+    "deploy/tools/lib/rs-capability.cjs:206",
+    "deploy/tools/test-rs-feature-proof.cjs:5"
+   ],
+   "behind": {
+    "/api/integrations/storage": [
+     "server/device-auth.cjs:36",
+     "server/device-auth.cjs:45",
+     "server/routes/storage.cjs:28",
+     "server/routes/storage.cjs:29",
+     "server/routes/storage.cjs:30",
+     "server/routes/storage.cjs:39"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -782,6 +1005,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -815,8 +1039,14 @@
    ],
    "pairing": [
     "deploy/tools/assemble-release.sh:1755",
-    "deploy/tools/assemble-release.sh:1777"
+    "deploy/tools/assemble-release.sh:1777",
+    "deploy/tools/test-assemble-release.sh:2747",
+    "deploy/tools/test-assemble-release.sh:2748",
+    "deploy/tools/test-assemble-release.sh:2765",
+    "deploy/tools/test-assemble-release.sh:2768",
+    "deploy/tools/test-assemble-release.sh:2792"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -924,6 +1154,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -947,8 +1178,16 @@
     "build/web-supervisor.sh:312",
     "deploy/tools/assemble-release.sh:1754",
     "deploy/tools/assemble-release.sh:1758",
-    "deploy/tools/assemble-release.sh:1775"
+    "deploy/tools/assemble-release.sh:1775",
+    "deploy/tools/test-assemble-release.sh:2731",
+    "deploy/tools/test-assemble-release.sh:2739",
+    "deploy/tools/test-assemble-release.sh:2742",
+    "deploy/tools/test-assemble-release.sh:2779",
+    "deploy/tools/test-assemble-release.sh:2782",
+    "deploy/tools/test-assemble-release.sh:2793",
+    "deploy/tools/test-web-supervisor.sh:654"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "POST",
@@ -965,6 +1204,9 @@
       "code": "RUST_CHAT_FRAMING_SUGGEST_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "POST /api/chat-framing/suggest"
    ],
    "switched": []
   },
@@ -1002,8 +1244,20 @@
     "deploy/tools/assemble-release.sh:940",
     "deploy/tools/assemble-release.sh:945",
     "deploy/tools/assemble-release.sh:946",
-    "deploy/tools/assemble-release.sh:947"
+    "deploy/tools/assemble-release.sh:947",
+    "deploy/tools/test-assemble-release.sh:2682",
+    "deploy/tools/test-assemble-release.sh:2689",
+    "deploy/tools/test-assemble-release.sh:2691",
+    "deploy/tools/test-assemble-release.sh:2722"
    ],
+   "behind": {
+    "/api/chat": [
+     "server/chat-admission.cjs:17",
+     "server/index.cjs:1526",
+     "server/index.cjs:1560",
+     "server/routes/chat.cjs:26"
+    ]
+   },
    "refusals": [
     {
      "method": "POST",
@@ -1020,6 +1274,9 @@
       "code": "RUST_CHAT_TURN_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "POST /api/chat"
    ],
    "switched": []
   },
@@ -1060,7 +1317,11 @@
     "createFeatureRoutes",
     "refuseOwnedFeatures"
    ],
-   "pairing": [],
+   "pairing": [
+    "deploy/tools/lib/rs-capability.cjs:206",
+    "deploy/tools/test-rs-feature-proof.cjs:5"
+   ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -1261,6 +1522,216 @@
      "method": "OPTIONS",
      "path": "/api/admin/features/",
      "pattern": "/api/admin/features",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Feature settings are owned by the Rust front.\",\"code\":\"RUST_FEATURES_OWNED\"}",
+     "body": {
+      "error": "Feature settings are owned by the Rust front.",
+      "code": "RUST_FEATURES_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/admin/features/00000000-0000-4000-8000-000000000001/",
+     "pattern": "/api/admin/features/{name}",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -1588,6 +2059,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -1615,8 +2087,18 @@
     "build/web-supervisor.sh:493",
     "deploy/tools/assemble-release.sh:859",
     "deploy/tools/assemble-release.sh:863",
-    "deploy/tools/assemble-release.sh:1608"
+    "deploy/tools/assemble-release.sh:1608",
+    "deploy/tools/test-assemble-release.sh:1722",
+    "deploy/tools/test-assemble-release.sh:6158",
+    "deploy/tools/test-assemble-release.sh:6161",
+    "deploy/tools/test-assemble-release.sh:6171",
+    "deploy/tools/test-assemble-release.sh:6175",
+    "deploy/tools/test-web-supervisor.sh:223",
+    "deploy/tools/test-web-supervisor.sh:230",
+    "deploy/tools/test-web-supervisor.sh:234",
+    "deploy/tools/test-web-supervisor.sh:372"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "POST",
@@ -2699,6 +3181,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -2728,8 +3211,24 @@
     "deploy/tools/assemble-release.sh:981",
     "deploy/tools/assemble-release.sh:988",
     "deploy/tools/assemble-release.sh:1019",
-    "deploy/tools/assemble-release.sh:1022"
+    "deploy/tools/assemble-release.sh:1022",
+    "deploy/tools/test-assemble-release.sh:1741",
+    "deploy/tools/test-assemble-release.sh:1757",
+    "deploy/tools/test-assemble-release.sh:1758",
+    "deploy/tools/test-assemble-release.sh:1763",
+    "deploy/tools/test-assemble-release.sh:1764",
+    "deploy/tools/test-assemble-release.sh:1884",
+    "deploy/tools/test-assemble-release.sh:1889",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/diary": [
+     "server/rust-chat-edge.cjs:29"
+    ],
+    "/api/profile/diary-connectors": [
+     "server/device-auth.cjs:34"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -3137,6 +3636,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -3166,8 +3666,16 @@
     "build/web-supervisor.sh:246",
     "build/web-supervisor.sh:287",
     "deploy/tools/assemble-release.sh:898",
-    "deploy/tools/assemble-release.sh:905"
+    "deploy/tools/assemble-release.sh:905",
+    "deploy/tools/test-assemble-release.sh:1794",
+    "deploy/tools/test-assemble-release.sh:1798",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/diary/local-exchange": [
+     "server/rust-chat-edge.cjs:29"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -3275,6 +3783,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -3300,8 +3809,16 @@
     "build/web-supervisor.sh:112",
     "build/web-supervisor.sh:117",
     "deploy/tools/assemble-release.sh:1026",
-    "deploy/tools/assemble-release.sh:1031"
+    "deploy/tools/assemble-release.sh:1031",
+    "deploy/tools/test-assemble-release.sh:1911",
+    "deploy/tools/test-assemble-release.sh:6052",
+    "deploy/tools/test-web-supervisor.sh:384",
+    "deploy/tools/test-web-supervisor.sh:729",
+    "deploy/tools/test-web-supervisor.sh:736",
+    "deploy/tools/test-web-supervisor.sh:757",
+    "deploy/tools/test-web-supervisor.sh:761"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -3334,6 +3851,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -3359,8 +3877,40 @@
     "build/web-supervisor.sh:311",
     "deploy/tools/assemble-release.sh:3203",
     "deploy/tools/assemble-release.sh:3209",
-    "deploy/tools/assemble-release.sh:3231"
+    "deploy/tools/assemble-release.sh:3231",
+    "deploy/tools/test-assemble-release.sh:2903",
+    "deploy/tools/test-assemble-release.sh:2913",
+    "deploy/tools/test-assemble-release.sh:2937",
+    "deploy/tools/test-assemble-release.sh:2940",
+    "deploy/tools/test-assemble-release.sh:2964",
+    "deploy/tools/test-assemble-release.sh:3607",
+    "deploy/tools/test-assemble-release.sh:3612",
+    "deploy/tools/test-assemble-release.sh:3619",
+    "deploy/tools/test-assemble-release.sh:3762",
+    "deploy/tools/test-assemble-release.sh:3767",
+    "deploy/tools/test-assemble-release.sh:3774",
+    "deploy/tools/test-assemble-release.sh:3850",
+    "deploy/tools/test-assemble-release.sh:3855",
+    "deploy/tools/test-assemble-release.sh:3862",
+    "deploy/tools/test-assemble-release.sh:3992",
+    "deploy/tools/test-assemble-release.sh:3997",
+    "deploy/tools/test-assemble-release.sh:4004",
+    "deploy/tools/test-assemble-release.sh:4202",
+    "deploy/tools/test-assemble-release.sh:4207",
+    "deploy/tools/test-assemble-release.sh:4214",
+    "deploy/tools/test-assemble-release.sh:4285",
+    "deploy/tools/test-assemble-release.sh:4290",
+    "deploy/tools/test-assemble-release.sh:4297",
+    "deploy/tools/test-assemble-release.sh:4390",
+    "deploy/tools/test-assemble-release.sh:4395",
+    "deploy/tools/test-assemble-release.sh:4402",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/models/inference-budget": [
+     "server/routes/models.cjs:469"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -3393,6 +3943,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -3413,8 +3964,16 @@
    "pairing": [
     "build/web-supervisor.sh:308",
     "deploy/tools/assemble-release.sh:1660",
-    "deploy/tools/assemble-release.sh:1674"
+    "deploy/tools/assemble-release.sh:1674",
+    "deploy/tools/test-assemble-release.sh:4174",
+    "deploy/tools/test-assemble-release.sh:4188",
+    "deploy/tools/test-assemble-release.sh:4222",
+    "deploy/tools/test-assemble-release.sh:4223",
+    "deploy/tools/test-assemble-release.sh:4225",
+    "deploy/tools/test-assemble-release.sh:4250",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -3522,6 +4081,9 @@
      }
     }
    ],
+   "owned_routes": [
+    "ALL /api/models/autotune/settings"
+   ],
    "switched": []
   },
   {
@@ -3547,9 +4109,46 @@
     "deploy/tools/assemble-release.sh:1051",
     "deploy/tools/assemble-release.sh:1056",
     "deploy/tools/assemble-release.sh:4128",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:1955",
+    "deploy/tools/test-assemble-release.sh:1956",
+    "deploy/tools/test-assemble-release.sh:1969",
+    "deploy/tools/test-assemble-release.sh:1972",
+    "deploy/tools/test-assemble-release.sh:1989",
+    "deploy/tools/test-web-supervisor.sh:399"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/documents/original",
+     "pattern": "/api/projects/{id}/documents/original",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Project source reads are owned by the Rust front.\",\"code\":\"RUST_PROJECT_READS_OWNED\"}",
+     "body": {
+      "error": "Project source reads are owned by the Rust front.",
+      "code": "RUST_PROJECT_READS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/sources/text",
+     "pattern": "/api/projects/{id}/sources/text",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Project source reads are owned by the Rust front.\",\"code\":\"RUST_PROJECT_READS_OWNED\"}",
+     "body": {
+      "error": "Project source reads are owned by the Rust front.",
+      "code": "RUST_PROJECT_READS_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/projects/qa-1/documents/original",
@@ -3581,6 +4180,11 @@
      }
     }
    ],
+   "owned_routes": [
+    "GET /api/projects/{id}/documents/original",
+    "GET /api/projects/{id}/sources/text",
+    "GET /api/projects/{id}/{*}/original"
+   ],
    "switched": []
   },
   {
@@ -3607,13 +4211,56 @@
     "deploy/tools/assemble-release.sh:1076",
     "deploy/tools/assemble-release.sh:1081",
     "deploy/tools/assemble-release.sh:4129",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:2009",
+    "deploy/tools/test-assemble-release.sh:2010",
+    "deploy/tools/test-assemble-release.sh:2022",
+    "deploy/tools/test-assemble-release.sh:2025",
+    "deploy/tools/test-assemble-release.sh:2044",
+    "deploy/tools/test-assemble-release.sh:2057",
+    "deploy/tools/test-assemble-release.sh:2113",
+    "deploy/tools/test-assemble-release.sh:2212",
+    "deploy/tools/test-assemble-release.sh:2238",
+    "deploy/tools/test-assemble-release.sh:2245",
+    "deploy/tools/test-assemble-release.sh:4581",
+    "deploy/tools/test-assemble-release.sh:4586",
+    "deploy/tools/test-assemble-release.sh:4619",
+    "deploy/tools/test-web-supervisor.sh:414"
    ],
+   "behind": {
+    "/api/projects": [
+     "server/index.cjs:1497",
+     "server/index.cjs:1498",
+     "server/routes/browser.cjs:11",
+     "server/routes/code.cjs:7"
+    ],
+    "/api/projects/{projectId}": [
+     "server/index.cjs:1497",
+     "server/index.cjs:1498",
+     "server/routes/browser.cjs:11",
+     "server/routes/code.cjs:7"
+    ]
+   },
    "refusals": [
     {
      "method": "POST",
      "path": "/api/projects",
      "pattern": "/api/projects",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Project create and delete are owned by the Rust front.\",\"code\":\"RUST_PROJECT_LIFECYCLE_OWNED\"}",
+     "body": {
+      "error": "Project create and delete are owned by the Rust front.",
+      "code": "RUST_PROJECT_LIFECYCLE_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -3641,6 +4288,10 @@
      }
     }
    ],
+   "owned_routes": [
+    "DELETE /api/projects/{projectId}",
+    "POST /api/projects"
+   ],
    "switched": []
   },
   {
@@ -3666,9 +4317,32 @@
     "deploy/tools/assemble-release.sh:1127",
     "deploy/tools/assemble-release.sh:1132",
     "deploy/tools/assemble-release.sh:4130",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:2204",
+    "deploy/tools/test-assemble-release.sh:2214",
+    "deploy/tools/test-assemble-release.sh:2224",
+    "deploy/tools/test-assemble-release.sh:2227",
+    "deploy/tools/test-assemble-release.sh:2239",
+    "deploy/tools/test-assemble-release.sh:2244",
+    "deploy/tools/test-web-supervisor.sh:470"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/files",
+     "pattern": "/api/projects/{id}/files",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deleting a project source file is owned by the Rust front.\",\"code\":\"RUST_PROJECT_FILES_OWNED\"}",
+     "body": {
+      "error": "Deleting a project source file is owned by the Rust front.",
+      "code": "RUST_PROJECT_FILES_OWNED"
+     }
+    },
     {
      "method": "DELETE",
      "path": "/api/projects/qa-1/files",
@@ -3684,6 +4358,9 @@
       "code": "RUST_PROJECT_FILES_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "DELETE /api/projects/{id}/files"
    ],
    "switched": []
   },
@@ -3711,9 +4388,31 @@
     "deploy/tools/assemble-release.sh:2433",
     "deploy/tools/assemble-release.sh:2438",
     "deploy/tools/assemble-release.sh:4131",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:4522",
+    "deploy/tools/test-assemble-release.sh:4530",
+    "deploy/tools/test-assemble-release.sh:4540",
+    "deploy/tools/test-assemble-release.sh:4543",
+    "deploy/tools/test-assemble-release.sh:4555",
+    "deploy/tools/test-web-supervisor.sh:482"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/documents/pages",
+     "pattern": "/api/projects/{id}/documents/pages",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Reading a document's pages is owned by the Rust front.\",\"code\":\"RUST_PROJECT_DOCUMENT_PAGES_OWNED\"}",
+     "body": {
+      "error": "Reading a document's pages is owned by the Rust front.",
+      "code": "RUST_PROJECT_DOCUMENT_PAGES_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/projects/qa-1/documents/pages",
@@ -3729,6 +4428,9 @@
       "code": "RUST_PROJECT_DOCUMENT_PAGES_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/projects/{id}/documents/pages"
    ],
    "switched": []
   },
@@ -3756,8 +4458,22 @@
     "deploy/tools/assemble-release.sh:575",
     "deploy/tools/assemble-release.sh:576",
     "deploy/tools/assemble-release.sh:2457",
-    "deploy/tools/assemble-release.sh:2462"
+    "deploy/tools/assemble-release.sh:2462",
+    "deploy/tools/test-assemble-release.sh:438",
+    "deploy/tools/test-assemble-release.sh:440",
+    "deploy/tools/test-assemble-release.sh:445",
+    "deploy/tools/test-assemble-release.sh:448",
+    "deploy/tools/test-assemble-release.sh:450",
+    "deploy/tools/test-assemble-release.sh:4582",
+    "deploy/tools/test-assemble-release.sh:4593",
+    "deploy/tools/test-assemble-release.sh:4619",
+    "deploy/tools/test-web-supervisor.sh:494"
    ],
+   "behind": {
+    "/api/import/conversations": [
+     "server/routes/import.cjs:8"
+    ]
+   },
    "refusals": [
     {
      "method": "POST",
@@ -3774,6 +4490,9 @@
       "code": "RUST_CONVERSATION_IMPORT_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "POST /api/import/conversations"
    ],
    "switched": []
   },
@@ -3798,9 +4517,29 @@
     "deploy/tools/assemble-release.sh:2482",
     "deploy/tools/assemble-release.sh:2487",
     "deploy/tools/assemble-release.sh:4132",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:4637",
+    "deploy/tools/test-assemble-release.sh:4641",
+    "deploy/tools/test-assemble-release.sh:4668",
+    "deploy/tools/test-web-supervisor.sh:506"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/documents",
+     "pattern": "/api/projects/{id}/documents",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Uploading a project document is owned by the Rust front.\",\"code\":\"RUST_PROJECT_DOCUMENTS_OWNED\"}",
+     "body": {
+      "error": "Uploading a project document is owned by the Rust front.",
+      "code": "RUST_PROJECT_DOCUMENTS_OWNED"
+     }
+    },
     {
      "method": "POST",
      "path": "/api/projects/qa-1/documents",
@@ -3816,6 +4555,9 @@
       "code": "RUST_PROJECT_DOCUMENTS_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "POST /api/projects/{id}/documents"
    ],
    "switched": []
   },
@@ -3842,9 +4584,32 @@
     "deploy/tools/assemble-release.sh:3401",
     "deploy/tools/assemble-release.sh:3408",
     "deploy/tools/assemble-release.sh:4132",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:4694",
+    "deploy/tools/test-assemble-release.sh:4698",
+    "deploy/tools/test-assemble-release.sh:4751",
+    "deploy/tools/test-assemble-release.sh:4757",
+    "deploy/tools/test-assemble-release.sh:4854",
+    "deploy/tools/test-assemble-release.sh:4921",
+    "deploy/tools/test-web-supervisor.sh:518"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/source-jobs/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{id}/source-jobs/{jobId}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Background source processing is owned by the Rust front.\",\"code\":\"RUST_SOURCE_JOBS_OWNED\"}",
+     "body": {
+      "error": "Background source processing is owned by the Rust front.",
+      "code": "RUST_SOURCE_JOBS_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/projects/qa-1/source-jobs/qa-1",
@@ -3860,6 +4625,9 @@
       "code": "RUST_SOURCE_JOBS_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/projects/{id}/source-jobs/{jobId}"
    ],
    "switched": []
   },
@@ -3888,9 +4656,59 @@
     "deploy/tools/assemble-release.sh:3350",
     "deploy/tools/assemble-release.sh:3358",
     "deploy/tools/assemble-release.sh:4133",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:4753",
+    "deploy/tools/test-assemble-release.sh:4763",
+    "deploy/tools/test-assemble-release.sh:4853",
+    "deploy/tools/test-web-supervisor.sh:530"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/folder-import/plan",
+     "pattern": "/api/projects/{id}/folder-import/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Project source processing is owned by the Rust front.\",\"code\":\"RUST_PROJECT_SOURCE_WORK_OWNED\"}",
+     "body": {
+      "error": "Project source processing is owned by the Rust front.",
+      "code": "RUST_PROJECT_SOURCE_WORK_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/sources/sync",
+     "pattern": "/api/projects/{id}/sources/sync",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Project source processing is owned by the Rust front.\",\"code\":\"RUST_PROJECT_SOURCE_WORK_OWNED\"}",
+     "body": {
+      "error": "Project source processing is owned by the Rust front.",
+      "code": "RUST_PROJECT_SOURCE_WORK_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/upload",
+     "pattern": "/api/projects/{id}/upload",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Project source processing is owned by the Rust front.\",\"code\":\"RUST_PROJECT_SOURCE_WORK_OWNED\"}",
+     "body": {
+      "error": "Project source processing is owned by the Rust front.",
+      "code": "RUST_PROJECT_SOURCE_WORK_OWNED"
+     }
+    },
     {
      "method": "POST",
      "path": "/api/projects/qa-1/folder-import/plan",
@@ -3937,6 +4755,11 @@
      }
     }
    ],
+   "owned_routes": [
+    "POST /api/projects/{id}/folder-import/plan",
+    "POST /api/projects/{id}/sources/sync",
+    "POST /api/projects/{id}/upload"
+   ],
    "switched": []
   },
   {
@@ -3961,9 +4784,542 @@
     "deploy/tools/assemble-release.sh:1204",
     "deploy/tools/assemble-release.sh:1221",
     "deploy/tools/assemble-release.sh:4134",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:2349",
+    "deploy/tools/test-assemble-release.sh:2373",
+    "deploy/tools/test-assemble-release.sh:2395",
+    "deploy/tools/test-assemble-release.sh:2398",
+    "deploy/tools/test-assemble-release.sh:2555",
+    "deploy/tools/test-web-supervisor.sh:266",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research",
+     "pattern": "/api/projects/{projectId}/research",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/research/{job}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/cancel",
+     "pattern": "/api/projects/{projectId}/research/{job}/cancel",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/00000000-0000-4000-8000-000000000001/save",
+     "pattern": "/api/projects/{projectId}/research/{job}/save",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/research/plan",
+     "pattern": "/api/projects/{projectId}/research/plan",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deep research is owned by the Rust front.\",\"code\":\"RUST_RESEARCH_OWNED\"}",
+     "body": {
+      "error": "Deep research is owned by the Rust front.",
+      "code": "RUST_RESEARCH_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/projects/qa-1/research",
@@ -4175,6 +5531,13 @@
      }
     }
    ],
+   "owned_routes": [
+    "ALL /api/projects/{projectId}/research",
+    "ALL /api/projects/{projectId}/research/plan",
+    "ALL /api/projects/{projectId}/research/{job}",
+    "ALL /api/projects/{projectId}/research/{job}/cancel",
+    "ALL /api/projects/{projectId}/research/{job}/save"
+   ],
    "switched": []
   },
   {
@@ -4202,8 +5565,22 @@
     "deploy/tools/assemble-release.sh:1263",
     "deploy/tools/assemble-release.sh:1290",
     "deploy/tools/assemble-release.sh:4134",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:2455",
+    "deploy/tools/test-assemble-release.sh:2474",
+    "deploy/tools/test-assemble-release.sh:2527",
+    "deploy/tools/test-assemble-release.sh:2530",
+    "deploy/tools/test-assemble-release.sh:2554",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/projects/{projectId}/browser": [
+     "server/routes/browser.cjs:11"
+    ],
+    "/api/projects/{projectId}/code": [
+     "server/routes/code.cjs:7"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -4299,6 +5676,66 @@
      "method": "OPTIONS",
      "path": "/api/code/active",
      "pattern": "/api/code/active",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The Code and Browser task reads are owned by the Rust front.\",\"code\":\"RUST_TASK_READS_OWNED\"}",
+     "body": {
+      "error": "The Code and Browser task reads are owned by the Rust front.",
+      "code": "RUST_TASK_READS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/browser",
+     "pattern": "/api/projects/{projectId}/browser",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The Code and Browser task reads are owned by the Rust front.\",\"code\":\"RUST_TASK_READS_OWNED\"}",
+     "body": {
+      "error": "The Code and Browser task reads are owned by the Rust front.",
+      "code": "RUST_TASK_READS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/browser/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/browser/{task}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The Code and Browser task reads are owned by the Rust front.\",\"code\":\"RUST_TASK_READS_OWNED\"}",
+     "body": {
+      "error": "The Code and Browser task reads are owned by the Rust front.",
+      "code": "RUST_TASK_READS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/code",
+     "pattern": "/api/projects/{projectId}/code",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The Code and Browser task reads are owned by the Rust front.\",\"code\":\"RUST_TASK_READS_OWNED\"}",
+     "body": {
+      "error": "The Code and Browser task reads are owned by the Rust front.",
+      "code": "RUST_TASK_READS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/code/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/code/{task}",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -4341,6 +5778,13 @@
      }
     }
    ],
+   "owned_routes": [
+    "ALL /api/code/active",
+    "GET /api/projects/{projectId}/browser",
+    "GET /api/projects/{projectId}/browser/{task}",
+    "GET /api/projects/{projectId}/code",
+    "GET /api/projects/{projectId}/code/{task}"
+   ],
    "switched": []
   },
   {
@@ -4367,9 +5811,111 @@
     "deploy/tools/assemble-release.sh:1160",
     "deploy/tools/assemble-release.sh:1189",
     "deploy/tools/assemble-release.sh:4134",
-    "deploy/tools/assemble-release.sh:4135"
+    "deploy/tools/assemble-release.sh:4135",
+    "deploy/tools/test-assemble-release.sh:2280",
+    "deploy/tools/test-assemble-release.sh:2293",
+    "deploy/tools/test-assemble-release.sh:2318",
+    "deploy/tools/test-assemble-release.sh:2319",
+    "deploy/tools/test-assemble-release.sh:2322",
+    "deploy/tools/test-assemble-release.sh:2336",
+    "deploy/tools/test-assemble-release.sh:2489",
+    "deploy/tools/test-assemble-release.sh:2492",
+    "deploy/tools/test-assemble-release.sh:2493",
+    "deploy/tools/test-assemble-release.sh:2512",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/config",
+     "pattern": "/api/projects/{projectId}/config",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"A project's configuration and instruction skills are owned by the Rust front.\",\"code\":\"RUST_PROJECT_CONFIG_OWNED\"}",
+     "body": {
+      "error": "A project's configuration and instruction skills are owned by the Rust front.",
+      "code": "RUST_PROJECT_CONFIG_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/instruction-skills",
+     "pattern": "/api/projects/{projectId}/instruction-skills",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"A project's configuration and instruction skills are owned by the Rust front.\",\"code\":\"RUST_PROJECT_CONFIG_OWNED\"}",
+     "body": {
+      "error": "A project's configuration and instruction skills are owned by the Rust front.",
+      "code": "RUST_PROJECT_CONFIG_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/instruction-skills",
+     "pattern": "/api/projects/{projectId}/instruction-skills",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"A project's configuration and instruction skills are owned by the Rust front.\",\"code\":\"RUST_PROJECT_CONFIG_OWNED\"}",
+     "body": {
+      "error": "A project's configuration and instruction skills are owned by the Rust front.",
+      "code": "RUST_PROJECT_CONFIG_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/instruction-skills/manifests",
+     "pattern": "/api/projects/{projectId}/instruction-skills/manifests",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"A project's configuration and instruction skills are owned by the Rust front.\",\"code\":\"RUST_PROJECT_CONFIG_OWNED\"}",
+     "body": {
+      "error": "A project's configuration and instruction skills are owned by the Rust front.",
+      "code": "RUST_PROJECT_CONFIG_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/instruction-skills/manifests/00000000-0000-4000-8000-000000000001/content",
+     "pattern": "/api/projects/{projectId}/instruction-skills/manifests/{skillId}/content",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"A project's configuration and instruction skills are owned by the Rust front.\",\"code\":\"RUST_PROJECT_CONFIG_OWNED\"}",
+     "body": {
+      "error": "A project's configuration and instruction skills are owned by the Rust front.",
+      "code": "RUST_PROJECT_CONFIG_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/skills/install",
+     "pattern": "/api/projects/{project}/skills/install",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"A project's configuration and instruction skills are owned by the Rust front.\",\"code\":\"RUST_PROJECT_CONFIG_OWNED\"}",
+     "body": {
+      "error": "A project's configuration and instruction skills are owned by the Rust front.",
+      "code": "RUST_PROJECT_CONFIG_OWNED"
+     }
+    },
     {
      "method": "POST",
      "path": "/api/projects/qa-1/config",
@@ -4461,6 +6007,14 @@
      }
     }
    ],
+   "owned_routes": [
+    "GET /api/projects/{projectId}/instruction-skills",
+    "GET /api/projects/{projectId}/instruction-skills/manifests",
+    "GET /api/projects/{projectId}/instruction-skills/manifests/{skillId}/content",
+    "POST /api/projects/{projectId}/config",
+    "POST /api/projects/{project}/skills/install",
+    "PUT /api/projects/{projectId}/instruction-skills"
+   ],
    "switched": []
   },
   {
@@ -4490,9 +6044,32 @@
     "build/web-supervisor.sh:293",
     "deploy/tools/assemble-release.sh:2402",
     "deploy/tools/assemble-release.sh:2408",
-    "deploy/tools/assemble-release.sh:2425"
+    "deploy/tools/assemble-release.sh:2425",
+    "deploy/tools/test-assemble-release.sh:4460",
+    "deploy/tools/test-assemble-release.sh:4470",
+    "deploy/tools/test-assemble-release.sh:4494",
+    "deploy/tools/test-assemble-release.sh:4495",
+    "deploy/tools/test-assemble-release.sh:4498",
+    "deploy/tools/test-assemble-release.sh:4505",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "DELETE",
+     "path": "/api/admin/users/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/admin/users/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Deleting an account is owned by the Rust front.\",\"code\":\"RUST_ADMIN_USERS_OWNED\"}",
+     "body": {
+      "error": "Deleting an account is owned by the Rust front.",
+      "code": "RUST_ADMIN_USERS_OWNED"
+     }
+    },
     {
      "method": "DELETE",
      "path": "/api/admin/users/qa-1",
@@ -4508,6 +6085,9 @@
       "code": "RUST_ADMIN_USERS_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "DELETE /api/admin/users/{id}"
    ],
    "switched": []
   },
@@ -4533,8 +6113,14 @@
     "build/web-supervisor.sh:365",
     "build/web-supervisor.sh:370",
     "deploy/tools/assemble-release.sh:3178",
-    "deploy/tools/assemble-release.sh:3183"
+    "deploy/tools/assemble-release.sh:3183",
+    "deploy/tools/test-assemble-release.sh:6035",
+    "deploy/tools/test-web-supervisor.sh:722",
+    "deploy/tools/test-web-supervisor.sh:729",
+    "deploy/tools/test-web-supervisor.sh:757",
+    "deploy/tools/test-web-supervisor.sh:761"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -4567,6 +6153,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -4591,8 +6178,24 @@
     "build/web-supervisor.sh:379",
     "build/web-supervisor.sh:385",
     "deploy/tools/assemble-release.sh:3250",
-    "deploy/tools/assemble-release.sh:3257"
+    "deploy/tools/assemble-release.sh:3257",
+    "deploy/tools/test-assemble-release.sh:6118",
+    "deploy/tools/test-assemble-release.sh:6229",
+    "deploy/tools/test-web-supervisor.sh:750",
+    "deploy/tools/test-web-supervisor.sh:761"
    ],
+   "behind": {
+    "/api/models/evidence": [
+     "server/routes/models.cjs:441",
+     "server/routes/models.cjs:448"
+    ],
+    "/api/models/evidence/import": [
+     "server/routes/models.cjs:448"
+    ],
+    "/api/models/presets/reload": [
+     "server/routes/models.cjs:432"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -4640,6 +6243,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -4662,8 +6266,19 @@
    "pairing": [
     "build/web-supervisor.sh:310",
     "deploy/tools/assemble-release.sh:3285",
-    "deploy/tools/assemble-release.sh:3304"
+    "deploy/tools/assemble-release.sh:3304",
+    "deploy/tools/test-assemble-release.sh:6218",
+    "deploy/tools/test-assemble-release.sh:6230",
+    "deploy/tools/test-assemble-release.sh:6248",
+    "deploy/tools/test-assemble-release.sh:6285",
+    "deploy/tools/test-assemble-release.sh:6293",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/models/evidence/recheck": [
+     "server/routes/models.cjs:441"
+    ]
+   },
    "refusals": [
     {
      "method": "POST",
@@ -4680,6 +6295,9 @@
       "code": "RUST_MODEL_EVIDENCE_RECHECK_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "POST /api/models/evidence/recheck"
    ],
    "switched": []
   },
@@ -4705,8 +6323,21 @@
     "build/web-supervisor.sh:216",
     "build/web-supervisor.sh:267",
     "deploy/tools/assemble-release.sh:2507",
-    "deploy/tools/assemble-release.sh:2512"
+    "deploy/tools/assemble-release.sh:2512",
+    "deploy/tools/test-assemble-release.sh:4948",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:668",
+    "deploy/tools/test-web-supervisor.sh:674",
+    "deploy/tools/test-web-supervisor.sh:683"
    ],
+   "behind": {
+    "/device": [
+     "server/device-auth.cjs:31",
+     "server/device-auth.cjs:32",
+     "server/gdrive-broker-fixture.cjs:48",
+     "server/spa-routes.cjs:38"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -4979,6 +6610,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5000,8 +6632,14 @@
     "build/web-supervisor.sh:217",
     "build/web-supervisor.sh:268",
     "deploy/tools/assemble-release.sh:2535",
-    "deploy/tools/assemble-release.sh:2539"
+    "deploy/tools/assemble-release.sh:2539",
+    "deploy/tools/test-assemble-release.sh:4967",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:668",
+    "deploy/tools/test-web-supervisor.sh:674",
+    "deploy/tools/test-web-supervisor.sh:683"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -5109,6 +6747,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5132,8 +6771,13 @@
     "build/web-supervisor.sh:218",
     "build/web-supervisor.sh:269",
     "deploy/tools/assemble-release.sh:2746",
-    "deploy/tools/assemble-release.sh:2751"
+    "deploy/tools/assemble-release.sh:2751",
+    "deploy/tools/test-assemble-release.sh:5004",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:674",
+    "deploy/tools/test-web-supervisor.sh:683"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -5346,6 +6990,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5371,8 +7016,18 @@
     "build/web-supervisor.sh:220",
     "build/web-supervisor.sh:270",
     "deploy/tools/assemble-release.sh:2767",
-    "deploy/tools/assemble-release.sh:2773"
+    "deploy/tools/assemble-release.sh:2773",
+    "deploy/tools/test-assemble-release.sh:5054",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:683",
+    "deploy/tools/test-web-supervisor.sh:692",
+    "deploy/tools/test-web-supervisor.sh:702"
    ],
+   "behind": {
+    "/api/integrations/storage/test": [
+     "server/device-auth.cjs:45"
+    ]
+   },
    "refusals": [
     {
      "method": "POST",
@@ -5450,6 +7105,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5479,8 +7135,22 @@
     "build/web-supervisor.sh:223",
     "build/web-supervisor.sh:272",
     "deploy/tools/assemble-release.sh:2815",
-    "deploy/tools/assemble-release.sh:2821"
+    "deploy/tools/assemble-release.sh:2821",
+    "deploy/tools/test-assemble-release.sh:5214",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:702",
+    "deploy/tools/test-web-supervisor.sh:712"
    ],
+   "behind": {
+    "/api/integrations/storage": [
+     "server/device-auth.cjs:36",
+     "server/device-auth.cjs:45",
+     "server/routes/storage.cjs:28",
+     "server/routes/storage.cjs:29",
+     "server/routes/storage.cjs:30",
+     "server/routes/storage.cjs:39"
+    ]
+   },
    "refusals": [
     {
      "method": "PUT",
@@ -5498,6 +7168,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5519,8 +7190,13 @@
     "build/web-supervisor.sh:225",
     "build/web-supervisor.sh:273",
     "deploy/tools/assemble-release.sh:2897",
-    "deploy/tools/assemble-release.sh:2904"
+    "deploy/tools/assemble-release.sh:2904",
+    "deploy/tools/test-assemble-release.sh:5255",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:712",
+    "deploy/tools/test-web-supervisor.sh:836"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "POST",
@@ -5538,6 +7214,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5564,8 +7241,12 @@
     "build/web-supervisor.sh:226",
     "build/web-supervisor.sh:274",
     "deploy/tools/assemble-release.sh:2926",
-    "deploy/tools/assemble-release.sh:2931"
+    "deploy/tools/assemble-release.sh:2931",
+    "deploy/tools/test-assemble-release.sh:5306",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:836"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "POST",
@@ -5628,6 +7309,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5649,9 +7331,117 @@
     "build/web-supervisor.sh:229",
     "build/web-supervisor.sh:275",
     "deploy/tools/assemble-release.sh:3098",
-    "deploy/tools/assemble-release.sh:3103"
+    "deploy/tools/assemble-release.sh:3103",
+    "deploy/tools/test-assemble-release.sh:5607",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001/models",
+     "pattern": "/api/providers/{providerId}/models{*?}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider model list is owned by the Rust front.\",\"code\":\"RUST_PROVIDER_MODELS_OWNED\"}",
+     "body": {
+      "error": "The provider model list is owned by the Rust front.",
+      "code": "RUST_PROVIDER_MODELS_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/providers/qa-1/models",
@@ -5758,6 +7548,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5782,8 +7573,21 @@
     "build/web-supervisor.sh:230",
     "build/web-supervisor.sh:276",
     "deploy/tools/assemble-release.sh:2840",
-    "deploy/tools/assemble-release.sh:2845"
+    "deploy/tools/assemble-release.sh:2845",
+    "deploy/tools/test-assemble-release.sh:5670",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/providers": [
+     "server/device-auth.cjs:39"
+    ],
+    "/api/providers/chatgpt": [
+     "server/device-auth.cjs:39"
+    ],
+    "/api/providers/{id}": [
+     "server/device-auth.cjs:39"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -5804,6 +7608,36 @@
      "method": "POST",
      "path": "/api/providers",
      "pattern": "/api/providers",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider registry is owned by the Rust front.\",\"code\":\"RUST_PROVIDERS_OWNED\"}",
+     "body": {
+      "error": "The provider registry is owned by the Rust front.",
+      "code": "RUST_PROVIDERS_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/providers/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The provider registry is owned by the Rust front.\",\"code\":\"RUST_PROVIDERS_OWNED\"}",
+     "body": {
+      "error": "The provider registry is owned by the Rust front.",
+      "code": "RUST_PROVIDERS_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/providers/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/providers/{id}",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -5891,6 +7725,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -5919,8 +7754,108 @@
     "deploy/tools/assemble-release.sh:2142",
     "deploy/tools/assemble-release.sh:2146",
     "deploy/tools/assemble-release.sh:2166",
-    "deploy/tools/assemble-release.sh:4405"
+    "deploy/tools/assemble-release.sh:4270",
+    "deploy/tools/assemble-release.sh:4279",
+    "deploy/tools/assemble-release.sh:4405",
+    "deploy/tools/test-assemble-release.sh:3437",
+    "deploy/tools/test-assemble-release.sh:3438",
+    "deploy/tools/test-assemble-release.sh:3441",
+    "deploy/tools/test-assemble-release.sh:3452",
+    "deploy/tools/test-assemble-release.sh:3458",
+    "deploy/tools/test-assemble-release.sh:3462",
+    "deploy/tools/test-assemble-release.sh:3467",
+    "deploy/tools/test-assemble-release.sh:3490",
+    "deploy/tools/test-residual-fallback-pairing.sh:9",
+    "deploy/tools/test-residual-fallback-pairing.sh:20",
+    "deploy/tools/test-residual-fallback-pairing.sh:21",
+    "deploy/tools/test-residual-fallback-pairing.sh:26",
+    "deploy/tools/test-residual-fallback-pairing.sh:27",
+    "deploy/tools/test-residual-fallback-pairing.sh:30",
+    "deploy/tools/test-residual-fallback-pairing.sh:34",
+    "deploy/tools/test-residual-fallback-pairing.sh:35",
+    "deploy/tools/test-residual-fallback-pairing.sh:36",
+    "deploy/tools/test-residual-fallback-pairing.sh:37",
+    "deploy/tools/test-residual-fallback-pairing.sh:38",
+    "deploy/tools/test-residual-fallback-pairing.sh:40",
+    "deploy/tools/test-residual-fallback-pairing.sh:41",
+    "deploy/tools/test-residual-fallback-pairing.sh:46",
+    "deploy/tools/test-residual-fallback-pairing.sh:49",
+    "deploy/tools/test-residual-fallback-pairing.sh:51",
+    "deploy/tools/test-residual-fallback-pairing.sh:53",
+    "deploy/tools/test-residual-fallback-pairing.sh:56"
    ],
+   "behind": {
+    "/api/models/autotune": [
+     "server/routes/models.cjs:453"
+    ],
+    "/api/models/delete": [
+     "server/routes/models.cjs:548",
+     "server/routes/models.cjs:704"
+    ],
+    "/api/models/evidence": [
+     "server/routes/models.cjs:441",
+     "server/routes/models.cjs:448"
+    ],
+    "/api/models/evidence/import": [
+     "server/routes/models.cjs:448"
+    ],
+    "/api/models/evidence/recheck": [
+     "server/routes/models.cjs:441"
+    ],
+    "/api/models/idle-unload": [
+     "server/routes/models.cjs:481"
+    ],
+    "/api/models/inference-budget": [
+     "server/routes/models.cjs:469"
+    ],
+    "/api/models/load": [
+     "server/routes/models.cjs:704"
+    ],
+    "/api/models/machines": [
+     "server/routes/inference-machines.cjs:28"
+    ],
+    "/api/models/preset": [
+     "server/routes/models.cjs:493"
+    ],
+    "/api/models/presets/reload": [
+     "server/routes/models.cjs:432"
+    ],
+    "/api/models/prune-missing": [
+     "server/routes/models.cjs:511",
+     "server/routes/models.cjs:704"
+    ],
+    "/api/models/reranker": [
+     "server/reranker-http-oracle.cjs:35",
+     "server/routes/models.cjs:507"
+    ],
+    "/api/models/{*}": [
+     "server/llamacpp-variants.cjs:5",
+     "server/model-evidence-import.cjs:51",
+     "server/model-evidence-import.cjs:60",
+     "server/mtp-artifact.cjs:53",
+     "server/reranker-http-oracle.cjs:35",
+     "server/routes/inference-machines.cjs:28",
+     "server/routes/models.cjs:204",
+     "server/routes/models.cjs:246",
+     "server/routes/models.cjs:432",
+     "server/routes/models.cjs:441",
+     "server/routes/models.cjs:448",
+     "server/routes/models.cjs:453",
+     "server/routes/models.cjs:469",
+     "server/routes/models.cjs:481",
+     "server/routes/models.cjs:493",
+     "server/routes/models.cjs:507",
+     "server/routes/models.cjs:511",
+     "server/routes/models.cjs:519",
+     "server/routes/models.cjs:529",
+     "server/routes/models.cjs:548",
+     "server/routes/models.cjs:631",
+     "server/routes/models.cjs:704"
+    ],
+    "/api/providers/chatgpt": [
+     "server/device-auth.cjs:39"
+    ]
+   },
    "refusals": [
     {
      "method": "HEAD",
@@ -10903,6 +12838,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -10934,8 +12870,14 @@
     "build/web-supervisor.sh:238",
     "build/web-supervisor.sh:280",
     "deploy/tools/assemble-release.sh:2957",
-    "deploy/tools/assemble-release.sh:3043"
+    "deploy/tools/assemble-release.sh:3043",
+    "deploy/tools/test-assemble-release.sh:5384",
+    "deploy/tools/test-assemble-release.sh:5425",
+    "deploy/tools/test-assemble-release.sh:5453",
+    "deploy/tools/test-assemble-release.sh:5587",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -10971,6 +12913,36 @@
      "method": "DELETE",
      "path": "/api/mcp-keys/servers",
      "pattern": "/api/mcp-keys/servers",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"MCP server keys and sign-ins are owned by the Rust front.\",\"code\":\"RUST_MCP_CREDENTIALS_OWNED\"}",
+     "body": {
+      "error": "MCP server keys and sign-ins are owned by the Rust front.",
+      "code": "RUST_MCP_CREDENTIALS_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/mcp-oauth/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/mcp-oauth/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"MCP server keys and sign-ins are owned by the Rust front.\",\"code\":\"RUST_MCP_CREDENTIALS_OWNED\"}",
+     "body": {
+      "error": "MCP server keys and sign-ins are owned by the Rust front.",
+      "code": "RUST_MCP_CREDENTIALS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/mcp-oauth/00000000-0000-4000-8000-000000000001/connect",
+     "pattern": "/api/mcp-oauth/{id}/connect",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -11073,6 +13045,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -11096,8 +13069,20 @@
    "pairing": [
     "build/web-supervisor.sh:248",
     "build/web-supervisor.sh:288",
-    "deploy/tools/assemble-release.sh:3003"
+    "deploy/tools/assemble-release.sh:3003",
+    "deploy/tools/test-assemble-release.sh:5480",
+    "deploy/tools/test-assemble-release.sh:5489",
+    "deploy/tools/test-assemble-release.sh:5496",
+    "deploy/tools/test-assemble-release.sh:5531",
+    "deploy/tools/test-assemble-release.sh:5559",
+    "deploy/tools/test-assemble-release.sh:5563",
+    "deploy/tools/test-assemble-release.sh:5567",
+    "deploy/tools/test-assemble-release.sh:5572",
+    "deploy/tools/test-assemble-release.sh:5576",
+    "deploy/tools/test-assemble-release.sh:5581",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -11298,6 +13283,216 @@
      "method": "OPTIONS",
      "path": "/api/admin/mcp-directory/",
      "pattern": "/api/admin/mcp-directory",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The MCP directory is owned by the Rust front.\",\"code\":\"RUST_MCP_DIRECTORY_OWNED\"}",
+     "body": {
+      "error": "The MCP directory is owned by the Rust front.",
+      "code": "RUST_MCP_DIRECTORY_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/admin/mcp-directory/00000000-0000-4000-8000-000000000001/oauth-client/",
+     "pattern": "/api/admin/mcp-directory/{id}/oauth-client",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -11940,6 +14135,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -11962,8 +14158,18 @@
    "pairing": [
     "build/web-supervisor.sh:249",
     "build/web-supervisor.sh:290",
-    "deploy/tools/assemble-release.sh:3003"
+    "deploy/tools/assemble-release.sh:3003",
+    "deploy/tools/test-assemble-release.sh:5489",
+    "deploy/tools/test-assemble-release.sh:5496",
+    "deploy/tools/test-assemble-release.sh:5531",
+    "deploy/tools/test-assemble-release.sh:5559",
+    "deploy/tools/test-assemble-release.sh:5563",
+    "deploy/tools/test-assemble-release.sh:5567",
+    "deploy/tools/test-assemble-release.sh:5572",
+    "deploy/tools/test-assemble-release.sh:5576",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -12071,6 +14277,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -12091,8 +14298,16 @@
    "pairing": [
     "build/web-supervisor.sh:289",
     "deploy/tools/assemble-release.sh:1790",
-    "deploy/tools/assemble-release.sh:1804"
+    "deploy/tools/assemble-release.sh:1804",
+    "deploy/tools/test-assemble-release.sh:2799",
+    "deploy/tools/test-assemble-release.sh:2811",
+    "deploy/tools/test-assemble-release.sh:2831",
+    "deploy/tools/test-assemble-release.sh:2832",
+    "deploy/tools/test-assemble-release.sh:2835",
+    "deploy/tools/test-assemble-release.sh:2890",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -12200,6 +14415,9 @@
      }
     }
    ],
+   "owned_routes": [
+    "ALL /api/toolboxes"
+   ],
    "switched": []
   },
   {
@@ -12219,8 +14437,17 @@
    "pairing": [
     "build/web-supervisor.sh:298",
     "deploy/tools/assemble-release.sh:2099",
-    "deploy/tools/assemble-release.sh:2122"
+    "deploy/tools/assemble-release.sh:2122",
+    "deploy/tools/test-assemble-release.sh:3353",
+    "deploy/tools/test-assemble-release.sh:3362",
+    "deploy/tools/test-assemble-release.sh:3378",
+    "deploy/tools/test-assemble-release.sh:3379",
+    "deploy/tools/test-assemble-release.sh:3382",
+    "deploy/tools/test-assemble-release.sh:3385",
+    "deploy/tools/test-assemble-release.sh:3392",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -12236,6 +14463,9 @@
       "error": "The Rust front owns model assignments reads."
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/models/assignments"
    ],
    "switched": []
   },
@@ -12262,8 +14492,25 @@
     "deploy/tools/assemble-release.sh:1428",
     "deploy/tools/assemble-release.sh:1633",
     "deploy/tools/assemble-release.sh:1643",
-    "deploy/tools/assemble-release.sh:1644"
+    "deploy/tools/assemble-release.sh:1644",
+    "deploy/tools/test-assemble-release.sh:3942",
+    "deploy/tools/test-assemble-release.sh:3956",
+    "deploy/tools/test-assemble-release.sh:4012",
+    "deploy/tools/test-assemble-release.sh:4013",
+    "deploy/tools/test-assemble-release.sh:4015",
+    "deploy/tools/test-assemble-release.sh:4049",
+    "deploy/tools/test-assemble-release.sh:4058",
+    "deploy/tools/test-assemble-release.sh:4060",
+    "deploy/tools/test-assemble-release.sh:4119",
+    "deploy/tools/test-assemble-release.sh:4133",
+    "deploy/tools/test-web-supervisor.sh:147",
+    "deploy/tools/test-web-supervisor.sh:154",
+    "deploy/tools/test-web-supervisor.sh:158",
+    "deploy/tools/test-web-supervisor.sh:162",
+    "deploy/tools/test-web-supervisor.sh:166",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -12370,6 +14617,9 @@
       "code": "RUST_CALIBRATION_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "ALL /api/models/calibration"
    ],
    "switched": []
   },
@@ -12397,9 +14647,16 @@
     "deploy/tools/assemble-release.sh:2053",
     "deploy/tools/assemble-release.sh:2055",
     "deploy/tools/assemble-release.sh:2056",
-    "deploy/tools/assemble-release.sh:2057"
+    "deploy/tools/assemble-release.sh:2057",
+    "deploy/tools/test-assemble-release.sh:3243",
+    "deploy/tools/test-assemble-release.sh:3244",
+    "deploy/tools/test-assemble-release.sh:3253",
+    "deploy/tools/test-assemble-release.sh:3254",
+    "deploy/tools/test-assemble-release.sh:3260"
    ],
+   "behind": {},
    "refusals": [],
+   "owned_routes": null,
    "switched": [
     {
      "env": {
@@ -12731,8 +14988,20 @@
    "pairing": [
     "build/web-supervisor.sh:304",
     "deploy/tools/assemble-release.sh:1314",
-    "deploy/tools/assemble-release.sh:1344"
+    "deploy/tools/assemble-release.sh:1344",
+    "deploy/tools/test-assemble-release.sh:3662",
+    "deploy/tools/test-assemble-release.sh:3676",
+    "deploy/tools/test-assemble-release.sh:3694",
+    "deploy/tools/test-assemble-release.sh:3695",
+    "deploy/tools/test-assemble-release.sh:3697",
+    "deploy/tools/test-assemble-release.sh:3699",
+    "deploy/tools/test-assemble-release.sh:3701",
+    "deploy/tools/test-assemble-release.sh:3707",
+    "deploy/tools/test-assemble-release.sh:3710",
+    "deploy/tools/test-assemble-release.sh:3727",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -12749,6 +15018,9 @@
       "code": "RUST_MODEL_MANAGER_SCAN_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/model-manager/models"
    ],
    "switched": []
   },
@@ -12770,8 +15042,16 @@
    "pairing": [
     "build/web-supervisor.sh:302",
     "deploy/tools/assemble-release.sh:2330",
-    "deploy/tools/assemble-release.sh:2344"
+    "deploy/tools/assemble-release.sh:2344",
+    "deploy/tools/test-assemble-release.sh:4257",
+    "deploy/tools/test-assemble-release.sh:4271",
+    "deploy/tools/test-assemble-release.sh:4305",
+    "deploy/tools/test-assemble-release.sh:4306",
+    "deploy/tools/test-assemble-release.sh:4308",
+    "deploy/tools/test-assemble-release.sh:4333",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -12878,6 +15158,9 @@
       "code": "RUST_CALIBRATION_CANCEL_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "ALL /api/models/autotune/cancel"
    ],
    "switched": []
   },
@@ -12899,8 +15182,22 @@
    "pairing": [
     "build/web-supervisor.sh:305",
     "deploy/tools/assemble-release.sh:1379",
-    "deploy/tools/assemble-release.sh:1393"
+    "deploy/tools/assemble-release.sh:1393",
+    "deploy/tools/test-assemble-release.sh:3817",
+    "deploy/tools/test-assemble-release.sh:3831",
+    "deploy/tools/test-assemble-release.sh:3870",
+    "deploy/tools/test-assemble-release.sh:3871",
+    "deploy/tools/test-assemble-release.sh:3873",
+    "deploy/tools/test-assemble-release.sh:3898",
+    "deploy/tools/test-assemble-release.sh:3974",
+    "deploy/tools/test-assemble-release.sh:3983",
+    "deploy/tools/test-assemble-release.sh:3989",
+    "deploy/tools/test-assemble-release.sh:4050",
+    "deploy/tools/test-assemble-release.sh:4076",
+    "deploy/tools/test-assemble-release.sh:4131",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -13007,6 +15304,9 @@
       "code": "RUST_CALIBRATION_CANCEL_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "ALL /api/models/calibration/cancel"
    ],
    "switched": []
   },
@@ -13031,8 +15331,22 @@
    "pairing": [
     "build/web-supervisor.sh:250",
     "build/web-supervisor.sh:291",
-    "deploy/tools/assemble-release.sh:3003"
+    "deploy/tools/assemble-release.sh:3003",
+    "deploy/tools/test-assemble-release.sh:5489",
+    "deploy/tools/test-assemble-release.sh:5496",
+    "deploy/tools/test-assemble-release.sh:5531",
+    "deploy/tools/test-assemble-release.sh:5559",
+    "deploy/tools/test-assemble-release.sh:5563",
+    "deploy/tools/test-assemble-release.sh:5567",
+    "deploy/tools/test-assemble-release.sh:5572",
+    "deploy/tools/test-assemble-release.sh:5576",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/connectors": [
+     "server/device-auth.cjs:49"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -13065,6 +15379,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -13086,8 +15401,12 @@
     "build/web-supervisor.sh:221",
     "build/web-supervisor.sh:271",
     "deploy/tools/assemble-release.sh:2794",
-    "deploy/tools/assemble-release.sh:2799"
+    "deploy/tools/assemble-release.sh:2799",
+    "deploy/tools/test-assemble-release.sh:5092",
+    "deploy/tools/test-web-supervisor.sh:614",
+    "deploy/tools/test-web-supervisor.sh:692"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -13195,6 +15514,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -13222,8 +15542,11 @@
     "build/web-supervisor.sh:235",
     "build/web-supervisor.sh:278",
     "deploy/tools/assemble-release.sh:3119",
-    "deploy/tools/assemble-release.sh:3124"
+    "deploy/tools/assemble-release.sh:3124",
+    "deploy/tools/test-assemble-release.sh:5914",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "PUT",
@@ -13286,6 +15609,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -13308,8 +15632,15 @@
     "build/web-supervisor.sh:279",
     "deploy/tools/assemble-release.sh:3150",
     "deploy/tools/assemble-release.sh:3155",
-    "deploy/tools/assemble-release.sh:3173"
+    "deploy/tools/assemble-release.sh:3173",
+    "deploy/tools/test-assemble-release.sh:5977",
+    "deploy/tools/test-assemble-release.sh:5980",
+    "deploy/tools/test-assemble-release.sh:5982",
+    "deploy/tools/test-assemble-release.sh:5987",
+    "deploy/tools/test-assemble-release.sh:6013",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -14152,6 +16483,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -14178,8 +16510,15 @@
     "build/web-supervisor.sh:241",
     "build/web-supervisor.sh:281",
     "deploy/tools/assemble-release.sh:2696",
-    "deploy/tools/assemble-release.sh:2726"
+    "deploy/tools/assemble-release.sh:2726",
+    "deploy/tools/test-assemble-release.sh:5756",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/health": [
+     "server/chat.cjs:714"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -14197,6 +16536,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -14225,8 +16565,16 @@
     "build/web-supervisor.sh:242",
     "build/web-supervisor.sh:282",
     "deploy/tools/assemble-release.sh:2696",
-    "deploy/tools/assemble-release.sh:2727"
+    "deploy/tools/assemble-release.sh:2727",
+    "deploy/tools/test-assemble-release.sh:5756",
+    "deploy/tools/test-assemble-release.sh:5789",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {
+    "/api/auto-roles": [
+     "server/routes/models.cjs:238"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -14244,6 +16592,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -14269,8 +16618,11 @@
     "build/web-supervisor.sh:243",
     "build/web-supervisor.sh:283",
     "deploy/tools/assemble-release.sh:2697",
-    "deploy/tools/assemble-release.sh:2728"
+    "deploy/tools/assemble-release.sh:2728",
+    "deploy/tools/test-assemble-release.sh:5756",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -14288,6 +16640,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   },
   {
@@ -14315,8 +16668,14 @@
     "deploy/tools/assemble-release.sh:2730",
     "deploy/tools/assemble-release.sh:2732",
     "deploy/tools/assemble-release.sh:2734",
-    "deploy/tools/assemble-release.sh:2735"
+    "deploy/tools/assemble-release.sh:2735",
+    "deploy/tools/test-assemble-release.sh:5754",
+    "deploy/tools/test-assemble-release.sh:5756",
+    "deploy/tools/test-assemble-release.sh:5859",
+    "deploy/tools/test-assemble-release.sh:5885",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
     {
      "method": "GET",
@@ -14333,6 +16692,9 @@
       "code": "RUST_CHAT_SEARCH_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/chats/search"
    ],
    "switched": []
   },
@@ -14359,9 +16721,30 @@
     "deploy/tools/assemble-release.sh:2730",
     "deploy/tools/assemble-release.sh:2733",
     "deploy/tools/assemble-release.sh:2740",
-    "deploy/tools/assemble-release.sh:2741"
+    "deploy/tools/assemble-release.sh:2741",
+    "deploy/tools/test-assemble-release.sh:5755",
+    "deploy/tools/test-assemble-release.sh:5756",
+    "deploy/tools/test-assemble-release.sh:5859",
+    "deploy/tools/test-assemble-release.sh:5885",
+    "deploy/tools/test-web-supervisor.sh:614"
    ],
+   "behind": {},
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/export",
+     "pattern": "/api/chats/{chatId}/export",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"The chat download is owned by the Rust front.\",\"code\":\"RUST_CHAT_EXPORT_OWNED\"}",
+     "body": {
+      "error": "The chat download is owned by the Rust front.",
+      "code": "RUST_CHAT_EXPORT_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/chats/qa-1/export",
@@ -14377,6 +16760,9 @@
       "code": "RUST_CHAT_EXPORT_OWNED"
      }
     }
+   ],
+   "owned_routes": [
+    "GET /api/chats/{chatId}/export"
    ],
    "switched": []
   },
@@ -14439,8 +16825,80 @@
     "deploy/tools/assemble-release.sh:2429",
     "deploy/tools/assemble-release.sh:4139",
     "deploy/tools/assemble-release.sh:4147",
-    "deploy/tools/assemble-release.sh:4148"
+    "deploy/tools/assemble-release.sh:4148",
+    "deploy/tools/test-assemble-release.sh:215",
+    "deploy/tools/test-assemble-release.sh:695",
+    "deploy/tools/test-assemble-release.sh:698",
+    "deploy/tools/test-assemble-release.sh:700",
+    "deploy/tools/test-assemble-release.sh:705",
+    "deploy/tools/test-assemble-release.sh:720",
+    "deploy/tools/test-assemble-release.sh:737",
+    "deploy/tools/test-assemble-release.sh:1174",
+    "deploy/tools/test-assemble-release.sh:1175",
+    "deploy/tools/test-assemble-release.sh:1208",
+    "deploy/tools/test-assemble-release.sh:1760",
+    "deploy/tools/test-assemble-release.sh:1764",
+    "deploy/tools/test-assemble-release.sh:1881",
+    "deploy/tools/test-assemble-release.sh:1884",
+    "deploy/tools/test-assemble-release.sh:1890",
+    "deploy/tools/test-assemble-release.sh:2677",
+    "deploy/tools/test-assemble-release.sh:2679",
+    "deploy/tools/test-assemble-release.sh:2725",
+    "deploy/tools/test-assemble-release.sh:4459",
+    "deploy/tools/test-assemble-release.sh:4466",
+    "deploy/tools/test-assemble-release.sh:4490",
+    "deploy/tools/test-assemble-release.sh:4493",
+    "deploy/tools/test-assemble-release.sh:4506",
+    "deploy/tools/test-assemble-release.sh:6299",
+    "deploy/tools/test-retention-ownership.py:23"
    ],
+   "behind": {
+    "/api/account/retention": [
+     "server/routes/account.cjs:6"
+    ],
+    "/api/auth/device/approve": [
+     "server/device-auth.cjs:32"
+    ],
+    "/api/auth/device/lookup": [
+     "server/device-auth.cjs:31"
+    ],
+    "/api/auth/devices": [
+     "server/device-auth.cjs:30"
+    ],
+    "/api/auth/invitations/accept": [
+     "server/index.cjs:1176"
+    ],
+    "/api/auth/login/passkey/options": [
+     "server/index.cjs:1175"
+    ],
+    "/api/auth/login/passkey/verify": [
+     "server/index.cjs:1175"
+    ],
+    "/api/auth/login/password": [
+     "server/index.cjs:1174"
+    ],
+    "/api/auth/recovery/complete": [
+     "server/index.cjs:1176"
+    ],
+    "/api/profile": [
+     "server/device-auth.cjs:33",
+     "server/device-auth.cjs:34",
+     "server/device-auth.cjs:35",
+     "server/device-auth.cjs:44"
+    ],
+    "/api/profile/app-passwords": [
+     "server/device-auth.cjs:33"
+    ],
+    "/api/profile/sharing": [
+     "server/device-auth.cjs:35"
+    ],
+    "/api/setup/complete": [
+     "server/index.cjs:1174"
+    ],
+    "/api/setup/status": [
+     "server/index.cjs:1174"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -14806,6 +17264,36 @@
      "method": "GET",
      "path": "/api/admin/users",
      "pattern": "/api/admin/users",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/admin/users/00000000-0000-4000-8000-000000000001/disabled",
+     "pattern": "/api/admin/users/{id}/disabled",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/admin/users/00000000-0000-4000-8000-000000000001/recovery",
+     "pattern": "/api/admin/users/{id}/recovery",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -15374,6 +17862,111 @@
     },
     {
      "method": "GET",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "HEAD",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "PUT",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "OPTIONS",
+     "path": "/api/auth/devices/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/devices/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "GET",
      "path": "/api/auth/devices/qa-1",
      "pattern": "/api/auth/devices/{id}",
      "status": 503,
@@ -15554,6 +18147,36 @@
     },
     {
      "method": "PATCH",
+     "path": "/api/auth/passkeys/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/passkeys/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/auth/passkeys/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/passkeys/{id}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "PATCH",
      "path": "/api/auth/passkeys/qa-1",
      "pattern": "/api/auth/passkeys/{id}",
      "status": 503,
@@ -15631,6 +18254,21 @@
      "method": "GET",
      "path": "/api/auth/session",
      "pattern": "/api/auth/session",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"Sign-in and the account are owned by the Rust front.\",\"code\":\"RUST_AUTH_OWNED\"}",
+     "body": {
+      "error": "Sign-in and the account are owned by the Rust front.",
+      "code": "RUST_AUTH_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/auth/sessions/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/auth/sessions/{id}",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -16018,6 +18656,34 @@
      }
     }
    ],
+   "owned_routes": [
+    "/^\\/api\\/account\\/(?:instructions|memory|preferences)$/,",
+    "/^\\/api\\/account\\/retention$/,GET,PUT",
+    "/^\\/api\\/admin\\/invitations$/,POST",
+    "/^\\/api\\/admin\\/users$/,GET",
+    "/^\\/api\\/admin\\/users\\/[^/]+\\/disabled$/,PUT",
+    "/^\\/api\\/admin\\/users\\/[^/]+\\/recovery$/,POST",
+    "/^\\/api\\/auth\\/device\\/(?:approve|code|token|lookup)$/,",
+    "/^\\/api\\/auth\\/devices(?:\\/[^/]+)?$/,",
+    "/^\\/api\\/auth\\/invitations\\/accept$/,POST",
+    "/^\\/api\\/auth\\/login\\/(?:password|passkey\\/options|passkey\\/verify)$/,POST",
+    "/^\\/api\\/auth\\/logout$/,POST",
+    "/^\\/api\\/auth\\/passkeys\\/[^/]+$/,DELETE,PATCH",
+    "/^\\/api\\/auth\\/passkeys\\/register\\/(?:options|verify)$/,POST",
+    "/^\\/api\\/auth\\/recovery\\/complete$/,POST",
+    "/^\\/api\\/auth\\/session$/,GET",
+    "/^\\/api\\/auth\\/sessions\\/[^/]+$/,DELETE",
+    "/^\\/api\\/chat-framing\\/preferences$/,",
+    "/^\\/api\\/profile$/,GET,PATCH",
+    "/^\\/api\\/profile\\/app-passwords$/,GET,POST",
+    "/^\\/api\\/profile\\/app-passwords\\/[^/]+$/,DELETE",
+    "/^\\/api\\/profile\\/appearance$/,",
+    "/^\\/api\\/profile\\/features$/,PUT",
+    "/^\\/api\\/profile\\/onboarding$/,POST",
+    "/^\\/api\\/profile\\/sharing$/,GET,PUT",
+    "/^\\/api\\/setup\\/complete$/,POST",
+    "/^\\/api\\/setup\\/status$/,GET"
+   ],
    "switched": []
   },
   {
@@ -16079,9 +18745,139 @@
     "deploy/tools/assemble-release.sh:4201",
     "deploy/tools/assemble-release.sh:4220",
     "deploy/tools/assemble-release.sh:4222",
-    "deploy/tools/assemble-release.sh:4229"
+    "deploy/tools/assemble-release.sh:4229",
+    "deploy/tools/test-assemble-release.sh:180",
+    "deploy/tools/test-assemble-release.sh:198",
+    "deploy/tools/test-assemble-release.sh:208",
+    "deploy/tools/test-assemble-release.sh:248",
+    "deploy/tools/test-assemble-release.sh:251",
+    "deploy/tools/test-assemble-release.sh:262",
+    "deploy/tools/test-assemble-release.sh:274",
+    "deploy/tools/test-assemble-release.sh:346",
+    "deploy/tools/test-assemble-release.sh:412",
+    "deploy/tools/test-assemble-release.sh:539",
+    "deploy/tools/test-assemble-release.sh:580",
+    "deploy/tools/test-assemble-release.sh:607",
+    "deploy/tools/test-assemble-release.sh:608",
+    "deploy/tools/test-assemble-release.sh:622",
+    "deploy/tools/test-assemble-release.sh:648",
+    "deploy/tools/test-assemble-release.sh:665",
+    "deploy/tools/test-assemble-release.sh:666",
+    "deploy/tools/test-assemble-release.sh:721",
+    "deploy/tools/test-assemble-release.sh:731",
+    "deploy/tools/test-assemble-release.sh:1372",
+    "deploy/tools/test-assemble-release.sh:1590",
+    "deploy/tools/test-assemble-release.sh:1613",
+    "deploy/tools/test-assemble-release.sh:1615",
+    "deploy/tools/test-assemble-release.sh:1618",
+    "deploy/tools/test-assemble-release.sh:1625",
+    "deploy/tools/test-assemble-release.sh:1637",
+    "deploy/tools/test-assemble-release.sh:1971",
+    "deploy/tools/test-assemble-release.sh:2024",
+    "deploy/tools/test-assemble-release.sh:2226",
+    "deploy/tools/test-assemble-release.sh:2673",
+    "deploy/tools/test-assemble-release.sh:2674",
+    "deploy/tools/test-assemble-release.sh:2680",
+    "deploy/tools/test-assemble-release.sh:2724",
+    "deploy/tools/test-assemble-release.sh:4542",
+    "deploy/tools/test-assemble-release.sh:6299"
    ],
+   "behind": {
+    "/api/chats/{chatId}/move": [
+     "server/chat-vault-mirror.cjs:116"
+    ]
+   },
    "refusals": [
+    {
+     "method": "GET",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/context",
+     "pattern": "/api/chats/{chatId}/context",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/context",
+     "pattern": "/api/chats/{chatId}/context",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/context-window",
+     "pattern": "/api/chats/{chatId}/context-window",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/history",
+     "pattern": "/api/chats/{chatId}/history",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/history",
+     "pattern": "/api/chats/{chatId}/history",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/chats/00000000-0000-4000-8000-000000000001/move",
+     "pattern": "/api/chats/{chatId}/move",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
     {
      "method": "GET",
      "path": "/api/chats/qa-1/context",
@@ -16204,8 +19000,113 @@
     },
     {
      "method": "DELETE",
+     "path": "/api/freechats/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/freechats/{chatId}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
      "path": "/api/freechats/qa-1",
      "pattern": "/api/freechats/{chatId}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/assets",
+     "pattern": "/api/projects/{id}/assets",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/assets/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{id}/assets/{assetId}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/assets/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{id}/assets/{assetId}",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "GET",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/chats",
+     "pattern": "/api/projects/{projectId}/chats",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "POST",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/chats",
+     "pattern": "/api/projects/{projectId}/chats",
+     "status": 503,
+     "headers": {
+      "cache-control": "no-store",
+      "content-type": "application/json"
+     },
+     "body_text": "{\"error\":\"This route is served by the Rust front.\",\"code\":\"RUST_PROJECTS_OWNED\"}",
+     "body": {
+      "error": "This route is served by the Rust front.",
+      "code": "RUST_PROJECTS_OWNED"
+     }
+    },
+    {
+     "method": "DELETE",
+     "path": "/api/projects/00000000-0000-4000-8000-000000000001/chats/00000000-0000-4000-8000-000000000001",
+     "pattern": "/api/projects/{projectId}/chats/{chatId}",
      "status": 503,
      "headers": {
       "cache-control": "no-store",
@@ -16308,6 +19209,23 @@
      }
     }
    ],
+   "owned_routes": [
+    "DELETE /api/freechats/{chatId}",
+    "DELETE /api/projects/{id}/assets/{assetId}",
+    "DELETE /api/projects/{id}/chats/{chatId}",
+    "GET /api/chats/{chatId}/context",
+    "GET /api/chats/{chatId}/context-window",
+    "GET /api/chats/{chatId}/history",
+    "GET /api/freechats",
+    "GET /api/projects/{id}/assets/{assetId}",
+    "GET /api/projects/{id}/chats",
+    "POST /api/chats/{chatId}/context",
+    "POST /api/chats/{chatId}/history",
+    "POST /api/chats/{chatId}/move",
+    "POST /api/freechats",
+    "POST /api/projects/{id}/assets",
+    "POST /api/projects/{id}/chats"
+   ],
    "switched": []
   },
   {
@@ -16331,8 +19249,40 @@
     "build/web-supervisor.sh:485",
     "deploy/tools/assemble-release.sh:518",
     "deploy/tools/assemble-release.sh:527",
-    "deploy/tools/assemble-release.sh:533"
+    "deploy/tools/assemble-release.sh:533",
+    "deploy/tools/test-assemble-release.sh:1104",
+    "deploy/tools/test-assemble-release.sh:1114",
+    "deploy/tools/test-assemble-release.sh:1148",
+    "deploy/tools/test-assemble-release.sh:1153",
+    "deploy/tools/test-assemble-release.sh:1196",
+    "deploy/tools/test-assemble-release.sh:1197",
+    "deploy/tools/test-assemble-release.sh:1200",
+    "deploy/tools/test-assemble-release.sh:1207",
+    "deploy/tools/test-assemble-release.sh:1209",
+    "deploy/tools/test-web-supervisor.sh:119",
+    "deploy/tools/test-web-supervisor.sh:126",
+    "deploy/tools/test-web-supervisor.sh:133",
+    "deploy/tools/test-web-supervisor.sh:137",
+    "deploy/tools/test-web-supervisor.sh:141"
    ],
+   "behind": {
+    "/.well-known/webauthn": [
+     "server/auth.cjs:403",
+     "server/index.cjs:1474",
+     "server/routes/web-address.cjs:10"
+    ],
+    "/api/admin/web-address": [
+     "server/routes/web-address.cjs:11",
+     "server/routes/web-address.cjs:16"
+    ],
+    "/api/admin/web-address/remove": [
+     "server/routes/web-address.cjs:11"
+    ],
+    "/api/instance": [
+     "server/index.cjs:1474",
+     "server/routes/web-address.cjs:8"
+    ]
+   },
    "refusals": [
     {
      "method": "GET",
@@ -16410,6 +19360,7 @@
      }
     }
    ],
+   "owned_routes": null,
    "switched": []
   }
  ]
