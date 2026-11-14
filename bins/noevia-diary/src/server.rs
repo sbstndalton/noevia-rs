@@ -93,12 +93,6 @@ pub struct App {
     /// Python child may hold it as a lease) before answering 503 BUSY, as Python's forwarder did.
     /// None (Python as the main process): without limit, as before.
     pub write_wait: Option<std::time::Duration>,
-    /// R9 main mode, S4/S6: the embedding configuration this process owns (embedding_owner.rs)
-    /// and the engine to embed with; a native save then re-indexes as Python's does.
-    pub embedding_owner: std::sync::OnceLock<(
-        Arc<Mutex<diary_retrieval::embedding::EmbeddingConfig>>,
-        diary_answer::model::Config,
-    )>,
 }
 
 impl App {
@@ -129,7 +123,6 @@ impl App {
             llm_main: cfg.llm.main,
             external_sources: cfg.external_sources,
             write_wait: None,
-            embedding_owner: std::sync::OnceLock::new(),
         }
     }
 }
@@ -908,7 +901,6 @@ async fn serve_write(
     };
     let uid = header_uid.to_ascii_lowercase();
     let app2 = app.clone();
-    let handle = tokio::runtime::Handle::current();
     let task = tokio::task::spawn_blocking(move || {
         let reply = app2.writers
             .with_lock_as(&uid, None, app2.write_wait, |held| {
@@ -952,26 +944,7 @@ async fn serve_write(
                     Err(_) => return writes::internal(),
                 }
                 match &op {
-                    Op::File => {
-                        let r = writes::file_write(&ctx, &json);
-                        // R9 S6 (main mode, the embedding owner here): Python's save re-indexes
-                        // the tenant's dirty documents under the same lock (`_reindex_dirty`).
-                        if matches!(r, Reply::Json(200, _)) {
-                            if let Some((config, engine)) = app2.embedding_owner.get() {
-                                let active = config
-                                    .lock()
-                                    .unwrap_or_else(std::sync::PoisonError::into_inner)
-                                    .active();
-                                let embedder = Arc::new(diary_answer::embedder::HttpEmbedder::fixed(
-                                    engine.clone(),
-                                    active,
-                                    handle.clone(),
-                                ));
-                                let _ = crate::reindex::reindex_held(&root, &uid, held, embedder);
-                            }
-                        }
-                        r
-                    }
+                    Op::File => writes::file_write(&ctx, &json),
                     Op::Dir => writes::directory_create(&ctx, &json),
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),

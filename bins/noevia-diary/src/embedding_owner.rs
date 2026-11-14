@@ -177,8 +177,6 @@ impl Owner {
             ..EngineConfig::default()
         };
         let handle = tokio::runtime::Handle::try_current().map_err(|e| e.to_string())?;
-        // S6: a native save re-indexes with this configuration (server.rs serve_write).
-        let _ = app.embedding_owner.set((config.clone(), engine.clone()));
         let embed: &'static (dyn Embed + Sync) =
             Box::leak(Box::new(HttpEmbedder::new(engine, config.clone(), handle)));
         let guard: &'static (dyn FileGuard + Sync) =

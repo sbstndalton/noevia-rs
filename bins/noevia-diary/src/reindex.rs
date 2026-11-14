@@ -174,7 +174,44 @@ pub async fn internal(
         app2.writers
             // Main mode: Python asks under its lease (joined); otherwise its own lock is separate.
             .with_lock_as(&uid, lease, app2.write_wait, |held| {
-                reindex_held(&root, &uid, held, embedder.clone())
+                let Ok(Some((store, _))) = managed::ready_for_write(&root, &uid, true) else {
+                    return crate::server::decline();
+                };
+                let Ok(journal) = Journal::open(&root.join("managed-index.db"), held) else {
+                    return crate::server::decline();
+                };
+                let Ok(documents) = journal.dirty_documents() else {
+                    return crate::server::decline();
+                };
+                // Adoption allowed: the writer lock is held (Python D5).
+                let Ok(mut retriever) =
+                    Retriever::open_existing(&index_path, Shared(embedder.clone()), Reserved(&journal), Options::default())
+                else {
+                    return crate::server::decline();
+                };
+                if !retriever.vec_available() {
+                    return crate::server::decline();
+                }
+                let mut out = Vec::new();
+                for document in documents {
+                    let text = match store.get_text(&document) {
+                        Ok(t) => t,
+                        Err(_) => {
+                            out.push(json!({"document": document, "embedded": 0, "pending": true, "error": "read"}));
+                            continue;
+                        }
+                    };
+                    match retriever.reindex_file(&document, text.as_deref()) {
+                        Ok(embedded) => {
+                            let pending = retriever.pending_embeddings();
+                            let cleared = pending || journal.clear_dirty(&document).is_ok();
+                            out.push(json!({"document": document, "embedded": embedded, "pending": pending,
+                                            "error": if cleared { Value::Null } else { json!("clear") }}));
+                        }
+                        Err(e) => out.push(json!({"document": document, "embedded": 0, "pending": true, "error": e.to_string()})),
+                    }
+                }
+                status(200, json!({"documents": out}))
             })
             .unwrap_or_else(|refused| match refused {
                 crate::write::Refused::Fenced => status(410, json!({"detail": "tenant deleted"})),
@@ -182,61 +219,6 @@ pub async fn internal(
             })
     });
     task.await.unwrap_or_else(|_| status(500, json!({})))
-}
-
-/// The re-index of a tenant's dirty documents while its writer slot is `held` (Python's
-/// `_reindex_dirty` body): read each, `reindex_file`, clear the mark unless an embedding is
-/// pending. Also run by a native save in main mode (server.rs), as Python re-indexes after it.
-pub(crate) fn reindex_held(
-    root: &std::path::Path,
-    uid: &str,
-    held: &crate::write::WriteGuard<'_>,
-    embedder: Arc<HttpEmbedder>,
-) -> Response<Body> {
-    let index_path = root.join("managed-index.db");
-    let Ok(Some((store, _))) = managed::ready_for_write(root, uid, true) else {
-        return crate::server::decline();
-    };
-    let Ok(journal) = Journal::open(&root.join("managed-index.db"), held) else {
-        return crate::server::decline();
-    };
-    let Ok(documents) = journal.dirty_documents() else {
-        return crate::server::decline();
-    };
-    // Adoption allowed: the writer lock is held (Python D5).
-    let Ok(mut retriever) = Retriever::open_existing(
-        &index_path,
-        Shared(embedder.clone()),
-        Reserved(&journal),
-        Options::default(),
-    ) else {
-        return crate::server::decline();
-    };
-    if !retriever.vec_available() {
-        return crate::server::decline();
-    }
-    let mut out = Vec::new();
-    for document in documents {
-        let text = match store.get_text(&document) {
-            Ok(t) => t,
-            Err(_) => {
-                out.push(
-                    json!({"document": document, "embedded": 0, "pending": true, "error": "read"}),
-                );
-                continue;
-            }
-        };
-        match retriever.reindex_file(&document, text.as_deref()) {
-            Ok(embedded) => {
-                let pending = retriever.pending_embeddings();
-                let cleared = pending || journal.clear_dirty(&document).is_ok();
-                out.push(json!({"document": document, "embedded": embedded, "pending": pending,
-                                "error": if cleared { Value::Null } else { json!("clear") }}));
-            }
-            Err(e) => out.push(json!({"document": document, "embedded": 0, "pending": true, "error": e.to_string()})),
-        }
-    }
-    status(200, json!({"documents": out}))
 }
 
 /// The index shadow (`plan_only`): for each named document, what this side's re-index would write
