@@ -858,8 +858,12 @@ pub struct CdpPage {
     state: Mutex<PageState>,
     changed: Condvar,
     close_hooks: Mutex<Vec<CloseHook>>,
-    /// `DOM.enable` was sent (for `DOM.getNodeForLocation`).
-    dom_enabled: AtomicBool,
+    /// `DOM.enable` was answered (for `DOM.getNodeForLocation`); held while it is asked, so a second
+    /// action waits for the first one's answer.
+    dom_enabled: Mutex<bool>,
+    /// The hit check's isolated world: (main frame, its commit count, execution context), made once
+    /// per document and made again when the page navigated or the context is gone.
+    hit_world: Mutex<Option<(String, u64, f64)>>,
     /// Never called: downloads are denied (a named difference).
     #[allow(dead_code)]
     download_hooks: Mutex<Vec<DownloadHook>>,
@@ -881,7 +885,8 @@ impl CdpPage {
             state: Mutex::new(state),
             changed: Condvar::new(),
             close_hooks: Mutex::default(),
-            dom_enabled: AtomicBool::new(false),
+            dom_enabled: Mutex::new(false),
+            hit_world: Mutex::new(None),
             download_hooks: Mutex::default(),
         })
     }
@@ -1357,10 +1362,11 @@ impl CdpHandle {
             .get("node")
             .get("backendNodeId")
             .as_num();
-        if !self.page.dom_enabled.swap(true, Ordering::SeqCst) {
-            if let Err(e) = call("DOM.enable", none()) {
-                self.page.dom_enabled.store(false, Ordering::SeqCst);
-                return Err(e);
+        {
+            let mut enabled = lock(&self.page.dom_enabled);
+            if !*enabled {
+                call("DOM.enable", none())?;
+                *enabled = true;
             }
         }
         loop {
@@ -1436,15 +1442,7 @@ impl CdpHandle {
         let (Some(target), Some(hit)) = (target, hit) else {
             return false;
         };
-        let frame = lock(&self.page.state).main_frame.clone();
-        let world = JValue::obj([("frameId", s(&frame)), ("worldName", s(HIT_WORLD))]);
-        let Some(context) = call("Page.createIsolatedWorld", world)
-            .ok()
-            .and_then(|w| w.get("executionContextId").as_num())
-        else {
-            return false;
-        };
-        let resolve = |node: f64| {
+        let resolve = |node: f64, context: f64| {
             let params = JValue::obj([
                 ("backendNodeId", num(node)),
                 ("executionContextId", num(context)),
@@ -1453,7 +1451,26 @@ impl CdpHandle {
                 .ok()
                 .and_then(|r| r.get("object").get("objectId").as_str().map(str::to_string))
         };
-        let (Some(inner), Some(outer)) = (resolve(hit), resolve(target)) else {
+        // The cached world first; a world of a document that is gone (a navigation, or the context
+        // destroyed) is made again once.
+        let mut pair = None;
+        for fresh in [false, true] {
+            let Some(context) = self.hit_world(call, fresh) else {
+                return false;
+            };
+            match (resolve(hit, context), resolve(target, context)) {
+                (Some(inner), Some(outer)) => {
+                    pair = Some((inner, outer));
+                    break;
+                }
+                (inner, outer) => {
+                    for object in [inner, outer].into_iter().flatten() {
+                        self.release(&object);
+                    }
+                }
+            }
+        }
+        let Some((inner, outer)) = pair else {
             return false;
         };
         let params = JValue::obj([
@@ -1469,13 +1486,40 @@ impl CdpHandle {
             .ok()
             .is_some_and(|r| r.get("result").get("value").as_bool() == Some(true));
         for object in [inner, outer] {
-            self.page.conn.send(
-                Some(&self.page.session),
-                "Runtime.releaseObject",
-                JValue::obj([("objectId", s(&object))]),
-            );
+            self.release(&object);
         }
         inside
+    }
+
+    /// The hit check's isolated world for the current document (made when there is none for it, or
+    /// when `fresh`).
+    fn hit_world(&self, call: &dyn Fn(&str, JValue) -> Result<JValue>, fresh: bool) -> Option<f64> {
+        let (frame, commits) = {
+            let st = lock(&self.page.state);
+            (st.main_frame.clone(), st.commits)
+        };
+        let mut cached = lock(&self.page.hit_world);
+        if let Some((f, c, context)) = cached.as_ref() {
+            if !fresh && *f == frame && *c == commits {
+                return Some(*context);
+            }
+        }
+        *cached = None;
+        let world = JValue::obj([("frameId", s(&frame)), ("worldName", s(HIT_WORLD))]);
+        let context = call("Page.createIsolatedWorld", world)
+            .ok()
+            .and_then(|w| w.get("executionContextId").as_num())?;
+        *cached = Some((frame, commits, context));
+        Some(context)
+    }
+
+    /// Releases an object of the hit check without waiting for the answer.
+    fn release(&self, object: &str) {
+        self.page.conn.send(
+            Some(&self.page.session),
+            "Runtime.releaseObject",
+            JValue::obj([("objectId", s(object))]),
+        );
     }
 
     /// `<tag id="…" class="…">…</tag>` for the node in the way.

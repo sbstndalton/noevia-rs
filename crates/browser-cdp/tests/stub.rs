@@ -1443,6 +1443,7 @@ fn quad_of(object: &str) -> JValue {
 #[test]
 fn click_waits_for_the_hit_target() {
     let mut looks_at_o1 = 0;
+    let (mut worlds, mut resolves) = (0.0, 0);
     let stub = Stub::start(Box::new(move |msg, out| {
         let params = msg.get("params");
         let object = params.get("objectId").as_str().unwrap_or("");
@@ -1493,10 +1494,22 @@ fn click_waits_for_the_hit_target() {
                 );
             }
             "Page.createIsolatedWorld" => {
-                out.reply(msg, obj(vec![("executionContextId", JValue::Num(5.0))]))
+                worlds += 1.0;
+                out.reply(
+                    msg,
+                    obj(vec![("executionContextId", JValue::Num(4.0 + worlds))]),
+                )
             }
             "DOM.resolveNode" => {
-                assert_eq!(params.get("executionContextId").as_num(), Some(5.0));
+                // The first click's six resolutions use world 5; then world 5 is gone (as after a
+                // navigation the front did not see), and the next check makes world 6 once.
+                resolves += 1;
+                let context = params.get("executionContextId").as_num();
+                if context == Some(5.0) && resolves > 6 {
+                    error_reply(msg, out, "Cannot find context with specified id");
+                    return;
+                }
+                assert_eq!(context, Some(4.0 + worlds));
                 let id = format!("H{}", params.get("backendNodeId").as_num().unwrap());
                 out.reply(msg, obj(vec![("object", obj(vec![("objectId", s(&id))]))]));
             }
@@ -1611,6 +1624,11 @@ fn click_waits_for_the_hit_target() {
         .count();
     assert_eq!(pressed, 1, "nothing pressed on the cover or the frame");
     assert_eq!(stub.sent("DOM.enable").len(), 1);
+    // One isolated world per document (sbstndalton/noevia#2649): the first, and one more when it
+    // was gone; not one per look.
+    let worlds = stub.sent("Page.createIsolatedWorld");
+    assert_eq!(worlds.len(), 2);
+    assert_eq!(json(worlds[1].get("params")), json(worlds[0].get("params")));
     assert_eq!(
         button
             .set_input_files(std::path::Path::new("/tmp/qa.txt"), Duration::from_secs(5))
