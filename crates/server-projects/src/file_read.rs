@@ -155,14 +155,16 @@ fn resolve(names: &[&str], raw: &JValue) -> Option<Found> {
     })
 }
 
-/// `f.content` as core reads it: an own string, or the source's text file (empty when it cannot be
-/// read). `None` where core's `f.content` is not a string (no content and no text pointer, or an
-/// own non-string value), which core's tool would throw on.
+/// `f.content` as core reads it: an own string, or the source's text file ('' when there is none to
+/// read, as core's accessor gives). `None` where the port cannot be sure of core's value: no content
+/// and no text pointer, or an own non-string value (core's tool throws on those); a text file core
+/// can read and this port does not (through a symlink, past 64 MiB, or for an id with no safe
+/// character); or text holding a raw character of U+10F800..=U+10FFFF, which the [`wtf16`] strings
+/// here would take for a lone surrogate. Not followed: core's in-process cache of a text file removed
+/// since it was read (content-addressed files are removed only once no source names them).
 fn content(dir: &Path, project_id: &str, file: &JValue) -> Option<String> {
-    if let JValue::Obj(items) = file {
-        if let Some((_, c)) = items.iter().find(|(k, _)| k == "content") {
-            return c.as_str().map(str::to_string);
-        }
+    if let Some(own) = own_content(file) {
+        return own.as_str().map(str::to_string);
     }
     let reference = file.get("textRef").as_str()?;
     if reference.len() != 64
@@ -172,7 +174,48 @@ fn content(dir: &Path, project_id: &str, file: &JValue) -> Option<String> {
     {
         return None;
     }
-    Some(crate::sources::text(dir, project_id, file).unwrap_or_default())
+    let text = match crate::sources::text(dir, project_id, file) {
+        Ok(text) => text,
+        // source-text.cjs readText: '' for a file it cannot read. Only one core can read (a regular
+        // file reached through a symlink, or past 64 MiB) is core's to answer.
+        Err(_) => {
+            let id: String = project_id
+                .chars()
+                .filter(|c| c.is_ascii_alphanumeric() || *c == '_' || *c == '-')
+                .collect();
+            let path = dir
+                .join("project-sources")
+                .join(&id)
+                .join(format!("{reference}.txt"));
+            if id.is_empty() || std::fs::metadata(path).is_ok_and(|m| m.is_file()) {
+                return None;
+            }
+            String::new()
+        }
+    };
+    if text.chars().any(|c| u32::from(c) >= wtf16::LONE_BASE) {
+        return None;
+    }
+    Some(text)
+}
+
+/// The file's own `content` value, if it has one.
+fn own_content(file: &JValue) -> Option<&JValue> {
+    match file {
+        JValue::Obj(items) => items.iter().find(|(k, _)| k == "content").map(|(_, v)| v),
+        _ => None,
+    }
+}
+
+/// Whether every text-file source of the project reads here as core reads it (see [`content`]): an
+/// instruction skill's checks read the other files of the project too.
+fn texts_readable(dir: &Path, project_id: &str, files: &JValue) -> bool {
+    let JValue::Arr(files) = files else {
+        return true;
+    };
+    files.iter().all(|f| {
+        own_content(f).is_some() || !f.get("textRef").truthy() || content(dir, project_id, f).is_some()
+    })
 }
 
 /// `!String(file.content || '').trim()` for a string content.
@@ -302,7 +345,14 @@ fn read(dir: &Path, project: Option<&JValue>, args: &JValue) -> Option<Outcome> 
         dir,
         known: &[],
     };
+    // Whether it is a skill depends on its text: one this port cannot read is core's to judge.
+    if own_content(f).is_none() && f.get("textRef").truthy() {
+        content(dir, project_id, f)?;
+    }
     if let Some(skill) = instruction_skills::inspect(view, f).ok()? {
+        if !texts_readable(dir, project_id, project.get("files")) {
+            return None;
+        }
         // `args.offset ?? 0`.
         let offset = match args.get("offset") {
             JValue::Undefined | JValue::Null => &JValue::Num(0.0),
@@ -385,4 +435,39 @@ fn read(dir: &Path, project: Option<&JValue>, args: &JValue) -> Option<Outcome> 
         out.push_str("\n…[truncated]");
     }
     Some(done(out, false))
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::indexing_slicing)]
+mod tests {
+    use super::*;
+
+    /// A text file core would read through a symlink (or a too-large one) is core's to answer; a
+    /// missing one reads as '' here as in core.
+    #[test]
+    fn a_linked_text_file_is_left_to_core_and_a_missing_one_reads_empty() {
+        let dir = std::env::temp_dir().join(format!("qa-file-read-link-{}", std::process::id()));
+        let sources = dir.join("project-sources").join("qa-p");
+        std::fs::create_dir_all(&sources).unwrap();
+        let text = "QA linked text";
+        let reference = "b".repeat(64);
+        let real = dir.join("elsewhere.txt");
+        std::fs::write(&real, text).unwrap();
+        std::os::unix::fs::symlink(&real, sources.join(format!("{reference}.txt"))).unwrap();
+        let project = js_json::wtf16::parse(&format!(
+            r#"{{"id":"qa-p","files":[{{"name":"QA-linked.md","textRef":"{reference}"}},{{"name":"QA-gone.md","textRef":"{}"}}]}}"#,
+            "c".repeat(64)
+        ))
+        .unwrap();
+        let args = |name: &str| JValue::obj([("name", JValue::Str(name.into()))]);
+        assert_eq!(read_project_file(&dir, Some(&project), &args("QA-linked.md")), Outcome::Core);
+        assert_eq!(
+            read_project_file(&dir, Some(&project), &args("QA-gone.md")),
+            Outcome::Done(Read {
+                text: "File \"QA-gone.md\" (0 chars):\n\n".into(),
+                failed: false
+            })
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

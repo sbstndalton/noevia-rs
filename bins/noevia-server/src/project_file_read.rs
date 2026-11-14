@@ -20,8 +20,14 @@ use std::sync::OnceLock;
 
 /// The tool this module answers.
 pub const NAME: &str = "read_project_file";
-/// The bridge's caps on a project id, an exchange key and a chat key (rust-chat-native.cjs `text`).
+/// The bridge's caps (rust-chat-native.cjs `text`, `names`, the routes check and `readJson`): a project
+/// id, an exchange key, a tool name or route string; a chat key; the allowed and routes lists; the args.
 const ID_CAP: usize = 200;
+const CHAT_ID_CAP: usize = 400;
+const LIST_CAP: usize = 2000;
+/// BODY_CAP is 16 MiB for the whole request (and 16 Mi UTF-16 units for `args`): this leaves room for
+/// the rest of the body, so a call near the cap goes to core.
+const ARGS_BYTES: usize = 15 * 1024 * 1024;
 
 /// `NOEVIA_RUST_READ_FILE=1`, read once.
 pub fn enabled() -> bool {
@@ -29,21 +35,52 @@ pub fn enabled() -> bool {
     *ON.get_or_init(|| std::env::var("NOEVIA_RUST_READ_FILE").as_deref() == Ok("1"))
 }
 
-/// `typeof v === 'string' && v.length <= cap` for a non-empty id.
-fn id_ok(v: &str) -> bool {
-    !v.is_empty() && wtf16::len(v) <= ID_CAP
+/// `typeof v === 'string' && v.length <= cap` for a non-empty value.
+fn within(v: &str, cap: usize) -> bool {
+    !v.is_empty() && wtf16::len(v) <= cap
+}
+
+/// core's asUser for the bridge: the account's row exists and is not disabled (rust-chat-native.cjs
+/// `createAsUser`; a revoked or removed account has no row). `false` when it cannot be read.
+pub fn account_active(data_dir: &Path, user: &str) -> bool {
+    let Ok(store) = server_store::Store::open(data_dir) else {
+        return false;
+    };
+    store
+        .read(|r| {
+            r.row(
+                "SELECT id FROM users WHERE id=?1 AND (disabled_at IS NULL OR disabled_at=0)",
+                [user],
+                |row| row.get::<_, String>(0),
+            )
+        })
+        .ok()
+        .flatten()
+        .is_some()
 }
 
 /// The tool's text and failure flag when the front answers this call; `None` leaves it to core.
-pub fn answer(data_dir: &Path, user: &str, run: &ToolRun) -> Option<(String, bool)> {
+/// `active(user)` is core's account check ([`account_active`]).
+pub fn answer(
+    data_dir: &Path,
+    user: &str,
+    run: &ToolRun,
+    active: impl FnOnce(&str) -> bool,
+) -> Option<(String, bool)> {
+    let listed = |v: &str| wtf16::len(v) <= ID_CAP;
     if run.name != NAME
         || !run.allowed.iter().any(|a| a == NAME)
+        || run.allowed.len() > LIST_CAP
+        || !run.allowed.iter().all(|a| listed(a))
+        || run.routes.len() > LIST_CAP
+        || !run.routes.iter().all(|(a, b)| listed(a) && listed(b))
         || run.routes.iter().any(|(tool, _)| tool == NAME)
         || run.grant.is_some()
         || run.edit_target.is_some()
-        || !id_ok(&run.exchange_key)
-        || run.chat_key.as_deref().is_some_and(|k| !id_ok(k))
-        || run.project_id.as_deref().is_some_and(|p| !id_ok(p))
+        || run.args.len() > ARGS_BYTES
+        || !within(&run.exchange_key, ID_CAP)
+        || run.chat_key.as_deref().is_some_and(|k| !within(k, CHAT_ID_CAP))
+        || run.project_id.as_deref().is_some_and(|p| !within(p, ID_CAP))
     {
         return None;
     }
@@ -54,6 +91,9 @@ pub fn answer(data_dir: &Path, user: &str, run: &ToolRun) -> Option<(String, boo
         wtf16::parse(&run.args).ok()?
     };
     if !args.is_object() {
+        return None;
+    }
+    if !active(user) {
         return None;
     }
     let (dir, project) = match run.project_id.as_deref() {
@@ -72,7 +112,7 @@ pub fn answer(data_dir: &Path, user: &str, run: &ToolRun) -> Option<(String, boo
         }
         None => (server_projects::store::user_dir(data_dir, user).ok()?, None),
     };
-    // core's asUser: an account that is gone is core's answer.
+    // core's asUser: an account that is gone, disabled or revoked is core's answer (404).
     if !dir.is_dir() {
         return None;
     }
@@ -88,6 +128,10 @@ mod tests {
     use super::*;
 
     const USER: &str = "0000aaaa-1111-2222-3333-444455556666";
+
+    fn yes(_: &str) -> bool {
+        true
+    }
 
     fn run(args: &str) -> ToolRun {
         ToolRun {
@@ -118,22 +162,22 @@ mod tests {
     #[test]
     fn answers_a_plain_read_and_leaves_the_rest_to_core() {
         let data = data_dir("plain");
-        let (text, failed) = answer(&data, USER, &run(r#"{"name":"QA-notes.md"}"#)).unwrap();
+        let (text, failed) = answer(&data, USER, &run(r#"{"name":"QA-notes.md"}"#), yes).unwrap();
         assert_eq!(text, "File \"QA-notes.md\" (13 chars):\n\nQA notes text");
         assert!(!failed);
-        let (text, failed) = answer(&data, USER, &run(r#"{"name":"nope.md"}"#)).unwrap();
+        let (text, failed) = answer(&data, USER, &run(r#"{"name":"nope.md"}"#), yes).unwrap();
         assert!(failed && text.starts_with("ERROR: no project file named \"nope.md\""));
         // Core's answers: another tool, not offered, routed to MCP, a grant, bad JSON, not an object,
         // an unknown project, a missing account.
         let mut other = run("{}");
         other.name = "get_current_time".into();
-        assert_eq!(answer(&data, USER, &other), None);
+        assert_eq!(answer(&data, USER, &other, yes), None);
         let mut off = run("{}");
         off.allowed = vec!["get_current_time".into()];
-        assert_eq!(answer(&data, USER, &off), None);
+        assert_eq!(answer(&data, USER, &off, yes), None);
         let mut routed = run("{}");
         routed.routes = vec![(NAME.into(), "qa-server".into())];
-        assert_eq!(answer(&data, USER, &routed), None);
+        assert_eq!(answer(&data, USER, &routed, yes), None);
         let mut granted = run("{}");
         granted.grant = Some(chat_turn::host::GrantRun {
             handle: "a".repeat(32),
@@ -141,19 +185,35 @@ mod tests {
             scope: "qa".into(),
             binding: JValue::Null,
         });
-        assert_eq!(answer(&data, USER, &granted), None);
-        assert_eq!(answer(&data, USER, &run("{")), None);
-        assert_eq!(answer(&data, USER, &run("[1]")), None);
+        assert_eq!(answer(&data, USER, &granted, yes), None);
+        assert_eq!(answer(&data, USER, &run("{"), yes), None);
+        assert_eq!(answer(&data, USER, &run("[1]"), yes), None);
         let mut gone = run("{}");
         gone.project_id = Some("qa-other".into());
-        assert_eq!(answer(&data, USER, &gone), None);
+        assert_eq!(answer(&data, USER, &gone, yes), None);
         assert_eq!(
-            answer(&data, "0000aaaa-1111-2222-3333-444455550000", &run("{}")),
+            answer(&data, "0000aaaa-1111-2222-3333-444455550000", &run("{}"), yes),
             None
         );
         let mut long = run("{}");
         long.exchange_key = "k".repeat(201);
-        assert_eq!(answer(&data, USER, &long), None);
+        assert_eq!(answer(&data, USER, &long, yes), None);
+        // A disabled or removed account, an approved edit target, the bridge's other caps.
+        assert_eq!(answer(&data, USER, &run(r#"{"name":"QA-notes.md"}"#), |_| false), None);
+        let mut edit = run(r#"{"name":"QA-notes.md"}"#);
+        edit.edit_target = Some("a".repeat(64));
+        assert_eq!(answer(&data, USER, &edit, yes), None);
+        let mut chat = run(r#"{"name":"QA-notes.md"}"#);
+        chat.chat_key = Some("c".repeat(400));
+        assert!(answer(&data, USER, &chat, yes).is_some());
+        chat.chat_key = Some("c".repeat(401));
+        assert_eq!(answer(&data, USER, &chat, yes), None);
+        let mut names = run(r#"{"name":"QA-notes.md"}"#);
+        names.allowed.push("t".repeat(201));
+        assert_eq!(answer(&data, USER, &names, yes), None);
+        let mut many = run(r#"{"name":"QA-notes.md"}"#);
+        many.routes = (0..2001).map(|i| (format!("t{i}"), "s".into())).collect();
+        assert_eq!(answer(&data, USER, &many, yes), None);
         let _ = std::fs::remove_dir_all(&data);
     }
 
@@ -162,7 +222,7 @@ mod tests {
         let data = data_dir("none");
         let mut r = run(r#"{"name":"QA-notes.md"}"#);
         r.project_id = None;
-        let (text, failed) = answer(&data, USER, &r).unwrap();
+        let (text, failed) = answer(&data, USER, &r, yes).unwrap();
         assert_eq!(
             text,
             "ERROR: no project file named \"QA-notes.md\". Available: (none attached)"

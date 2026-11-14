@@ -1332,17 +1332,25 @@ impl Host for FrontHost {
         if crate::project_file_read::enabled() && run.name == crate::project_file_read::NAME {
             let (data, user, call) = (self.data_dir.clone(), self.user.clone(), run.clone());
             let native = tokio::task::spawn_blocking(move || {
-                crate::project_file_read::answer(&data, &user, &call)
+                crate::project_file_read::answer(&data, &user, &call, |u| {
+                    crate::project_file_read::account_active(&data, u)
+                })
             });
             if let Ok(Some((text, failed))) = native.await {
-                // Core counts it (recordToolUse), as its bridge counts a call it runs.
-                self.core_later(
-                    "/internal/chat/native/tool-used",
-                    js::obj([
-                        ("user", js::s(self.user.clone())),
-                        ("name", js::s(run.name.clone())),
-                    ]),
-                );
+                // Core counts it (recordToolUse) before the answer goes on, as its bridge counts a call it runs.
+                let counted = self
+                    .core_full(
+                        "/internal/chat/native/tool-used",
+                        &js::obj([
+                            ("user", js::s(self.user.clone())),
+                            ("name", js::s(run.name.clone())),
+                        ]),
+                        BRIDGE_TIMEOUT,
+                    )
+                    .await;
+                if !matches!(counted, Some((204, _))) {
+                    eprintln!("chat native: a read_project_file the front answered was not counted");
+                }
                 return Ran::Done {
                     text,
                     failed,

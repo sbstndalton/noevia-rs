@@ -119,6 +119,7 @@ const projectFiles = [
   { name: 'skills/scripts/SKILL.md', content: scriptSkill },
   { name: 'skills/scripts/tool.sh', content: 'echo qa' },
   textFile(P, 'skills/textref/SKILL.md', textSkill),
+  { name: 'skills/gone/SKILL.md', textRef: sha('qa-missing-skill-text') },
   { name: 'QA-tracked.md', content: 'not a skill shape' },
   { name: 'QA-café.md', content: 'QA composed name' },
   { name: 'QA-line\u2028name.md', content: 'QA odd name' },
@@ -132,6 +133,7 @@ const project = {
     'skills/disabled/SKILL.md': reviewed(disabledSkill, false), 'skills/updated/SKILL.md': reviewed('older text'),
     'skills/huge/SKILL.md': reviewed(hugeHeadSkill), 'skills/scripts/SKILL.md': reviewed(scriptSkill),
     'skills/textref/SKILL.md': reviewed(textSkill), 'QA-tracked.md': { reviewedHash: null, enabled: false },
+    'skills/gone/SKILL.md': reviewed(''),
   },
 };
 const emptyProject = { id: 'qa-empty-r13', name: 'QA empty', files: [] };
@@ -153,6 +155,7 @@ ARGS.push(
   { name: 'QA-report.md' }, { name: 'Text/QA-report.md' }, { name: 'Folder/Text/QA-report.md' }, { name: 'nope.md' }, { name: '' }, { name: '../QA-notes.md' },
   { name: '/QA-notes.md' }, { name: 'C:/QA-notes.md' }, { name: 'a//b.md' }, { name: ' QA-notes.md ' }, { name: 'QA-cafe\u0301.md' }, { name: 'SKILL.md' },
   { name: 5 }, { name: null }, {}, { name: {} }, { name: ['QA-notes.md'] }, { name: { toString: 1 } }, { name: 'x'.repeat(300) }, { name: '😀'.repeat(150) },
+  { name: '\ud83d' }, { name: 'QA\ud83d.md' }, { name: '-0' }, { name: 'true' }, { name: '1e21' }, { name: true }, { name: 1e21 }, { name: -0 },
   { name: 'skills/enabled/SKILL.md', offset: 0 }, { name: 'skills/enabled/SKILL.md', offset: 10 }, { name: 'skills/enabled/SKILL.md', offset: -1 },
   { name: 'skills/enabled/SKILL.md', offset: 1.5 }, { name: 'skills/enabled/SKILL.md', offset: '3' }, { name: 'skills/enabled/SKILL.md', offset: 100000 },
   { name: 'skills/enabled/SKILL.md', offset: null }, { name: 'skills/long/SKILL.md', offset: 3000 }, { name: 'skills/long/SKILL.md', offset: 7000 },
