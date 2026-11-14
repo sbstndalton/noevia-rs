@@ -29,6 +29,9 @@ use std::path::{Path, PathBuf};
 use js_json::{to_js_string, wtf16, JValue};
 use prompt_framing::js::{includes, to_lower, trim, units};
 
+/// A borrowable `undefined` for reads that fall back to it.
+pub(crate) static UNDEFINED: JValue = JValue::Undefined;
+
 /// `MODALITIES.image.maxBytes`: an image above this is stored but never embedded or sent.
 pub const MAX_BYTES: usize = 8 * 1024 * 1024;
 
@@ -488,7 +491,7 @@ fn retrieved_images(
             let attachment = list(project.get("files"))
                 .iter()
                 .find(|f| f.truthy() && strict_eq(f.get("name"), h.get("file")))
-                .map_or(&JValue::Undefined, |f| f.get("attachment").get("id"));
+                .map_or(&UNDEFINED, |f| f.get("attachment").get("id"));
             hits.push(with_hash(h, format!("img:{}", js_str(attachment))));
         }
     }

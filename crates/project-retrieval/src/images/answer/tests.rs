@@ -1,4 +1,9 @@
-#![allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
 
 //! `answerImages`, `captionOnce` and the chat.cjs steps around them, with the expected texts read
 //! off multimodal-rag.cjs and chat.cjs (the recorded half is `tests/image_answer_parity.rs`).

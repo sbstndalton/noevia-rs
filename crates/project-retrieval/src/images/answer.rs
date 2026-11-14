@@ -21,7 +21,7 @@ use std::task::{Context, Poll, Waker};
 
 use js_json::JValue;
 
-use super::{js_str, js_trim, known_mime, part, Resolved, MAX_BYTES};
+use super::{js_str, js_trim, known_mime, part, Resolved, MAX_BYTES, UNDEFINED};
 use crate::names::{quote_name, quoted_names};
 
 /// `answerImages`' `maxImages` default.
@@ -256,8 +256,8 @@ pub fn caption_request(model: &str, mime: &str, bytes: &[u8]) -> JValue {
 /// `None` when empty or cut by the token limit (`finish_reason === 'length'`).
 pub fn caption_reply(out: &JValue) -> Option<String> {
     let first = match out.get("choices") {
-        JValue::Arr(items) => items.first().unwrap_or(&JValue::Undefined),
-        _ => &JValue::Undefined,
+        JValue::Arr(items) => items.first().unwrap_or(&UNDEFINED),
+        _ => &UNDEFINED,
     };
     let content = first.get("message").get("content");
     let text = if content.truthy() {
