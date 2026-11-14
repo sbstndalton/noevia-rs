@@ -13,8 +13,10 @@ use crate::guard::{
 use regex::bytes::{Regex, RegexBuilder};
 use std::path::Path;
 
-/// `grep -qE` with the script's `LC_ALL=C`: bytes, ASCII classes. `None` = a pattern grep would refuse too
-/// (status 2, which every caller reads as "no match").
+/// `grep -qE` in the C locale: bytes, ASCII classes. `None` = a pattern grep would refuse too (status 2,
+/// which every caller reads as "no match"). The script does not export `LC_ALL`, so `code_has`, its `sed`
+/// and its awk run in the caller's locale; for the ASCII-only Core sources they read, that is the same.
+/// The parity tests pin `LC_ALL=C`.
 fn ere(pattern: &str) -> Option<Regex> {
     RegexBuilder::new(pattern).unicode(false).build().ok()
 }
@@ -205,7 +207,11 @@ pub fn calibration_pairing(tree: &Path, p: &CalibrationPairing) -> Result<(), St
         return die(&format!("Core still carries {}", p.policy_text));
     }
     let manager = core_file(tree, "llamacpp-manager.cjs");
-    if !p.primitives.iter().all(|re| code_has(manager.as_deref(), re)) {
+    if !p
+        .primitives
+        .iter()
+        .all(|re| code_has(manager.as_deref(), re))
+    {
         return die("Core does not expose the live actor primitives");
     }
     if !tree.join("core/server").join(p.bridge_file).is_file() {

@@ -108,6 +108,10 @@ fn gen_tree(r: &mut Rng, root: &Path, p: &NamespacePairing) {
     if paired && r.chance(35) {
         let mut toml = String::from("# routes\n");
         for (i, path) in p.paths.iter().enumerate() {
+            // Now and then one row is left out: "incomplete" stays reachable for every pairing.
+            if r.chance(8) {
+                continue;
+            }
             toml.push_str(&format!("[[route]]\npath = \"{path}\"\nowner = \"rust\"\n"));
             let methods = match p.methods {
                 guard::Methods::All => None,
@@ -122,7 +126,7 @@ fn gen_tree(r: &mut Rng, root: &Path, p: &NamespacePairing) {
         write(&root.join("rs/contracts/http/routes.toml"), &toml);
         return;
     }
-    if r.chance(8) {
+    if r.chance(12) {
         return;
     }
     let mut toml = String::from("# routes\n");
@@ -215,7 +219,7 @@ fn gen_project_config_extra(r: &mut Rng, root: &Path) {
         src.push_str("module.exports = { OWNED_ROUTES };\n");
         write(&root.join("core/server/rust-project-config.cjs"), &src);
     }
-    if r.chance(10) {
+    if r.chance(15) {
         write(
             &root.join("core/server/routes/projects.cjs"),
             "module.exports = {};\n",
@@ -223,10 +227,10 @@ fn gen_project_config_extra(r: &mut Rng, root: &Path) {
     }
     let index = root.join("core/server/index.cjs");
     let mut src = fs::read_to_string(&index).unwrap_or_default();
-    if r.chance(8) {
+    if r.chance(15) {
         src.push_str("const projects = require('./routes/projects.cjs');\n");
     }
-    if r.chance(88) {
+    if r.chance(75) {
         src.push_str("const toolboxes = { known: allToolboxes() };\n");
     }
     write(&index, &src);

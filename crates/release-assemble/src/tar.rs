@@ -490,7 +490,7 @@ pub fn extract(entries: &[Entry], strip: usize, dest: &Path) -> io::Result<usize
                 set_mode(&path, if *executable { 0o755 } else { 0o644 })?;
             }
             Kind::Symlink { target } => {
-                // noevia#2738 item 3: refuse before anything on disk changes.
+                // noevia#2738 item 3: refuse before the file at this path is removed.
                 link_stays_inside(kept.len(), target)?;
                 if let Some(m) = existing {
                     if m.file_type().is_dir() {

@@ -148,7 +148,10 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
             &root.join("core/server/routes/models.cjs"),
             &format!("// router.post('{}', h);\n", p.path),
         ),
-        _ => write(&root.join("core/server/routes/models.cjs"), "router.get('/api/models', h);\n"),
+        _ => write(
+            &root.join("core/server/routes/models.cjs"),
+            "router.get('/api/models', h);\n",
+        ),
     }
     let policy = if p.policy.contains("cancel") {
         "function cancel(job) {}"
@@ -156,7 +159,10 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
         "async function start (job) {}"
     };
     match r.below(14) {
-        0 => write(&root.join("core/server/llamacpp-calibration.cjs"), &format!("{policy}\n")),
+        0 => write(
+            &root.join("core/server/llamacpp-calibration.cjs"),
+            &format!("{policy}\n"),
+        ),
         1 => write(
             &root.join("core/server/llamacpp-calibration.cjs"),
             &format!("/* {policy}\n*/\nfunction cancelled() {{}}\n"),
@@ -165,7 +171,10 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
             &root.join("core/server/llamacpp-calibration.cjs"),
             "const x = { mycancel(a) {}, restart() {} };\n",
         ),
-        _ => write(&root.join("core/server/llamacpp-calibration.cjs"), "'use strict';\n"),
+        _ => write(
+            &root.join("core/server/llamacpp-calibration.cjs"),
+            "'use strict';\n",
+        ),
     }
     // The live actor primitives.
     let mut manager = String::from("return {\n");
@@ -178,8 +187,11 @@ fn gen_calibration(r: &mut Rng, root: &Path, p: &CalibrationPairing) {
     }
     manager.push_str("};\n");
     write(&root.join("core/server/llamacpp-manager.cjs"), &manager);
-    if !r.chance(10) {
-        write(&root.join("core/server").join(p.bridge_file), "'use strict';\n");
+    if !r.chance(12) {
+        write(
+            &root.join("core/server").join(p.bridge_file),
+            "'use strict';\n",
+        );
     }
     // index.cjs: marker, captured secret, bridge constructor with the secret, the mount.
     let mut index = String::from("'use strict';\n");
