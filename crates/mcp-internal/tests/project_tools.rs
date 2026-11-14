@@ -67,7 +67,11 @@ impl Ports for Fake {
         let p = self.project.borrow();
         (id.as_str() == Some(p.id.as_str())).then(|| p.clone())
     }
-    fn read_project_file(&self, project: &Project, args: &JValue) -> Result<Option<String>, String> {
+    fn read_project_file(
+        &self,
+        project: &Project,
+        args: &JValue,
+    ) -> Result<Option<String>, String> {
         Ok(Some(format!(
             "read {} from {}",
             js_json::to_js_string(args.get("name")).unwrap(),
@@ -181,7 +185,12 @@ fn a_project_tool_outside_a_project_says_so_instead_of_failing_obscurely() {
         ..ctx()
     };
     for name in project_tools::NAMES {
-        let e = err(&f, name, r#"{"name":"notes.md","query":"a","text":"x","find":"a","replace":"b"}"#, &none);
+        let e = err(
+            &f,
+            name,
+            r#"{"name":"notes.md","query":"a","text":"x","find":"a","replace":"b"}"#,
+            &none,
+        );
         assert!(e.contains("not in a project"), "{name}: {e}");
     }
 }
@@ -197,10 +206,19 @@ fn identity_comes_from_the_token_never_from_the_arguments() {
     );
     assert_eq!(out, "read notes.md from proj-a");
     // Search is asked for the token's project and user.
-    ok(&f, "project_search", r#"{"query":"alpha","userId":"bob"}"#, &ctx());
+    ok(
+        &f,
+        "project_search",
+        r#"{"query":"alpha","userId":"bob"}"#,
+        &ctx(),
+    );
     assert_eq!(
         f.searched.borrow().as_slice(),
-        [("proj-a".to_owned(), "alpha".to_owned(), JValue::from("alice"))]
+        [(
+            "proj-a".to_owned(),
+            "alpha".to_owned(),
+            JValue::from("alice")
+        )]
     );
 }
 
@@ -239,8 +257,17 @@ fn search_without_an_index_says_so_rather_than_returning_nothing() {
 #[test]
 fn search_needs_a_query_and_names_an_empty_answer() {
     let f = harness();
-    for a in [r#"{}"#, r#"{"query":"  "}"#, r#"{"query":0}"#, r#"{"query":null}"#] {
-        assert_eq!(err(&f, "project_search", a, &ctx()), "a query is required", "{a}");
+    for a in [
+        r#"{}"#,
+        r#"{"query":"  "}"#,
+        r#"{"query":0}"#,
+        r#"{"query":null}"#,
+    ] {
+        assert_eq!(
+            err(&f, "project_search", a, &ctx()),
+            "a query is required",
+            "{a}"
+        );
     }
     assert_eq!(
         ok(&f, "project_search", r#"{"query":" alpha \n"}"#, &ctx()),
@@ -254,20 +281,44 @@ fn search_needs_a_query_and_names_an_empty_answer() {
         search: Box::new(|| Err("index offline".into())),
         ..harness()
     };
-    assert_eq!(err(&broken, "project_search", r#"{"query":"a"}"#, &ctx()), "index offline");
+    assert_eq!(
+        err(&broken, "project_search", r#"{"query":"a"}"#, &ctx()),
+        "index offline"
+    );
 }
 
 #[test]
 fn replace_requires_the_expected_number_of_matches_and_never_writes_on_a_mismatch() {
     let f = harness();
-    let e = err(&f, "project_replace_text", r#"{"name":"notes.md","find":"alpha","replace":"A"}"#, &pinned("notes.md"));
-    assert_eq!(e, "expected 1 match but found 2 in \"notes.md\", so nothing was changed");
-    let e = err(&f, "project_replace_text", r#"{"name":"notes.md","find":"nowhere","replace":"A"}"#, &pinned("notes.md"));
-    assert_eq!(e, "that exact text is not in \"notes.md\", so nothing was changed");
+    let e = err(
+        &f,
+        "project_replace_text",
+        r#"{"name":"notes.md","find":"alpha","replace":"A"}"#,
+        &pinned("notes.md"),
+    );
+    assert_eq!(
+        e,
+        "expected 1 match but found 2 in \"notes.md\", so nothing was changed"
+    );
+    let e = err(
+        &f,
+        "project_replace_text",
+        r#"{"name":"notes.md","find":"nowhere","replace":"A"}"#,
+        &pinned("notes.md"),
+    );
+    assert_eq!(
+        e,
+        "that exact text is not in \"notes.md\", so nothing was changed"
+    );
     assert!(f.written.borrow().is_empty(), "a mismatch must not write");
     assert_eq!(content(&f, "notes.md"), "alpha\nbeta\nalpha\n");
 
-    let out = ok(&f, "project_replace_text", r#"{"name":"notes.md","find":"alpha","replace":"A","expectedCount":2}"#, &pinned("notes.md"));
+    let out = ok(
+        &f,
+        "project_replace_text",
+        r#"{"name":"notes.md","find":"alpha","replace":"A","expectedCount":2}"#,
+        &pinned("notes.md"),
+    );
     assert_eq!(out, "Replaced 2 occurrences in \"notes.md\".");
     assert_eq!(content(&f, "notes.md"), "A\nbeta\nA\n");
     // The write is pinned to what was read: name, content, no attachment, no adoption.
@@ -288,7 +339,8 @@ fn replace_expected_count_is_coerced_as_number_and_must_be_a_positive_whole_numb
     let f = harness();
     let p = pinned("notes.md");
     for bad in ["0", "-1", "1.5", "\"x\"", "null", "{}", "false", "[]"] {
-        let a = format!(r#"{{"name":"notes.md","find":"beta","replace":"B","expectedCount":{bad}}}"#);
+        let a =
+            format!(r#"{{"name":"notes.md","find":"beta","replace":"B","expectedCount":{bad}}}"#);
         assert_eq!(
             err(&f, "project_replace_text", &a, &p),
             "expectedCount must be a positive whole number",
@@ -297,19 +349,39 @@ fn replace_expected_count_is_coerced_as_number_and_must_be_a_positive_whole_numb
     }
     // Number("2") is 2, [2] is 2, true is 1, " 0x2 " is 2: all accepted as counts.
     assert_eq!(
-        err(&f, "project_replace_text", r#"{"name":"notes.md","find":"beta","replace":"B","expectedCount":"2"}"#, &p),
+        err(
+            &f,
+            "project_replace_text",
+            r#"{"name":"notes.md","find":"beta","replace":"B","expectedCount":"2"}"#,
+            &p
+        ),
         "expected 2 matches but found 1 in \"notes.md\", so nothing was changed"
     );
     assert_eq!(
-        err(&f, "project_replace_text", r#"{"name":"notes.md","find":"alpha","replace":"B","expectedCount":true}"#, &p),
+        err(
+            &f,
+            "project_replace_text",
+            r#"{"name":"notes.md","find":"alpha","replace":"B","expectedCount":true}"#,
+            &p
+        ),
         "expected 1 match but found 2 in \"notes.md\", so nothing was changed"
     );
     assert_eq!(
-        ok(&f, "project_replace_text", r#"{"name":"notes.md","find":"alpha","replace":"B","expectedCount":[2]}"#, &p),
+        ok(
+            &f,
+            "project_replace_text",
+            r#"{"name":"notes.md","find":"alpha","replace":"B","expectedCount":[2]}"#,
+            &p
+        ),
         "Replaced 2 occurrences in \"notes.md\"."
     );
     assert_eq!(
-        ok(&f, "project_replace_text", r#"{"name":"notes.md","find":"beta","replace":"C","expectedCount":" 0x1 "}"#, &p),
+        ok(
+            &f,
+            "project_replace_text",
+            r#"{"name":"notes.md","find":"beta","replace":"C","expectedCount":" 0x1 "}"#,
+            &p
+        ),
         "Replaced 1 occurrence in \"notes.md\"."
     );
     assert_eq!(content(&f, "notes.md"), "B\nC\nB\n");
@@ -324,18 +396,37 @@ fn replace_needs_a_find_and_replaces_with_string_of_the_argument() {
         r#"{"name":"notes.md","replace":"x"}"#,
         r#"{"name":"notes.md","find":null,"replace":"x"}"#,
     ] {
-        assert_eq!(err(&f, "project_replace_text", a, &p), "find must not be empty", "{a}");
+        assert_eq!(
+            err(&f, "project_replace_text", a, &p),
+            "find must not be empty",
+            "{a}"
+        );
     }
     // `replace` missing is ''; a number is its String.
-    ok(&f, "project_replace_text", r#"{"name":"notes.md","find":"beta\n"}"#, &p);
+    ok(
+        &f,
+        "project_replace_text",
+        r#"{"name":"notes.md","find":"beta\n"}"#,
+        &p,
+    );
     assert_eq!(content(&f, "notes.md"), "alpha\nalpha\n");
-    ok(&f, "project_replace_text", r#"{"name":"notes.md","find":"alpha","replace":7,"expectedCount":2}"#, &p);
+    ok(
+        &f,
+        "project_replace_text",
+        r#"{"name":"notes.md","find":"alpha","replace":7,"expectedCount":2}"#,
+        &p,
+    );
     assert_eq!(content(&f, "notes.md"), "7\n7\n");
     // Matches do not overlap (split): "aa" in "aaa" is one.
     let g = harness();
     g.project.borrow_mut().files[0].content = Some("aaa".into());
     assert_eq!(
-        ok(&g, "project_replace_text", r#"{"name":"notes.md","find":"aa","replace":"b"}"#, &p),
+        ok(
+            &g,
+            "project_replace_text",
+            r#"{"name":"notes.md","find":"aa","replace":"b"}"#,
+            &p
+        ),
         "Replaced 1 occurrence in \"notes.md\"."
     );
     assert_eq!(content(&g, "notes.md"), "ba");
@@ -360,32 +451,64 @@ fn folder_derived_and_non_text_files_are_refused_rather_than_silently_reverted()
 fn create_refuses_to_clobber_append_keeps_what_is_there() {
     let f = harness();
     assert_eq!(
-        err(&f, "project_create_file", r#"{"name":"notes.md","text":"new"}"#, &ctx()),
+        err(
+            &f,
+            "project_create_file",
+            r#"{"name":"notes.md","text":"new"}"#,
+            &ctx()
+        ),
         "\"notes.md\" already exists. Use project_append_file or project_replace_text."
     );
     assert_eq!(
-        ok(&f, "project_create_file", r#"{"name":"fresh.md","text":"hello"}"#, &ctx()),
+        ok(
+            &f,
+            "project_create_file",
+            r#"{"name":"fresh.md","text":"hello"}"#,
+            &ctx()
+        ),
         "Created \"fresh.md\" (5 chars)."
     );
     assert_eq!(content(&f, "fresh.md"), "hello");
-    assert_eq!(f.written.borrow()[0].2, None, "a create carries no expectations");
+    assert_eq!(
+        f.written.borrow()[0].2,
+        None,
+        "a create carries no expectations"
+    );
 
     assert_eq!(
-        ok(&f, "project_append_file", r#"{"name":"fresh.md","text":"world"}"#, &pinned("fresh.md")),
+        ok(
+            &f,
+            "project_append_file",
+            r#"{"name":"fresh.md","text":"world"}"#,
+            &pinned("fresh.md")
+        ),
         "Appended 5 chars to \"fresh.md\"."
     );
     assert_eq!(content(&f, "fresh.md"), "hello\nworld");
     // A trailing newline is not doubled.
-    ok(&f, "project_append_file", r#"{"name":"notes.md","text":"gamma"}"#, &pinned("notes.md"));
+    ok(
+        &f,
+        "project_append_file",
+        r#"{"name":"notes.md","text":"gamma"}"#,
+        &pinned("notes.md"),
+    );
     assert_eq!(content(&f, "notes.md"), "alpha\nbeta\nalpha\ngamma");
 }
 
 #[test]
 fn create_refuses_a_name_the_folder_already_stores_under_its_upload_path() {
     let f = harness();
-    f.project.borrow_mut().files.push(file("uploads/report.md", "x"));
+    f.project
+        .borrow_mut()
+        .files
+        .push(file("uploads/report.md", "x"));
     assert_eq!(
-        err(&f, "project_create_file", r#"{"name":"report.md","text":"y"}"#, &ctx()),
+        err(
+            &f,
+            "project_create_file",
+            r#"{"name":"report.md","text":"y"}"#,
+            &ctx()
+        ),
         "\"report.md\" already exists. Use project_append_file or project_replace_text."
     );
 }
@@ -395,13 +518,26 @@ fn append_to_an_empty_file_adds_no_newline_and_needs_text() {
     let f = harness();
     f.project.borrow_mut().files.push(file("empty.md", ""));
     for a in [r#"{"name":"empty.md","text":""}"#, r#"{"name":"empty.md"}"#] {
-        assert_eq!(err(&f, "project_append_file", a, &pinned("empty.md")), "there is nothing to append");
+        assert_eq!(
+            err(&f, "project_append_file", a, &pinned("empty.md")),
+            "there is nothing to append"
+        );
     }
-    ok(&f, "project_append_file", r#"{"name":"empty.md","text":"first"}"#, &pinned("empty.md"));
+    ok(
+        &f,
+        "project_append_file",
+        r#"{"name":"empty.md","text":"first"}"#,
+        &pinned("empty.md"),
+    );
     assert_eq!(content(&f, "empty.md"), "first");
     // Character counts are UTF-16 units, as in JS.
     assert_eq!(
-        ok(&f, "project_append_file", r#"{"name":"empty.md","text":"😀é"}"#, &pinned("empty.md")),
+        ok(
+            &f,
+            "project_append_file",
+            r#"{"name":"empty.md","text":"😀é"}"#,
+            &pinned("empty.md")
+        ),
         "Appended 3 chars to \"empty.md\"."
     );
 }
@@ -409,24 +545,48 @@ fn append_to_an_empty_file_adds_no_newline_and_needs_text() {
 #[test]
 fn a_path_in_a_filename_cannot_escape_the_project() {
     let f = harness();
-    ok(&f, "project_create_file", r#"{"name":"../../etc/passwd","text":"x"}"#, &ctx());
+    ok(
+        &f,
+        "project_create_file",
+        r#"{"name":"../../etc/passwd","text":"x"}"#,
+        &ctx(),
+    );
     let p = f.project.borrow();
-    assert!(p.files.iter().any(|x| x.name == "passwd"), "the directory part must be stripped");
-    assert!(!p.files.iter().any(|x| x.name.contains('/')), "no file name may contain a path");
+    assert!(
+        p.files.iter().any(|x| x.name == "passwd"),
+        "the directory part must be stripped"
+    );
+    assert!(
+        !p.files.iter().any(|x| x.name.contains('/')),
+        "no file name may contain a path"
+    );
 }
 
 #[test]
 fn a_missing_file_names_what_the_project_does_have() {
     let f = harness();
-    let e = err(&f, "project_append_file", r#"{"name":"absent.md","text":"x"}"#, &ctx());
-    assert!(e.contains("Available: notes.md, synced.md, scan.pdf"), "{e}");
+    let e = err(
+        &f,
+        "project_append_file",
+        r#"{"name":"absent.md","text":"x"}"#,
+        &ctx(),
+    );
+    assert!(
+        e.contains("Available: notes.md, synced.md, scan.pdf"),
+        "{e}"
+    );
 }
 
 #[test]
 fn an_edit_needs_the_pin_and_the_pin_must_still_name_the_resolved_file() {
     let f = harness();
     assert_eq!(
-        err(&f, "project_append_file", r#"{"name":"notes.md","text":"x"}"#, &ctx()),
+        err(
+            &f,
+            "project_append_file",
+            r#"{"name":"notes.md","text":"x"}"#,
+            &ctx()
+        ),
         "this edit was not tied to a file when it was approved, so nothing was changed"
     );
     // An empty `t` is no pin.
@@ -434,8 +594,13 @@ fn an_edit_needs_the_pin_and_the_pin_must_still_name_the_resolved_file() {
         edit_target: Some(String::new()),
         ..ctx()
     };
-    assert!(err(&f, "project_replace_text", r#"{"name":"notes.md","find":"beta","replace":"b"}"#, &empty)
-        .starts_with("this edit was not tied"));
+    assert!(err(
+        &f,
+        "project_replace_text",
+        r#"{"name":"notes.md","find":"beta","replace":"b"}"#,
+        &empty
+    )
+    .starts_with("this edit was not tied"));
     // Pinned to another file: the name is shown as JSON.stringify(String(name)).
     assert_eq!(
         err(&f, "project_append_file", r#"{"name":"notes.md","text":"x"}"#, &pinned("other.md")),
@@ -449,23 +614,48 @@ fn writes_over_the_size_limit_are_refused_without_writing() {
     let f = harness();
     let big = "x".repeat(MAX_TEXT_BYTES + 1);
     assert_eq!(
-        err(&f, "project_create_file", &format!(r#"{{"name":"big.md","text":"{big}"}}"#), &ctx()),
+        err(
+            &f,
+            "project_create_file",
+            &format!(r#"{{"name":"big.md","text":"{big}"}}"#),
+            &ctx()
+        ),
         "that text is too large to write in one call"
     );
     // Exactly the limit is fine; one more byte by appending is not (bytes, not units: é is 2).
     let edge = "x".repeat(MAX_TEXT_BYTES);
-    ok(&f, "project_create_file", &format!(r#"{{"name":"edge.md","text":"{edge}"}}"#), &ctx());
+    ok(
+        &f,
+        "project_create_file",
+        &format!(r#"{{"name":"edge.md","text":"{edge}"}}"#),
+        &ctx(),
+    );
     assert_eq!(
-        err(&f, "project_append_file", r#"{"name":"edge.md","text":"y"}"#, &pinned("edge.md")),
+        err(
+            &f,
+            "project_append_file",
+            r#"{"name":"edge.md","text":"y"}"#,
+            &pinned("edge.md")
+        ),
         "that would make the file too large to write in one call"
     );
     let near = "x".repeat(MAX_TEXT_BYTES - 1);
     assert_eq!(
-        err(&f, "project_create_file", &format!(r#"{{"name":"near.md","text":"{near}é"}}"#), &ctx()),
+        err(
+            &f,
+            "project_create_file",
+            &format!(r#"{{"name":"near.md","text":"{near}é"}}"#),
+            &ctx()
+        ),
         "that text is too large to write in one call"
     );
     assert_eq!(
-        err(&f, "project_replace_text", r#"{"name":"edge.md","find":"x","replace":"yy","expectedCount":262144}"#, &pinned("edge.md")),
+        err(
+            &f,
+            "project_replace_text",
+            r#"{"name":"edge.md","find":"x","replace":"yy","expectedCount":262144}"#,
+            &pinned("edge.md")
+        ),
         "that would make the file too large to write in one call"
     );
     assert_eq!(f.written.borrow().len(), 1);
@@ -486,14 +676,20 @@ fn list_files_names_each_kind_and_size_and_clips_at_the_cap() {
          scan.pdf — document, 9 chars\n\
          image.png — text, no readable text"
     );
-    let small = Fake { cap: 20, ..harness() };
+    let small = Fake {
+        cap: 20,
+        ..harness()
+    };
     assert_eq!(
         ok(&small, "project_list_files", "{}", &ctx()),
         "Pass a name exactly \n…[truncated]"
     );
     let empty = harness();
     empty.project.borrow_mut().files.clear();
-    assert_eq!(ok(&empty, "project_list_files", "{}", &ctx()), "This project has no files attached.");
+    assert_eq!(
+        ok(&empty, "project_list_files", "{}", &ctx()),
+        "This project has no files attached."
+    );
 }
 
 #[test]
@@ -554,16 +750,33 @@ fn an_approved_edit_runs_through_the_handler_with_the_token_pin() {
         target: Some(&digest),
         ..Mint::default()
     };
-    let out = through_handler(&h, &f, &write, "j-edit", "project_append_file", r#"{"name":"notes.md","text":"gamma"}"#);
+    let out = through_handler(
+        &h,
+        &f,
+        &write,
+        "j-edit",
+        "project_append_file",
+        r#"{"name":"notes.md","text":"gamma"}"#,
+    );
     let text = js_json::stringify(&out).unwrap();
-    assert_eq!(text, r#"{"content":[{"type":"text","text":"Appended 5 chars to \"notes.md\"."}]}"#);
+    assert_eq!(
+        text,
+        r#"{"content":[{"type":"text","text":"Appended 5 chars to \"notes.md\"."}]}"#
+    );
     // The project in the arguments is ignored; the token's is used.
     let read = Mint {
         uid: Some("alice"),
         pid: Some("proj-a"),
         ..Mint::default()
     };
-    let out = through_handler(&h, &f, &read, "j-read", "project_read_file", r#"{"name":"notes.md","projectId":"proj-b"}"#);
+    let out = through_handler(
+        &h,
+        &f,
+        &read,
+        "j-read",
+        "project_read_file",
+        r#"{"name":"notes.md","projectId":"proj-b"}"#,
+    );
     assert_eq!(
         js_json::stringify(&out).unwrap(),
         r#"{"content":[{"type":"text","text":"read notes.md from proj-a"}]}"#
@@ -585,7 +798,16 @@ fn listen(h: &Handler, f: &Fake, body: &str, token: &str) -> (u16, String) {
     let other = |inv: &mcp_internal::Invoke| -> Result<Option<String>, String> {
         Ok(Some(format!("core runs {}", inv.name)))
     };
-    let r = project_tools::serve(h, f, &other, "POST", "/mcp?x=1", Some(body.as_bytes()), Some(&auth), NOW);
+    let r = project_tools::serve(
+        h,
+        f,
+        &other,
+        "POST",
+        "/mcp?x=1",
+        Some(body.as_bytes()),
+        Some(&auth),
+        NOW,
+    );
     (r.status, r.payload())
 }
 
@@ -607,18 +829,44 @@ fn the_listener_runs_project_tools_and_hands_other_admitted_names_on() {
         ..Mint::default()
     };
     let call = |name: &str, a: &str| {
-        format!(r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"{name}","arguments":{a}}}}}"#)
+        format!(
+            r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"{name}","arguments":{a}}}}}"#
+        )
     };
-    let (status, body) = listen(&h, &f, &call("elsewhere_read", "{}"), &mint(KEY, &read, "l1", NOW));
+    let (status, body) = listen(
+        &h,
+        &f,
+        &call("elsewhere_read", "{}"),
+        &mint(KEY, &read, "l1", NOW),
+    );
     assert_eq!(status, 200);
-    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"core runs elsewhere_read"}]}}"#);
+    assert_eq!(
+        body,
+        r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"core runs elsewhere_read"}]}}"#
+    );
     // A name outside the catalogue never reaches either: core's unknown-tool result.
-    let (_, body) = listen(&h, &f, &call("diary_read_today", "{}"), &mint(KEY, &read, "l2", NOW));
-    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"ERROR: unknown tool \"diary_read_today\""}],"isError":true}}"#);
+    let (_, body) = listen(
+        &h,
+        &f,
+        &call("diary_read_today", "{}"),
+        &mint(KEY, &read, "l2", NOW),
+    );
+    assert_eq!(
+        body,
+        r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"ERROR: unknown tool \"diary_read_today\""}],"isError":true}}"#
+    );
     // A write under a read token: 403, nothing written.
-    let (status, body) = listen(&h, &f, &call("project_create_file", r#"{"name":"x.md","text":"y"}"#), &mint(KEY, &read, "l3", NOW));
+    let (status, body) = listen(
+        &h,
+        &f,
+        &call("project_create_file", r#"{"name":"x.md","text":"y"}"#),
+        &mint(KEY, &read, "l3", NOW),
+    );
     assert_eq!(status, 403);
-    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32003,"message":"\"project_create_file\" changes data and was not approved"}}"#);
+    assert_eq!(
+        body,
+        r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32003,"message":"\"project_create_file\" changes data and was not approved"}}"#
+    );
     assert!(f.written.borrow().is_empty());
     // An approved create runs once; the same token again is a replay.
     let write = Mint {
@@ -626,18 +874,39 @@ fn the_listener_runs_project_tools_and_hands_other_admitted_names_on() {
         ..read.clone()
     };
     let token = mint(KEY, &write, "l4", NOW);
-    let (status, body) = listen(&h, &f, &call("project_create_file", r#"{"name":"x.md","text":"y"}"#), &token);
+    let (status, body) = listen(
+        &h,
+        &f,
+        &call("project_create_file", r#"{"name":"x.md","text":"y"}"#),
+        &token,
+    );
     assert_eq!(status, 200);
-    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"Created \"x.md\" (1 chars)."}]}}"#);
-    let (status, _) = listen(&h, &f, &call("project_create_file", r#"{"name":"z.md","text":"y"}"#), &token);
+    assert_eq!(
+        body,
+        r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"Created \"x.md\" (1 chars)."}]}}"#
+    );
+    let (status, _) = listen(
+        &h,
+        &f,
+        &call("project_create_file", r#"{"name":"z.md","text":"y"}"#),
+        &token,
+    );
     assert_eq!(status, 401);
     assert_eq!(f.written.borrow().len(), 1);
     // tools/list is the catalogue, the project half first.
-    let (status, body) = listen(&h, &f, r#"{"jsonrpc":"2.0","id":4,"method":"tools/list"}"#, &mint(KEY, &read, "l5", NOW));
+    let (status, body) = listen(
+        &h,
+        &f,
+        r#"{"jsonrpc":"2.0","id":4,"method":"tools/list"}"#,
+        &mint(KEY, &read, "l5", NOW),
+    );
     assert_eq!(status, 200);
     let listed = js_json::parse(&body).unwrap();
     let names: Vec<String> = match listed.get("result").get("tools") {
-        JValue::Arr(items) => items.iter().map(|t| t.get("name").as_str().unwrap().to_owned()).collect(),
+        JValue::Arr(items) => items
+            .iter()
+            .map(|t| t.get("name").as_str().unwrap().to_owned())
+            .collect(),
         other => panic!("{other:?}"),
     };
     assert_eq!(&names[..6], project_tools::NAMES);

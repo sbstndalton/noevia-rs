@@ -92,7 +92,8 @@ pub trait Ports {
     /// `ports.getProject(id)`: `None` for no project (or none of this id).
     fn get_project(&self, id: &JValue) -> Option<Project>;
     /// `ports.readProjectFile(project, args)`: the built-in tool's read, paging and cap included.
-    fn read_project_file(&self, project: &Project, args: &JValue) -> Result<Option<String>, String>;
+    fn read_project_file(&self, project: &Project, args: &JValue)
+        -> Result<Option<String>, String>;
     /// `ports.ragAvailable()`.
     fn rag_available(&self) -> bool;
     /// `ports.search(project.id, query, ctx.userId)`.
@@ -161,12 +162,7 @@ fn definition(name: &str, description: &str, write: bool, schema: JValue) -> Def
 
 /// The project tools' entries of `createInternalTools(ports)`, descriptions and schemas byte for byte.
 pub fn definitions() -> Vec<Definition> {
-    let name_text = || {
-        vec![
-            ("name", string_prop(None)),
-            ("text", string_prop(None)),
-        ]
-    };
+    let name_text = || vec![("name", string_prop(None)), ("text", string_prop(None))];
     vec![
         definition(
             "project_list_files",
@@ -264,7 +260,8 @@ pub fn serve(
     match handler.listen(method, url, RPC_PATH, body, authorization, now_ms) {
         Step::Reply(r) => r,
         Step::Invoke(inv) => {
-            let answered = call(ports, &inv.name, &inv.args, &inv.ctx).unwrap_or_else(|| other(&inv));
+            let answered =
+                call(ports, &inv.name, &inv.args, &inv.ctx).unwrap_or_else(|| other(&inv));
             inv.finish(answered)
         }
     }
@@ -287,9 +284,9 @@ impl Tools<'_> {
 
     /// `requireProject(ports, ctx)`.
     fn project(&self, ctx: &Ctx) -> Result<Project, String> {
-        self.ports
-            .get_project(&ctx.project_id)
-            .ok_or_else(|| "this chat is not in a project, so there are no project files".to_owned())
+        self.ports.get_project(&ctx.project_id).ok_or_else(|| {
+            "this chat is not in a project, so there are no project files".to_owned()
+        })
     }
 
     fn list_files(&self, ctx: &Ctx) -> Result<String, String> {
@@ -380,7 +377,11 @@ impl Tools<'_> {
                     .to_owned(),
             );
         }
-        if pinned != self.ports.target_digest(&plan.target, plan.account.as_deref()) {
+        if pinned
+            != self
+                .ports
+                .target_digest(&plan.target, plan.account.as_deref())
+        {
             let shown = js_json::to_js_string(name).map_err(|_| TO_PRIMITIVE.to_owned())?;
             let mut quoted = String::new();
             js_json::quote(&shown, &mut quoted);
@@ -460,7 +461,11 @@ impl Tools<'_> {
                 format!(
                     "expected {} match{} but found {found} in \"{}\", so nothing was changed",
                     js_json::number_to_string(expected),
-                    if (expected - 1.0).abs() > 0.0 { "es" } else { "" },
+                    if (expected - 1.0).abs() > 0.0 {
+                        "es"
+                    } else {
+                        ""
+                    },
                     file.name
                 )
             });
@@ -508,21 +513,14 @@ pub fn clean_name(raw: &JValue) -> Result<String, String> {
 fn js_space(c: char) -> bool {
     matches!(
         c,
-        '\u{9}'
-            | '\u{a}'
-            | '\u{b}'
-            | '\u{c}'
-            | '\u{d}'
-            | ' '
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202f}'
-            | '\u{205f}'
-            | '\u{3000}'
-            | '\u{feff}'
+        '\u{9}' | '\u{a}' | '\u{b}' | '\u{c}' | '\u{d}' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
@@ -616,7 +614,10 @@ mod tests {
         for bad in ["", "dir/", "..", "x/.", "   "] {
             assert_eq!(n(bad).unwrap_err(), "a filename is required", "{bad:?}");
         }
-        assert_eq!(clean_name(&JValue::Null).unwrap_err(), "a filename is required");
+        assert_eq!(
+            clean_name(&JValue::Null).unwrap_err(),
+            "a filename is required"
+        );
         // `String(12)` is a name.
         assert_eq!(clean_name(&JValue::Num(12.0)).unwrap(), "12");
         assert_eq!(js_json::js_len(&n(&"x".repeat(300)).unwrap()), 200);
@@ -630,7 +631,10 @@ mod tests {
         assert_eq!(to_number(&JValue::from(" 0x10 ")).unwrap(), 16.0);
         assert_eq!(to_number(&JValue::from("")).unwrap(), 0.0);
         assert!(to_number(&JValue::from("2a")).unwrap().is_nan());
-        assert_eq!(to_number(&JValue::Arr(vec![JValue::Num(3.0)])).unwrap(), 3.0);
+        assert_eq!(
+            to_number(&JValue::Arr(vec![JValue::Num(3.0)])).unwrap(),
+            3.0
+        );
         assert!(to_number(&JValue::Obj(vec![])).unwrap().is_nan());
         assert_eq!(
             to_number(&JValue::obj([("toString", JValue::Num(1.0))])).unwrap_err(),
@@ -651,7 +655,11 @@ mod tests {
             .collect();
         assert_eq!(
             writes,
-            ["project_create_file", "project_append_file", "project_replace_text"]
+            [
+                "project_create_file",
+                "project_append_file",
+                "project_replace_text"
+            ]
         );
         for d in &defs {
             let text = d.description.as_deref().unwrap();

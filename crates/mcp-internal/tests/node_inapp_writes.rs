@@ -69,7 +69,10 @@ impl Ports for Replay {
     /// has a folder. Every name a replayed case asks about is a text file (classify: `Text`).
     fn upload_path_for(&self, _: &Project, name: &str) -> String {
         if self.folder.truthy() {
-            format!("{}/Text/{name}", js_json::to_js_string(&self.folder).unwrap())
+            format!(
+                "{}/Text/{name}",
+                js_json::to_js_string(&self.folder).unwrap()
+            )
         } else {
             name.to_owned()
         }
@@ -269,13 +272,25 @@ fn node_recorded_in_app_writes_replay_byte_for_byte() {
         assert_eq!(mine.len(), writes_text.len(), "{name}: number of writes");
         for ((w_name, w_text, w_expect), recorded) in mine.iter().zip(&writes_text) {
             let r = wtf16::parse(recorded).unwrap();
-            assert_eq!(r.get("name").as_str(), Some(w_name.as_str()), "{name}: write name");
-            assert_eq!(r.get("text").as_str(), Some(w_text.as_str()), "{name}: write text");
+            assert_eq!(
+                r.get("name").as_str(),
+                Some(w_name.as_str()),
+                "{name}: write name"
+            );
+            assert_eq!(
+                r.get("text").as_str(),
+                Some(w_text.as_str()),
+                "{name}: write text"
+            );
             let options = r.get("options");
             match w_expect {
                 None => assert!(options.is_nullish(), "{name}: a create has no options"),
                 Some(e) => {
-                    assert_eq!(options.get("expectName").as_str(), Some(e.expect_name.as_str()), "{name}");
+                    assert_eq!(
+                        options.get("expectName").as_str(),
+                        Some(e.expect_name.as_str()),
+                        "{name}"
+                    );
                     assert_eq!(
                         options.get("expectContent").as_str(),
                         Some(e.expect_content.as_str()),
@@ -287,12 +302,19 @@ fn node_recorded_in_app_writes_replay_byte_for_byte() {
                         e.expect_attachment.as_deref(),
                         "{name}"
                     );
-                    assert!(options.get("adoptTo").is_nullish() && e.adopt.is_none(), "{name}");
+                    assert!(
+                        options.get("adoptTo").is_nullish() && e.adopt.is_none(),
+                        "{name}"
+                    );
                 }
             }
         }
     }
-    eprintln!("COUNTS replayed={replayed} skipped={} [{}]", skipped.len(), skipped.join(" "));
+    eprintln!(
+        "COUNTS replayed={replayed} skipped={} [{}]",
+        skipped.len(),
+        skipped.join(" ")
+    );
     assert_eq!(replayed + skipped.len(), 88);
     assert_eq!(replayed, 67, "skipped: {skipped:?}");
 }

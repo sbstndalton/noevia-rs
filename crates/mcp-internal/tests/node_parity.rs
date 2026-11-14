@@ -46,9 +46,17 @@ fn demo(inv: &Invoke) -> Result<Option<String>, String> {
         "demo_read" => {
             let q = inv.args.get("q");
             let q = if q.truthy() { s(q) } else { String::new() };
-            format!("read {q} as {}/{}", s(&inv.ctx.user_id), s(&inv.ctx.project_id))
+            format!(
+                "read {q} as {}/{}",
+                s(&inv.ctx.user_id),
+                s(&inv.ctx.project_id)
+            )
         }
-        "demo_write" => format!("wrote {} as {}", s(inv.args.get("text")), s(&inv.ctx.user_id)),
+        "demo_write" => format!(
+            "wrote {} as {}",
+            s(inv.args.get("text")),
+            s(&inv.ctx.user_id)
+        ),
         other => panic!("{other}"),
     }))
 }
@@ -79,7 +87,12 @@ fn user(uid: &str) -> Mint<'_> {
 }
 
 fn text(r: &Reply) -> String {
-    r.body.as_ref().unwrap().get("result").get("content") .clone_first_text()
+    r.body
+        .as_ref()
+        .unwrap()
+        .get("result")
+        .get("content")
+        .clone_first_text()
 }
 
 trait FirstText {
@@ -185,18 +198,28 @@ fn tampered_wrong_key_expired_and_malformed_tokens_are_all_rejected() {
         ]
     );
     // ...and the genuine one still works, so the test is not passing vacuously.
-    assert_eq!(finish(h.handle(&call("demo_read", "{}"), &good, NOW), demo).status, 200);
+    assert_eq!(
+        finish(h.handle(&call("demo_read", "{}"), &good, NOW), demo).status,
+        200
+    );
 }
 
 #[test]
 fn a_write_presented_without_the_approved_capability_fails_closed() {
     let h = Handler::new(KEY, defs());
     let out = finish(
-        h.handle(&call("demo_write", r#"{"text":"hi"}"#), &token(user("alice"), "j1"), NOW),
+        h.handle(
+            &call("demo_write", r#"{"text":"hi"}"#),
+            &token(user("alice"), "j1"),
+            NOW,
+        ),
         demo,
     );
     assert_eq!(out.status, 403);
-    assert_eq!(error_message(&out), "\"demo_write\" changes data and was not approved");
+    assert_eq!(
+        error_message(&out),
+        "\"demo_write\" changes data and was not approved"
+    );
     let approved = token(
         Mint {
             uid: Some("alice"),
@@ -205,7 +228,10 @@ fn a_write_presented_without_the_approved_capability_fails_closed() {
         },
         "j2",
     );
-    let ok = finish(h.handle(&call("demo_write", r#"{"text":"hi"}"#), &approved, NOW), demo);
+    let ok = finish(
+        h.handle(&call("demo_write", r#"{"text":"hi"}"#), &approved, NOW),
+        demo,
+    );
     assert_eq!(ok.status, 200);
     assert_eq!(text(&ok), "wrote hi as alice");
 }
@@ -240,7 +266,10 @@ fn a_discovery_token_lists_tools_but_can_never_call_one() {
     );
     let denied = finish(h.handle(&call("demo_read", "{}"), &discovery, NOW), demo);
     assert_eq!(denied.status, 403);
-    assert_eq!(error_message(&denied), "this token may list tools but not call them");
+    assert_eq!(
+        error_message(&denied),
+        "this token may list tools but not call them"
+    );
     // Even a write capability on a discovery token does not unlock calling.
     let armed = token(
         Mint {
@@ -251,7 +280,11 @@ fn a_discovery_token_lists_tools_but_can_never_call_one() {
         "j2",
     );
     assert_eq!(
-        finish(h.handle(&call("demo_write", r#"{"text":"x"}"#), &armed, NOW), demo).status,
+        finish(
+            h.handle(&call("demo_write", r#"{"text":"x"}"#), &armed, NOW),
+            demo
+        )
+        .status,
         403
     );
 }
@@ -268,7 +301,11 @@ fn a_captured_token_cannot_repeat_the_call_but_still_completes_its_own_session()
         "j-once",
     );
     let init = finish(
-        h.handle(&js_json::parse(r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#).unwrap(), &t, NOW),
+        h.handle(
+            &js_json::parse(r#"{"jsonrpc":"2.0","id":1,"method":"initialize"}"#).unwrap(),
+            &t,
+            NOW,
+        ),
         demo,
     );
     assert_eq!(init.status, 200);
@@ -281,16 +318,43 @@ fn a_captured_token_cannot_repeat_the_call_but_still_completes_its_own_session()
         &t,
         NOW,
     );
-    assert_eq!(note, Step::Reply(Reply { status: 202, body: None }));
     assert_eq!(
-        finish(h.handle(&js_json::parse(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap(), &t, NOW), demo).status,
+        note,
+        Step::Reply(Reply {
+            status: 202,
+            body: None
+        })
+    );
+    assert_eq!(
+        finish(
+            h.handle(
+                &js_json::parse(r#"{"jsonrpc":"2.0","id":2,"method":"tools/list"}"#).unwrap(),
+                &t,
+                NOW
+            ),
+            demo
+        )
+        .status,
         200
     );
     assert_eq!(h.guard().size(), 0);
-    assert_eq!(finish(h.handle(&call("demo_write", r#"{"text":"once"}"#), &t, NOW), demo).status, 200);
-    let replay = finish(h.handle(&call("demo_write", r#"{"text":"twice"}"#), &t, NOW), demo);
+    assert_eq!(
+        finish(
+            h.handle(&call("demo_write", r#"{"text":"once"}"#), &t, NOW),
+            demo
+        )
+        .status,
+        200
+    );
+    let replay = finish(
+        h.handle(&call("demo_write", r#"{"text":"twice"}"#), &t, NOW),
+        demo,
+    );
     assert_eq!(replay.status, 401);
-    assert_eq!(error_message(&replay), "this authorization has already been used");
+    assert_eq!(
+        error_message(&replay),
+        "this authorization has already been used"
+    );
 }
 
 #[test]
@@ -309,7 +373,10 @@ fn a_handler_that_throws_becomes_a_tool_error_not_a_dead_stream() {
         |_| Err("nope".into()),
     );
     assert_eq!(out.status, 200);
-    assert_eq!(out.body.as_ref().unwrap().get("result").get("isError"), &JValue::Bool(true));
+    assert_eq!(
+        out.body.as_ref().unwrap().get("result").get("isError"),
+        &JValue::Bool(true)
+    );
     assert_eq!(text(&out), "ERROR: nope");
     // The message is cut to 300 units, as `.slice(0, 300)`.
     let long = finish(
@@ -318,7 +385,10 @@ fn a_handler_that_throws_becomes_a_tool_error_not_a_dead_stream() {
     );
     assert_eq!(text(&long), format!("ERROR: {}", "x".repeat(300)));
     // A handler answering null or undefined is an empty text, not an error.
-    let empty = finish(h.handle(&call("boom", "{}"), &token(user("alice"), "j3"), NOW), |_| Ok(None));
+    let empty = finish(
+        h.handle(&call("boom", "{}"), &token(user("alice"), "j3"), NOW),
+        |_| Ok(None),
+    );
     assert_eq!(
         empty.payload(),
         r#"{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":""}]}}"#
@@ -328,7 +398,14 @@ fn a_handler_that_throws_becomes_a_tool_error_not_a_dead_stream() {
 #[test]
 fn an_unknown_tool_is_a_tool_error_the_model_can_read_not_a_protocol_failure() {
     let h = Handler::new(KEY, defs());
-    let out = finish(h.handle(&call("no_such_tool", "{}"), &token(user("alice"), "j1"), NOW), demo);
+    let out = finish(
+        h.handle(
+            &call("no_such_tool", "{}"),
+            &token(user("alice"), "j1"),
+            NOW,
+        ),
+        demo,
+    );
     assert_eq!(out.status, 200);
     assert_eq!(
         out.payload(),
@@ -350,7 +427,10 @@ fn every_catalogue_entry_reports_read_only_as_the_inverse_of_write_and_a_default
     });
     let cat = catalogue_of(&d);
     for (entry, def) in cat.iter().zip(&d) {
-        assert_eq!(entry.get("annotations").get("readOnlyHint").as_bool(), Some(!def.write));
+        assert_eq!(
+            entry.get("annotations").get("readOnlyHint").as_bool(),
+            Some(!def.write)
+        );
     }
     assert_eq!(
         js_json::stringify(&cat[2]).unwrap(),
@@ -396,7 +476,10 @@ fn a_token_for_an_account_that_no_longer_exists_cannot_act() {
         h.handle(&call("demo_read", "{}"), &token(user("deleted"), "j1"), NOW),
         |_| Err("that account no longer exists".into()),
     );
-    assert_eq!(out.body.as_ref().unwrap().get("result").get("isError"), &JValue::Bool(true));
+    assert_eq!(
+        out.body.as_ref().unwrap().get("result").get("isError"),
+        &JValue::Bool(true)
+    );
     assert_eq!(text(&out), "ERROR: that account no longer exists");
 }
 
@@ -446,18 +529,40 @@ fn signed(payload: &str) -> String {
 fn verify_applies_cores_claims_rules_in_order() {
     let cases: [(&str, Result<(), Refused>); 10] = [
         (r#"{"v":1,"exp":1700000000001,"jti":"a"}"#, Ok(())),
-        (r#"{"v":"1","exp":1700000000001,"jti":"a"}"#, Err(Refused::Version)),
-        (r#"{"v":2,"exp":1700000000001,"jti":"a"}"#, Err(Refused::Version)),
+        (
+            r#"{"v":"1","exp":1700000000001,"jti":"a"}"#,
+            Err(Refused::Version),
+        ),
+        (
+            r#"{"v":2,"exp":1700000000001,"jti":"a"}"#,
+            Err(Refused::Version),
+        ),
         ("0", Err(Refused::Version)),
         ("[1]", Err(Refused::Version)),
-        (r#"{"v":1,"exp":1700000000000,"jti":"a"}"#, Err(Refused::Expired)),
-        (r#"{"v":1,"exp":"9999999999999","jti":"a"}"#, Err(Refused::Expired)),
-        (r#"{"v":1,"exp":1700000000001,"jti":""}"#, Err(Refused::Malformed)),
-        (r#"{"v":1,"exp":1700000000001,"jti":7}"#, Err(Refused::Malformed)),
+        (
+            r#"{"v":1,"exp":1700000000000,"jti":"a"}"#,
+            Err(Refused::Expired),
+        ),
+        (
+            r#"{"v":1,"exp":"9999999999999","jti":"a"}"#,
+            Err(Refused::Expired),
+        ),
+        (
+            r#"{"v":1,"exp":1700000000001,"jti":""}"#,
+            Err(Refused::Malformed),
+        ),
+        (
+            r#"{"v":1,"exp":1700000000001,"jti":7}"#,
+            Err(Refused::Malformed),
+        ),
         ("{nope", Err(Refused::Malformed)),
     ];
     for (payload, want) in cases {
-        assert_eq!(verify(KEY, &signed(payload), NOW).map(|_| ()), want, "{payload}");
+        assert_eq!(
+            verify(KEY, &signed(payload), NOW).map(|_| ()),
+            want,
+            "{payload}"
+        );
     }
     // Over 4096 units is malformed before anything else.
     let long = format!("{}.{}", "a".repeat(4000), "b".repeat(97));
@@ -474,7 +579,10 @@ fn verify_applies_cores_claims_rules_in_order() {
 fn the_guard_forgets_expired_entries_only_past_4096() {
     let g = ReplayGuard::new();
     let claims = |jti: &str, exp: f64| {
-        Claims(JValue::obj([("jti", JValue::from(jti)), ("exp", JValue::Num(exp))]))
+        Claims(JValue::obj([
+            ("jti", JValue::from(jti)),
+            ("exp", JValue::Num(exp)),
+        ]))
     };
     for i in 0..=4096 {
         assert!(g.consume(&claims(&format!("j{i}"), NOW - 1.0), NOW));
@@ -502,10 +610,22 @@ fn ids_methods_params_and_the_edit_target_are_read_as_core_reads_them() {
     };
     // A missing id is null; an unknown or non-string method is "method not found" with String(method).
     for (msg, want) in [
-        (r#"{"method":"ping"}"#, r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32601,"message":"method not found: ping"}}"#),
-        (r#"{"id":"a","method":["x","y"]}"#, r#"{"jsonrpc":"2.0","id":"a","error":{"code":-32601,"message":"method not found: x,y"}}"#),
-        (r#"{"id":3}"#, r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"method not found: undefined"}}"#),
-        ("\"tools/list\"", r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32601,"message":"method not found: undefined"}}"#),
+        (
+            r#"{"method":"ping"}"#,
+            r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32601,"message":"method not found: ping"}}"#,
+        ),
+        (
+            r#"{"id":"a","method":["x","y"]}"#,
+            r#"{"jsonrpc":"2.0","id":"a","error":{"code":-32601,"message":"method not found: x,y"}}"#,
+        ),
+        (
+            r#"{"id":3}"#,
+            r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32601,"message":"method not found: undefined"}}"#,
+        ),
+        (
+            "\"tools/list\"",
+            r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32601,"message":"method not found: undefined"}}"#,
+        ),
     ] {
         let r = finish(h.handle(&js_json::parse(msg).unwrap(), &t(), NOW), demo);
         assert_eq!((r.status, r.payload().as_str()), (200, want), "{msg}");
@@ -521,7 +641,10 @@ fn ids_methods_params_and_the_edit_target_are_read_as_core_reads_them() {
     }
     // Arguments that are not an object are {}; t reaches the call as its edit target.
     let Step::Invoke(inv) = h.handle(
-        &js_json::parse(r#"{"id":1,"method":"tools/call","params":{"name":"demo_write","arguments":[1]}}"#).unwrap(),
+        &js_json::parse(
+            r#"{"id":1,"method":"tools/call","params":{"name":"demo_write","arguments":[1]}}"#,
+        )
+        .unwrap(),
         &t(),
         NOW,
     ) else {
@@ -531,8 +654,18 @@ fn ids_methods_params_and_the_edit_target_are_read_as_core_reads_them() {
     assert_eq!(inv.ctx.edit_target.as_deref(), Some("digest-1"));
     assert_eq!(inv.ctx.project_id, JValue::Null);
     // A token with no user may not call.
-    let r = finish(h.handle(&call("demo_read", "{}"), &token(Mint::default(), "j-n"), NOW), demo);
-    assert_eq!((r.status, error_message(&r).as_str()), (403, "no user is in scope for this call"));
+    let r = finish(
+        h.handle(
+            &call("demo_read", "{}"),
+            &token(Mint::default(), "j-n"),
+            NOW,
+        ),
+        demo,
+    );
+    assert_eq!(
+        (r.status, error_message(&r).as_str()),
+        (403, "no user is in scope for this call")
+    );
 }
 
 #[test]
@@ -558,7 +691,10 @@ fn the_listener_takes_one_post_path_a_capped_json_body_and_a_bearer_token() {
     };
     assert_eq!(
         (r.status, r.payload().as_str()),
-        (400, r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"parse error"}}"#)
+        (
+            400,
+            r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32700,"message":"parse error"}}"#
+        )
     );
     let big = vec![b' '; MAX_BODY_BYTES + 1];
     for body in [Some(big.as_slice()), None] {
@@ -567,7 +703,10 @@ fn the_listener_takes_one_post_path_a_capped_json_body_and_a_bearer_token() {
         };
         assert_eq!(
             (r.status, r.payload().as_str()),
-            (400, r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request"}}"#)
+            (
+                400,
+                r#"{"jsonrpc":"2.0","id":null,"error":{"code":-32600,"message":"invalid request"}}"#
+            )
         );
     }
     // Exactly the cap is read.
@@ -578,7 +717,11 @@ fn the_listener_takes_one_post_path_a_capped_json_body_and_a_bearer_token() {
     };
     assert_eq!(r.status, 200);
     // No "Bearer " prefix: no token.
-    for auth in [None, Some("bearer x"), Some(t.trim_start_matches("Bearer "))] {
+    for auth in [
+        None,
+        Some("bearer x"),
+        Some(t.trim_start_matches("Bearer ")),
+    ] {
         let Step::Reply(r) = h.listen("POST", "/mcp", RPC_PATH, Some(init), auth, NOW) else {
             panic!()
         };

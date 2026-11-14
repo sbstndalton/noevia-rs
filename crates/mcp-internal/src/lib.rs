@@ -145,7 +145,10 @@ pub fn mint(key: &[u8], m: &Mint<'_>, jti: &str, now_ms: f64) -> String {
         ("pid", id(m.pid)),
         ("cid", id(m.cid)),
         ("jti", JValue::Str(jti.to_owned())),
-        ("exp", JValue::Num(now_ms + m.ttl_ms.unwrap_or(TOKEN_TTL_MS))),
+        (
+            "exp",
+            JValue::Num(now_ms + m.ttl_ms.unwrap_or(TOKEN_TTL_MS)),
+        ),
         ("w", JValue::Num(if m.write { 1.0 } else { 0.0 })),
         ("d", JValue::Num(if m.discovery { 1.0 } else { 0.0 })),
     ];
@@ -214,7 +217,8 @@ pub fn verify(key: &[u8], token: &str, now_ms: f64) -> Result<Claims, Refused> {
         return Err(Refused::BadSignature);
     }
     let decoded = b64url_decode_lenient(body);
-    let claims = js_json::parse(&String::from_utf8_lossy(&decoded)).map_err(|_| Refused::Malformed)?;
+    let claims =
+        js_json::parse(&String::from_utf8_lossy(&decoded)).map_err(|_| Refused::Malformed)?;
     // `!claims || claims.v !== TOKEN_VERSION`
     if !claims.truthy() || claims.get("v").as_num() != Some(TOKEN_VERSION) {
         return Err(Refused::Version);
@@ -331,7 +335,10 @@ fn rpc_error(id: &JValue, code: f64, message: &str) -> JValue {
         ("id", nullish_to_null(id)),
         (
             "error",
-            JValue::obj([("code", JValue::Num(code)), ("message", JValue::from(message))]),
+            JValue::obj([
+                ("code", JValue::Num(code)),
+                ("message", JValue::from(message)),
+            ]),
         ),
     ])
 }
@@ -403,7 +410,14 @@ impl Invoke {
             Err(message) => text_result(
                 &format!(
                     "ERROR: {}",
-                    js_json::js_slice(if message.is_empty() { "Error" } else { &message }, 300)
+                    js_json::js_slice(
+                        if message.is_empty() {
+                            "Error"
+                        } else {
+                            &message
+                        },
+                        300
+                    )
                 ),
                 true,
             ),
@@ -479,7 +493,10 @@ impl Handler {
                         &id,
                         JValue::obj([
                             ("protocolVersion", JValue::from(PROTOCOL_VERSION)),
-                            ("capabilities", JValue::obj([("tools", JValue::Obj(vec![]))])),
+                            (
+                                "capabilities",
+                                JValue::obj([("tools", JValue::Obj(vec![]))]),
+                            ),
                             (
                                 "serverInfo",
                                 JValue::obj([
