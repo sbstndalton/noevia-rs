@@ -25,6 +25,7 @@ fn work() -> tempfile::TempDir {
         format!(
             r#"#!/usr/bin/env bash
 [ "${{1:-}}" = -e ] && exit 0
+case "${{1:-}}" in --ensure-*) echo "{name} ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; if [ "${{1:-}}" = "${{STUB_ENSURE_SLOW:-}}" ]; then trap 'echo "{name} ensure TERM" >> "{log}"; exit 0' TERM; echo "{name} ensure ready" >> "{log}"; for _ in $(seq 1 400); do sleep 0.05; done; fi; exit 0;; esac
 if [ "${{1:-}}" = --features ]; then printf '%s\n' ${{STUB_FEATURES-{FEATURES}}}; exit 0; fi
 echo "{name} UI_HOST=${{UI_HOST:-}} UI_PORT=${{UI_PORT:-}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} RETIRED=${{NOEVIA_RUST_AUTH-unset}}" >> "{log}"
 trap 'echo "{name} TERM" >> "{log}"; exit 0' TERM
@@ -222,4 +223,191 @@ fn a_second_pair_on_the_same_data_directory_is_refused_while_the_first_lives() {
         .unwrap_or_else(|e| unreachable!("{e}"));
     assert_eq!(out.status.code(), Some(3));
     assert!(String::from_utf8_lossy(&out.stderr).contains("node exited (3)"));
+}
+
+fn started(dir: &Path) -> bool {
+    wait_for(dir, "front UI_HOST") && wait_for(dir, "node UI_HOST")
+}
+
+#[test]
+fn ensure_is_off_by_default_and_runs_key_then_schema_before_the_pair_when_on() {
+    let w = work();
+    // Off (unset): the pair starts with no preparation, as the script does.
+    let child = supervisor(w.path())
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(started(w.path()), "{}", log(w.path()));
+    fs::write(w.path().join("die-front"), "").unwrap_or_else(|e| unreachable!("{e}"));
+    let _ = child.wait_with_output();
+    assert!(!log(w.path()).contains("ensure-"), "{}", log(w.path()));
+    let _ = fs::remove_file(w.path().join("die-front"));
+    fs::write(w.path().join("log"), "").unwrap_or_else(|e| unreachable!("{e}"));
+
+    let features = format!("{FEATURES} boot-ensure-v1");
+    let data = w.path().join("qa-data");
+    let child = supervisor(w.path())
+        .env("NOEVIA_SUPERVISOR_ENSURE", "1")
+        .env("STUB_FEATURES", &features)
+        .env("UI_DATA_DIR", &data)
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(started(w.path()), "{}", log(w.path()));
+    fs::write(w.path().join("die-front"), "").unwrap_or_else(|e| unreachable!("{e}"));
+    let _ = child.wait_with_output();
+    let l = log(w.path());
+    let want = format!("UI_DATA_DIR={}", data.display());
+    let key = l.find(&format!("front ensure-secrets-key {want}"));
+    let schema = l.find(&format!("front ensure-schema {want}"));
+    let node = l.find("node UI_HOST");
+    assert!(
+        key.is_some() && key < schema && schema < node,
+        "key, then schema, then the pair: {l}"
+    );
+    assert!(
+        data.join("embedding-pair.lock").exists(),
+        "the lock file is in the data directory the steps were given"
+    );
+
+    // --check names the steps and runs none.
+    fs::write(w.path().join("log"), "").unwrap_or_else(|e| unreachable!("{e}"));
+    let out = supervisor(w.path())
+        .arg("--check")
+        .env("NOEVIA_SUPERVISOR_ENSURE", "1")
+        .env("STUB_FEATURES", &features)
+        .output()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert_eq!(out.status.code(), Some(0), "{stdout}");
+    assert!(
+        stdout.contains("ensure ") && stdout.contains(" --ensure-secrets-key\n"),
+        "{stdout}"
+    );
+    assert!(stdout.contains(" --ensure-schema\n"), "{stdout}");
+    assert_eq!(log(w.path()), "", "--check runs no step");
+}
+
+#[test]
+fn a_failed_ensure_step_or_a_front_without_the_capability_refuses_before_the_pair() {
+    let w = work();
+    let out = supervisor(w.path())
+        .env("NOEVIA_SUPERVISOR_ENSURE", "1")
+        .output()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("does not advertise boot-ensure-v1"),
+        "{stderr}"
+    );
+    assert_eq!(
+        log(w.path()),
+        "",
+        "an older front is never asked to prepare"
+    );
+
+    let out = supervisor(w.path())
+        .env("NOEVIA_SUPERVISOR_ENSURE", "1")
+        .env("STUB_FEATURES", format!("{FEATURES} boot-ensure-v1"))
+        .env("STUB_ENSURE_FAIL", "--ensure-schema")
+        .output()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let l = log(w.path());
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("--ensure-schema failed (4); the pair was not started"),
+        "{stderr}"
+    );
+    assert!(
+        l.contains("ensure-secrets-key") && l.contains("ensure-schema"),
+        "{l}"
+    );
+    assert!(!l.contains("UI_HOST"), "neither child started: {l}");
+}
+
+#[test]
+fn a_non_utf8_value_the_checks_read_refuses() {
+    use std::os::unix::ffi::OsStringExt;
+    let w = work();
+    let out = supervisor(w.path())
+        .env(
+            "COWORK_CODE_NET_ADDR",
+            std::ffi::OsString::from_vec(vec![b'1', b'0', 0xff]),
+        )
+        .env("STUB_FEATURES", FEATURES.replace("code-net-guard ", ""))
+        .output()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(2), "{stderr}");
+    assert!(
+        stderr.contains("COWORK_CODE_NET_ADDR is not valid UTF-8"),
+        "{stderr}"
+    );
+    assert_eq!(log(w.path()), "");
+}
+
+/// noevia#2708: the children hold the pair lock themselves, so a replacement pair cannot start
+/// while either still runs, even when the supervisor itself is gone.
+#[test]
+fn the_children_keep_the_pair_lock_after_the_supervisor_is_killed() {
+    use nix::fcntl::{Flock, FlockArg};
+    let w = work();
+    let child = supervisor(w.path())
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(started(w.path()), "{}", log(w.path()));
+    let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap_or_default());
+    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGKILL)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    // wait(), not wait_with_output(): the orphans keep the supervisor's pipes open until they exit.
+    let mut child = child;
+    let _ = child.wait();
+    let lock = w.path().join("server/ui-data/embedding-pair.lock");
+    let try_lock = || {
+        let file = fs::OpenOptions::new()
+            .write(true)
+            .open(&lock)
+            .unwrap_or_else(|e| unreachable!("{e}"));
+        Flock::lock(file, FlockArg::LockExclusiveNonblock).is_ok()
+    };
+    assert!(!try_lock(), "the orphaned children still hold the lock");
+    fs::write(w.path().join("die-front"), "").unwrap_or_else(|e| unreachable!("{e}"));
+    fs::write(w.path().join("die-node"), "").unwrap_or_else(|e| unreachable!("{e}"));
+    let deadline = Instant::now() + Duration::from_secs(10);
+    let mut free = false;
+    while Instant::now() < deadline && !free {
+        std::thread::sleep(Duration::from_millis(100));
+        free = try_lock();
+    }
+    assert!(free, "the lock is released once both children exit");
+}
+
+#[test]
+fn a_stop_signal_during_preparation_stops_the_step_and_starts_nothing() {
+    let w = work();
+    let mut child = supervisor(w.path())
+        .env("NOEVIA_SUPERVISOR_ENSURE", "1")
+        .env("STUB_FEATURES", format!("{FEATURES} boot-ensure-v1"))
+        .env("STUB_ENSURE_SLOW", "--ensure-schema")
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    // The stub logs this only once its TERM trap is set.
+    assert!(
+        wait_for(w.path(), "front ensure ready"),
+        "{}",
+        log(w.path())
+    );
+    let started = Instant::now();
+    let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap_or_default());
+    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let status = child.wait().unwrap_or_else(|e| unreachable!("{e}"));
+    let l = log(w.path());
+    assert_eq!(status.code(), Some(0), "{l}");
+    assert!(started.elapsed() < Duration::from_secs(10), "{l}");
+    assert!(
+        wait_for(w.path(), "front ensure TERM"),
+        "the step got the TERM: {l}"
+    );
+    assert!(!log(w.path()).contains("UI_HOST"), "nothing started: {l}");
 }
