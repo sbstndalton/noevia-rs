@@ -16,6 +16,7 @@ path = "src/main.rs"
 
 [dependencies]
 nix = { version = "0.30", features = ["signal", "process", "fs"] }
+tokio = { version = "1", features = ["rt", "process", "signal", "time", "macros"] }
 
 [dev-dependencies]
 tempfile = "3"

@@ -915,7 +915,7 @@ mod tests {
             (
                 "rust-web-address.cjs",
                 "rust",
-                "rust-web-address-read",
+                "rust-web-address-read rust-web-address-write",
                 "web-address GET ownership",
             ),
             (

@@ -173,11 +173,7 @@ pub fn describe(launch: &plan::Launch) -> String {
     const SECRET: &[&str] = &["NOEVIA_PROJECT_STORE_TOKEN", "NOEVIA_START_ID"];
     let mut out = String::from("web-supervisor: pair ok\n");
     for (name, spec) in [("node", &launch.node), ("front", &launch.front)] {
-        out.push_str(
-            &format!("{name} {} {}", spec.program, spec.args.join(" "))
-                .trim_end()
-                .to_owned(),
-        );
+        out.push_str(format!("{name} {} {}", spec.program, spec.args.join(" ")).trim_end());
         for (k, v) in spec
             .set
             .iter()

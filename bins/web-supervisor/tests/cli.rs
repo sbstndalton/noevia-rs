@@ -143,7 +143,7 @@ fn refusals_exit_2_before_anything_starts() {
 #[test]
 fn the_front_exiting_stops_node_and_the_container_takes_its_code() {
     let w = work();
-    let mut child = supervisor(w.path())
+    let child = supervisor(w.path())
         .env("NOEVIA_RUST_AUTH", "1")
         .env("NOEVIA_START_ID", "spoofed")
         .env("NOEVIA_FRONT_CLIENT_IP", "spoofed")

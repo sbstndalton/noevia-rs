@@ -3,11 +3,13 @@
 
 use std::fs::OpenOptions;
 use std::path::Path;
-use std::process::{Child, Command, ExitStatus};
-use std::time::{Duration, Instant};
+use std::process::{Command, ExitStatus};
+use std::time::Duration;
+
+use tokio::process::Child;
 
 use nix::fcntl::{fcntl, FcntlArg, FdFlag, Flock, FlockArg};
-use nix::sys::signal::{kill, SigSet, Signal};
+use nix::sys::signal::{kill, Signal};
 use nix::unistd::Pid;
 
 use crate::env::Env;
@@ -15,7 +17,6 @@ use crate::plan::{ChildSpec, Launch};
 
 /// The front's share of Docker's default 10 s stop: Core keeps 3 s for its shutdown hooks.
 pub const FRONT_STOP_DEADLINE: Duration = Duration::from_secs(5);
-const POLL: Duration = Duration::from_millis(50);
 
 /// Best-effort signal to one process id.
 pub fn signal(pid: u32, sig: Signal) {
@@ -54,59 +55,35 @@ pub fn take_pair_lock(data: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn command(spec: &ChildSpec, env: &Env) -> Command {
+fn command(spec: &ChildSpec, env: &Env) -> tokio::process::Command {
     let mut cmd = Command::new(&spec.program);
     cmd.args(&spec.args)
         .env_clear()
         .envs(env.vars())
         .envs(spec.set.iter().map(|(k, v)| (k, v)));
-    cmd
+    tokio::process::Command::from(cmd)
 }
 
-struct Proc {
-    child: Child,
-    status: Option<ExitStatus>,
-}
-
-impl Proc {
-    fn poll(&mut self) -> Option<ExitStatus> {
-        if self.status.is_none() {
-            if let Ok(Some(s)) = self.child.try_wait() {
-                self.status = Some(s);
-            }
-        }
-        self.status
-    }
-
-    fn running(&mut self) -> bool {
-        self.poll().is_none()
-    }
-
-    fn wait(&mut self) {
-        if self.status.is_none() {
-            self.status = self.child.wait().ok();
-        }
-    }
+fn pid_of(child: &Child) -> Option<u32> {
+    child.id()
 }
 
 /// Front first: TERM, join within FRONT_STOP_DEADLINE or KILL it, and only then TERM Core, so two
 /// owners never overlap (revoking the proof cannot retract a batch the front already admitted).
-fn stop(front: &mut Proc, node: &mut Proc) {
-    if front.running() {
-        signal(front.child.id(), Signal::SIGTERM);
-        let deadline = Instant::now() + FRONT_STOP_DEADLINE;
-        while front.running() {
-            if Instant::now() >= deadline {
-                eprintln!("web-supervisor: front stop deadline reached; killing the front before stopping Core");
-                let _ = front.child.kill();
-                break;
-            }
-            std::thread::sleep(POLL);
+async fn stop(front: &mut Child, node: &mut Child) {
+    if let (Ok(None), Some(pid)) = (front.try_wait(), pid_of(front)) {
+        signal(pid, Signal::SIGTERM);
+        if tokio::time::timeout(FRONT_STOP_DEADLINE, front.wait())
+            .await
+            .is_err()
+        {
+            eprintln!("web-supervisor: front stop deadline reached; killing the front before stopping Core");
+            let _ = front.kill().await;
         }
-        front.wait();
     }
-    if node.running() {
-        signal(node.child.id(), Signal::SIGTERM);
+    let _ = front.wait().await;
+    if let (Ok(None), Some(pid)) = (node.try_wait(), pid_of(node)) {
+        signal(pid, Signal::SIGTERM);
     }
 }
 
@@ -117,21 +94,34 @@ pub fn supervise(env: &Env, data: &Path, launch: &Launch) -> i32 {
         eprintln!("{msg}");
         return 2;
     }
-    // Signals are taken synchronously: blocked here, waited for below. Children start with an
-    // empty mask (std resets it at spawn).
-    let mut set = SigSet::empty();
-    for sig in [Signal::SIGTERM, Signal::SIGINT, Signal::SIGCHLD] {
-        set.add(sig);
-    }
-    if set.thread_block().is_err() {
-        eprintln!("web-supervisor: cannot block the stop signals");
-        return 2;
-    }
+    let runtime = match tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("web-supervisor: cannot start the runtime: {e}");
+            return 2;
+        }
+    };
+    runtime.block_on(run_pair(env, launch))
+}
+
+async fn run_pair(env: &Env, launch: &Launch) -> i32 {
+    use tokio::signal::unix::{signal as listen, SignalKind};
+    // The stop signals are taken before either child exists (the script's trap came first too).
+    let (mut term, mut int) = match (
+        listen(SignalKind::terminate()),
+        listen(SignalKind::interrupt()),
+    ) {
+        (Ok(t), Ok(i)) => (t, i),
+        _ => {
+            eprintln!("web-supervisor: cannot listen for the stop signals");
+            return 2;
+        }
+    };
     let mut node = match command(&launch.node, env).spawn() {
-        Ok(child) => Proc {
-            child,
-            status: None,
-        },
+        Ok(child) => child,
         Err(e) => {
             // The script's `node … &` would exit 127 at once and stop the front it started next.
             eprintln!("web-supervisor: cannot start node: {e}");
@@ -140,54 +130,40 @@ pub fn supervise(env: &Env, data: &Path, launch: &Launch) -> i32 {
         }
     };
     let mut front = match command(&launch.front, env).spawn() {
-        Ok(child) => Proc {
-            child,
-            status: None,
-        },
+        Ok(child) => child,
         Err(e) => {
             eprintln!("web-supervisor: cannot start {}: {e}", launch.front.program);
             eprintln!("web-supervisor: noevia-server exited (126); stopping the other");
-            signal(node.child.id(), Signal::SIGTERM);
-            node.wait();
+            if let Some(pid) = pid_of(&node) {
+                signal(pid, Signal::SIGTERM);
+            }
+            let _ = node.wait().await;
             return 126;
         }
     };
     // Whichever exits first (or a signal) ends the wait.
-    let mut signalled = false;
-    let code = loop {
-        if let Some(s) = node.poll() {
-            break status_code(s);
-        }
-        if let Some(s) = front.poll() {
-            break status_code(s);
-        }
-        match set.wait() {
-            Ok(Signal::SIGTERM | Signal::SIGINT) => {
-                signalled = true;
-                break 0;
-            }
-            Ok(_) => {}
-            Err(_) => std::thread::sleep(POLL),
-        }
+    let first = tokio::select! {
+        s = node.wait() => Some(s.map(status_code).unwrap_or(1)),
+        s = front.wait() => Some(s.map(status_code).unwrap_or(1)),
+        _ = term.recv() => None,
+        _ = int.recv() => None,
     };
-    if !signalled {
-        let which = if node.running() {
+    if let Some(code) = first {
+        let which = if matches!(node.try_wait(), Ok(None)) {
             "noevia-server"
         } else {
             "node"
         };
         eprintln!("web-supervisor: {which} exited ({code}); stopping the other");
     }
-    stop(&mut front, &mut node);
-    node.wait();
-    front.wait();
+    stop(&mut front, &mut node).await;
+    let _ = node.wait().await;
+    let _ = front.wait().await;
     // docker stop: a clean exit. Anything else: non-zero, even when the process that left said 0.
-    if signalled {
-        0
-    } else if code == 0 {
-        1
-    } else {
-        code
+    match first {
+        None => 0,
+        Some(0) => 1,
+        Some(code) => code,
     }
 }
 
