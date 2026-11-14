@@ -36,7 +36,7 @@
 //!   `f64`) is read as text.
 
 use super::{Hold, HoldError, Maint};
-use crate::model_sizing::{parse_presets, read_presets, strict, Presets, Thrown};
+use crate::model_sizing::{parse_presets, read_presets, strict, Presets};
 use js_json::{wtf16, JValue};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -51,7 +51,8 @@ const UNCONFIGURED: &str = "Native preset editing; configure LLAMACPP_PRESET_PAT
 /// model-system.cjs `SYSTEM_MODEL_REASON` (Node's text for every refusal of the system model).
 const SYSTEM_MODEL_REASON: &str = "System routing model — not tuned";
 const NOT_INSTALLED: &str = "Choose an installed model";
-const QUALIFICATION: &str = "unqualified; load and test this profile before relying on its capacity";
+const QUALIFICATION: &str =
+    "unqualified; load and test this profile before relying on its capacity";
 const INTERNAL: &str = "Internal error";
 const NO_BUDGET: &str = "The inference memory budget could not be read.";
 /// llamacpp-autoconfig.cjs `AutoconfigImplError(what)`.
@@ -63,6 +64,7 @@ fn impl_error(what: &str) -> String {
 const HOLD_LIMIT: Duration = Duration::from_secs(420);
 /// llamacpp-presets.cjs `DEFAULT_BATCH_SIZE`.
 const DEFAULT_BATCH: &str = "2048";
+static UNDEFINED: JValue = JValue::Undefined;
 /// `Number.MAX_SAFE_INTEGER`.
 const MAX_SAFE: f64 = 9_007_199_254_740_991.0;
 
@@ -166,9 +168,7 @@ fn js_trim(s: &str) -> &str {
 }
 
 fn get<'a>(opts: &'a [(String, String)], key: &str) -> Option<&'a str> {
-    opts.iter()
-        .find(|(k, _)| k == key)
-        .map(|(_, v)| v.as_str())
+    opts.iter().find(|(k, _)| k == key).map(|(_, v)| v.as_str())
 }
 
 /// `{ ...a, ...b }` over string options.
@@ -215,7 +215,7 @@ pub fn size_knob_problem(options: &[(String, String)]) -> Option<String> {
         } else {
             f64::NAN
         };
-        if !shaped || !(n <= MAX_SAFE) || (n == 0.0 && !ctx) {
+        if !shaped || n > MAX_SAFE || (n == 0.0 && !ctx) {
             return Some(format!(
                 "{key} must be {} (got {}).",
                 if ctx {
@@ -304,7 +304,7 @@ struct Listing {
 }
 
 impl Maint {
-    async fn listing(&self, hold: Option<&str>) -> Result<Listing, ()> {
+    async fn preset_listing(&self, hold: Option<&str>) -> Result<Listing, ()> {
         let router = self.router.as_ref().ok_or(())?;
         let raw = router.models_raw(hold).await.map_err(|_| ())?;
         let body = raw.bytes.as_deref().map(body_of);
@@ -354,11 +354,11 @@ impl Maint {
         let h = token.as_deref();
         let wanted = body.get("model");
         // The system routing model is never edited here.
-        let Ok(first) = self.listing(h).await else {
+        let Ok(first) = self.preset_listing(h).await else {
             return internal();
         };
         if first.ok {
-            let data = first.body.as_ref().map_or(&JValue::Undefined, |b| b.get("data"));
+            let data = first.body.as_ref().map_or(&UNDEFINED, |b| b.get("data"));
             let rows: &[JValue] = match data {
                 JValue::Arr(rows) => rows,
                 d if !d.truthy() => &[],
@@ -409,7 +409,7 @@ impl Maint {
             }
         }
         // applyUnlocked.
-        let Ok(second) = self.listing(h).await else {
+        let Ok(second) = self.preset_listing(h).await else {
             return internal();
         };
         if !second.ok {
@@ -442,24 +442,21 @@ impl Maint {
                 return error(409, super::calibration::UNLOAD_FIRST);
             }
         }
-        let Some(model) = model.filter(|m| {
-            llamacpp_presets::model_name_ok(&m.encode_utf16().collect::<Vec<u16>>())
-        }) else {
+        let Some(model) = model
+            .filter(|m| llamacpp_presets::model_name_ok(&m.encode_utf16().collect::<Vec<u16>>()))
+        else {
             return thrown(Some(400), "Invalid preset model name");
         };
         let Some(options) = options else {
             return thrown(Some(400), "Preset options are required");
         };
         let (file, m) = (ini.file().to_path_buf(), model.clone());
-        let candidate = match blocking(move || {
-            super::ini::prepare(&file, &m, &base, &options, limits)
-        })
-        .await
-        {
-            Some(Ok(c)) => c,
-            Some(Err(t)) => return thrown(t.status, &t.message),
-            None => return internal(),
-        };
+        let candidate =
+            match blocking(move || super::ini::prepare(&file, &m, &base, &options, limits)).await {
+                Some(Ok(c)) => c,
+                Some(Err(t)) => return thrown(t.status, &t.message),
+                None => return internal(),
+            };
         // The write and its re-read are one step; it starts only while the hold covers it.
         if !hold.may_start(super::reload::PRESET_STEP) {
             return thrown(Some(503), "");
@@ -486,8 +483,8 @@ impl Maint {
         match self.router_reload(router, hold, None).await {
             Ok(Ok(reply)) if reply.ok => {
                 let (file, m) = (ini.file().to_path_buf(), model.clone());
-                let read = blocking(move || read_presets(&file).map(|p| saved_profile(&p, &m)))
-                    .await;
+                let read =
+                    blocking(move || read_presets(&file).map(|p| saved_profile(&p, &m))).await;
                 if let Some(Ok(body)) = read {
                     return Answer { status: 200, body };
                 }
@@ -541,8 +538,10 @@ impl Maint {
                 .map(|v| v.encode_utf16().collect::<Vec<u16>>())
         };
         let batch = units("batch-size").unwrap_or_else(|| DEFAULT_BATCH.encode_utf16().collect());
-        match llamacpp_presets::micro_batch_exceeds(units("ubatch-size").as_deref(), Some(&batch))
-        {
+        match llamacpp_presets::micro_batch_exceeds(
+            units("ubatch-size").as_deref(),
+            Some(batch.as_slice()),
+        ) {
             Some(false) => {}
             Some(true) => {
                 return Some(refused(&JValue::obj([
@@ -617,10 +616,7 @@ impl Maint {
             return impl_refusal("load footprint");
         };
         let unbounded = est.get("cacheRamUnbounded").truthy();
-        let total = est
-            .get("totalGib")
-            .as_num()
-            .filter(|n| n.is_finite());
+        let total = est.get("totalGib").as_num().filter(|n| n.is_finite());
         if !unbounded && total.is_some_and(|t| t <= budget_gib) {
             return None;
         }
@@ -679,8 +675,10 @@ mod tests {
         assert!(size_knob_problem(&o(&[("ctx-size", "9007199254740992")])).is_some());
         assert!(size_knob_problem(&o(&[("ctx-size", "9007199254740991")])).is_none());
         // The first failing key in Node's order wins.
-        assert!(size_knob_problem(&o(&[("batch-size", "x"), ("ctx-size", "y")]))
-            .is_some_and(|p| p.starts_with("ctx-size")));
+        assert!(
+            size_knob_problem(&o(&[("batch-size", "x"), ("ctx-size", "y")]))
+                .is_some_and(|p| p.starts_with("ctx-size"))
+        );
         // Cut at 40 UTF-16 units: an emoji straddling the cut leaves a lone surrogate.
         let long = format!("{}\u{1F600}", "x".repeat(39));
         assert_eq!(

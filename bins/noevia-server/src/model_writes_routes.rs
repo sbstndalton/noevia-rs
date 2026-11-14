@@ -266,7 +266,7 @@ async fn preset(
         Ok(b) if b.len() <= model_writes::body::LIMIT => b,
         _ => return preset_answer(&thrown(Some(413), "Request exceeds size limit")),
     };
-    let request = match model_writes::body::read_json(Some(&bytes)) {
+    let request = match model_writes::body::read_json(Some(bytes.as_ref())) {
         model_writes::body::Read::Value(v) => v,
         model_writes::body::Read::Invalid => {
             return preset_answer(&thrown(Some(400), "invalid JSON"))

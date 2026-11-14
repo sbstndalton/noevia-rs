@@ -341,16 +341,21 @@ async fn signed_out_and_other_paths_are_not_the_puts() {
     // Signed out: the front's own 401, before anything of the route.
     let (status, _, _) = call(f.addr, "PUT", PATH, None, &request_body(&case)).await;
     assert_eq!(status, 401);
-    // Other methods and paths stay where they were (POST, DELETE: Node's; the scripted Node
-    // answers 204 to anything it does not know).
-    for (m, p) in [
-        ("POST", PATH),
-        ("DELETE", PATH),
-        ("PUT", "/api/models/preset/"),
-    ] {
-        let (status, _, _) = call(f.addr, m, p, Some(ADMIN), &request_body(&case)).await;
-        assert_eq!(status, 204, "{m} {p}");
+    // Other methods stay Node's (the scripted Node answers 204 to anything it does not know).
+    for m in ["POST", "DELETE"] {
+        let (status, _, _) = call(f.addr, m, PATH, Some(ADMIN), &request_body(&case)).await;
+        assert_eq!(status, 204, "{m}");
     }
+    // A trailing slash is not the save (the front's own answer to that path, as before).
+    let (status, _, _) = call(
+        f.addr,
+        "PUT",
+        "/api/models/preset/",
+        Some(ADMIN),
+        &request_body(&case),
+    )
+    .await;
+    assert_eq!(status, 404);
     let _ = f.stop.send(());
     assert!(f.seen.lock().unwrap().is_empty(), "nothing was asked");
     assert_eq!(
@@ -418,7 +423,10 @@ async fn no_arbiter_changes_nothing() {
     let (status, _, body) = call(addr, "PUT", PATH, Some(ADMIN), &request_body(&case)).await;
     let _ = stop.send(());
     assert_eq!(status, 503, "{body}");
-    assert!(body.contains("could not confirm that chat is idle"), "{body}");
+    assert!(
+        body.contains("could not confirm that chat is idle"),
+        "{body}"
+    );
     let (router, _) = lines(&seen.lock().unwrap());
     assert!(router.is_empty(), "{router:?}");
     assert_eq!(
