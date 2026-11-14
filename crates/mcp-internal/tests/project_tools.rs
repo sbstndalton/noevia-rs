@@ -579,3 +579,67 @@ fn an_approved_edit_runs_through_the_handler_with_the_token_pin() {
         r#"{"content":[{"type":"text","text":"ERROR: this chat is not in a project, so there are no project files"}],"isError":true}"#
     );
 }
+
+fn listen(h: &Handler, f: &Fake, body: &str, token: &str) -> (u16, String) {
+    let auth = format!("Bearer {token}");
+    let other = |inv: &mcp_internal::Invoke| -> Result<Option<String>, String> {
+        Ok(Some(format!("core runs {}", inv.name)))
+    };
+    let r = project_tools::serve(h, f, &other, "POST", "/mcp?x=1", Some(body.as_bytes()), Some(&auth), NOW);
+    (r.status, r.payload())
+}
+
+#[test]
+fn the_listener_runs_project_tools_and_hands_other_admitted_names_on() {
+    // A catalogue with one more read (core's other group stands in for it): admitted, run by `other`.
+    let mut defs = project_tools::definitions();
+    defs.push(mcp_internal::Definition {
+        name: "elsewhere_read".into(),
+        description: Some("Read elsewhere.".into()),
+        schema: None,
+        write: false,
+    });
+    let h = Handler::new(KEY, defs);
+    let f = harness();
+    let read = Mint {
+        uid: Some("alice"),
+        pid: Some("proj-a"),
+        ..Mint::default()
+    };
+    let call = |name: &str, a: &str| {
+        format!(r#"{{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{{"name":"{name}","arguments":{a}}}}}"#)
+    };
+    let (status, body) = listen(&h, &f, &call("elsewhere_read", "{}"), &mint(KEY, &read, "l1", NOW));
+    assert_eq!(status, 200);
+    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"core runs elsewhere_read"}]}}"#);
+    // A name outside the catalogue never reaches either: core's unknown-tool result.
+    let (_, body) = listen(&h, &f, &call("diary_read_today", "{}"), &mint(KEY, &read, "l2", NOW));
+    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"ERROR: unknown tool \"diary_read_today\""}],"isError":true}}"#);
+    // A write under a read token: 403, nothing written.
+    let (status, body) = listen(&h, &f, &call("project_create_file", r#"{"name":"x.md","text":"y"}"#), &mint(KEY, &read, "l3", NOW));
+    assert_eq!(status, 403);
+    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"error":{"code":-32003,"message":"\"project_create_file\" changes data and was not approved"}}"#);
+    assert!(f.written.borrow().is_empty());
+    // An approved create runs once; the same token again is a replay.
+    let write = Mint {
+        write: true,
+        ..read.clone()
+    };
+    let token = mint(KEY, &write, "l4", NOW);
+    let (status, body) = listen(&h, &f, &call("project_create_file", r#"{"name":"x.md","text":"y"}"#), &token);
+    assert_eq!(status, 200);
+    assert_eq!(body, r#"{"jsonrpc":"2.0","id":3,"result":{"content":[{"type":"text","text":"Created \"x.md\" (1 chars)."}]}}"#);
+    let (status, _) = listen(&h, &f, &call("project_create_file", r#"{"name":"z.md","text":"y"}"#), &token);
+    assert_eq!(status, 401);
+    assert_eq!(f.written.borrow().len(), 1);
+    // tools/list is the catalogue, the project half first.
+    let (status, body) = listen(&h, &f, r#"{"jsonrpc":"2.0","id":4,"method":"tools/list"}"#, &mint(KEY, &read, "l5", NOW));
+    assert_eq!(status, 200);
+    let listed = js_json::parse(&body).unwrap();
+    let names: Vec<String> = match listed.get("result").get("tools") {
+        JValue::Arr(items) => items.iter().map(|t| t.get("name").as_str().unwrap().to_owned()).collect(),
+        other => panic!("{other:?}"),
+    };
+    assert_eq!(&names[..6], project_tools::NAMES);
+    assert_eq!(names[6], "elsewhere_read");
+}

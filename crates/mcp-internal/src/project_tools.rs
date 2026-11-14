@@ -17,7 +17,7 @@
 //! Named differences from the Node module: none in behaviour. Errors are the message text core's
 //! handler throws (the caller hands them to [`crate::Invoke::finish`]); a `String(x)` that throws in
 //! JS (an object with an own `toString`) answers V8's TypeError text.
-use crate::{Ctx, Definition};
+use crate::{Ctx, Definition, Handler, Invoke, Reply, Step, RPC_PATH};
 use js_json::JValue;
 
 /// `MAX_TEXT_BYTES`: one write's UTF-8 size limit.
@@ -244,6 +244,30 @@ pub fn call(
         "project_replace_text" => tools.replace_text(args, ctx).map(Some),
         _ => return None,
     })
+}
+
+/// One request to the in-app listener at [`RPC_PATH`] (core `startInternalServer`'s handler and
+/// `handle`): `handler`'s rules and catalogue, the project tools run with `ports`, and every other tool
+/// name the handler's catalogue admits handed to `other` (core's remaining definitions, the Diary group,
+/// which stay core's). Nothing binds a port: the caller owns the socket and the clock.
+#[allow(clippy::too_many_arguments)]
+pub fn serve(
+    handler: &Handler,
+    ports: &dyn Ports,
+    other: &dyn Fn(&Invoke) -> Result<Option<String>, String>,
+    method: &str,
+    url: &str,
+    body: Option<&[u8]>,
+    authorization: Option<&str>,
+    now_ms: f64,
+) -> Reply {
+    match handler.listen(method, url, RPC_PATH, body, authorization, now_ms) {
+        Step::Reply(r) => r,
+        Step::Invoke(inv) => {
+            let answered = call(ports, &inv.name, &inv.args, &inv.ctx).unwrap_or_else(|| other(&inv));
+            inv.finish(answered)
+        }
+    }
 }
 
 struct Tools<'a> {
