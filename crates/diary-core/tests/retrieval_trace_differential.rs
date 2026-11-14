@@ -22,6 +22,11 @@ fn object(value: &Value) -> Result<Map<String, Value>, String> {
 #[test]
 fn clock_time_matches_python_ref() -> TestResult {
     let fx = fixtures()?;
+    // The frozen diary/agent/retrieval_trace.py the generator refuses any other source than.
+    assert_eq!(
+        fx.get("source_sha256").and_then(Value::as_str),
+        Some("ec4172f5135e70754aceab4a218e57e5730509dfd741851e53870a06bd1394d4")
+    );
     let cases = fx.get("clock").and_then(Value::as_array).ok_or("clock")?;
     assert!(cases.len() >= 20);
     for case in cases {
@@ -39,7 +44,8 @@ fn clock_time_matches_python_ref() -> TestResult {
             .and_then(Value::as_bool)
             .unwrap_or(false)
         {
-            // Python `\d` accepts Unicode digits; this port is ASCII-only (documented in the spec).
+            // Python `\d` accepts Unicode digits, and its `\w` is narrower than the port's word
+            // test after the minutes; both are documented in `clock_time`.
             assert_eq!(actual.get("time"), Some(&Value::Null), "{row}");
             assert_ne!(actual, expected, "{row}");
         } else {
