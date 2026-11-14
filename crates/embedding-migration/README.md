@@ -48,3 +48,9 @@ On MS02 run it on the builder:
   Not recorded; `tests/node_replay.rs` pins it.
 - A `Host` panic inside the config lock's hold ends the hold and calls `Host::unlock` once before
   the panic goes on.
+- A locked configuration (a seeded active address refused at start-up) refuses `set-next` with
+  its own 409 `badState` and the refusal reason, as `clear-next` does. Core's `setNext` takes its
+  refusal shortcut outside the hold, where `change()` checks the publication lock first, so it
+  answers 500 with the text "Embedding configuration requires the publication lock"
+  (sbstndalton/noevia#2696). The host calls and the file are the same; the replay checks the
+  three recorded steps for the 409 instead.
