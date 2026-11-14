@@ -47,10 +47,10 @@ struct Script {
 }
 
 impl Script {
-    fn get(&self, url: &str, a: Result<Reply, FetchError>) {
+    fn on_get(&self, url: &str, a: Result<Reply, FetchError>) {
         self.answers.lock().unwrap().insert(url.into(), A::Get(a));
     }
-    fn send(&self, url: &str, a: Result<Sent, FetchError>) {
+    fn on_send(&self, url: &str, a: Result<Sent, FetchError>) {
         self.answers.lock().unwrap().insert(url.into(), A::Send(a));
     }
     fn urls(&self) -> Vec<String> {
@@ -146,7 +146,7 @@ const PROBE: &str = "http://qa-pi.lan:8080/v1/chat/completions";
 async fn props_reads_the_model_props_with_the_cap() {
     let s = Script::default();
     let t = target("smart", "qa-m1", BASE, "qa-remote");
-    s.get(
+    s.on_get(
         "http://qa-pi.lan:8080/props?model=qa%20remote%2F%C3%BC%3F%26",
         got(200, Some(Ok(r#"{"chat_template":"{{ tools }}"}"#.into()))),
     );
@@ -195,7 +195,7 @@ async fn props_answers_not_ok_and_throws_as_node() {
     ];
     for (answer, want) in cases {
         let s = Script::default();
-        s.get(url, answer.clone());
+        s.on_get(url, answer.clone());
         assert_eq!(props(&s, &t, "qa-remote").await, want, "{answer:?}");
     }
     assert_eq!(
@@ -230,7 +230,7 @@ fn the_classifier_counts_on_the_first_role_with_the_origin() {
     // A URL that does not parse counts nowhere (the request fails by itself).
     assert_eq!(on("not a url"), None);
     // A target whose base does not parse throws before any request, as `new URL(t.baseUrl)` does.
-    let bad = vec![target("fast", "qa-bad", "qa-pi:no", "qa-f")];
+    let bad = vec![target("fast", "qa-bad", "not a url", "qa-f")];
     assert!(classifier_machine("http://qa-pi.lan:8080/", &bad).is_err());
     // ... but only when it is reached: a match before it answers.
     let first = vec![
@@ -292,7 +292,7 @@ async fn fetch_json_reads_json_text_and_too_large() {
     ];
     for (answer, want) in cases {
         let s = Script::default();
-        s.send(url, answer.clone());
+        s.on_send(url, answer.clone());
         let r = fetch_json_once(&s, url, &init, FETCH_JSON_TIMEOUT)
             .await
             .unwrap();
@@ -308,7 +308,7 @@ async fn fetch_json_reads_json_text_and_too_large() {
     }
     // No answer: fetchJson rejects.
     let s = Script::default();
-    s.send(url, Err(FetchError::Refused));
+    s.on_send(url, Err(FetchError::Refused));
     assert_eq!(
         fetch_json_once(&s, url, &Init::default(), FETCH_JSON_TIMEOUT).await,
         Err(FetchError::Refused)
@@ -354,7 +354,7 @@ async fn fetch_json_counts_a_turn_while_it_runs_answer_or_not() {
         let n = Arc::new(AtomicUsize::new(0));
         let s = Script::default();
         *s.during.lock().unwrap() = Some(n.clone());
-        s.send(url, answer);
+        s.on_send(url, answer);
         let began = Mutex::new(Vec::new());
         let held = n.clone();
         let _ = fetch_json(
@@ -458,7 +458,7 @@ async fn the_probe_sends_one_pixel_and_reads_the_refusal() {
     ];
     for (answer, want) in cases {
         let s = Arc::new(Script::default());
-        s.send(PROBE, answer.clone());
+        s.on_send(PROBE, answer.clone());
         let (_, now) = clock();
         let probe = VisionProbe::with(s.clone(), now, None);
         assert_eq!(
@@ -490,7 +490,7 @@ async fn the_probe_sends_one_pixel_and_reads_the_refusal() {
 async fn a_hint_past_the_cap_is_not_read() {
     let s = Arc::new(Script::default());
     // What a fetch gives for 64 KiB of text then the hint: the first 64 KiB, capped.
-    s.send(
+    s.on_send(
         PROBE,
         Ok(Sent {
             status: 400,
@@ -513,7 +513,7 @@ async fn a_hint_past_the_cap_is_not_read() {
 async fn the_probe_cache_keeps_answers_five_minutes_or_thirty_seconds() {
     for (answer, life) in [(sent(200, ""), 300_000u64), (sent(400, "mmproj"), 30_000)] {
         let s = Arc::new(Script::default());
-        s.send(PROBE, answer);
+        s.on_send(PROBE, answer);
         let (at, now) = clock();
         let probe = VisionProbe::with(s.clone(), now, None);
         probe.probe(BASE, &[], "qa-vision").await;
@@ -531,8 +531,8 @@ async fn the_probe_cache_keeps_answers_five_minutes_or_thirty_seconds() {
 #[tokio::test]
 async fn the_probe_cache_is_keyed_by_address_headers_and_model() {
     let s = Arc::new(Script::default());
-    s.send(PROBE, sent(200, ""));
-    s.send("http://qa-rock.lan:9000/v1/chat/completions", sent(200, ""));
+    s.on_send(PROBE, sent(200, ""));
+    s.on_send("http://qa-rock.lan:9000/v1/chat/completions", sent(200, ""));
     let (_, now) = clock();
     let probe = VisionProbe::with(s.clone(), now, None);
     let auth = vec![("Authorization".to_owned(), "Bearer qa-1".to_owned())];
@@ -562,7 +562,7 @@ async fn the_probe_cache_is_keyed_by_address_headers_and_model() {
 #[tokio::test]
 async fn the_probe_cache_drops_its_oldest_key_past_128() {
     let s = Arc::new(Script::default());
-    s.send(PROBE, sent(200, ""));
+    s.on_send(PROBE, sent(200, ""));
     let (_, now) = clock();
     let probe = VisionProbe::with(s.clone(), now, None);
     for i in 0..=VISION_MAX_ENTRIES {
@@ -584,7 +584,7 @@ async fn a_refused_admission_is_reported_and_not_cached() {
         (Some(None), NOT_ADMITTED_TEXT),
     ] {
         let s = Arc::new(Script::default());
-        s.send(PROBE, sent(200, ""));
+        s.on_send(PROBE, sent(200, ""));
         let seen = runs.clone();
         let admit: Admit = Arc::new(move |base, model| {
             assert_eq!((base.as_str(), model.as_str()), (BASE, "qa-vision"));
@@ -658,13 +658,13 @@ async fn vision_for_trusts_the_machine_props_then_probes() {
         ),
     ] {
         let s = Arc::new(Script::default());
-        s.get(models, got(200, Some(Ok(r#"{"data":["qa-v"]}"#.into()))));
+        s.on_get(models, got(200, Some(Ok(r#"{"data":["qa-v"]}"#.into()))));
         match props_body {
-            Some(b) => s.get(props_url, got(200, Some(Ok(b.into())))),
-            None => s.get(props_url, got(500, None)),
+            Some(b) => s.on_get(props_url, got(200, Some(Ok(b.into())))),
+            None => s.on_get(props_url, got(500, None)),
         }
         if let Some(a) = probe_answer {
-            s.send(probe_at, a);
+            s.on_send(probe_at, a);
         }
         let (_, now) = clock();
         let health = HealthCache::with(
