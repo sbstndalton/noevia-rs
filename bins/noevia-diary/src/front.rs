@@ -444,18 +444,28 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             .as_ref()
             .is_some_and(|uid| front.is_recovered(uid, app.writers.native_writes(uid).0));
         // Shift 4, step 4: without a fresh stamp, a writer tenant of this process is recovered
-        // here (under its writer slot, as Python's first request would) and read without one.
+        // here (under its writer slot, as Python's first request would) and read without one;
+        // one recovered here reads as Python's recovered state does, stamped or not. Only for a
+        // request whose credentials hold (Python checks them before it builds the state).
+        let credited = matches!(server::check_auth(&app, &parts.headers), Ok(true))
+            && (app.tenant_key.is_empty() || asserted);
         let here = match tenant {
             Some(uid)
-                if !stamped
+                if credited
                     && front.recovery_here
                     && front.is_writer(&uid)
                     && app.save_embedder.get().is_some() =>
             {
-                let app2 = app.clone();
-                tokio::task::spawn_blocking(move || crate::recovery::recover_for_reads(&app2, &uid))
+                if stamped {
+                    crate::recovery::is_serving(&app, &uid)
+                } else {
+                    let app2 = app.clone();
+                    tokio::task::spawn_blocking(move || {
+                        crate::recovery::recover_for_reads(&app2, &uid)
+                    })
                     .await
                     .unwrap_or(false)
+                }
             }
             _ => false,
         };
@@ -579,6 +589,13 @@ async fn forward(
         return raw(503, CHILD_DOWN);
     };
     let tenant = stamp_tenant(&headers);
+    // Shift 4, step 4: a request the child serves that is not a read may undo what this process's
+    // recovery covered (Python marks its state unrecovered after workspace operations).
+    if method != Method::GET {
+        if let (Some(uid), Some(app)) = (tenant.as_deref(), front.app()) {
+            crate::recovery::unserve(app, uid);
+        }
+    }
     // A request that may change the tenant's state voids its stamp until the child's reply sets
     // it again (a reply that never arrives, or one without a stamp, leaves the tenant forwarded).
     if let Some(uid) = tenant.as_deref() {

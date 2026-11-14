@@ -2289,7 +2289,7 @@ async fn a_writer_tenant_is_recovered_here_for_its_reads() {
     let (s, declined, body) = send_raw(addr, "GET", "/api/months", &here, b"").await;
     assert_eq!((s, declined), (200, false), "{body}");
     assert!(body.contains("2031-03"), "{body}");
-    // Recovered once per process: the next call takes no slot and re-indexes nothing.
+    // Recovered once: the next call re-indexes nothing.
     let a = app.clone();
     assert!(
         tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
