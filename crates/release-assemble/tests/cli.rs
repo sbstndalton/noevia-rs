@@ -83,3 +83,74 @@ fn checksum_extract_and_manifest() {
         "d 0 - top\nd 0 - top/a\nf 5 2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824 top/a/f.txt\n"
     );
 }
+
+#[test]
+fn guard_subcommands() {
+    let Ok(d) = tempfile::tempdir() else { return };
+    let toml = d.path().join("routes.toml");
+    fs::write(
+        &toml,
+        "[[route]]\npath = \"/api/models/hardware\"\nowner = \"rust\"\nmethods = [\"GET\"]\n[[route]]\npath = 'x'\n",
+    )
+    .ok();
+    let toml_s = toml.to_string_lossy().into_owned();
+    let out = bin(&["routes-toml", &toml_s]);
+    assert_eq!(out.status.code(), Some(0));
+    assert_eq!(
+        text(&out.stdout),
+        "/api/models/hardware\trust\t-\tGET\nx\t-\t-\t-\n"
+    );
+    fs::write(&toml, "[[route]]\npath = \"/a\"\n[[\"route\"]]\n").ok();
+    let out = bin(&["routes-toml", &toml_s]);
+    assert_eq!(out.status.code(), Some(2));
+    assert_eq!(text(&out.stdout), "/a\t-\t-\t-\n");
+    assert!(text(&out.stderr).starts_with("line 3: table header"));
+
+    let lib = d.path().join("lib.rs");
+    fs::write(
+        &lib,
+        "pub const FEATURES: &[&str] = &[\"rust-model-reads\"];\n",
+    )
+    .ok();
+    let lib_s = lib.to_string_lossy().into_owned();
+    let mc = |value: &str, kind: &str| {
+        bin(&["move-capability", &lib_s, "FEATURES", value, kind])
+            .status
+            .code()
+    };
+    assert_eq!(mc("rust-model-reads", "features"), Some(0));
+    assert_eq!(mc("rust-other", "features"), Some(1));
+    assert_eq!(mc("rust-model-reads", "nonsense"), Some(2));
+
+    let core = d.path().join("rust-projects.cjs");
+    fs::write(
+        &core,
+        "const OWNED_ROUTES = new Set([\n  'POST /api/chats/{id}/move', 'GET /api/projects/{p}',\n]));\n",
+    )
+    .ok();
+    let out = bin(&["project-routes-core", &core.to_string_lossy()]);
+    assert_eq!(
+        text(&out.stdout),
+        "GET /api/projects/{}\nPOST /api/chats/{}/move\n"
+    );
+
+    let tree = d.path().join("tree");
+    fs::create_dir_all(tree.join("core/server")).ok();
+    let tree_s = tree.to_string_lossy().into_owned();
+    assert_eq!(
+        bin(&["pairing", "model-reads", &tree_s]).status.code(),
+        Some(0)
+    );
+    fs::write(
+        tree.join("core/server/index.cjs"),
+        "require('./rust-models.cjs');\n",
+    )
+    .ok();
+    let out = bin(&["pairing", "model-reads", &tree_s]);
+    assert_eq!(out.status.code(), Some(1));
+    assert_eq!(
+        text(&out.stderr),
+        "assemble-release: model read ownership pairing: Core and Rust must move together\n"
+    );
+    assert_eq!(bin(&["pairing", "diary", &tree_s]).status.code(), Some(2));
+}

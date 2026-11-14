@@ -11,6 +11,10 @@
 //! - [`tree`]: the end of the assembly (ui-data prune, `release-refs`, `.dockerignore`, the required
 //!   entries and the final `tar -czf`), plus a content manifest to compare two release tarballs.
 //!
+//! - [`guard`] (council p7): the ownership pairing guards' shared primitives (`routes_toml`,
+//!   `project_routes_rs`, `switched_routes`, `project_routes_core`, `code_lines`, `code_has`'s comment
+//!   filter, `move_capability`) and the first pairings built on them (feature, model reads).
+//!
 //! Nothing in the release path calls this crate yet.
 
 pub mod digest;

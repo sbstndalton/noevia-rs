@@ -9,16 +9,41 @@
 //!                                                 required entries, release-refs, ui-data prune,
 //!                                                 .dockerignore, deterministic tarball
 //! release-assemble manifest TGZ                   content manifest (compare two release tarballs)
+//! release-assemble routes-toml FILE               the pairing guards' routes.toml records (routes_toml);
+//!                                                 a refused file prints `line N: <reason>` and exits 2
+//! release-assemble move-capability FILE NAME VALUE KIND
+//!                                                 exit 0 when the marker is declared (move_capability)
+//! release-assemble project-routes-core FILE [NAME] a Core module's OWNED_ROUTES (project_routes_core)
+//! release-assemble pairing feature|model-reads TREE
+//!                                                 one namespace ownership pairing over an assembled tree
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
+use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
 use release_assemble::{digest, tar, tree};
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ";
+const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | pairing feature|model-reads TREE";
+
+fn write_out(bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    out.write_all(bytes)
+        .and_then(|()| out.flush())
+        .map_err(|e| e.to_string())
+}
+
+fn write_lines(lines: &[Vec<u8>]) -> Result<(), String> {
+    let mut all = Vec::new();
+    for l in lines {
+        all.extend_from_slice(l);
+        all.push(b'\n');
+    }
+    write_out(&all)
+}
 
 fn die(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("assemble-release: {msg}");
@@ -119,6 +144,49 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
             for line in tree::manifest(&open_tgz(tgz)?) {
                 println!("{line}");
             }
+            Ok(ExitCode::SUCCESS)
+        }
+        ["routes-toml", file] => {
+            let rt = guard::routes_toml_file(Path::new(file));
+            write_out(&rt.stdout())?;
+            match rt.error {
+                None => Ok(ExitCode::SUCCESS),
+                Some(e) => {
+                    eprintln!("{e}");
+                    Ok(ExitCode::from(2))
+                }
+            }
+        }
+        ["move-capability", file, name, value, kind] => {
+            let Some(kind) = MoveKind::parse(kind) else {
+                return Ok(usage());
+            };
+            let src = guard::read_file(Path::new(file));
+            Ok(
+                if guard::move_capability(src.as_deref(), name, value, kind) {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                },
+            )
+        }
+        ["project-routes-core", file, rest @ ..] => {
+            let name = match rest {
+                [] | [""] => "OWNED_ROUTES",
+                [n] => *n,
+                _ => return Ok(usage()),
+            };
+            let src = guard::read_file(Path::new(file));
+            write_lines(&guard::project_routes_core(src.as_deref(), name))?;
+            Ok(ExitCode::SUCCESS)
+        }
+        ["pairing", which, tree_dir] => {
+            let p = match *which {
+                "feature" => &guard::FEATURE_OWNERSHIP,
+                "model-reads" => &guard::MODEL_READ_OWNERSHIP,
+                _ => return Ok(usage()),
+            };
+            guard::namespace_pairing(Path::new(tree_dir), p)?;
             Ok(ExitCode::SUCCESS)
         }
         _ => Ok(usage()),
