@@ -10,6 +10,7 @@
 //! Behaviour oracle: tests/parity/test-web-supervisor.sh (the script's own suite, copied with the
 //! script at noevia 11bf2da7) runs against this binary in tests/parity.rs.
 
+pub mod entry;
 pub mod env;
 pub mod health;
 pub mod pairing;
