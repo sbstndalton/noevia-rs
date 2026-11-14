@@ -1399,3 +1399,77 @@ async fn the_client_leaving_mid_read_aborts_through_the_signin_host() {
         "the backend never saw the client go away"
     );
 }
+
+/// A prepared frame for a sign-in row turn (the shape core writes; chat-upstream's provider-host
+/// test frame with the sign-in row's address and a catalogue model).
+fn signin_frame() -> JValue {
+    js_json::parse(
+        r#"{"type":"prepared","v":1,"startedAt":1000,"model":"m-large","role":null,"auto":false,"effort":"default","thinkingOff":false,"sampling":{},
+"provider":{"id":"qa-signin","label":"QA sign-in","localEngine":false,"capabilities":null},
+"upstreamUrl":"http://x/v1/chat/completions","limitScope":"qa-scope",
+"messages":[{"role":"system","content":"QA system prompt."},{"role":"user","content":"QA hello"}],
+"tools":[],"routes":[],"writes":[],"public":[],"automaticOnlyWrites":[],"editTools":[],"routeNote":"",
+"templateGate":false,"managerEnabled":false,"modelLease":false,
+"chat":{"id":"qa-chat-1","contextId":"qa-chat-1","key":"qa-chat-1","grantScope":"project:qa-project","grantHolder":{"kind":"project","id":"qa-project"},"recentWrites":[],
+"title":{"chatId":"qa-chat-1","listId":"qa-project","firstMessage":"QA hello","firstReply":true,"enabled":false}},
+"turn":{"message":"QA hello","spaceId":null,"projectId":"qa-project","declineEndsReply":true,"record":true,"streamIdleMs":120000,"compactOnly":false,"sources":{"reply":[],"injected":[]}},
+"skills":{"loaded":[],"enabled":[],"revokedInHistory":[],"imageWarning":"","coverageWarning":""}}"#,
+    )
+    .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_whole_native_turn_on_the_signin_row_streams_the_reply() {
+    use chat_turn::native::{self, Ended, Helpers, Process};
+    let f = fixture();
+    let (base, stub) = stub(StubState {
+        default: Some(Scripted::of(&JValue::obj([
+            ("status", JValue::Num(200.0)),
+            ("chunks", f.get("streams").get("text").get("chunks").clone()),
+        ]))),
+        ..StubState::default()
+    })
+    .await;
+    let inner = crate::signin_host::tests::FakeInner::new(1_000.0);
+    let host = crate::signin_host::SigninHost::new(
+        &inner,
+        qa_engine(&base, Arc::new(qa_accounts(4))),
+        qa_host_binding(),
+        || Ok(()),
+    );
+    let p = chat_turn::prepared::Prepared::read(&signin_frame()).unwrap();
+    let helpers = Helpers {
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
+        reduce_tool_result: &|t, cap| chat_turn::reduce::reduce_tool_result(t, cap).text,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let process = Process::default();
+    let ended = tokio::time::timeout(DEADLINE, native::run(&host, &process, &helpers, &p))
+        .await
+        .unwrap();
+    let events = inner.events.lock().unwrap().clone();
+    assert_eq!(ended, Ended::Done, "{events:#?}");
+    let all = events.join("\n");
+    // The backend's two text parts reached the client in order.
+    let (hel, lo) = (all.find("\"Hel\""), all.find("\"lo\""));
+    assert!(hel.is_some() && lo.is_some() && hel < lo, "{all}");
+    // Every engine request went to the sign-in backend; none to the inner host's engine.
+    assert!(!stub.lock().unwrap().received.is_empty());
+    let calls = inner.calls();
+    for c in [
+        "request",
+        "lease",
+        "health",
+        "load",
+        "read",
+        "text",
+        "mtp_evidence",
+    ] {
+        assert!(!calls.iter().any(|x| x == c), "{c} reached the inner host");
+    }
+}

@@ -20,6 +20,8 @@ pub(crate) struct FakeInner {
     pub(crate) left: AtomicBool,
     pub(crate) now: f64,
     pub(crate) calls: Mutex<Vec<String>>,
+    /// Every event written to the client, as JSON.
+    pub(crate) events: Mutex<Vec<String>>,
 }
 
 impl FakeInner {
@@ -28,6 +30,7 @@ impl FakeInner {
             left: AtomicBool::new(false),
             now,
             calls: Mutex::new(Vec::new()),
+            events: Mutex::new(Vec::new()),
         }
     }
     fn log(&self, what: &str) {
@@ -41,8 +44,12 @@ impl FakeInner {
 impl Host for FakeInner {
     type Body = ();
 
-    fn emit(&self, _event: &JValue) {
+    fn emit(&self, event: &JValue) {
         self.log("emit");
+        self.events
+            .lock()
+            .unwrap()
+            .push(js_json::stringify(event).unwrap_or_default());
     }
     fn left(&self) -> bool {
         self.left.load(Ordering::SeqCst)
