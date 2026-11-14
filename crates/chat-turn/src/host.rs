@@ -300,7 +300,8 @@ pub trait Host: Sync {
     /// The model's draft acceptance as evidence (model manager `recordEvidence`).
     fn mtp_evidence(&self, model: &str, drafted: f64, accepted: f64);
 
-    /// The tool gate's log (tool-gate.cjs `record`): `gate.retry` or `gate.miss` for the required tool.
+    /// The tool gate's log (tool-gate.cjs `record`): `gate.retry` or `gate.miss` for the required tool, `prefetch.failed`
+    /// for a prefetch that did not run or failed.
     fn gate_record(&self, event: &str, tool: &str);
 
     /// Step supervision after a tool round (chat.cjs `superviseNextStep`, asked of core's supervisor):

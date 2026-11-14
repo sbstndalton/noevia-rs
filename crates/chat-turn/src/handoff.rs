@@ -28,10 +28,11 @@ pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// routed list's `more_tools` widening (Roadmap E, [`crate::native`]); `retrieved-images`, a turn with retrieved images
 /// (#1726: core settles them before the cut, the frame's messages carry their parts and notes, sent as attached images
 /// are); `supervise`, step supervision after a tool round ([`crate::host::Host::supervise`]); `tool-gate`, the tool
-/// gate's required tool (`require` mode: `tool_choice` on the first model turn, one retry on a miss). Without them core
-/// keeps a turn whose project has skills, that offers the page save, that runs with the provenance policy on, whose
-/// tools routing narrowed, that retrieved images, that runs while step supervision is on, or whose tool gate decided
-/// (a `prefetch` decision stays in core either way).
+/// gate's decision (`require` mode: `tool_choice` on the first model turn, one retry on a miss; `prefetch` mode: the
+/// read run before the model). Without them core keeps a turn whose project has skills, that offers the page save,
+/// that runs with the provenance policy on, whose tools routing narrowed, that retrieved images, that runs while step
+/// supervision is on, or whose tool gate decided (a prefetch the framing reasoner would condense stays in core either
+/// way).
 pub const HANDOFF_CAPS: &str =
     "skills,once,provenance,more-tools,retrieved-images,supervise,tool-gate";
 
