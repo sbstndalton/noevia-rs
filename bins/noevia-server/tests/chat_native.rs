@@ -642,6 +642,15 @@ async fn core_service(
                     headers.get("x-noevia-chat-wire")
                 ));
             }
+            // A policy the account changed once core's preparation ended (`input.policyAfterCut`, R15): stored as
+            // the prepared frame goes out, so the front reads it from the cut on.
+            if let JValue::Obj(after) = sc.case.get("input").get("policyAfterCut").clone() {
+                for (tool, mode) in after {
+                    if let Some(mode) = mode.as_str() {
+                        set_policy(&sc.data, &sc.user, &tool, mode);
+                    }
+                }
+            }
             Ok(handoff(&sc))
         }
         "/internal/chat/native/health" => ok(health(&sc)),
