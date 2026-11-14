@@ -47,6 +47,7 @@ const ref = (t) => sha(Buffer.from(t, 'utf8'));
 const F = `${ROOT}/QA Alpha`;
 const NOTE = 'QA note: stored text.';
 const PLAIN = 'QA plain local text.';
+const PARTIAL = 'QA partial';
 const DAV = { kind: 'webdav', baseUrl: 'https://qa-dav.invalid/remote.php/dav/files/qa', bucket: '', region: 'us-east-1', username: 'qa-dav' };
 const OTHER_DAV = { ...DAV, username: 'qa-other' };
 const account = (c) => edits.storageAccount(c);
@@ -56,14 +57,14 @@ const alpha = (mut = () => {}) => {
     files: [
       { name: `${F}/Text/notes.md`, source: F, textRef: ref(NOTE), chars: NOTE.length, attachment: { id: sha(Buffer.from(NOTE)), bytes: NOTE.length, group: 'Text', state: 'ready' } },
       { name: 'plain.txt', textRef: ref(PLAIN), chars: PLAIN.length },
-      { name: `${F}/Text/partial.md`, source: F, content: 'QA partial', attachment: { id: sha(Buffer.from('QA partial')), bytes: 10, group: 'Text', state: 'partial' } },
+      { name: `${F}/Text/partial.md`, source: F, textRef: ref(PARTIAL), chars: PARTIAL.length, attachment: { id: sha(Buffer.from(PARTIAL)), bytes: PARTIAL.length, group: 'Text', state: 'partial' } },
     ],
   };
   mut(p);
   return p;
 };
 const bare = (mut = () => {}) => { const p = { id: 'qa-bare', name: 'QA Bare', modes: ['chat'], chats: [], instructionSkills: {}, files: [{ name: 'plain.txt', textRef: ref(PLAIN), chars: PLAIN.length }] }; mut(p); return p; };
-const TEXTS = { 'qa-alpha': [NOTE, PLAIN], 'qa-bare': [PLAIN] };
+const TEXTS = { 'qa-alpha': [NOTE, PLAIN, PARTIAL], 'qa-bare': [PLAIN] };
 const stored = (extra = {}) => ({ files: { [`${F}/Text/notes.md`]: { text: NOTE, etag: '"qa-etag-a"' } }, dirs: [ROOT, F, `${F}/Text`], fail: {}, ...extra });
 const editNotes = (text, extra = {}) => ({ project: 'qa-alpha', name: 'notes.md', text, options: { expectName: `${F}/Text/notes.md`, expectContent: NOTE, expectAttachment: sha(Buffer.from(NOTE)), ...extra } });
 const adoptPlain = (project, extra = {}) => ({ project, name: 'plain.txt', text: `${PLAIN} more`, options: { expectName: 'plain.txt', expectContent: PLAIN, expectAttachment: null, adoptTo: `${project === 'qa-alpha' ? F : `${ROOT}/qa-bare`}/Text/plain.txt`, adoptAccount: account(DAV), ...extra } });
@@ -96,7 +97,7 @@ add('edit-stored-read-404', [alpha()], DAV, stored({ fail: { read: { [`${F}/Text
 add('edit-stored-write-412', [alpha()], DAV, stored({ fail: { write: { [`${F}/Text/notes.md`]: err(412, 'changed', { code: 'changed', upstream: 412 }) } } }), editNotes('QA x'));
 add('edit-stored-write-unknown', [alpha()], DAV, stored({ fail: { write: { [`${F}/Text/notes.md`]: err(502, 'connection lost', { code: 'unknown' }) } } }), editNotes('QA x'));
 add('edit-stored-disconnected', [alpha()], null, null, editNotes('QA x'));
-add('edit-partial', [alpha()], DAV, stored(), { project: 'qa-alpha', name: 'partial.md', text: 'QA x', options: { expectName: `${F}/Text/partial.md`, expectContent: 'QA partial', expectAttachment: sha(Buffer.from('QA partial')) } });
+add('edit-partial', [alpha()], DAV, stored(), { project: 'qa-alpha', name: 'partial.md', text: 'QA x', options: { expectName: `${F}/Text/partial.md`, expectContent: PARTIAL, expectAttachment: sha(Buffer.from(PARTIAL)) } });
 add('edit-not-listed', [alpha()], DAV, stored(), { project: 'qa-alpha', name: 'gone.md', text: 'QA x', options: { expectName: `${F}/Text/gone.md`, expectContent: '' } });
 add('edit-expect-empty', [alpha()], DAV, stored(), { project: 'qa-alpha', name: 'x.md', text: 'QA', options: { expectName: '' } });
 add('edit-expect-number', [alpha()], DAV, stored(), { project: 'qa-alpha', name: 'x.md', text: 'QA', options: { expectName: 5 } });
@@ -208,12 +209,18 @@ async function run(c) {
   });
   const rag = {
     indexProjectFile: async (_p, name) => { index.push(['index', name]); return { ok: true, stored: 1, embedded: 1 }; },
-    deleteProjectFile: (_p, name) => { index.push(['unindex', name]); },
+    // indexSource's own "no text to index" branch (keepMedia) is part of the front's `index` job
+    // (embedding-worker outbox.rs `excluded`); a plain delete (the adopted copy) is `unindex`.
+    deleteProjectFile: (_p, name, _u, opts) => { index.push([opts && opts.keepMedia ? 'index' : 'unindex', name]); },
   };
   const authService = { getStorage: () => (c.connection ? { ...c.connection, secret: 'qa-synthetic-secret' } : { kind: 'local', baseUrl: '', bucket: '', region: 'us-east-1', username: '' }) };
   const store = createProjectStore({ fs, path, reasoningEffort: {}, projectAppearance: (b) => b, rag, storageClient, documentSources: {}, authService, currentWorkspace,
     PROJECTS: proxy('projects'), FREE_CHATS: proxy('freeChats'), sanitizeToolboxes: (b) => b, defaultToolboxes: () => [], PROJECT_ROOT_FOLDER: ROOT, createProjectFolder, projectSweep: { afterDelete: async () => {} } });
   let answer;
+  // The load's own saves (none expected: every fixture project is already migrated) settle first.
+  for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0));
+  while (workspace.pendingStoreWrites()) await workspace.pendingStoreWrites().catch(() => {});
+  const loadWrites = writes.length;
   const writesBefore = writes.length;
   try {
     const project = store.getProject(c.call.project) || { id: c.call.project };
@@ -230,7 +237,7 @@ async function run(c) {
   const last = writes.slice(writesBefore).filter((w) => w.name === 'projects.json').pop();
   const saved = last ? (JSON.parse(last.text).projects || []).find((p) => p && p.id === c.call.project) : null;
   fs.rmSync(root, { recursive: true, force: true });
-  return { ...answer, calls, project: saved ? JSON.stringify(saved) : null, index };
+  return { ...answer, calls, project: saved ? JSON.stringify(saved) : null, index, loadWrites };
 }
 
 function sources() {

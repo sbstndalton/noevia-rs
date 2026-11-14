@@ -31,6 +31,9 @@
 //! - multimodal-rag's `sourceChanged` nudge is the outbox index job's (as for an upload).
 //! - A create-only write (an adopt) whose record cannot be saved is removed from storage again
 //!   (#1664, as an upload does); core left it there.
+//! - An adopt that makes the project's folder first also drops the plain-named copy (#687), as an
+//!   adopt into an existing folder does; core kept it there and in the index, because its folder
+//!   save replaced the file objects and its `f === current` no longer matched (FIXED in the tests; sbstndalton/noevia#2624).
 //! - `expectAttachment` arrives as JSON, so an attachment id core's caller held as `undefined` (an
 //!   attachment record without an id, which core never writes) reads as `null`.
 use crate::extract::{Engine, Limits};
@@ -119,16 +122,32 @@ fn files_of(p: &JValue) -> Vec<JValue> {
 /// `Buffer.from(text, 'utf8')`: a lone surrogate as U+FFFD.
 fn utf8(text: &str) -> Vec<u8> {
     text.chars()
-        .map(|c| if wtf16::lone_unit(c).is_some() { '\u{fffd}' } else { c })
+        .map(|c| {
+            if wtf16::lone_unit(c).is_some() {
+                '\u{fffd}'
+            } else {
+                c
+            }
+        })
         .collect::<String>()
         .into_bytes()
 }
 
 /// core `confirmStoredVersion(connection, stored, current)`: the ETag the write is conditional on.
-fn confirm_stored_version(remote: &dyn SourceStorage, stored: &str, current: &JValue) -> Result<String, String> {
+fn confirm_stored_version(
+    remote: &dyn SourceStorage,
+    stored: &str,
+    current: &JValue,
+) -> Result<String, String> {
     let id = current.get("attachment").get("id");
     let id = match (current.get("attachment").truthy(), id) {
-        (true, JValue::Str(s)) if s.len() == 64 && s.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) => s.clone(),
+        (true, JValue::Str(s))
+            if s.len() == 64
+                && s.bytes()
+                    .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b)) =>
+        {
+            s.clone()
+        }
         _ => return Err(changed_in_storage(stored)),
     };
     let etag = match remote.version(stored) {
@@ -140,7 +159,11 @@ fn confirm_stored_version(remote: &dyn SourceStorage, stored: &str, current: &JV
     let mut before = |_: Option<u64>| Ok(());
     let read = remote.read_binary(
         stored,
-        BinaryRead { cap: READ_BACK_CAP, timeout: READ_BACK, before_body: &mut before },
+        BinaryRead {
+            cap: READ_BACK_CAP,
+            timeout: READ_BACK,
+            before_body: &mut before,
+        },
         &mut |chunk| {
             hash.update(chunk);
             Ok(())
@@ -160,28 +183,53 @@ fn confirm_stored_version(remote: &dyn SourceStorage, stored: &str, current: &JV
 
 /// project-folders.cjs `createProjectFolder` through core's `ensureProjectFolder`: the folder, or
 /// `None` when it could not be made (logged, as core logs it).
-fn ensure_folder(env: &Env<'_>, remote: &dyn SourceStorage, id: &str, project: &JValue) -> Option<String> {
-    match crate::source_storage::allocate_folder(remote, env.project_root, id, project.get("reservedFolder").as_str()) {
+fn ensure_folder(
+    env: &Env<'_>,
+    remote: &dyn SourceStorage,
+    id: &str,
+    project: &JValue,
+) -> Option<String> {
+    match crate::source_storage::allocate_folder(
+        remote,
+        env.project_root,
+        id,
+        project.get("reservedFolder").as_str(),
+    ) {
         Ok(f) => Some(f),
         Err(e) => {
-            eprintln!("[projects] could not create folder for project {id}: {}", e.message);
+            eprintln!(
+                "[projects] could not create folder for project {id}: {}",
+                e.message
+            );
             None
         }
     }
 }
 
 /// Records the folder at once, as an upload does (`project.projectFolder` and `sourceFolders`).
-fn record_folder(env: &Env<'_>, dir: &Path, id: &str, folder: &str, sources: bool) -> Result<(), String> {
+fn record_folder(
+    env: &Env<'_>,
+    dir: &Path,
+    id: &str,
+    folder: &str,
+    sources: bool,
+) -> Result<(), String> {
     let saved = store::update(dir, env.ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, id) else {
-            return (Err("the project was removed while writing; nothing was saved".to_owned()), false);
+            return (
+                Err("the project was removed while writing; nothing was saved".to_owned()),
+                false,
+            );
         };
         store::set(p, "projectFolder", JValue::Str(folder.to_owned()));
         if sources {
             add_source_folder(p, folder);
         }
         if !lifecycle::reconcile_all(std::slice::from_mut(p)) {
-            return (Err("the project could not be saved; nothing was saved".to_owned()), false);
+            return (
+                Err("the project could not be saved; nothing was saved".to_owned()),
+                false,
+            );
         }
         (Ok(()), true)
     });
@@ -214,10 +262,20 @@ fn add_source_folder(p: &mut JValue, folder: &str) {
 }
 
 /// `writeProjectTextFile(project, name, text, edit)`: the file as recorded, or core's refusal.
-pub fn write_text(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Result<JValue, String> {
+pub fn write_text(
+    env: &Env<'_>,
+    id: &str,
+    name: &str,
+    text: &str,
+    edit: &Edit,
+) -> Result<JValue, String> {
     let lock = project_documents::source_lock(env.ctx.user_id, id);
-    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, env.ctx) else {
-        return Err("Another upload or sync of this project is still running; try again shortly.".to_owned());
+    let Some((_held, ctx)) = project_documents::lock_restamped(&lock, env.lock_wait, env.ctx)
+    else {
+        return Err(
+            "Another upload or sync of this project is still running; try again shortly."
+                .to_owned(),
+        );
     };
     let env = &Env { ctx, ..*env };
     let result = locked(env, id, name, text, edit);
@@ -237,6 +295,14 @@ fn prune(dir: &Path, ctx: Ctx<'_>, id: &str) {
         let before = p.clone();
         crate::files::prune_documents(dir, p);
         crate::files::prune_uploads(dir, p, ctx.now_ms);
+        // prune_uploads always assigns `assets`; an empty list where there was none is no change.
+        if matches!(before.get("assets"), JValue::Undefined)
+            && matches!(p.get("assets"), JValue::Arr(a) if a.is_empty())
+        {
+            if let JValue::Obj(items) = p {
+                items.retain(|(k, _)| k != "assets");
+            }
+        }
         let changed = *p != before;
         ((), changed)
     });
@@ -256,7 +322,11 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
         return Err(format!("{} is not a usable file name: it holds an unpaired surrogate character; nothing was saved", wtf16::stringify(&JValue::Str(name.to_owned())).unwrap_or_default()));
     }
     let bytes = utf8(text);
-    if let Err(f) = uploads::validate(name, bytes.len() as u64, bytes.get(..upload_sniff::SNIFF_BYTES).unwrap_or(&bytes)) {
+    if let Err(f) = uploads::validate(
+        name,
+        bytes.len() as u64,
+        bytes.get(..upload_sniff::SNIFF_BYTES).unwrap_or(&bytes),
+    ) {
         return Err(fail_text(f));
     }
     let files = files_of(&project);
@@ -265,14 +335,20 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
     if is_edit {
         let expect = match &edit.expect_name {
             JValue::Str(s) if !s.is_empty() => s.clone(),
-            _ => return Err("an edit must name the stored file it changes; nothing was saved".to_owned()),
+            _ => {
+                return Err(
+                    "an edit must name the stored file it changes; nothing was saved".to_owned(),
+                )
+            }
         };
         let Some((at, found)) = files
             .iter()
             .enumerate()
             .find(|(_, f)| f.truthy() && f.get("name").as_str() == Some(expect.as_str()))
         else {
-            return Err(format!("\"{expect}\" is no longer in this project; nothing was saved"));
+            return Err(format!(
+                "\"{expect}\" is no longer in this project; nothing was saved"
+            ));
         };
         if !matches!(edit.expect_content, JValue::Undefined) {
             let now = workspace_view::source_text(&dir, id, found).ok_or_else(|| format!("\"{expect}\" changed while this edit was being made; nothing was saved. Read it again and retry."))?;
@@ -281,9 +357,19 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             }
         }
         let attachment = found.get("attachment");
-        let current_id = if attachment.truthy() { attachment.get("id").clone() } else { JValue::Null };
-        let expected = if matches!(edit.expect_attachment, JValue::Undefined) { JValue::Null } else { edit.expect_attachment.clone() };
-        if !strict_eq(&current_id, &expected) || (attachment.truthy() && attachment.get("state").as_str() != Some("ready")) {
+        let current_id = if attachment.truthy() {
+            attachment.get("id").clone()
+        } else {
+            JValue::Null
+        };
+        let expected = if matches!(edit.expect_attachment, JValue::Undefined) {
+            JValue::Null
+        } else {
+            edit.expect_attachment.clone()
+        };
+        if !strict_eq(&current_id, &expected)
+            || (attachment.truthy() && attachment.get("state").as_str() != Some("ready"))
+        {
             return Err(format!("\"{expect}\" changed since this edit was prepared; nothing was saved. Sync this project's Sources, read it again and retry."));
         }
         current = Some((at, found.clone()));
@@ -295,7 +381,12 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
         return Err((*message).to_owned());
     }
     let remote = env.storage.remote();
-    let folder_of = |p: &JValue| p.get("projectFolder").as_str().filter(|f| !f.is_empty()).map(str::to_owned);
+    let folder_of = |p: &JValue| {
+        p.get("projectFolder")
+            .as_str()
+            .filter(|f| !f.is_empty())
+            .map(str::to_owned)
+    };
     let mut condition = Condition::None;
     let adopt = is_edit && !matches!(edit.adopt_to, JValue::Undefined);
     if let (true, Some((_, cur))) = (adopt, &current) {
@@ -304,8 +395,14 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             _ => String::new(),
         };
         let cur_name = cur.get("name").as_str().unwrap_or_default();
-        if adopt_to.is_empty() || cur.get("source").truthy() || cur_name.contains('/') || cur_name != name {
-            return Err(format!("\"{expect_name}\" cannot be moved into the project folder; nothing was saved"));
+        if adopt_to.is_empty()
+            || cur.get("source").truthy()
+            || cur_name.contains('/')
+            || cur_name != name
+        {
+            return Err(format!(
+                "\"{expect_name}\" cannot be moved into the project folder; nothing was saved"
+            ));
         }
         let Some(remote) = remote else {
             return Err(format!("\"{expect_name}\" was to be saved as \"{adopt_to}\" in this project's storage, which is not connected right now, so nothing was saved. Reconnect storage and try again."));
@@ -325,7 +422,13 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             store::set(&mut project, "projectFolder", JValue::Str(folder.clone()));
             add_source_folder(&mut project, &folder);
         }
-        let destination = uploads::destination_for(&folder_of(&project).unwrap_or_default(), name, true, None, "");
+        let destination = uploads::destination_for(
+            &folder_of(&project).unwrap_or_default(),
+            name,
+            true,
+            None,
+            "",
+        );
         if destination != adopt_to {
             return Err(format!("saving now would write \"{destination}\" instead of \"{adopt_to}\", the file that was approved; nothing was saved. Ask again to edit it there."));
         }
@@ -337,7 +440,9 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
         condition = Condition::IfNoneMatch;
     } else if let Some((_, cur)) = &current {
         let destination = match (remote, folder_of(&project)) {
-            (Some(_), Some(folder)) => Some(uploads::destination_for(&folder, name, true, None, "")),
+            (Some(_), Some(folder)) => {
+                Some(uploads::destination_for(&folder, name, true, None, ""))
+            }
             (Some(_), None) => None,
             (None, _) => Some(name.to_owned()),
         };
@@ -373,7 +478,11 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
         progress: &|_| {},
     };
     let condition = (!matches!(condition, Condition::None)).then_some(condition);
-    let opts = Options { connection: remote.is_some(), condition, ..Default::default() };
+    let opts = Options {
+        connection: remote.is_some(),
+        condition,
+        ..Default::default()
+    };
     let ingested = match uploads::ingest(&ingest_env, name, &bytes, &opts) {
         Ok(i) => i,
         Err(Fail::Storage(e)) if e.code.as_deref() == Some("changed") => {
@@ -385,14 +494,22 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             });
         }
         Err(Fail::Storage(e)) if is_edit && e.code.as_deref() == Some("unknown") => {
-            let what = if adopt { edit.adopt_to.as_str().unwrap_or_default() } else { expect_name.as_str() };
+            let what = if adopt {
+                edit.adopt_to.as_str().unwrap_or_default()
+            } else {
+                expect_name.as_str()
+            };
             return Err(format!("The connection to storage failed while saving \"{what}\", so noevia cannot tell whether the edit landed. Outcome unknown: sync this project's Sources to check whether it was saved before trying again."));
         }
         Err(f) => return Err(fail_text(f)),
     };
     let mut file = ingested.file.clone();
     let file_name = file.get("name").as_str().unwrap_or_default().to_owned();
-    let stored = if adopt { edit.adopt_to.as_str().unwrap_or_default().to_owned() } else { expect_name.clone() };
+    let stored = if adopt {
+        edit.adopt_to.as_str().unwrap_or_default().to_owned()
+    } else {
+        expect_name.clone()
+    };
     // A create-only write whose record is not saved is removed again (#1664, as an upload does;
     // core left it in storage).
     let discard = || {
@@ -423,12 +540,24 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
     let remote_here = remote.is_some();
     let saved = store::update(&dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, id) else {
-            return (Err("the project was removed while writing; the project list was not changed".to_owned()), false);
+            return (
+                Err(
+                    "the project was removed while writing; the project list was not changed"
+                        .to_owned(),
+                ),
+                false,
+            );
         };
+        // In core's order: the folder (set before the ingest), the assets (set by the ingest), then
+        // the source folders, the list and the time.
+        if remote_here
+            && !folder_now.is_empty()
+            && p.get("projectFolder").as_str().is_none_or(str::is_empty)
+        {
+            store::set(p, "projectFolder", JValue::Str(folder_now.clone()));
+        }
+        uploads::apply_assets(p, &ingested, ctx.now_ms);
         if remote_here && !folder_now.is_empty() {
-            if p.get("projectFolder").as_str().is_none_or(str::is_empty) {
-                store::set(p, "projectFolder", JValue::Str(folder_now.clone()));
-            }
             add_source_folder(p, &folder_now);
         }
         // A moved file (#687) leaves its plain-named copy behind in neither the list nor the index:
@@ -440,7 +569,10 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
                 if !f.truthy() || f.get("name").as_str() == Some(file_name.as_str()) {
                     return false;
                 }
-                if !dropped && f.get("name").as_str() == Some(expect_name.as_str()) && !f.get("source").truthy() {
+                if !dropped
+                    && f.get("name").as_str() == Some(expect_name.as_str())
+                    && !f.get("source").truthy()
+                {
                     dropped = true;
                     return false;
                 }
@@ -449,17 +581,23 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             .chain(std::iter::once(file.clone()))
             .collect();
         store::set(p, "files", JValue::Arr(next));
-        uploads::apply_assets(p, &ingested, ctx.now_ms);
         store::set(p, "updatedAt", JValue::Num(ctx.now_ms as f64));
-        if lifecycle::externalize_reply(&dir, p).is_err() || !lifecycle::reconcile_all(std::slice::from_mut(p)) {
-            return (Err("the project could not be saved; the project list was not changed".to_owned()), false);
+        if lifecycle::externalize_reply(&dir, p).is_err()
+            || !lifecycle::reconcile_all(std::slice::from_mut(p))
+        {
+            return (
+                Err("the project could not be saved; the project list was not changed".to_owned()),
+                false,
+            );
         }
         (Ok(()), true)
     });
     let failed = match saved {
         Ok(Ok(())) => None,
         Ok(Err(m)) => Some(m),
-        Err(_) => Some("the project could not be saved; the project list was not changed".to_owned()),
+        Err(_) => {
+            Some("the project could not be saved; the project list was not changed".to_owned())
+        }
     };
     if let Some(m) = failed {
         if let Some(earlier) = earlier {
@@ -471,16 +609,30 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
     if !ingested.queued && crate::extract_queue::pending(&dir, id, &file_name).is_some() {
         let _ = crate::extract_queue::clear(&dir, id, &file_name);
     }
-    let mut jobs = vec![outbox::Job { kind: "index", project: id, file: Some(file_name.as_str()), payload: None }];
+    let mut jobs = vec![outbox::Job {
+        kind: "index",
+        project: id,
+        file: Some(file_name.as_str()),
+        payload: None,
+    }];
     // #1914/#1919: the plain copy's index entries go once the list without it is on disk, and only
     // if no source of that name is listed again by then.
     let relisted = adopt
         && crate::originals::project(ctx, id)
             .ok()
             .and_then(|(_, p)| p)
-            .is_some_and(|p| files_of(&p).iter().any(|f| f.get("name").as_str() == Some(expect_name.as_str())));
+            .is_some_and(|p| {
+                files_of(&p)
+                    .iter()
+                    .any(|f| f.get("name").as_str() == Some(expect_name.as_str()))
+            });
     if adopt && !relisted {
-        jobs.push(outbox::Job { kind: "unindex", project: id, file: Some(expect_name.as_str()), payload: None });
+        jobs.push(outbox::Job {
+            kind: "unindex",
+            project: id,
+            file: Some(expect_name.as_str()),
+            payload: None,
+        });
     }
     if let Err(e) = outbox::enqueue(&dir, &jobs, ctx.now_ms) {
         eprintln!("noevia-server: index outbox write failed for a project text write: {e:?}");
@@ -494,14 +646,22 @@ fn fail_text(f: Fail) -> String {
         Fail::Refused { message, .. } => message,
         Fail::Storage(e) => e.message,
         Fail::Io(e) => {
-            eprintln!("noevia-server: a project text write could not be stored: {}", e.kind());
+            eprintln!(
+                "noevia-server: a project text write could not be stored: {}",
+                e.kind()
+            );
             "the file could not be stored; nothing was saved".to_owned()
         }
     }
 }
 
 #[cfg(test)]
-#[allow(clippy::unwrap_used, clippy::expect_used, clippy::panic, clippy::indexing_slicing)]
+#[allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::indexing_slicing
+)]
 mod tests {
     //! Every case of tests/fixtures/node-text-write.v1.json (tools/gen-text-write-fixtures.cjs: core's
     //! own writeProjectTextFile on a scripted storage) against [`write_text`] on the same script: the
@@ -540,7 +700,13 @@ mod tests {
         fn docling_configured(&self) -> bool {
             false
         }
-        fn docling(&self, _: &str, _: &[u8], _: bool, _: Option<(u32, u32)>) -> Result<JValue, EngineError> {
+        fn docling(
+            &self,
+            _: &str,
+            _: &[u8],
+            _: bool,
+            _: Option<(u32, u32)>,
+        ) -> Result<JValue, EngineError> {
             panic!("a text write never asks Docling")
         }
         fn docling_ranges(&self, _: usize) -> Option<bool> {
@@ -549,7 +715,13 @@ mod tests {
         fn ocr_configured(&self) -> bool {
             false
         }
-        fn ocr_pages(&self, _: &[u8], _: &[u32], _: Option<u32>, _: Option<u64>) -> Result<Vec<JValue>, EngineError> {
+        fn ocr_pages(
+            &self,
+            _: &[u8],
+            _: &[u32],
+            _: Option<u32>,
+            _: Option<u64>,
+        ) -> Result<Vec<JValue>, EngineError> {
             panic!("a text write never asks OCR")
         }
         fn ocr_caps(&self) -> Option<OcrCaps> {
@@ -571,7 +743,10 @@ mod tests {
     }
 
     fn error_of(v: &JValue) -> StorageError {
-        let mut e = StorageError::new(v.get("status").as_num().unwrap() as u16, v.get("message").as_str().unwrap());
+        let mut e = StorageError::new(
+            v.get("status").as_num().unwrap() as u16,
+            v.get("message").as_str().unwrap(),
+        );
         if let Some(c) = v.get("code").as_str() {
             e = e.with_code(c);
         }
@@ -593,10 +768,21 @@ mod tests {
                 files: RefCell::new(
                     obj(spec.get("files"))
                         .iter()
-                        .map(|(p, f)| (p.clone(), (f.get("text").as_str().unwrap().as_bytes().to_vec(), f.get("etag").as_str().unwrap().to_owned())))
+                        .map(|(p, f)| {
+                            (
+                                p.clone(),
+                                (
+                                    f.get("text").as_str().unwrap().as_bytes().to_vec(),
+                                    f.get("etag").as_str().unwrap().to_owned(),
+                                ),
+                            )
+                        })
                         .collect(),
                 ),
-                dirs: RefCell::new(arr(spec.get("dirs")).iter().map(|d| d.as_str().unwrap().to_owned()).collect()),
+                dirs: RefCell::new(match spec.get("dirs") {
+                    JValue::Arr(d) => d.iter().map(|d| d.as_str().unwrap().to_owned()).collect(),
+                    _ => BTreeSet::new(),
+                }),
                 fail,
                 calls: RefCell::new(Vec::new()),
                 n: RefCell::new(0),
@@ -604,7 +790,9 @@ mod tests {
             }
         }
         fn call(&self, parts: &[&str]) {
-            self.calls.borrow_mut().push(parts.iter().map(|s| (*s).to_owned()).collect());
+            self.calls
+                .borrow_mut()
+                .push(parts.iter().map(|s| (*s).to_owned()).collect());
         }
         fn failed(&self, op: &str, path: &str) -> Option<StorageError> {
             self.fail.get(&(op.to_owned(), path.to_owned())).cloned()
@@ -647,7 +835,12 @@ mod tests {
             }
             Ok(!self.dirs.borrow_mut().insert(path.to_owned()))
         }
-        fn write(&self, path: &str, bytes: &[u8], condition: &Condition) -> Result<Written, StorageError> {
+        fn write(
+            &self,
+            path: &str,
+            bytes: &[u8],
+            condition: &Condition,
+        ) -> Result<Written, StorageError> {
             let cond = match condition {
                 Condition::None => String::new(),
                 Condition::IfMatch(e) => format!("if-match {e}"),
@@ -664,16 +857,27 @@ mod tests {
                 Condition::None => false,
             };
             if conflict {
-                return Err(StorageError::new(412, "changed").with_code("changed").with_upstream(412));
+                return Err(StorageError::new(412, "changed")
+                    .with_code("changed")
+                    .with_upstream(412));
             }
             *self.n.borrow_mut() += 1;
             let etag = format!("\"qa-etag-{}\"", self.n.borrow());
-            self.files.borrow_mut().insert(path.to_owned(), (bytes.to_vec(), etag.clone()));
-            Ok(Written { etag, created: existing.is_none() })
+            self.files
+                .borrow_mut()
+                .insert(path.to_owned(), (bytes.to_vec(), etag.clone()));
+            Ok(Written {
+                etag,
+                created: existing.is_none(),
+            })
         }
         fn discard(&self, path: &str, etag: &str) -> (bool, &'static str) {
             self.call(&["discard", path]);
-            let same = self.files.borrow().get(path).is_some_and(|(_, e)| e == etag);
+            let same = self
+                .files
+                .borrow()
+                .get(path)
+                .is_some_and(|(_, e)| e == etag);
             if same {
                 self.files.borrow_mut().remove(path);
                 (true, "deleted")
@@ -697,7 +901,10 @@ mod tests {
         arr(v)
             .iter()
             .map(|c| {
-                let mut parts: Vec<String> = arr(c).iter().map(|p| p.as_str().unwrap().to_owned()).collect();
+                let mut parts: Vec<String> = arr(c)
+                    .iter()
+                    .map(|p| p.as_str().unwrap().to_owned())
+                    .collect();
                 // The recorder writes the condition only for a write.
                 if parts.first().is_some_and(|op| op == "write") && parts.len() == 2 {
                     parts.push(String::new());
@@ -712,6 +919,10 @@ mod tests {
         String::from_utf8(utf8(text)).unwrap()
     }
 
+    /// Core keeps the plain copy when the adopt made the folder (module header): the port's saved
+    /// project is core's without it, and its index work adds the copy's `unindex`.
+    const FIXED_ADOPT_COPY: &[&str] = &["adopt-makes-folder"];
+
     #[test]
     fn every_write_answers_as_core() {
         let doc = fixture();
@@ -724,17 +935,28 @@ mod tests {
             let root = tempfile::tempdir().unwrap();
             let dir = root.path().join("users").join(user);
             std::fs::create_dir_all(&dir).unwrap();
-            std::fs::write(dir.join("projects.json"), c.get("projects").as_str().unwrap()).unwrap();
+            std::fs::write(
+                dir.join("projects.json"),
+                c.get("projects").as_str().unwrap(),
+            )
+            .unwrap();
             for (id, texts) in obj(doc.get("texts")) {
                 let folder = dir.join("project-sources").join(id);
                 std::fs::create_dir_all(&folder).unwrap();
                 for t in arr(texts) {
                     let t = utf8_text(t.as_str().unwrap());
-                    std::fs::write(folder.join(format!("{:x}.txt", Sha256::digest(t.as_bytes()))), t).unwrap();
+                    std::fs::write(
+                        folder.join(format!("{:x}.txt", Sha256::digest(t.as_bytes()))),
+                        t,
+                    )
+                    .unwrap();
                 }
             }
-            let before = std::fs::read(dir.join("projects.json")).unwrap();
-            let account = obj(c.get("accounts")).first().and_then(|(_, a)| a.as_str()).unwrap_or_default();
+            let before = std::fs::read_to_string(dir.join("projects.json")).unwrap();
+            let account = obj(c.get("accounts"))
+                .first()
+                .and_then(|(_, a)| a.as_str())
+                .unwrap_or_default();
             let script = Script::new(c.get("storage"), account);
             let storage = if matches!(c.get("connection"), JValue::Null) {
                 Storage::None
@@ -751,23 +973,39 @@ mod tests {
                 adopt_account: options.get("adoptAccount").clone(),
             };
             let env = Env {
-                ctx: Ctx { data_dir: root.path(), user_id: user, switch: server_store::RustProjects::owned(), now_ms: now },
+                ctx: Ctx {
+                    data_dir: root.path(),
+                    user_id: user,
+                    switch: server_store::RustProjects::owned(),
+                    now_ms: now,
+                },
                 storage: &storage,
                 engine: &NoEngine,
                 limits: &Limits::from_env(),
                 project_root: root_folder,
                 lock_wait: Duration::from_secs(5),
             };
-            let got = write_text(&env, call.get("project").as_str().unwrap(), call.get("name").as_str().unwrap(), call.get("text").as_str().unwrap(), &edit);
+            let got = write_text(
+                &env,
+                call.get("project").as_str().unwrap(),
+                call.get("name").as_str().unwrap(),
+                call.get("text").as_str().unwrap(),
+                &edit,
+            );
             let node = c.get("node");
             match (node.get("error").as_str(), &got) {
                 (Some(want), Err(m)) => assert_eq!(m, want, "{name}: error"),
                 (None, Ok(file)) => {
                     // The record as core's caller holds it (see the recorder): its text, and the
                     // fields the write set.
-                    let content = file.get("content").as_str().map(str::to_owned).unwrap_or_else(|| {
-                        crate::sources::text(&dir, call.get("project").as_str().unwrap(), file).unwrap_or_default()
-                    });
+                    let content = file
+                        .get("content")
+                        .as_str()
+                        .map(str::to_owned)
+                        .unwrap_or_else(|| {
+                            crate::sources::text(&dir, call.get("project").as_str().unwrap(), file)
+                                .unwrap_or_default()
+                        });
                     let view = JValue::obj([
                         ("name", file.get("name").clone()),
                         ("source", file.get("source").clone()),
@@ -775,21 +1013,39 @@ mod tests {
                         ("document", file.get("document").clone()),
                         ("content", JValue::Str(content)),
                     ]);
-                    assert_eq!(json(&view), node.get("file").as_str().unwrap(), "{name}: file");
+                    assert_eq!(
+                        json(&view),
+                        node.get("file").as_str().unwrap(),
+                        "{name}: file"
+                    );
                 }
                 (want, got) => panic!("{name}: core {want:?}, port {got:?}"),
             }
-            assert_eq!(*script.calls.borrow(), calls_of(node.get("calls")), "{name}: storage calls");
-            let after = std::fs::read(dir.join("projects.json")).unwrap();
+            assert_eq!(
+                *script.calls.borrow(),
+                calls_of(node.get("calls")),
+                "{name}: storage calls"
+            );
+            let after = std::fs::read_to_string(dir.join("projects.json")).unwrap();
             match node.get("project").as_str() {
                 None => assert_eq!(after, before, "{name}: projects.json changed"),
                 Some(want) => {
-                    let saved = wtf16::parse(&String::from_utf8(after).unwrap()).unwrap();
+                    let saved = wtf16::parse(&after).unwrap();
                     let p = arr(saved.get("projects"))
                         .iter()
                         .find(|p| p.get("id") == call.get("project"))
                         .unwrap();
-                    assert_eq!(json(p), want, "{name}: project saved");
+                    let mut want = wtf16::parse(want).unwrap();
+                    if FIXED_ADOPT_COPY.contains(&name) {
+                        let plain = options.get("expectName").as_str().unwrap();
+                        let files: Vec<JValue> = arr(want.get("files"))
+                            .iter()
+                            .filter(|f| f.get("name").as_str() != Some(plain))
+                            .cloned()
+                            .collect();
+                        store::set(&mut want, "files", JValue::Arr(files));
+                    }
+                    assert_eq!(json(p), json(&want), "{name}: project saved");
                 }
             }
             let jobs: Vec<(String, String)> = outbox::jobs(&dir)
@@ -797,10 +1053,21 @@ mod tests {
                 .into_iter()
                 .map(|r| (r.kind, r.file.unwrap_or_default()))
                 .collect();
-            let want: Vec<(String, String)> = arr(node.get("index"))
+            let mut want: Vec<(String, String)> = arr(node.get("index"))
                 .iter()
-                .map(|j| (arr(j)[0].as_str().unwrap().to_owned(), arr(j)[1].as_str().unwrap().to_owned()))
+                .map(|j| {
+                    (
+                        arr(j)[0].as_str().unwrap().to_owned(),
+                        arr(j)[1].as_str().unwrap().to_owned(),
+                    )
+                })
                 .collect();
+            if FIXED_ADOPT_COPY.contains(&name) {
+                want.push((
+                    "unindex".to_owned(),
+                    options.get("expectName").as_str().unwrap().to_owned(),
+                ));
+            }
             assert_eq!(jobs, want, "{name}: index work");
             checked += 1;
         }

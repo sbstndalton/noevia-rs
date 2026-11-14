@@ -369,7 +369,12 @@ pub(crate) fn queue_job(
     Ok(earlier)
 }
 
-pub(crate) fn restore_job(dir: &Path, project: &str, name: &str, earlier: Option<extract_queue::Job>) {
+pub(crate) fn restore_job(
+    dir: &Path,
+    project: &str,
+    name: &str,
+    earlier: Option<extract_queue::Job>,
+) {
     let put = match earlier {
         Some(j) => extract_queue::put_back(dir, &j),
         None => extract_queue::clear(dir, project, name),

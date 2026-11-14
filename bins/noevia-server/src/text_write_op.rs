@@ -47,7 +47,10 @@ fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
 }
 
 fn error(status: StatusCode, message: &str) -> Response<Body> {
-    answer(status, &JValue::obj([("error", JValue::Str(message.to_owned()))]))
+    answer(
+        status,
+        &JValue::obj([("error", JValue::Str(message.to_owned()))]),
+    )
 }
 
 pub fn route(router: Router, store: Store, app: Option<Arc<App>>) -> Router {
@@ -103,7 +106,10 @@ async fn serve(
         text_of("name"),
         text_of("text"),
     ) else {
-        return error(StatusCode::BAD_REQUEST, "user, project, name and text are required");
+        return error(
+            StatusCode::BAD_REQUEST,
+            "user, project, name and text are required",
+        );
     };
     let edit = Edit {
         expect_name: body.get("expectName").clone(),
@@ -161,7 +167,10 @@ async fn serve(
         });
         match written {
             Ok(file) => answer(StatusCode::OK, &JValue::obj([("file", file)])),
-            Err(message) => answer(StatusCode::OK, &JValue::obj([("error", JValue::Str(message))])),
+            Err(message) => answer(
+                StatusCode::OK,
+                &JValue::obj([("error", JValue::Str(message))]),
+            ),
         }
     })
     .await;

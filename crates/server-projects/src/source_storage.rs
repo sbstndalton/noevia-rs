@@ -198,7 +198,10 @@ pub trait SourceStorage {
     /// storage-client.cjs `fileVersion(conn, path)`: `Ok(None)` when the file is missing, else its
     /// ETag (`''` when the server reports none). Storage that cannot say answers `unsupported`.
     fn version(&self, _path: &str) -> Result<Option<String>, StorageError> {
-        Err(StorageError::new(400, "this storage cannot report a file version").with_code("unsupported"))
+        Err(
+            StorageError::new(400, "this storage cannot report a file version")
+                .with_code("unsupported"),
+        )
     }
 }
 
