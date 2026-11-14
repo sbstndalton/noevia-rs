@@ -497,7 +497,7 @@ impl std::fmt::Debug for Session {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Session")
             .field("access_token", &"<redacted>")
-            .field("account_id", &self.account_id)
+            .field("account_id", &"<redacted>")
             .field("restricted_region", &self.restricted_region)
             .field("expires_at", &self.expires_at)
             .finish_non_exhaustive()

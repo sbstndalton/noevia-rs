@@ -58,7 +58,10 @@ impl SessionCache {
         None
     }
 
-    /// Keeps the broker's fresh session (core: after a successful ask).
+    /// Keeps the broker's fresh session (core: after a successful ask). `signal` must be the
+    /// reading taken before the ask, the one [`SessionCache::lookup`] was given, never a fresh one:
+    /// core stores under that reading, so a disconnect or rotation during the ask leaves the stored
+    /// entry stale at once and the next lookup drops it.
     pub fn store(&mut self, user: &str, session: &Session, signal: Option<&str>, now: f64) {
         let margin_end = match session.expires_at {
             Some(at) if at.is_finite() && at > 0.0 => at - REFRESH_MARGIN_MS,
@@ -140,8 +143,8 @@ pub fn broker_refusal(texts: &Texts, answer: &BrokerAnswer) -> Option<Refusal> {
     }
 }
 
-/// One step of `authorised(userId, send)`.
-#[derive(Debug, Clone, PartialEq)]
+/// One step of `authorised(userId, send)`. Debug output names a rejected token only as present.
+#[derive(Clone, PartialEq)]
 pub enum Step {
     /// Ask the broker for a session (with the rejected access token on the second ask).
     AskBroker { rejected_token: Option<String> },
@@ -156,6 +159,28 @@ pub enum Step {
     Pass,
     /// Answer with this error (the `x-noevia-provider-message` error response).
     Refuse(Refusal),
+}
+
+impl std::fmt::Debug for Step {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Step::AskBroker { rejected_token } => f
+                .debug_struct("AskBroker")
+                .field(
+                    "rejected_token",
+                    &rejected_token.as_ref().map(|_| "<redacted>"),
+                )
+                .finish(),
+            Step::Send(s) => f.debug_tuple("Send").field(s).finish(),
+            Step::Reject { generation, then } => f
+                .debug_struct("Reject")
+                .field("generation", generation)
+                .field("then", then)
+                .finish(),
+            Step::Pass => f.write_str("Pass"),
+            Step::Refuse(r) => f.debug_tuple("Refuse").field(r).finish(),
+        }
+    }
 }
 
 /// The state of one authorised call.
