@@ -29,6 +29,7 @@ pub mod chatgpt_oauth_routes;
 #[cfg(feature = "rust-chatgpt-status")]
 pub mod chatgpt_status_routes;
 pub mod code_egress;
+pub mod code_facts;
 pub mod code_net;
 pub mod code_routes;
 pub mod config;
@@ -84,6 +85,7 @@ pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
+pub mod model_writes_routes;
 pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
@@ -973,6 +975,14 @@ async fn handle(
         let at = whatwg.as_deref().unwrap_or(&path);
         if code_routes::parse(req.method().as_str(), at).is_some() {
             native = Some(routes::Native::Projects);
+        }
+    }
+    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget and idle unload PUTs are
+    // the models routes' too (model_writes_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.model_writes.on {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if app.config.model_writes.answers(req.method(), at) {
+            native = Some(routes::Native::Models);
         }
     }
     // Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the front answers PUT /api/routing-default
