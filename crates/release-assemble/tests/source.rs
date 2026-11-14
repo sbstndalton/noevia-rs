@@ -267,7 +267,11 @@ fn stub_curl(bin: &Path) -> PathBuf {
     // Without it the shell side would find the real curl on PATH and download (noevia#2726 review).
     let meta = fs::metadata(&path);
     let executable = meta.is_ok_and(|m| m.is_file() && m.permissions().mode() & 0o111 != 0);
-    assert!(executable, "the stub curl was not written as an executable: {}", path.display());
+    assert!(
+        executable,
+        "the stub curl was not written as an executable: {}",
+        path.display()
+    );
     path
 }
 
