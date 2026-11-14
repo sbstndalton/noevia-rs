@@ -648,7 +648,9 @@ async fn core_service(
                 for (tool, mode) in after {
                     match mode.as_str() {
                         Some(mode) => set_policy(&sc.data, &sc.user, &tool, mode),
-                        None => sc.errors.push(format!("policyAfterCut {tool}: not one mode")),
+                        None => sc
+                            .errors
+                            .push(format!("policyAfterCut {tool}: not one mode")),
                     }
                 }
             }
