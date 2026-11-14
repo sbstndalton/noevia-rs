@@ -199,7 +199,8 @@ impl FrontDeps {
     /// An owed `apply:<revision>` repair (llamacpp-manager.cjs applyUnlocked's loss branch), under
     /// the recovery hold in `current`: the text before the write goes back while models.ini is
     /// still at the write's revision (never over a later edit), then the router must re-read the
-    /// file. `None` when `key` owes no such restore; `Some(false)` when it is still owed.
+    /// file. `None` when `key` owes no such restore (or it has settled); `Some(false)` when the
+    /// restore did not complete.
     pub(crate) async fn restore_apply(&self, key: &str) -> Option<bool> {
         let (revision, before) = self.apply_restores.lock().ok()?.get(key).cloned()?;
         let restored = async {
@@ -221,11 +222,8 @@ impl FrontDeps {
         }
         .await
         .is_some();
-        if restored {
-            if let Ok(mut owed) = self.apply_restores.lock() {
-                owed.remove(key);
-            }
-        }
+        // The entry stays until the repair has settled (`settle_owed`): a retry runs it again,
+        // which then only re-reads, since the file has left the write's revision.
         Some(restored)
     }
 
@@ -255,6 +253,9 @@ impl FrontDeps {
 
     /// A repair ran: its fences open again.
     pub(crate) fn settle_owed(&self, key: &str) {
+        if let Ok(mut restores) = self.apply_restores.lock() {
+            restores.remove(key);
+        }
         let entry = self.owed.lock().ok().and_then(|mut o| o.remove(key));
         if let Some((ticket, fence)) = entry {
             self.maint.authority.complete_recovery(&ticket);

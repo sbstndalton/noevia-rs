@@ -1821,8 +1821,14 @@ impl Worker {
                 ))
             }
             Applied::Threw(e) => return Err(Thrown::Other(e)),
-            // The run's own recovery puts its original profile back under a fresh hold.
-            Applied::LeaseLost { .. } => return Err(Thrown::Fatal(LEASE_LOST.into())),
+            // The lost write is now the file's revision: the run's own restore of its original
+            // profile, owed to a recovery under a fresh hold, swaps from it (#2550).
+            Applied::LeaseLost { revision, .. } => {
+                self.job_set("lastRevision", JValue::Str(revision));
+                self.with(|i| i.lease_lost = true);
+                let _ = self.save().await;
+                return Err(Thrown::Fatal(LEASE_LOST.into()));
+            }
         }
         let revision = self
             .current_revision()
@@ -3086,8 +3092,14 @@ impl Worker {
                 })))
             }
             Applied::Threw(e) => return Err(Thrown::Other(e)),
-            // The run's own recovery puts its original profile back under a fresh hold.
-            Applied::LeaseLost { .. } => return Err(Thrown::Fatal(LEASE_LOST.into())),
+            // The lost write is now the file's revision: the run's own restore of its original
+            // profile, owed to a recovery under a fresh hold, swaps from it (#2550).
+            Applied::LeaseLost { revision, .. } => {
+                self.job_set("lastRevision", JValue::Str(revision));
+                self.with(|i| i.lease_lost = true);
+                let _ = self.save().await;
+                return Err(Thrown::Fatal(LEASE_LOST.into()));
+            }
         }
         let revision = self
             .current_revision()
@@ -6354,6 +6366,51 @@ mod tests {
         }
     }
 
+    /// #2550 review: the run's first write, whose lease ends before its re-read: nothing is restored
+    /// on the lost lease, and the run's recovery under a fresh hold puts the original profile back
+    /// (from the lost write's revision, which the run takes as its last).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_first_write_lost_before_its_reread_is_restored_by_the_recovery() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, engine) = synthetic_engine(ini.clone(), false).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let (end, fired) = (Arc::clone(&ended), Arc::new(AtomicBool::new(false)));
+        let hook: super::super::calibration::AfterCommit = Arc::new(move |h| {
+            if fired.swap(true, Ordering::AcqRel) {
+                return;
+            }
+            end.store(true, Ordering::Release);
+            let deadline = std::time::Instant::now() + WATCHDOG;
+            while h.excluded() && std::time::Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(5));
+            }
+        });
+        super::super::calibration::AFTER_COMMIT
+            .lock()
+            .unwrap()
+            .push((ini.clone(), hook));
+        w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        let job = settled_or_recovering(&w).await;
+        assert_eq!(job.get("error").as_str(), Some(LEASE_LOST), "{job:?}");
+        assert!(
+            !engine.lock().unwrap().iter().any(|r| r.contains("reload")),
+            "nothing was re-read on the lost lease"
+        );
+        ended.store(false, Ordering::Release);
+        readmitted(&w).await;
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        assert_eq!(w.job().get("restored"), &JValue::Bool(true));
+        super::super::calibration::AFTER_COMMIT
+            .lock()
+            .unwrap()
+            .retain(|(p, _)| p != &ini);
+    }
+
     /// #2550: the owed `apply:<revision>` repair of the native auto-tune runner, under a fresh
     /// hold: the text before the write goes back while models.ini is still at the write's
     /// revision, never over a later edit, and the router re-reads the file either way.
@@ -6397,13 +6454,19 @@ mod tests {
         assert_eq!(deps.restore_apply("apply:a").await, Some(true));
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
         assert_eq!(reloads(&seen), 1);
+        // A retry before the repair settled restores nothing twice: the file left the write's
+        // revision, so only the re-read runs again.
+        assert_eq!(deps.restore_apply("apply:a").await, Some(true));
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
+        assert_eq!(reloads(&seen), 2);
+        deps.settle_owed("apply:a");
         assert_eq!(deps.restore_apply("apply:a").await, None, "settled once");
         let operator = format!("{INI}# an operator's later edit\n");
         std::fs::write(&ini, &operator).unwrap();
         deps.owe_apply_restore("apply:b", &revision, INI);
         assert_eq!(deps.restore_apply("apply:b").await, Some(true));
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), operator);
-        assert_eq!(reloads(&seen), 2);
+        assert_eq!(reloads(&seen), 3);
         deps.cover_with(None);
         if let Ok(hold) = Arc::try_unwrap(hold) {
             hold.release().await;

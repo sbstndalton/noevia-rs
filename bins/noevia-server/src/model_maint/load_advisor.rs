@@ -224,10 +224,18 @@ impl Endpoint {
 
     /// `choice(...)`: waits for the lane, sends (once more on a transient connect failure), and
     /// reads the answer as `(selected, scores[selected])`. Dropping this future (the asker's
-    /// deadline) leaves the queue, or, once sent, leaves the exchange to finish in the lane.
-    async fn choice(&self, text: &str) -> Result<(String, f64), Failure> {
+    /// `deadline`) leaves the queue, or, once sent, leaves the exchange to finish in the lane.
+    async fn choice(
+        &self,
+        text: &str,
+        deadline: tokio::time::Instant,
+    ) -> Result<(String, f64), Failure> {
         let body = self.body(text);
         let guard = Arc::clone(&self.lane).lock_owned().await;
+        // #1592: a turn granted as the asker's deadline passed sends nothing; the lane goes on.
+        if tokio::time::Instant::now() >= deadline {
+            return Err(failure("aborted"));
+        }
         let (tx, rx) = tokio::sync::oneshot::channel();
         let client = self.client.clone();
         let url = self.url.clone();
@@ -506,7 +514,8 @@ impl LoadAdvisor {
             return Asked::Busy;
         }
         let _open = Open(&self.open);
-        match tokio::time::timeout(ADVICE_BUDGET, endpoint.choice(text)).await {
+        let deadline = tokio::time::Instant::now() + ADVICE_BUDGET;
+        match tokio::time::timeout_at(deadline, endpoint.choice(text, deadline)).await {
             Err(_) => Asked::Timeout,
             Ok(Err(_)) => Asked::Error,
             Ok(Ok((label, confidence))) => Asked::Answered {
@@ -548,5 +557,40 @@ impl LoadAdvisor {
             }
         }
         decide::judgement(&v, advisor)
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+
+    /// Every replay scenario names its service by an IP literal; a host name goes through the
+    /// connect-time address check (`LocalOnly`) and is asked like any other local service.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_local_service_named_by_host_name_is_asked() {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let app = axum::Router::new().fallback(|| async {
+            (
+                [("content-type", "application/json")],
+                r#"{"selected":"oom","scores":{"oom":0.7,"load_failed":0.1,"recall_failed":0.1,"template":0.05,"unknown":0.05}}"#,
+            )
+        });
+        tokio::spawn(async move { axum::serve(listener, app).await });
+        let url = format!("http://localhost:{port}");
+        let advisor = LoadAdvisor::from_lookup(&|k: &str| {
+            (k == "COWORK_DECISION_URL").then(|| url.clone())
+        });
+        let request = js_json::wtf16::parse(
+            r#"{"cause":"load","evidence":{"status":500,"exitCode":1,"text":"qa-engine stopped: unexpected state 42 in worker qa-1","crash":false}}"#,
+        )
+        .unwrap();
+        let out = advisor.judge(&request).await;
+        assert_eq!(
+            out.get("classification").get("advisor").as_str(),
+            Some("used"),
+            "{out:?}"
+        );
     }
 }

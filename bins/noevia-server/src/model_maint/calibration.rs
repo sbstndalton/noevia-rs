@@ -652,6 +652,8 @@ impl Maint {
             }
             return (Applied::Threw(e.message), e.status);
         }
+        #[cfg(test)]
+        after_commit(ini.file(), holding);
         let reload = self.router_reload(router, holding, None).await;
         if let Ok(Ok(reply)) = &reload {
             if reply.ok {
@@ -684,6 +686,29 @@ impl Maint {
                 (Applied::Refused(Some(RELOAD_RESTORED.into())), 503)
             }
         }
+    }
+}
+
+/// Test hooks run right after a models.ini commit of `apply_unlocked` for that file (a lease that
+/// ends between a write and its re-read).
+#[cfg(test)]
+pub(super) type AfterCommit = std::sync::Arc<dyn Fn(&super::Hold) + Send + Sync>;
+#[cfg(test)]
+pub(super) static AFTER_COMMIT: std::sync::Mutex<Vec<(std::path::PathBuf, AfterCommit)>> =
+    std::sync::Mutex::new(Vec::new());
+#[cfg(test)]
+fn after_commit(file: &std::path::Path, holding: &super::Hold) {
+    let hooks: Vec<AfterCommit> = AFTER_COMMIT.lock().map_or_else(
+        |_| Vec::new(),
+        |h| {
+            h.iter()
+                .filter(|(p, _)| p == file)
+                .map(|(_, f)| std::sync::Arc::clone(f))
+                .collect()
+        },
+    );
+    for hook in hooks {
+        hook(holding);
     }
 }
 
