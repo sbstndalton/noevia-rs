@@ -153,7 +153,7 @@ pub enum HoldAnswer {
 }
 
 /// The error `hold()` threw or rejected with, as `acquire` reads it.
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Refusal {
     pub status: JValue,
     pub code: JValue,
@@ -161,6 +161,18 @@ pub struct Refusal {
     pub from_gate: JValue,
     /// `e.chatActive` (this process's chat is running).
     pub chat_active: JValue,
+}
+
+impl Default for Refusal {
+    /// Every field `undefined`.
+    fn default() -> Self {
+        Refusal {
+            status: JValue::Undefined,
+            code: JValue::Undefined,
+            from_gate: JValue::Undefined,
+            chat_active: JValue::Undefined,
+        }
+    }
 }
 
 /// The error `acquire` throws for a refused hold.
@@ -587,6 +599,7 @@ impl Guard {
 }
 
 #[cfg(test)]
+#[allow(clippy::expect_used)]
 mod tests {
     use super::*;
 
