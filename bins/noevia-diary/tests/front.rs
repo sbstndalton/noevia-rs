@@ -920,6 +920,22 @@ fn leases_joins_and_fences_share_one_slot() {
     assert!(w
         .with_lock_as(third, None, Some(Duration::ZERO), |_| ())
         .is_ok());
+    // A caller that gave up (its reply lost) cancels by holder before its grant is made: the
+    // late grant is returned at once and nothing stays held.
+    let fourth = "4f92a052-7e61-4ac2-9d54-5e6f708192a3";
+    let blocker = w.lease_acquire(fourth, Duration::ZERO).unwrap();
+    let w5 = w.clone();
+    let waiting = std::thread::spawn(move || {
+        w5.lease_acquire_for(fourth, Duration::from_secs(5), "qa-gave-up")
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(w.lease_release_holder("qa-gave-up"), 0);
+    assert!(w.lease_release(blocker));
+    assert_eq!(waiting.join().unwrap(), Err(Refused::Busy));
+    assert!(w.lease_report().is_empty());
+    assert!(w
+        .with_lock_as(fourth, None, Some(Duration::ZERO), |_| ())
+        .is_ok());
 }
 
 #[tokio::test]

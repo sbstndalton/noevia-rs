@@ -32,6 +32,7 @@
 //! STOP_GRACE to finish, then this process exits.
 
 use crate::config::Config;
+use crate::write::Writers;
 use crate::server::{self, App, DECLINE_HEADER, RECOVERED_HEADER};
 use axum::body::Body;
 use axum::http::{HeaderMap, HeaderName, HeaderValue, Method, Request, Response, StatusCode};
@@ -133,9 +134,8 @@ pub struct Front {
     app: OnceLock<Arc<App>>,
     native_routes: OnceLock<Vec<String>>,
     native_writers: OnceLock<Vec<String>>,
-    recovered: Mutex<HashMap<String, Instant>>,
-    /// S3: per tenant, (native writes served, the highest of them the child has been told of).
-    written: Mutex<HashMap<String, (u64, u64)>>,
+    /// Per tenant: when the child stamped it recovered, at which native-write count.
+    recovered: Mutex<HashMap<String, (Instant, u64)>>,
     write_wait: Duration,
     /// S4: this run's epoch for the embedding snapshot (handed to the child), and the owner.
     pub embedding_epoch: String,
@@ -161,7 +161,6 @@ impl Front {
             native_routes: OnceLock::new(),
             native_writers: OnceLock::new(),
             recovered: Mutex::new(HashMap::new()),
-            written: Mutex::new(HashMap::new()),
             write_wait: WRITE_WAIT,
             embedding_epoch: random_hex(16).unwrap_or_default(),
             owner: OnceLock::new(),
@@ -229,10 +228,12 @@ impl Front {
             .is_some_and(|w| w.iter().any(|w| w == "*" || w == uid))
     }
 
-    fn is_recovered(&self, uid: &str) -> bool {
+    /// A stamp counts while it is young and no native write of the tenant happened since it was
+    /// given (`Writers::native_writes`).
+    fn is_recovered(&self, uid: &str, writes: u64) -> bool {
         let mut map = self.recovered.lock().unwrap_or_else(|e| e.into_inner());
         match map.get(uid) {
-            Some(at) if at.elapsed() < RECOVERED_TTL => true,
+            Some((at, at_writes)) if at.elapsed() < RECOVERED_TTL && *at_writes == writes => true,
             Some(_) => {
                 map.remove(uid);
                 false
@@ -242,50 +243,25 @@ impl Front {
     }
 
     fn forget(&self, uid: &str) {
-        self.stamp(uid, false);
+        self.recovered
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(uid);
     }
 
-    /// A native write was served for `uid`: the child's recovered state for it is stale (Python's
-    /// D5 forwarder calls `_rust_write_uncertain` after every served native write). Its stamp is
-    /// voided, and the next forwarded request of the tenant tells the child (WRITTEN_HEADER).
-    fn wrote(&self, uid: &str) {
-        let mut map = self.written.lock().unwrap_or_else(|e| e.into_inner());
-        let entry = map.entry(uid.to_string()).or_insert((0, 0));
-        entry.0 += 1;
-        drop(map);
-        self.forget(uid);
-    }
-
-    /// The tenant's native-write count at send time, and whether the child still has to be told.
-    fn written_at_send(&self, uid: &str) -> (u64, bool) {
-        let map = self.written.lock().unwrap_or_else(|e| e.into_inner());
-        map.get(uid).map_or((0, false), |(n, told)| (*n, told < n))
-    }
-
-    /// A reply arrived for a request sent at write count `sent` (`told`: it carried the news). The
-    /// stamp counts only when no native write happened since and the child knew of every one.
-    fn settle(&self, uid: &str, sent: u64, told: bool, recovered: bool) {
-        let fresh = {
-            let mut map = self.written.lock().unwrap_or_else(|e| e.into_inner());
-            match map.get_mut(uid) {
-                None => true,
-                Some((n, delivered)) => {
-                    if told && *delivered < sent {
-                        *delivered = sent;
-                    }
-                    *n == sent && *delivered >= sent
-                }
-            }
-        };
-        self.stamp(uid, recovered && fresh);
-    }
-
-    fn stamp(&self, uid: &str, recovered: bool) {
-        let mut map = self.recovered.lock().unwrap_or_else(|e| e.into_inner());
-        if recovered {
-            map.insert(uid.to_string(), Instant::now());
+    /// A reply arrived for a request sent at write count `sent` (`told`: it carried the news of
+    /// native writes). The stamp counts only when the child's view was current.
+    fn settle(&self, writers: &Writers, uid: &str, sent: u64, told: bool, recovered: bool) {
+        if recovered && writers.child_current(uid, sent, told) {
+            self.recovered
+                .lock()
+                .unwrap_or_else(|e| e.into_inner())
+                .insert(uid.to_string(), (Instant::now(), sent));
         } else {
-            map.remove(uid);
+            if told {
+                writers.child_current(uid, sent, told);
+            }
+            self.forget(uid);
         }
     }
 }
@@ -443,7 +419,7 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             let mut headers = parts.headers.clone();
             // A tenant the child deleted (its fence) is the child's to answer (410), never native.
             if stamp_tenant(&headers)
-                .is_some_and(|uid| !app.writers.is_fenced(&uid) && front.is_recovered(&uid))
+                .is_some_and(|uid| !app.writers.is_fenced(&uid) && front.is_recovered(&uid, app.writers.native_writes(&uid).0))
             {
                 headers.insert(RECOVERED_HEADER, HeaderValue::from_static("1"));
             }
@@ -490,9 +466,6 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         )
         .await;
         if !is_decline(&resp) {
-            if let Some(uid) = writer.as_deref() {
-                front.wrote(uid);
-            }
             return resp;
         }
         buffered = Some(bytes);
@@ -542,7 +515,8 @@ async fn forward(
     }
     let (sent, tell) = tenant
         .as_deref()
-        .map_or((0, false), |uid| front.written_at_send(uid));
+        .zip(front.app())
+        .map_or((0, false), |(uid, app)| app.writers.native_writes(uid));
     let mut out = HeaderMap::new();
     for (k, v) in headers.iter() {
         if !HOP.contains(&k.as_str()) {
@@ -593,7 +567,9 @@ async fn forward(
     }
     // A reply without a stamp (one Starlette's error middleware wrote) leaves the tenant forwarded.
     if let Some(uid) = tenant {
-        front.settle(&uid, sent, tell, stamp == Some(true));
+        if let Some(app) = front.app() {
+            front.settle(&app.writers, &uid, sent, tell, stamp == Some(true));
+        }
     }
     builder
         .body(Body::new(resp.into_body()))
@@ -857,17 +833,32 @@ mod tests {
     #[test]
     fn stamps_expire_and_clear() {
         let f = Front::new("t".into(), "s".into(), 1);
-        f.stamp("a", true);
-        assert!(f.is_recovered("a"));
-        f.stamp("a", false);
-        assert!(!f.is_recovered("a"));
+        let w = Writers::default();
+        f.settle(&w, "a", 0, false, true);
+        assert!(f.is_recovered("a", 0));
+        f.settle(&w, "a", 0, false, false);
+        assert!(!f.is_recovered("a", 0));
         f.recovered
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .insert(
                 "b".into(),
-                Instant::now() - RECOVERED_TTL - Duration::from_secs(1),
+                (Instant::now() - RECOVERED_TTL - Duration::from_secs(1), 0),
             );
-        assert!(!f.is_recovered("b"));
+        assert!(!f.is_recovered("b", 0));
+        // A native write voids a stamp; a reply to a request sent before it, or one that did not
+        // carry the news, does not stamp; one that carried it does.
+        f.settle(&w, "c", 0, false, true);
+        w.note_native_write("c");
+        assert!(!f.is_recovered("c", 1));
+        f.settle(&w, "c", 0, false, true);
+        assert!(!f.is_recovered("c", 1));
+        let (n, tell) = w.native_writes("c");
+        assert_eq!((n, tell), (1, true));
+        f.settle(&w, "c", n, false, true);
+        assert!(!f.is_recovered("c", 1));
+        f.settle(&w, "c", n, true, true);
+        assert!(f.is_recovered("c", 1));
+        assert_eq!(w.native_writes("c"), (1, false));
     }
 }

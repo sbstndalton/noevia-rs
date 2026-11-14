@@ -208,7 +208,10 @@ impl Owner {
             driver: Mutex::new(Driver::default()),
             wake: Condvar::new(),
         });
-        owner.publish();
+        // The child follows nothing else: without a first snapshot this run must not start.
+        if !owner.publish() {
+            return Err("the embedding snapshot cannot be written".into());
+        }
         let o = owner.clone();
         std::thread::Builder::new()
             .name("embedding-driver".into())
@@ -223,15 +226,17 @@ impl Owner {
     }
 
     /// Write the effective snapshot when it changed (atomically; mode 0600 like the state file).
-    fn publish(&self) {
+    /// The configuration is read under the publication lock, so publications never overtake each
+    /// other (an older snapshot can never replace a newer one). False when it could not be written.
+    fn publish(&self) -> bool {
+        let mut last = locked(&self.published);
         let mut snap = locked(self.config).get().to_json();
         if let Some(map) = snap.as_object_mut() {
             map.remove("version");
             map.insert("epoch".into(), json!(self.epoch));
         }
-        let mut last = locked(&self.published);
         if last.as_ref() == Some(&snap) {
-            return;
+            return true;
         }
         let tmp = self.effective.with_file_name(format!(
             "{}.{}.tmp",
@@ -258,11 +263,17 @@ impl Owner {
             std::fs::rename(&tmp, &self.effective)
         })();
         match written {
-            Ok(()) => *last = Some(snap),
-            Err(e) => eprintln!(
-                "noevia-diary: embedding snapshot not written ({})",
-                e.kind()
-            ),
+            Ok(()) => {
+                *last = Some(snap);
+                true
+            }
+            Err(e) => {
+                eprintln!(
+                    "noevia-diary: embedding snapshot not written ({})",
+                    e.kind()
+                );
+                false
+            }
         }
     }
 
@@ -288,7 +299,7 @@ impl Owner {
         );
         outcome.apply(&mut locked(self.config));
         log(&outcome.logs);
-        self.publish();
+        let _ = self.publish();
         for pending in outcome.rechecks {
             let o = self.clone();
             let _ = std::thread::Builder::new()
@@ -301,7 +312,7 @@ impl Owner {
                     let result = recheck_check(&pending, &mut check);
                     let step = apply_recheck(&mut locked(o.config), &pending, result);
                     log(&step.logs);
-                    o.publish();
+                    let _ = o.publish();
                     if step.next == RecheckNext::Stop {
                         return;
                     }
@@ -361,7 +372,7 @@ impl Owner {
                     eprintln!("noevia-diary: INFO embedding re-index pass: {embedded} vectors stored, {failed} file(s) incomplete{error}");
                 }
             }
-            self.publish();
+            let _ = self.publish();
             let mut d = locked(&self.driver);
             d.running = false;
             let now = Instant::now();
@@ -441,13 +452,20 @@ impl Owner {
                 }
                 _ => m.finish(),
             };
-            me.publish();
+            let _ = me.publish();
             if r.is_ok() && matches!(act.as_str(), "set-next" | "switch" | "rollback" | "reindex") {
                 me.kick();
             }
             match r {
-                // Python returns status() after the kick: `running` is the driver's.
-                Ok(_) => m.status(me.running()),
+                // The action's own status (one coverage scan, as Python), with `running` as Python
+                // reports it after the kick; `reindex` reads it now.
+                Ok(Value::Null) => m.status(me.running()),
+                Ok(mut v) => {
+                    if let Some(map) = v.as_object_mut() {
+                        map.insert("running".into(), json!(me.running()));
+                    }
+                    Ok(v)
+                }
                 Err(e) => Err(e),
             }
         })

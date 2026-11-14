@@ -673,7 +673,13 @@ async fn serve(
                     storage.as_ref(),
                 )
             }) {
-                Ok(resp) => resp,
+                Ok(resp) => {
+                    if app2.write_wait.is_some() && resp.status() != StatusCode::MISDIRECTED_REQUEST
+                    {
+                        app2.writers.note_native_write(&uid);
+                    }
+                    resp
+                }
                 Err(crate::write::Refused::Busy) => reply(Reply::Busy),
                 Err(crate::write::Refused::Fenced) => detail(410, "tenant deleted"),
             }
@@ -867,7 +873,7 @@ async fn serve_write(
     let uid = header_uid.to_ascii_lowercase();
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
-        app2.writers
+        let reply = app2.writers
             .with_lock_as(&uid, None, app2.write_wait, |held| {
                 if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
                     return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
@@ -918,7 +924,13 @@ async fn serve_write(
             .unwrap_or_else(|refused| match refused {
                 crate::write::Refused::Busy => Reply::Busy,
                 crate::write::Refused::Fenced => Reply::Decline,
-            })
+            });
+        // R9 main mode: counted here, in the blocking write, so a caller that went away meanwhile
+        // cannot hide it from the child (front.rs tells it on the tenant's next forward).
+        if app2.write_wait.is_some() && !matches!(reply, Reply::Decline | Reply::Busy) {
+            app2.writers.note_native_write(&uid);
+        }
+        reply
     });
     match task.await {
         Ok(r) => reply(r),

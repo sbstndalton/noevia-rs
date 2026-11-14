@@ -109,6 +109,10 @@ pub struct Writers {
     /// Live leases: id → (tenant, since, the caller's holder nonce).
     leases: Mutex<HashMap<u64, (String, Instant, String)>>,
     next: std::sync::atomic::AtomicU64,
+    /// R9 main mode: per tenant, (native writes served, the highest the Python child was told of).
+    native_writes: Mutex<HashMap<String, (u64, u64)>>,
+    /// Holder nonces whose caller gave up (`lease_release_holder`): a grant to one is returned.
+    cancelled: Mutex<HashMap<String, Instant>>,
 }
 
 #[derive(Default)]
@@ -340,10 +344,22 @@ impl Writers {
         if !slot.take(id, Some(Instant::now() + wait)) {
             return Err(Refused::Busy);
         }
-        self.leases
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .insert(id, (uid.to_string(), Instant::now(), holder.to_string()));
+        let cancelled = {
+            let mut leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            leases.insert(id, (uid.to_string(), Instant::now(), holder.to_string()));
+            // Checked after the insert, under the same lock `lease_release_holder` records under:
+            // a cancel either sees this lease or is seen here.
+            !holder.is_empty()
+                && self
+                    .cancelled
+                    .lock()
+                    .unwrap_or_else(|e| e.into_inner())
+                    .contains_key(holder)
+        };
+        if cancelled {
+            self.lease_release(id);
+            return Err(Refused::Busy);
+        }
         Ok(id)
     }
 
@@ -352,14 +368,18 @@ impl Writers {
         if holder.is_empty() {
             return 0;
         }
-        let ids: Vec<u64> = self
-            .leases
-            .lock()
-            .unwrap_or_else(|e| e.into_inner())
-            .iter()
-            .filter(|(_, (_, _, h))| h == holder)
-            .map(|(id, _)| *id)
-            .collect();
+        let ids: Vec<u64> = {
+            let leases = self.leases.lock().unwrap_or_else(|e| e.into_inner());
+            let mut cancelled = self.cancelled.lock().unwrap_or_else(|e| e.into_inner());
+            cancelled.retain(|_, at| at.elapsed() < Duration::from_secs(600));
+            // A grant still waiting for the slot is returned as soon as it is made.
+            cancelled.insert(holder.to_string(), Instant::now());
+            leases
+                .iter()
+                .filter(|(_, (_, _, h))| h == holder)
+                .map(|(id, _)| *id)
+                .collect()
+        };
         ids.into_iter().filter(|id| self.lease_release(*id)).count()
     }
 
@@ -385,6 +405,34 @@ impl Writers {
             .unwrap_or_else(|e| e.into_inner())
             .get(&id)
             .is_some_and(|(u, _, _)| u == uid)
+    }
+
+    /// R9 main mode: a native write of `uid` ran (whatever its reply; counted inside the blocking
+    /// write, so a caller that went away does not hide it). The child's state for it is stale.
+    pub fn note_native_write(&self, uid: &str) {
+        let mut map = self.native_writes.lock().unwrap_or_else(|e| e.into_inner());
+        map.entry(uid.to_string()).or_insert((0, 0)).0 += 1;
+    }
+
+    /// (native writes so far, whether the child has still to be told of some).
+    pub fn native_writes(&self, uid: &str) -> (u64, bool) {
+        let map = self.native_writes.lock().unwrap_or_else(|e| e.into_inner());
+        map.get(uid).map_or((0, false), |(n, told)| (*n, told < n))
+    }
+
+    /// The child answered a request sent at write count `sent` (`told`: it carried the news). True
+    /// when its view is current: no native write since, and it knew of every one.
+    pub fn child_current(&self, uid: &str, sent: u64, told: bool) -> bool {
+        let mut map = self.native_writes.lock().unwrap_or_else(|e| e.into_inner());
+        match map.get_mut(uid) {
+            None => true,
+            Some((n, delivered)) => {
+                if told && *delivered < sent {
+                    *delivered = sent;
+                }
+                *n == sent && *delivered >= sent
+            }
+        }
     }
 
     /// The live leases (tenant, seconds held), longest first: a leak is visible.
