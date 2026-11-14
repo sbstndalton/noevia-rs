@@ -372,10 +372,13 @@ pub fn drive_check(
         return Ok(Status::Empty);
     }
     let plain = open(text).map_err(|KeyError| DRIVE_NOT_CURRENT.to_string())?;
-    let parsed = wtf16::parse(&String::from_utf8_lossy(&plain));
-    match parsed {
-        Ok(_) | Err(wtf16::Refusal::Unsupported) => Ok(Status::Current),
-        Err(wtf16::Refusal::Invalid) => Err(DRIVE_NOT_CURRENT.to_string()),
+    // `JSON.parse(Buffer.toString('utf8'))` succeeds: checked without keeping any value, on a copy
+    // that is wiped when dropped.
+    let decoded = Zeroizing::new(String::from_utf8_lossy(&plain).into_owned());
+    if js_json::raw::valid(&decoded) {
+        Ok(Status::Current)
+    } else {
+        Err(DRIVE_NOT_CURRENT.to_string())
     }
 }
 
