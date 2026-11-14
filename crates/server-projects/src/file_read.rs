@@ -214,7 +214,9 @@ fn texts_readable(dir: &Path, project_id: &str, files: &JValue) -> bool {
         return true;
     };
     files.iter().all(|f| {
-        own_content(f).is_some() || !f.get("textRef").truthy() || content(dir, project_id, f).is_some()
+        own_content(f).is_some()
+            || !f.get("textRef").truthy()
+            || content(dir, project_id, f).is_some()
     })
 }
 
@@ -460,7 +462,10 @@ mod tests {
         ))
         .unwrap();
         let args = |name: &str| JValue::obj([("name", JValue::Str(name.into()))]);
-        assert_eq!(read_project_file(&dir, Some(&project), &args("QA-linked.md")), Outcome::Core);
+        assert_eq!(
+            read_project_file(&dir, Some(&project), &args("QA-linked.md")),
+            Outcome::Core
+        );
         assert_eq!(
             read_project_file(&dir, Some(&project), &args("QA-gone.md")),
             Outcome::Done(Read {

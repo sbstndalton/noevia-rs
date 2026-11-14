@@ -79,8 +79,14 @@ pub fn answer(
         || run.edit_target.is_some()
         || run.args.len() > ARGS_BYTES
         || !within(&run.exchange_key, ID_CAP)
-        || run.chat_key.as_deref().is_some_and(|k| !within(k, CHAT_ID_CAP))
-        || run.project_id.as_deref().is_some_and(|p| !within(p, ID_CAP))
+        || run
+            .chat_key
+            .as_deref()
+            .is_some_and(|k| !within(k, CHAT_ID_CAP))
+        || run
+            .project_id
+            .as_deref()
+            .is_some_and(|p| !within(p, ID_CAP))
     {
         return None;
     }
@@ -192,14 +198,22 @@ mod tests {
         gone.project_id = Some("qa-other".into());
         assert_eq!(answer(&data, USER, &gone, yes), None);
         assert_eq!(
-            answer(&data, "0000aaaa-1111-2222-3333-444455550000", &run("{}"), yes),
+            answer(
+                &data,
+                "0000aaaa-1111-2222-3333-444455550000",
+                &run("{}"),
+                yes
+            ),
             None
         );
         let mut long = run("{}");
         long.exchange_key = "k".repeat(201);
         assert_eq!(answer(&data, USER, &long, yes), None);
         // A disabled or removed account, an approved edit target, the bridge's other caps.
-        assert_eq!(answer(&data, USER, &run(r#"{"name":"QA-notes.md"}"#), |_| false), None);
+        assert_eq!(
+            answer(&data, USER, &run(r#"{"name":"QA-notes.md"}"#), |_| false),
+            None
+        );
         let mut edit = run(r#"{"name":"QA-notes.md"}"#);
         edit.edit_target = Some("a".repeat(64));
         assert_eq!(answer(&data, USER, &edit, yes), None);

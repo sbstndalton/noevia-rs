@@ -1349,7 +1349,9 @@ impl Host for FrontHost {
                     )
                     .await;
                 if !matches!(counted, Some((204, _))) {
-                    eprintln!("chat native: a read_project_file the front answered was not counted");
+                    eprintln!(
+                        "chat native: a read_project_file the front answered was not counted"
+                    );
                 }
                 return Ran::Done {
                     text,
