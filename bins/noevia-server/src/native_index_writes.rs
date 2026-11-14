@@ -398,7 +398,14 @@ impl IndexWrites {
         let Some(base) = config.active.base_url.clone().filter(|b| !b.is_empty()) else {
             return defer("shared engine target");
         };
-        let embed = HttpEmbed::new(http.clone(), handle, move |_: &Target| {
+        // The address belongs to the target read here: if the admin switches the active target before
+        // the indexer reads its own, the embed fails (text stored, vectors pending) rather than storing
+        // one target's vectors in another's slot.
+        let (profile, model) = (config.active.profile.clone(), config.active.model.clone());
+        let embed = HttpEmbed::new(http.clone(), handle, move |t: &Target| {
+            if t.profile != profile || t.model != model {
+                return Err("embedding target changed".to_owned());
+            }
             Ok(Endpoint::Explicit(base.clone()))
         });
         let host = ix.host();

@@ -745,7 +745,10 @@ pub fn router_with_app(
                         body,
                     )
                 }
-            }),
+            })
+            // A file's text may be the store's whole TEXT_LIMIT: past the extractor's 2 MiB default (the
+            // layer in `router` wraps only the routes added before it).
+            .layer(DefaultBodyLimit::max(BODY_LIMIT)),
         );
     }
     // Port contract 2026-11-04 RS-1: the preset reload baseline's authority.

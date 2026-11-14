@@ -298,6 +298,18 @@ async fn on_indexes_tails_and_deletes_the_live_index() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_file_past_the_extractors_default_body_limit_is_still_written() {
+    let r = rig("on", false, true).await;
+    // About 3 MiB of text: past axum's 2 MiB default, inside the store's TEXT_LIMIT.
+    let line = "QA large-file line for the index-writes body limit check.\n";
+    let text = line.repeat(3 * 1024 * 1024 / line.len());
+    let (status, out) = post(&r, "file", TOKEN, &file_body("qa-large.md", &text)).await;
+    assert_eq!(status, 200, "{out}");
+    assert_eq!(out["ok"], json!(true), "{out}");
+    assert!(chunks(&r.live(), "qa-large.md") > 1);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 async fn shadow_writes_only_the_side_copy() {
     let r = rig("shadow", false, true).await;
     let (_, out) = post(&r, "file", TOKEN, &file_body("qa.md", &document())).await;
