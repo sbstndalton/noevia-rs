@@ -13,6 +13,10 @@
 //! 3. the tool is not one the turn treats as a write (the prepared frame's `writes`, `onceTools`,
 //!    `automaticOnlyWrites`, `editTools`): a read runs under no approval fence, so nothing about a
 //!    revoked grant or an approved edit target can be skipped here;
+//!    3b. and discovery's snapshot does not now hold a server saying the tool writes
+//!    (`readOnlyHint: false`): core's call-time `isWriteTool` believes such a server even when the frame
+//!    was prepared before it said so, and its gates (`declinedWrites`, the write target, the taint check,
+//!    the internal token's `w`) read that call-time answer, so such a call is left to core;
 //! 4. `routeMcpTool(name, serverId)` and `MCP_SERVER_BY_ID`: the server's offer of that name is in
 //!    discovery's snapshot and the server is configured. Core reads its own copies (`mcpState`, the
 //!    generation it last applied, and `MCP_SERVERS` as of its last directory sync), which can lag this
@@ -54,6 +58,8 @@ pub struct Facts<'a> {
     pub servers: &'a [ServerSpec],
     /// The tools the turn treats as writes (step 3).
     pub writes: &'a HashSet<String>,
+    /// Whether discovery now has a server saying `name` writes (`readOnlyHint: false`), step 3b.
+    pub server_says_write: &'a dyn Fn(&str) -> bool,
 }
 
 /// One call's plan.
@@ -78,7 +84,7 @@ pub fn plan(user: &str, run: &ToolRun, facts: &Facts<'_>) -> Plan {
     else {
         return Plan::Core;
     };
-    if facts.writes.contains(&run.name) {
+    if facts.writes.contains(&run.name) || (facts.server_says_write)(&run.name) {
         return Plan::Core;
     }
     if !(facts.offered)(&server, &run.name) {
@@ -110,6 +116,16 @@ pub fn snapshot_offers(snapshot: &Snapshot, server: &str, name: &str) -> bool {
         .offers
         .iter()
         .any(|e| e.server == server && e.name == name)
+}
+
+/// Whether any offer of `name` in `snapshot` says it writes (`readOnlyHint: false`), step 3b. Core's
+/// call-time `isWriteTool` reads only the first server's entry (`mcpState.tools`, noevia#2742); any
+/// offer is stricter and can only leave more calls to core.
+pub fn snapshot_says_write(snapshot: &Snapshot, name: &str) -> bool {
+    snapshot
+        .offers
+        .iter()
+        .any(|e| e.name == name && e.read_only == Some(false))
 }
 
 /// The tools the prepared turn treats as writes (step 3 of the module docs).
@@ -196,10 +212,12 @@ mod tests {
         let offered = |server: &str, name: &str| server != "qa-gone-offer" && name != "qa_unlisted";
         let servers = servers();
         let writes = writes.iter().map(|w| w.to_string()).collect();
+        let says = |name: &str| name == "qa_now_writes";
         f(&Facts {
             offered: &offered,
             servers: &servers,
             writes: &writes,
+            server_says_write: &says,
         })
     }
 
@@ -243,6 +261,39 @@ mod tests {
             with(&["qa_lookup"], |f| plan(USER, &run("qa_lookup", "qa-open", "{}"), f)),
             Plan::Core
         );
+    }
+
+    #[test]
+    fn a_tool_a_server_now_says_writes_stays_cores_though_the_frame_called_it_a_read() {
+        assert_eq!(
+            with(&[], |f| plan(USER, &run("qa_now_writes", "qa-open", "{}"), f)),
+            Plan::Core
+        );
+    }
+
+    #[test]
+    fn snapshot_says_write_reads_every_offer_of_the_name() {
+        let entry = |server: &str, name: &str, ro: Option<bool>| crate::mcp_discovery_actor::Entry {
+            name: name.into(),
+            server: server.into(),
+            tool: JValue::Null,
+            read_only: ro,
+        };
+        let snap = Snapshot {
+            offers: vec![
+                entry("qa-a", "shared", Some(true)),
+                entry("qa-b", "shared", Some(false)),
+                entry("qa-a", "silent", None),
+                entry("qa-a", "read", Some(true)),
+            ],
+            ..Snapshot::default()
+        };
+        // Core reads only qa-a's entry for "shared" (a read); the second server's "writes" counts here.
+        assert!(snapshot_says_write(&snap, "shared"));
+        // No hint is no claim: the manifest decides (the frame's writes).
+        assert!(!snapshot_says_write(&snap, "silent"));
+        assert!(!snapshot_says_write(&snap, "read"));
+        assert!(!snapshot_says_write(&snap, "absent"));
     }
 
     #[test]

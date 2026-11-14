@@ -1609,11 +1609,14 @@ impl Host for FrontHost {
 impl FrontHost {
     /// A routed MCP read run in this front (tool_dispatch_mcp.rs), or `None` for core's bridge.
     async fn mcp_in_process(&self, run: &ToolRun) -> Option<Ran> {
-        use crate::tool_dispatch_mcp::{outcome, plan, snapshot_offers, Facts, Plan};
+        use crate::tool_dispatch_mcp::{
+            outcome, plan, snapshot_offers, snapshot_says_write, Facts, Plan,
+        };
         let handle = crate::mcp_discovery_backend::handle(&self.app)?;
         let snapshot = handle.source.current();
         let servers = crate::mcp_discovery_backend::server_specs(&self.app).await;
         let offered = |server: &str, name: &str| snapshot_offers(&snapshot, server, name);
+        let says = |name: &str| snapshot_says_write(&snapshot, name);
         let planned = plan(
             &self.user,
             run,
@@ -1621,6 +1624,7 @@ impl FrontHost {
                 offered: &offered,
                 servers: &servers,
                 writes: &self.writes,
+                server_says_write: &says,
             },
         );
         if !matches!(planned, Plan::Call(_)) {
