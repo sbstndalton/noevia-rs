@@ -113,9 +113,18 @@ pub struct Writers {
 
 #[derive(Default)]
 struct Slot {
-    /// The holder: a native operation's or a lease's id (ids are never reused).
-    holder: Mutex<Option<u64>>,
+    state: Mutex<SlotState>,
     freed: Condvar,
+}
+
+#[derive(Default)]
+struct SlotState {
+    /// The holder: a native operation's or a lease's id (ids are never reused).
+    holder: Option<u64>,
+    /// Operations running joined to the holding lease.
+    joins: usize,
+    /// The holding lease was released while joined operations ran: the last one frees the slot.
+    released: bool,
 }
 
 /// Why a slot was not taken.
@@ -130,12 +139,13 @@ pub enum Refused {
 /// The held writer slot of one tenant, lent to the operation `with_lock` runs. It is the same
 /// slot `fence` waits for, so while any `WriteGuard` (and every `Journal` borrowing it) exists,
 /// Python's tenant deletion cannot pass its fence and remove the tenant root. Only `Writers`
-/// constructs one. A guard that joined a lease releases nothing.
+/// constructs one. A guard joined to a lease keeps the slot even when the lease is returned
+/// meanwhile (a caller that gave up waiting): the slot is free only when the operation ends.
 pub struct WriteGuard<'a> {
     uid: String,
     slot: Arc<Slot>,
     id: u64,
-    owns: bool,
+    joined: bool,
     _writers: std::marker::PhantomData<&'a Writers>,
 }
 
@@ -147,48 +157,85 @@ impl WriteGuard<'_> {
 
 impl Drop for WriteGuard<'_> {
     fn drop(&mut self) {
-        if self.owns {
+        if self.joined {
+            self.slot.unjoin(self.id);
+        } else {
             self.slot.free(self.id);
         }
     }
 }
 
 impl Slot {
-    fn holder(&self) -> MutexGuard<'_, Option<u64>> {
-        self.holder.lock().unwrap_or_else(|e| e.into_inner())
+    fn state(&self) -> MutexGuard<'_, SlotState> {
+        self.state.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Take the slot for `id`, waiting until `until` (None: without limit). False: still held.
     fn take(&self, id: u64, until: Option<Instant>) -> bool {
-        let mut holder = self.holder();
-        while holder.is_some() {
+        let mut state = self.state();
+        while state.holder.is_some() {
             match until {
-                None => holder = self.freed.wait(holder).unwrap_or_else(|e| e.into_inner()),
+                None => state = self.freed.wait(state).unwrap_or_else(|e| e.into_inner()),
                 Some(at) => {
                     let left = at.saturating_duration_since(Instant::now());
                     if left.is_zero() {
                         return false;
                     }
-                    holder = self
+                    state = self
                         .freed
-                        .wait_timeout(holder, left)
+                        .wait_timeout(state, left)
                         .unwrap_or_else(|e| e.into_inner())
                         .0;
                 }
             }
         }
-        *holder = Some(id);
+        state.holder = Some(id);
         true
     }
 
-    fn free(&self, id: u64) -> bool {
-        let mut holder = self.holder();
-        if *holder != Some(id) {
+    fn free(&self, id: u64) {
+        let mut state = self.state();
+        if state.holder == Some(id) {
+            state.holder = None;
+            self.freed.notify_all();
+        }
+    }
+
+    /// Join the lease `id` when it holds the slot (and was not returned).
+    fn join(&self, id: u64) -> bool {
+        let mut state = self.state();
+        if state.holder != Some(id) || state.released {
             return false;
         }
-        *holder = None;
-        self.freed.notify_all();
+        state.joins += 1;
         true
+    }
+
+    fn unjoin(&self, id: u64) {
+        let mut state = self.state();
+        if state.holder != Some(id) {
+            return;
+        }
+        state.joins = state.joins.saturating_sub(1);
+        if state.joins == 0 && state.released {
+            state.holder = None;
+            state.released = false;
+            self.freed.notify_all();
+        }
+    }
+
+    /// The lease `id` is returned: the slot is free now, or when its last joined operation ends.
+    fn release_lease(&self, id: u64) {
+        let mut state = self.state();
+        if state.holder != Some(id) {
+            return;
+        }
+        if state.joins > 0 {
+            state.released = true;
+        } else {
+            state.holder = None;
+            self.freed.notify_all();
+        }
     }
 }
 
@@ -219,22 +266,22 @@ impl Writers {
         f: impl FnOnce(&WriteGuard<'_>) -> T,
     ) -> Result<T, Refused> {
         let slot = self.slot(uid);
-        let joined = lease.filter(|l| self.lease_holds(*l, uid) && *slot.holder() == Some(*l));
-        let (id, owns) = match joined {
-            Some(l) => (l, false),
+        let joined = lease.filter(|l| self.lease_holds(*l, uid) && slot.join(*l));
+        let (id, joined) = match joined {
+            Some(l) => (l, true),
             None => {
                 let id = self.id();
                 if !slot.take(id, wait.map(|w| Instant::now() + w)) {
                     return Err(Refused::Busy);
                 }
-                (id, true)
+                (id, false)
             }
         };
         let held = WriteGuard {
             uid: uid.to_string(),
             slot,
             id,
-            owns,
+            joined,
             _writers: std::marker::PhantomData,
         };
         // Checked under the tenant lock: a fence taken before this point is always seen.
@@ -264,7 +311,8 @@ impl Writers {
             .unwrap_or_else(|e| e.into_inner())
             .insert(uid.to_string(), Instant::now());
         let slot = self.slot(uid);
-        if lease.is_some_and(|l| self.lease_holds(l, uid) && *slot.holder() == Some(l)) {
+        if lease.is_some_and(|l| self.lease_holds(l, uid) && slot.join(l)) {
+            slot.unjoin(lease.unwrap_or_default());
             return;
         }
         let id = self.id();
@@ -297,7 +345,7 @@ impl Writers {
             .remove(&id);
         match entry {
             Some((uid, _)) => {
-                self.slot(&uid).free(id);
+                self.slot(&uid).release_lease(id);
                 true
             }
             None => false,

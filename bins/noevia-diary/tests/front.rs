@@ -764,4 +764,29 @@ fn leases_joins_and_fences_share_one_slot() {
     assert!(w.lease_release(id3));
     assert!(!w.lease_release(id3));
     assert!(w.lease_report().is_empty());
+    // A lease returned while a joined operation runs (a caller that stopped waiting) keeps the
+    // slot until that operation ends.
+    let third = "3e819f41-6d50-4fb1-8c43-4d5e6f708192";
+    let id4 = w.lease_acquire(third, Duration::ZERO).unwrap();
+    let (tx, rx) = std::sync::mpsc::channel::<()>();
+    let (started_tx, started_rx) = std::sync::mpsc::channel::<()>();
+    let w3 = w.clone();
+    let op = std::thread::spawn(move || {
+        w3.with_lock_as(third, Some(id4), Some(Duration::ZERO), |_| {
+            started_tx.send(()).unwrap();
+            rx.recv().unwrap();
+        })
+    });
+    started_rx.recv().unwrap();
+    assert!(w.lease_release(id4));
+    assert_eq!(
+        w.with_lock_as(third, None, Some(Duration::from_millis(50)), |_| ())
+            .err(),
+        Some(Refused::Busy)
+    );
+    tx.send(()).unwrap();
+    assert_eq!(op.join().unwrap(), Ok(()));
+    assert!(w
+        .with_lock_as(third, None, Some(Duration::ZERO), |_| ())
+        .is_ok());
 }
