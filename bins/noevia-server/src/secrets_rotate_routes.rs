@@ -44,9 +44,9 @@ use axum::{
     response::IntoResponse,
 };
 use js_json::{wtf16, JValue};
-use secrets_rotate::{KeyError, 
-    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure, Keys,
-    Pass, Row, Status, Table, AUDIT_ACTION, DRIVE_TABLE,
+use secrets_rotate::{
+    audit_detail, drive_check, drive_front_error, merge, rotate, Counts, DriveFront, Failure,
+    KeyError, Keys, Pass, Row, Status, Table, AUDIT_ACTION, DRIVE_TABLE,
 };
 use server_auth::secrets::SecretKeys;
 use std::path::{Path, PathBuf};
@@ -447,7 +447,10 @@ mod tests {
         assert!(pass_of(&bad, provider_ref, None).is_none());
         let other = wtf16::parse(r#"{"ok":true,"tables":{"qa_table":{"current":0,"rotated":0,"upgraded":0,"empty":0,"failed":0}},"failures":[{"table":"qa_table","ref":null,"error":null}]}"#).unwrap();
         assert!(pass_of(&other, mcp_ref, Some(&MCP_TABLES)).is_none());
-        assert_eq!(pass_of(&other, mcp_ref, None).unwrap().failures[0].error, "");
+        assert_eq!(
+            pass_of(&other, mcp_ref, None).unwrap().failures[0].error,
+            ""
+        );
         assert_eq!(
             mcp_ref(&wtf16::parse(r#"["u",2,"x"]"#).unwrap()),
             wtf16::parse(r#"["u","2"]"#).unwrap()

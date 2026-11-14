@@ -472,17 +472,27 @@ mod tests {
         let d = tempfile::tempdir().unwrap();
         let data = d.path().join("ui-data");
         let mut err = Vec::new();
-        assert_eq!(ensure_secrets_key_cli(Some(data.clone().into_os_string()), &mut err), ExitCode::SUCCESS);
-        assert!(String::from_utf8(err).unwrap().starts_with("Generated credential-encryption key: "));
+        assert_eq!(
+            ensure_secrets_key_cli(Some(data.clone().into_os_string()), &mut err),
+            ExitCode::SUCCESS
+        );
+        assert!(String::from_utf8(err)
+            .unwrap()
+            .starts_with("Generated credential-encryption key: "));
         let key = std::fs::read(data.join("secrets.key")).unwrap();
         assert_eq!(key.len(), 32);
         let mut err = Vec::new();
-        assert_eq!(ensure_secrets_key_cli(Some(data.clone().into_os_string()), &mut err), ExitCode::SUCCESS);
+        assert_eq!(
+            ensure_secrets_key_cli(Some(data.clone().into_os_string()), &mut err),
+            ExitCode::SUCCESS
+        );
         assert!(err.is_empty());
         assert_eq!(std::fs::read(data.join("secrets.key")).unwrap(), key);
-        assert_eq!(ensure_secrets_key_cli(None, &mut Vec::new()), ExitCode::FAILURE);
+        assert_eq!(
+            ensure_secrets_key_cli(None, &mut Vec::new()),
+            ExitCode::FAILURE
+        );
     }
-
 
     #[derive(Default)]
     struct ProbeWriter {

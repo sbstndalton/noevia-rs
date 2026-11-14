@@ -311,7 +311,9 @@ pub fn ensure_key(
     use std::io::Write;
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
     let io = |step: &'static str| move |e: std::io::Error| EnsureError::Io(step, e.kind());
-    let errno = |step: &'static str| move |e: rustix::io::Errno| EnsureError::Io(step, std::io::Error::from(e).kind());
+    let errno = |step: &'static str| {
+        move |e: rustix::io::Errno| EnsureError::Io(step, std::io::Error::from(e).kind())
+    };
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
@@ -504,8 +506,14 @@ mod ensure_tests {
         assert_eq!(ensure_key(&data, |k| k.fill(5)).unwrap(), Ensured::Created);
         let file = data.join("secrets.key");
         assert_eq!(std::fs::read(&file).unwrap(), vec![5u8; 32]);
-        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
-        assert_eq!(std::fs::metadata(&data).unwrap().permissions().mode() & 0o777, 0o700);
+        assert_eq!(
+            std::fs::metadata(&file).unwrap().permissions().mode() & 0o777,
+            0o600
+        );
+        assert_eq!(
+            std::fs::metadata(&data).unwrap().permissions().mode() & 0o777,
+            0o700
+        );
         // Kept, never overwritten, and the store opens it.
         assert_eq!(ensure_key(&data, |k| k.fill(6)).unwrap(), Ensured::Existed);
         assert_eq!(std::fs::read(&file).unwrap(), vec![5u8; 32]);
@@ -517,7 +525,10 @@ mod ensure_tests {
         let d = tempfile::tempdir().unwrap();
         std::fs::write(d.path().join("secrets.key"), [1u8; 31]).unwrap();
         assert!(ensure_key(d.path(), |k| k.fill(5)).is_err());
-        assert_eq!(std::fs::read(d.path().join("secrets.key")).unwrap(), vec![1u8; 31]);
+        assert_eq!(
+            std::fs::read(d.path().join("secrets.key")).unwrap(),
+            vec![1u8; 31]
+        );
         let e = tempfile::tempdir().unwrap();
         let outside = e.path().join("elsewhere");
         std::fs::write(&outside, [2u8; 32]).unwrap();
@@ -537,11 +548,17 @@ mod ensure_tests {
         let d = tempfile::tempdir().unwrap();
         let not_a_dir = d.path().join("ui-data");
         std::fs::write(&not_a_dir, "qa").unwrap();
-        assert!(matches!(ensure_key(&not_a_dir, |k| k.fill(5)), Err(EnsureError::Io(..))));
+        assert!(matches!(
+            ensure_key(&not_a_dir, |k| k.fill(5)),
+            Err(EnsureError::Io(..))
+        ));
         // No temporary file is left behind after a creation.
         let e = tempfile::tempdir().unwrap();
         ensure_key(e.path(), |k| k.fill(5)).unwrap();
-        let names: Vec<_> = std::fs::read_dir(e.path()).unwrap().map(|x| x.unwrap().file_name()).collect();
+        let names: Vec<_> = std::fs::read_dir(e.path())
+            .unwrap()
+            .map(|x| x.unwrap().file_name())
+            .collect();
         assert_eq!(names, vec![std::ffi::OsString::from("secrets.key")]);
     }
 }

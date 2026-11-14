@@ -47,7 +47,10 @@ async fn post_raw(addr: std::net::SocketAddr, cookie: &str) -> (u16, String) {
     let _ = tokio::time::timeout(Duration::from_secs(60), s.read_to_end(&mut bytes)).await;
     let text = String::from_utf8(bytes).unwrap();
     let (h, b) = text.split_once("\r\n\r\n").unwrap();
-    (h.split_whitespace().nth(1).unwrap().parse().unwrap(), b.to_string())
+    (
+        h.split_whitespace().nth(1).unwrap().parse().unwrap(),
+        b.to_string(),
+    )
 }
 
 async fn post(addr: std::net::SocketAddr, cookie: &str) -> (u16, Value) {
@@ -208,10 +211,25 @@ async fn the_front_rotates_every_credential_in_one_request() {
         _ => panic!("tables"),
     };
     let at = |name: &str| order.iter().position(|n| n == name).unwrap();
-    assert_eq!(order[..3], ["storage_connections", "chatgpt_oauth_tokens", "google_drive_users"]);
+    assert_eq!(
+        order[..3],
+        [
+            "storage_connections",
+            "chatgpt_oauth_tokens",
+            "google_drive_users"
+        ]
+    );
     assert!(at("google_drive_users") < at("shared_providers"));
     assert!(at("shared_providers") < at("mcp_oauth_tokens"));
-    assert_eq!(order[order.len() - 4..], ["mcp_oauth_tokens", "mcp_oauth_clients", "directory_mcp_user_keys", "directory_mcp_servers"]);
+    assert_eq!(
+        order[order.len() - 4..],
+        [
+            "mcp_oauth_tokens",
+            "mcp_oauth_clients",
+            "directory_mcp_user_keys",
+            "directory_mcp_servers"
+        ]
+    );
     // Every value now opens under the current key alone, to what it held.
     let secret = |u: &str| -> String {
         db.query_row(
