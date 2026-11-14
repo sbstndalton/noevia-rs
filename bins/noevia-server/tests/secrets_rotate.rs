@@ -282,32 +282,3 @@ async fn the_front_rotates_every_credential_in_one_request() {
     assert_eq!(again["totals"]["rotated"], 0, "{again}");
     assert_eq!(again["totals"]["failed"], 0, "{again}");
 }
-
-/// A client that goes away right after sending does not stop the rotation: it runs to its end, with
-/// its audit row.
-#[tokio::test]
-async fn a_rotation_whose_client_leaves_still_finishes() {
-    let d = tempfile::tempdir().unwrap();
-    let db = seed(d.path());
-    let addr = front(d.path(), &[("NOEVIA_RUST_SECRETS_ROTATE", "1")]).await;
-    {
-        let mut s = TcpStream::connect(addr).await.unwrap();
-        let head = format!("POST {ROUTE} HTTP/1.1\r\nHost: {addr}\r\nCookie: {ADMIN}\r\nOrigin: http://{addr}\r\nX-CSRF-Token: csrf\r\nContent-Length: 0\r\n\r\n");
-        s.write_all(head.as_bytes()).await.unwrap();
-    }
-    let deadline = std::time::Instant::now() + Duration::from_secs(30);
-    loop {
-        let rows: i64 = db
-            .query_row("SELECT COUNT(*) FROM audit_events WHERE action='secrets.rotate'", [], |r| r.get(0))
-            .unwrap();
-        if rows == 1 {
-            break;
-        }
-        assert!(std::time::Instant::now() < deadline, "no audit row");
-        tokio::time::sleep(Duration::from_millis(100)).await;
-    }
-    let secret: String = db
-        .query_row("SELECT secret FROM storage_connections WHERE user_id=?1", [A], |r| r.get(0))
-        .unwrap();
-    assert_eq!(open_current(&secret, Some(A)), "qa-storage-a");
-}

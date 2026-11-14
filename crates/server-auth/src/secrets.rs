@@ -269,58 +269,107 @@ pub enum Ensured {
     Created,
 }
 
+/// Why [`ensure_key`] refused. Only [`EnsureError::BadKey`] says anything about the key itself: an
+/// operator must never be told "bad key" for a permission or disk error (replacing the key loses every
+/// sealed credential).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EnsureError {
+    /// `secrets.key` exists but is not a 32-byte regular file with one link.
+    BadKey,
+    /// A file-system step failed: which step, and the error's kind.
+    Io(&'static str, std::io::ErrorKind),
+}
+
+impl std::fmt::Display for EnsureError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            EnsureError::BadKey => write!(
+                f,
+                "invalid current credential-encryption key (need a 32-byte regular file)"
+            ),
+            EnsureError::Io(step, kind) => write!(f, "secrets.key: could not {step}: {kind}"),
+        }
+    }
+}
+
+impl std::error::Error for EnsureError {}
+
 /// core secrets.cjs `createSecretStore`'s first-start step, for the front once Node no longer starts
 /// first (track R12; the removal release wires it): the data directory (made, and set to 0700 as Node
-/// does, a failed chmod ignored), then `secrets.key`: an existing one must be a 32-byte regular file
-/// with one link (else [`SecretsError::BadKey`], as Node refuses to start); a missing one is created
-/// exclusively (never through a link), mode 0600, from `fill` (32 bytes of the caller's CSPRNG), and
-/// synced. A key another process created meanwhile is read as existing. The key never leaves here.
+/// does, a failed chmod ignored), then `secrets.key`. An existing one must be a 32-byte regular file
+/// with one link, read without following a link (as every Rust reader of it, [`load_existing`];
+/// Node also followed a link). A missing one is made from `fill` (32 bytes of the caller's CSPRNG,
+/// drawn first): written and synced to a 0600 temporary file beside it, then published by a hard
+/// link, so no reader ever sees a partial key and a key another process made meanwhile is kept (and
+/// read as existing); the directory is synced after. The caller checks the retired key right after
+/// ([`load_existing`] with `SECRETS_KEY_PREVIOUS`), as Node's start did. The key never leaves here.
 pub fn ensure_key(
     data_dir: &Path,
     fill: impl FnOnce(&mut [u8; secret_envelope::KEY_BYTES]),
-) -> Result<Ensured, SecretsError> {
+) -> Result<Ensured, EnsureError> {
+    use rustix::fs::{linkat, open, openat, unlinkat, AtFlags, Mode, OFlags};
     use std::io::Write;
     use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-    let io = |_| SecretsError::BadKey("current");
+    let io = |step: &'static str| move |e: std::io::Error| EnsureError::Io(step, e.kind());
+    let errno = |step: &'static str| move |e: rustix::io::Errno| EnsureError::Io(step, std::io::Error::from(e).kind());
     std::fs::DirBuilder::new()
         .recursive(true)
         .mode(0o700)
         .create(data_dir)
-        .map_err(io)?;
+        .map_err(io("make the data directory"))?;
     let _ = std::fs::set_permissions(data_dir, std::fs::Permissions::from_mode(0o700));
     let file = data_dir.join("secrets.key");
     let existing = || match read_existing_key(&file) {
         Ok(_) => Ok(Ensured::Existed),
-        Err(_) => Err(SecretsError::BadKey("current")),
+        Err(e) if e.kind() == std::io::ErrorKind::InvalidData => Err(EnsureError::BadKey),
+        // A link is not followed: refused like a key of the wrong shape.
+        Err(e) if e.raw_os_error() == Some(rustix::io::Errno::LOOP.raw_os_error()) => {
+            Err(EnsureError::BadKey)
+        }
+        Err(e) => Err(io("read the key")(e)),
     };
     match std::fs::symlink_metadata(&file) {
         Ok(_) => return existing(),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-        Err(e) => return Err(io(e)),
+        Err(e) => return Err(io("look at the key")(e)),
     }
-    let fd = match rustix::fs::open(
-        &file,
-        rustix::fs::OFlags::WRONLY
-            | rustix::fs::OFlags::CREATE
-            | rustix::fs::OFlags::EXCL
-            | rustix::fs::OFlags::NOFOLLOW
-            | rustix::fs::OFlags::CLOEXEC,
-        rustix::fs::Mode::from_raw_mode(0o600),
-    ) {
-        Ok(fd) => fd,
-        Err(rustix::io::Errno::EXIST) => return existing(),
-        Err(_) => return Err(SecretsError::BadKey("current")),
-    };
     let mut key = Zeroizing::new([0u8; secret_envelope::KEY_BYTES]);
     fill(&mut key);
+    let dir = open(
+        data_dir,
+        OFlags::RDONLY | OFlags::DIRECTORY | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::empty(),
+    )
+    .map_err(errno("open the data directory"))?;
+    let nanos = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    let tmp = format!("secrets.key.{}.{nanos}.tmp", std::process::id());
+    let fd = openat(
+        &dir,
+        tmp.as_str(),
+        OFlags::WRONLY | OFlags::CREATE | OFlags::EXCL | OFlags::NOFOLLOW | OFlags::CLOEXEC,
+        Mode::from_raw_mode(0o600),
+    )
+    .map_err(errno("make the new key's file"))?;
     let mut out = std::fs::File::from(fd);
-    let written = out.write_all(key.as_slice()).and_then(|()| out.sync_all());
-    if written.is_err() {
-        // A partial key would refuse every later start: take it away again.
-        let _ = std::fs::remove_file(&file);
-        return Err(SecretsError::BadKey("current"));
+    let written = out
+        .write_all(key.as_slice())
+        .and_then(|()| out.sync_all())
+        .map_err(io("write the new key"));
+    let published = written.and_then(|()| {
+        match linkat(&dir, tmp.as_str(), &dir, "secrets.key", AtFlags::empty()) {
+            Ok(()) => Ok(Ensured::Created),
+            // Made by another process meanwhile: theirs is the key.
+            Err(rustix::io::Errno::EXIST) => existing(),
+            Err(e) => Err(errno("publish the new key")(e)),
+        }
+    });
+    let _ = unlinkat(&dir, tmp.as_str(), AtFlags::empty());
+    if published == Ok(Ensured::Created) {
+        rustix::fs::fsync(&dir).map_err(errno("sync the data directory"))?;
     }
-    Ok(Ensured::Created)
+    published
 }
 
 #[cfg(test)]
@@ -481,5 +530,18 @@ mod ensure_tests {
         std::os::unix::fs::symlink(&target, f.path().join("secrets.key")).unwrap();
         assert!(ensure_key(f.path(), |k| k.fill(5)).is_err());
         assert!(!target.exists());
+    }
+
+    #[test]
+    fn a_file_system_error_is_never_called_a_bad_key() {
+        let d = tempfile::tempdir().unwrap();
+        let not_a_dir = d.path().join("ui-data");
+        std::fs::write(&not_a_dir, "qa").unwrap();
+        assert!(matches!(ensure_key(&not_a_dir, |k| k.fill(5)), Err(EnsureError::Io(..))));
+        // No temporary file is left behind after a creation.
+        let e = tempfile::tempdir().unwrap();
+        ensure_key(e.path(), |k| k.fill(5)).unwrap();
+        let names: Vec<_> = std::fs::read_dir(e.path()).unwrap().map(|x| x.unwrap().file_name()).collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("secrets.key")]);
     }
 }

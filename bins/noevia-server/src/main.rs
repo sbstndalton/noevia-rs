@@ -77,10 +77,10 @@ fn legacy_claim_cli(args: impl Iterator<Item = OsString>) -> ExitCode {
         Err(_) => ExitCode::FAILURE,
     }
 }
-/// sbstndalton/noevia#2582: one invitation from the operator's shell (server_account::operator).
-/// Command line only; stdout carries the token and nothing else.
-/// `--ensure-secrets-key`: `UI_DATA_DIR/secrets.key` made when it is missing, with Node's notice; an
-/// invalid one fails (Node refuses to start then). The key is never printed.
+/// `--ensure-secrets-key`: `UI_DATA_DIR/secrets.key` made when it is missing, with Node's notice, and
+/// both keys then checked as Node's start checked them (an invalid `secrets.key` or retired key fails:
+/// Node refused to start then). `UI_DATA_DIR` is required (Node fell back to its own `server/ui-data`).
+/// The key is never printed.
 fn ensure_secrets_key_cli(data_dir: Option<OsString>, err: &mut impl Write) -> ExitCode {
     use rand_core::{OsRng, RngCore};
     use server_auth::secrets::{ensure_key, Ensured};
@@ -95,9 +95,18 @@ fn ensure_secrets_key_cli(data_dir: Option<OsString>, err: &mut impl Write) -> E
                 "Generated credential-encryption key: {} (include this file in backups)",
                 dir.join("secrets.key").display()
             );
-            ExitCode::SUCCESS
         }
-        Ok(Ensured::Existed) => ExitCode::SUCCESS,
+        Ok(Ensured::Existed) => {}
+        Err(e) => {
+            let _ = writeln!(err, "noevia-server: {e}");
+            return ExitCode::FAILURE;
+        }
+    }
+    let previous = std::env::var("SECRETS_KEY_PREVIOUS")
+        .ok()
+        .map(zeroize::Zeroizing::new);
+    match server_auth::secrets::load_existing(&dir, previous.as_deref().map(String::as_str)) {
+        Ok(_) => ExitCode::SUCCESS,
         Err(e) => {
             let _ = writeln!(err, "noevia-server: {e}");
             ExitCode::FAILURE
@@ -105,6 +114,8 @@ fn ensure_secrets_key_cli(data_dir: Option<OsString>, err: &mut impl Write) -> E
     }
 }
 
+/// sbstndalton/noevia#2582: one invitation from the operator's shell (server_account::operator).
+/// Command line only; stdout carries the token and nothing else.
 fn operator_invitation_cli(
     args: impl Iterator<Item = OsString>,
     data_dir: Option<PathBuf>,

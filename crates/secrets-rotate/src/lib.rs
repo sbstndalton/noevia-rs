@@ -374,8 +374,22 @@ pub fn drive_check(
     let plain = open(text).map_err(|KeyError| DRIVE_NOT_CURRENT.to_string())?;
     // `JSON.parse(Buffer.toString('utf8'))` succeeds: checked without keeping any value, on a copy
     // that is wiped when dropped.
-    let decoded = Zeroizing::new(String::from_utf8_lossy(&plain).into_owned());
-    if js_json::raw::valid(&decoded) {
+    let valid = match std::str::from_utf8(&plain) {
+        Ok(text) => js_json::raw::valid(text),
+        Err(_) => {
+            // Invalid bytes become U+FFFD as Buffer#toString does, into a buffer sized up front and
+            // wiped when dropped (no copy is left behind by a growing string).
+            let mut decoded = Zeroizing::new(String::with_capacity(plain.len() * 3));
+            for chunk in plain.utf8_chunks() {
+                decoded.push_str(chunk.valid());
+                if !chunk.invalid().is_empty() {
+                    decoded.push('\u{fffd}');
+                }
+            }
+            js_json::raw::valid(&decoded)
+        }
+    };
+    if valid {
         Ok(Status::Current)
     } else {
         Err(DRIVE_NOT_CURRENT.to_string())
