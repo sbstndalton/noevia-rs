@@ -1,5 +1,8 @@
 #![forbid(unsafe_code)]
 //! Bounded Docling engine transport. HTTP ownership lives in this crate, not Python.
+
+/// Synthetic PDFs for the extraction tests (services docling/synthetic_pdfs.py in Rust).
+pub mod synthetic;
 use serde_json::{json, Value};
 use std::{path::PathBuf, process::Stdio, time::Duration};
 use tokio::{
