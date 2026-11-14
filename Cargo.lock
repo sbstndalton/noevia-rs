@@ -2355,6 +2355,7 @@ dependencies = [
  "nix",
  "proptest",
  "serde_json",
+ "synthetic-pdfs",
  "tempfile",
  "tokio",
  "tower",

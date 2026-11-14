@@ -18,31 +18,18 @@ fn high_water_kib(pid: u32) -> u64 {
 
 #[test]
 fn peak_memory_of_a_90_mib_ranged_ocr_is_bounded() {
-    let (Ok(reference), Ok("1")) = (
-        std::env::var("NOEVIA_OCR_REFERENCE"),
-        std::env::var("NOEVIA_OCR_REAL_ENGINES").as_deref(),
-    ) else {
-        eprintln!(
-            "SKIP 90 MiB memory bound: CI sets NOEVIA_OCR_REFERENCE and NOEVIA_OCR_REAL_ENGINES=1"
-        );
+    if std::env::var("NOEVIA_OCR_REAL_ENGINES").as_deref() != Ok("1") {
+        eprintln!("SKIP 90 MiB memory bound: CI sets NOEVIA_OCR_REAL_ENGINES=1");
         return;
-    };
+    }
     if !std::path::Path::new("/proc/self/status").exists() {
         eprintln!("SKIP 90 MiB memory bound: peak RSS is read from /proc (Linux)");
         return;
     }
     let root = tempfile::tempdir().unwrap();
     let pdf = root.path().join("ninety.pdf");
-    let status = std::process::Command::new("python3")
-        .args([
-            "-c",
-            "import synthetic_pdfs,sys; synthetic_pdfs.write_ballast_pdf(sys.argv[1], 90 * 1024 * 1024)",
-        ])
-        .arg(&pdf)
-        .current_dir(&reference)
-        .status()
-        .unwrap();
-    assert!(status.success());
+    // Written in 1 MiB chunks by the native generator, so this test process stays small too.
+    synthetic_pdfs::write_ballast_pdf(&pdf, 90 * 1024 * 1024, synthetic_pdfs::BALLAST_CHUNK).unwrap();
     let size = std::fs::metadata(&pdf).unwrap().len();
     assert!(size > 90 * 1024 * 1024);
     let port = std::net::TcpListener::bind("127.0.0.1:0")

@@ -967,12 +967,9 @@ mod contract {
             return;
         }
         let root = tempfile::tempdir().unwrap_or_else(|e| unreachable!("{e}"));
-        let status = std::process::Command::new("python3")
-            .arg(Path::new(&reference).join("synthetic_pdfs.py"))
-            .current_dir(root.path())
-            .status()
-            .unwrap_or_else(|e| unreachable!("{e}"));
-        assert!(status.success());
+        // The fixtures come from the native port of the reference generator (crates/synthetic-pdfs, byte
+        // parity with ocr/synthetic_pdfs.py except the scan's deflate bytes); both owners get the same bytes.
+        synthetic_pdfs::write_all(root.path()).unwrap_or_else(|e| unreachable!("{e}"));
         for (name, pages) in [
             ("scanned.pdf", "[1]"),
             ("mixed-page.pdf", "[1]"),
@@ -1018,8 +1015,9 @@ mod contract {
                 legacy(port, "POST", "/reduce-pdf", Some(&length), None, &bytes)
             );
         }
-        let status=std::process::Command::new("python3").args(["-c","import synthetic_pdfs,sys; open(sys.argv[1],'wb').write(synthetic_pdfs.oversized_text_pdf())"]).arg(root.path().join("oversized.pdf")).current_dir(&reference).status().unwrap_or_else(|e|unreachable!("{e}"));
-        assert!(status.success());
+        let oversized = synthetic_pdfs::oversized_text_pdf().unwrap_or_else(|e| unreachable!("{e}"));
+        std::fs::write(root.path().join("oversized.pdf"), oversized)
+            .unwrap_or_else(|e| unreachable!("{e}"));
         let bytes = std::fs::read(root.path().join("oversized.pdf"))
             .unwrap_or_else(|e| unreachable!("{e}"));
         assert!(bytes.len() > INPUT);
@@ -1104,13 +1102,8 @@ mod contract {
         );
         // #1867: ranged OCR of the image-only page of a PDF over 25 MiB, through both owners.
         let large = root.path().join("large.pdf");
-        let status = std::process::Command::new("python3")
-            .args(["-c", "import synthetic_pdfs,sys; synthetic_pdfs.write_ballast_pdf(sys.argv[1], 27 * 1024 * 1024)"])
-            .arg(&large)
-            .current_dir(&reference)
-            .status()
+        synthetic_pdfs::write_ballast_pdf(&large, 27 * 1024 * 1024, synthetic_pdfs::BALLAST_CHUNK)
             .unwrap_or_else(|e| unreachable!("{e}"));
-        assert!(status.success());
         let bytes = std::fs::read(&large).unwrap_or_else(|e| unreachable!("{e}"));
         assert!(bytes.len() > INPUT);
         let length = bytes.len().to_string();
