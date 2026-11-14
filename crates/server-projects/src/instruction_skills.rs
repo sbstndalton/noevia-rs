@@ -221,11 +221,21 @@ fn meta_line(line: &str) -> Option<(&str, &str)> {
     (!rest.chars().any(line_terminator)).then_some((key, rest))
 }
 
-/// `header.split(/\r?\n/)`.
+/// `header.split(/\r?\n/)`: a `\r` belongs to the separator only before a `\n`, so the last
+/// piece keeps its own (noevia#2577).
 fn header_lines(header: &str) -> Vec<&str> {
-    header
-        .split('\n')
-        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+    let pieces: Vec<&str> = header.split('\n').collect();
+    let last = pieces.len().saturating_sub(1);
+    pieces
+        .into_iter()
+        .enumerate()
+        .map(|(i, l)| {
+            if i < last {
+                l.strip_suffix('\r').unwrap_or(l)
+            } else {
+                l
+            }
+        })
         .collect()
 }
 
@@ -922,6 +932,61 @@ mod tests {
         assert_eq!(rows[0].hash, hash(GOOD));
         assert_eq!(rows[0].name, "Fixture");
         assert_eq!(rows[0].version, "1.0");
+    }
+
+    /// noevia#2577: every carriage-return case recorded from core's instruction-skills.cjs `list`
+    /// (noevia-rs crates/chat-prepare/tests/fixtures/node-skills.v1.json, files `qa-cr*`): a `\r`
+    /// no `\n` follows is part of its line, which then is no scalar line; a `\r` before a `\n` is
+    /// the separator's.
+    #[test]
+    fn a_carriage_return_ends_a_line_only_before_a_line_feed() {
+        const BAD: &str = "Use one scalar name: value per frontmatter line.";
+        for (file, content, verdict) in [
+            (
+                "qa-crlf",
+                "---\r\nname: QA crlf\r\ndescription: QA windows\r\n---\r\nQA body\r\nline",
+                Ok(("QA crlf", "QA windows")),
+            ),
+            (
+                "qa-cr",
+                "---\nname: QA\rcr\ndescription: QA\n---\nQA follow these steps.\nStep two.",
+                Err(BAD),
+            ),
+            (
+                "qa-cr-last",
+                "---\nname: QA\ndescription: QA\r\r\n---\nbody",
+                Err(BAD),
+            ),
+            (
+                "qa-cr-mid",
+                "---\nname: QA\r\r\ndescription: QA\n---\nbody",
+                Err(BAD),
+            ),
+            (
+                "qa-cr-lone",
+                "---\nname: QA\ndescription: QA \r more\n---\nbody",
+                Err(BAD),
+            ),
+            (
+                "qa-cr-end",
+                "---\nname: QA\ndescription: QA\r\n---",
+                Ok(("QA", "QA")),
+            ),
+        ] {
+            let got = check(&format!("{file}/SKILL.md"), content);
+            match verdict {
+                Ok((name, description)) => {
+                    let ok = got.unwrap();
+                    assert_eq!(
+                        (ok.name.as_str(), ok.description.as_str()),
+                        (name, description),
+                        "{file}"
+                    );
+                }
+                Err(message) => assert_eq!(got.unwrap_err(), message, "{file}"),
+            }
+        }
+        assert_eq!(header_lines("a\r\nb\r"), ["a", "b\r"]);
     }
 
     #[test]
