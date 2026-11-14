@@ -338,7 +338,11 @@ deeper in a sidecar refusal or error body is read as `{}` and ignored; and an ol
 JSON reply nested deeper, or holding a character in U+10F800..U+10FFFF (that range stands for lone
 surrogates there), ends the stream with the interrupted event. Both come only from the sidecar. (6) A
 body that has not fully arrived 120 s after admission is 408 `Request timed out`, as on the other Diary
-routes; Core had only its 20-minute server timeout.
+routes; Core had only its 20-minute server timeout. (7) A throttled sidecar refusal (`storageThrottled`)
+whose `retryAfter` is an object with its own `toString` key (`{"toString":1}`), or an array holding one,
+made Core's `Number(retryAfter)` throw: a 500 for an unstreamed exchange, the interrupted event for a
+streamed one. The front reads such a value as no number, so the answer is the throttled one without a
+wait, as for any other value that is not a positive number (noevia#2349). Only the sidecar can send it.
 
 **Behaviour changes (Node bugs fixed on the way).**
 1. Creating a connector with a bad name, for an account without the add-on, or past ten threw a bare

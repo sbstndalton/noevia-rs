@@ -841,6 +841,43 @@ async fn exchange(
 mod tests {
     use super::*;
     use js_json::wtf16;
+    // noevia#2349, a named difference (contracts/http/README.md, the Diary local exchange, (7)):
+    // core's Number() threw on these (500 unstreamed, the interrupted event streamed); here they
+    // are no wait, and the refusal stays the throttled one.
+    #[test]
+    fn a_retry_after_object_with_its_own_to_string_is_no_wait() {
+        for wait in [
+            r#"{"toString":1}"#,
+            r#"{"toString":"5","valueOf":2}"#,
+            r#"[{"toString":1}]"#,
+        ] {
+            let detail = wtf16::parse(&format!(
+                r#"{{"detail":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":{wait}}}"#
+            ))
+            .unwrap();
+            let event = http_stream_failure(429, &detail, Some("9")).unwrap();
+            assert_eq!(
+                event.get("code").as_str(),
+                Some("storageThrottled"),
+                "{wait}"
+            );
+            assert!(
+                matches!(event.get("retryAfter"), JValue::Undefined),
+                "{wait}"
+            );
+            let (body, after) = json_failure(Some(&format!(
+                r#"{{"detail":"Storage is limiting sign-ins","code":"storageThrottled","retryAfter":{wait}}}"#
+            )));
+            assert_eq!(
+                (body.as_str(), after),
+                (
+                    r#"{"error":"Storage is limiting sign-ins","code":"storageThrottled"}"#,
+                    None
+                ),
+                "{wait}"
+            );
+        }
+    }
     fn fixtures() -> JValue {
         wtf16::parse(include_str!("../tests/fixtures/local-exchange-node.json")).unwrap()
     }
