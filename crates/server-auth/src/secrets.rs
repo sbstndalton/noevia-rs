@@ -259,6 +259,70 @@ pub fn load_existing(
     SecretKeys::from_existing_bytes(current, previous)
 }
 
+/// What [`ensure_key`] found.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Ensured {
+    /// A valid `secrets.key` was there and is left as it is.
+    Existed,
+    /// A new one was made (Node logs `Generated credential-encryption key: <file> (include this file in
+    /// backups)`; the caller says it).
+    Created,
+}
+
+/// core secrets.cjs `createSecretStore`'s first-start step, for the front once Node no longer starts
+/// first (track R12; the removal release wires it): the data directory (made, and set to 0700 as Node
+/// does, a failed chmod ignored), then `secrets.key`: an existing one must be a 32-byte regular file
+/// with one link (else [`SecretsError::BadKey`], as Node refuses to start); a missing one is created
+/// exclusively (never through a link), mode 0600, from `fill` (32 bytes of the caller's CSPRNG), and
+/// synced. A key another process created meanwhile is read as existing. The key never leaves here.
+pub fn ensure_key(
+    data_dir: &Path,
+    fill: impl FnOnce(&mut [u8; secret_envelope::KEY_BYTES]),
+) -> Result<Ensured, SecretsError> {
+    use std::io::Write;
+    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
+    let io = |_| SecretsError::BadKey("current");
+    std::fs::DirBuilder::new()
+        .recursive(true)
+        .mode(0o700)
+        .create(data_dir)
+        .map_err(io)?;
+    let _ = std::fs::set_permissions(data_dir, std::fs::Permissions::from_mode(0o700));
+    let file = data_dir.join("secrets.key");
+    let existing = || match read_existing_key(&file) {
+        Ok(_) => Ok(Ensured::Existed),
+        Err(_) => Err(SecretsError::BadKey("current")),
+    };
+    match std::fs::symlink_metadata(&file) {
+        Ok(_) => return existing(),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(io(e)),
+    }
+    let fd = match rustix::fs::open(
+        &file,
+        rustix::fs::OFlags::WRONLY
+            | rustix::fs::OFlags::CREATE
+            | rustix::fs::OFlags::EXCL
+            | rustix::fs::OFlags::NOFOLLOW
+            | rustix::fs::OFlags::CLOEXEC,
+        rustix::fs::Mode::from_raw_mode(0o600),
+    ) {
+        Ok(fd) => fd,
+        Err(rustix::io::Errno::EXIST) => return existing(),
+        Err(_) => return Err(SecretsError::BadKey("current")),
+    };
+    let mut key = Zeroizing::new([0u8; secret_envelope::KEY_BYTES]);
+    fill(&mut key);
+    let mut out = std::fs::File::from(fd);
+    let written = out.write_all(key.as_slice()).and_then(|()| out.sync_all());
+    if written.is_err() {
+        // A partial key would refuse every later start: take it away again.
+        let _ = std::fs::remove_file(&file);
+        return Err(SecretsError::BadKey("current"));
+    }
+    Ok(Ensured::Created)
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used)]
 mod tests {
@@ -375,5 +439,47 @@ mod existing_bytes_tests {
             Some(Zeroizing::new(vec![1; 32])),
         );
         assert!(different.is_ok_and(|keys| keys.has_previous()));
+    }
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod ensure_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn a_fresh_data_dir_gets_a_private_key_and_an_existing_one_is_kept() {
+        let d = tempfile::tempdir().unwrap();
+        let data = d.path().join("ui-data");
+        assert_eq!(ensure_key(&data, |k| k.fill(5)).unwrap(), Ensured::Created);
+        let file = data.join("secrets.key");
+        assert_eq!(std::fs::read(&file).unwrap(), vec![5u8; 32]);
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        assert_eq!(std::fs::metadata(&data).unwrap().permissions().mode() & 0o777, 0o700);
+        // Kept, never overwritten, and the store opens it.
+        assert_eq!(ensure_key(&data, |k| k.fill(6)).unwrap(), Ensured::Existed);
+        assert_eq!(std::fs::read(&file).unwrap(), vec![5u8; 32]);
+        assert!(load_existing(&data, None).is_ok());
+    }
+
+    #[test]
+    fn a_bad_or_linked_key_refuses_as_node_refuses_to_start() {
+        let d = tempfile::tempdir().unwrap();
+        std::fs::write(d.path().join("secrets.key"), [1u8; 31]).unwrap();
+        assert!(ensure_key(d.path(), |k| k.fill(5)).is_err());
+        assert_eq!(std::fs::read(d.path().join("secrets.key")).unwrap(), vec![1u8; 31]);
+        let e = tempfile::tempdir().unwrap();
+        let outside = e.path().join("elsewhere");
+        std::fs::write(&outside, [2u8; 32]).unwrap();
+        std::os::unix::fs::symlink(&outside, e.path().join("secrets.key")).unwrap();
+        assert!(ensure_key(e.path(), |k| k.fill(5)).is_err());
+        assert_eq!(std::fs::read(&outside).unwrap(), vec![2u8; 32]);
+        // A dangling link is never written through either.
+        let f = tempfile::tempdir().unwrap();
+        let target = f.path().join("target");
+        std::os::unix::fs::symlink(&target, f.path().join("secrets.key")).unwrap();
+        assert!(ensure_key(f.path(), |k| k.fill(5)).is_err());
+        assert!(!target.exists());
     }
 }
