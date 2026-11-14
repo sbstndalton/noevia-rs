@@ -474,7 +474,7 @@ fn the_delete_list_names_every_stub_and_its_pairing_lines() {
     let md = delete_list(&r, &classify(&r, &all));
     assert!(md.contains("noevia-core `01234567`"));
     assert!(md.contains("| `server/rust-chat-search.cjs` | `refuseOwned` | 10 | 1 | delete file | pairing: deploy/tools/assemble-release.sh:1 |"));
-    assert!(md.contains("1 files can go (10 lines)"));
+    assert!(md.contains("1 files can go (10 lines; 0 of them only with edits to other tests"));
 }
 
 // ---- council p5: the re-recording, OWNED_ROUTES, handlers behind, switches, the manifest front ----
@@ -876,7 +876,9 @@ fn the_delete_list_names_the_routes_toml_revision() {
     let md = delete_list(&r, &classify(&r, &all));
     let sha = r.routes_toml_sha256.clone().expect("hash");
     assert!(md.contains(&format!("routes.toml sha256 `{}`", &sha[..8])));
-    assert!(md.contains("33 files can go (842 lines), 7"));
+    assert!(md.contains(
+        "33 files can go (842 lines; 8 of them only with edits to other tests that require them), 7"
+    ));
     assert!(md.contains("24 can go only with the core handler they guard, 4 stay"));
 }
 
