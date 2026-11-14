@@ -468,8 +468,10 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
                     && declared_length(&parts.headers)
                         .is_some_and(|n| n <= server::MAX_BODY as u64)
                     && !parts.headers.contains_key("transfer-encoding");
+            // The exchange needs the tenant recovered here: DIARY_RUST_RECOVERY=on too.
             if credited
                 && bounded
+                && front.recovery_here
                 && front.is_writer(&uid)
                 && app.save_embedder.get().is_some()
                 && server::storage_header_ok(&app, &parts.headers, &uid)
