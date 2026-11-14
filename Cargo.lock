@@ -380,6 +380,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "browser-cdp"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "browser-task",
+ "getrandom 0.3.4",
+ "js-json",
+ "sha1",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "browser-policy"
 version = "0.1.0"
 dependencies = [
@@ -387,6 +400,18 @@ dependencies = [
  "prompt-framing",
  "proptest",
  "ssrf-policy",
+ "url",
+]
+
+[[package]]
+name = "browser-task"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "browser-policy",
+ "js-json",
+ "server-projects",
+ "tempfile",
  "url",
 ]
 
@@ -2281,6 +2306,7 @@ dependencies = [
  "axum",
  "base64 0.22.1",
  "brotli",
+ "browser-task",
  "bytes",
  "chat-mirror-sched",
  "chat-turn",
