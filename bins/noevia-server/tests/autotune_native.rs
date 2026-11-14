@@ -183,10 +183,7 @@ async fn with_the_switch_off_the_start_is_nodes() {
         .any(|r| r.method == "POST" && r.path == PATH));
     // #2550: any spelling of the start's path goes to Node as sent, before the front's own checks
     // (no sign-in, CSRF or URL refusal of the front's answers it).
-    for path in [
-        "/api/models/x/../autotune",
-        "/api/models/autotune?model=qa",
-    ] {
+    for path in ["/api/models/x/../autotune", "/api/models/autotune?model=qa"] {
         let (s, _, _) = raw_text(f.addr, "POST", path, "", "", b"{}").await;
         assert_eq!(s, 404, "{path}");
         assert!(
