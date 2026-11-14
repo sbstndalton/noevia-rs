@@ -74,8 +74,10 @@ pub struct Env<'a> {
     pub lock_wait: Duration,
 }
 
-/// How long a project file read back for an edit may take (core's readBinaryFile default).
-const READ_BACK: Duration = Duration::from_secs(60);
+/// core storage-client.cjs `readBinaryFile`'s defaults for the read-back of an edit: 25 MiB in 30 s
+/// (over the cap a 413, which reads as storage unavailable).
+const READ_BACK: Duration = Duration::from_secs(30);
+const READ_BACK_CAP: u64 = 25 * 1024 * 1024;
 
 fn changed_in_storage(stored: &str) -> String {
     format!("\"{stored}\" changed in storage since noevia last read it (it was edited, moved or deleted there, or storage is now a different account). Nothing was saved. Sync this project's Sources first, then try again.")
@@ -138,7 +140,7 @@ fn confirm_stored_version(remote: &dyn SourceStorage, stored: &str, current: &JV
     let mut before = |_: Option<u64>| Ok(());
     let read = remote.read_binary(
         stored,
-        BinaryRead { cap: u64::MAX, timeout: READ_BACK, before_body: &mut before },
+        BinaryRead { cap: READ_BACK_CAP, timeout: READ_BACK, before_body: &mut before },
         &mut |chunk| {
             hash.update(chunk);
             Ok(())
@@ -220,9 +222,27 @@ pub fn write_text(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) 
     let env = &Env { ctx, ..*env };
     let result = locked(env, id, name, text, edit);
     if let Ok(dir) = store::user_dir(ctx.data_dir, ctx.user_id) {
-        crate::upload::prune(&dir, ctx, id);
+        prune(&dir, ctx, id);
     }
     result
+}
+
+/// `withSourceLock`'s end (`pruneDocuments`): the stored originals and images no source points at
+/// go; the list is written only when that changed the project (core's prune never writes it).
+fn prune(dir: &Path, ctx: Ctx<'_>, id: &str) {
+    let r = store::update(dir, ctx.switch, |projects| {
+        let Some(p) = store::find_mut(projects, id) else {
+            return ((), false);
+        };
+        let before = p.clone();
+        crate::files::prune_documents(dir, p);
+        crate::files::prune_uploads(dir, p, ctx.now_ms);
+        let changed = *p != before;
+        ((), changed)
+    });
+    if let Err(e) = r {
+        eprintln!("noevia-server: a project text write's cleanup could not be saved: {e:?}");
+    }
 }
 
 fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Result<JValue, String> {
@@ -230,6 +250,11 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
     let gone = || "the project changed while writing; nothing was saved".to_owned();
     let (dir, project) = crate::originals::project(ctx, id).map_err(|_| gone())?;
     let mut project = project.ok_or_else(gone)?;
+    // A lone surrogate in the name: core's storage path held it as U+FFFD and its list as itself, so
+    // the two named different files; refused here (nothing is written).
+    if name.chars().any(|c| wtf16::lone_unit(c).is_some()) {
+        return Err(format!("{} is not a usable file name: it holds an unpaired surrogate character; nothing was saved", wtf16::stringify(&JValue::Str(name.to_owned())).unwrap_or_default()));
+    }
     let bytes = utf8(text);
     if let Err(f) = uploads::validate(name, bytes.len() as u64, bytes.get(..upload_sniff::SNIFF_BYTES).unwrap_or(&bytes)) {
         return Err(fail_text(f));
@@ -382,9 +407,20 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
     if file.get("document").truthy() {
         document_ingest::mark_indexing(&mut file);
     }
+    // The job is written before the record that says "queued" (as an upload does).
+    let earlier = if ingested.queued {
+        match crate::upload::queue_job(&dir, id, &file_name, &file, ctx.now_ms) {
+            Ok(e) => Some(e),
+            Err(_) => {
+                discard();
+                return Err(crate::upload::QUEUE_FAILED.to_owned());
+            }
+        }
+    } else {
+        None
+    };
     let folder_now = project_folder.clone();
     let remote_here = remote.is_some();
-    let adopted = current.as_ref().filter(|_| adopt).map(|(at, f)| (*at, f.clone()));
     let saved = store::update(&dir, ctx.switch, |projects| {
         let Some(p) = store::find_mut(projects, id) else {
             return (Err("the project was removed while writing; the project list was not changed".to_owned()), false);
@@ -395,33 +431,45 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             }
             add_source_folder(p, &folder_now);
         }
-        // A moved file (#687) leaves its plain-named copy behind in neither the list nor the index.
+        // A moved file (#687) leaves its plain-named copy behind in neither the list nor the index:
+        // the first entry of that name that comes from no folder (core dropped the object it held).
+        let mut dropped = !adopt;
         let next: Vec<JValue> = files_of(p)
             .into_iter()
             .filter(|f| {
-                f.truthy()
-                    && f.get("name").as_str() != Some(file_name.as_str())
-                    && !adopted.as_ref().is_some_and(|(_, cur)| f == cur)
+                if !f.truthy() || f.get("name").as_str() == Some(file_name.as_str()) {
+                    return false;
+                }
+                if !dropped && f.get("name").as_str() == Some(expect_name.as_str()) && !f.get("source").truthy() {
+                    dropped = true;
+                    return false;
+                }
+                true
             })
             .chain(std::iter::once(file.clone()))
             .collect();
         store::set(p, "files", JValue::Arr(next));
+        uploads::apply_assets(p, &ingested, ctx.now_ms);
         store::set(p, "updatedAt", JValue::Num(ctx.now_ms as f64));
         if lifecycle::externalize_reply(&dir, p).is_err() || !lifecycle::reconcile_all(std::slice::from_mut(p)) {
             return (Err("the project could not be saved; the project list was not changed".to_owned()), false);
         }
         (Ok(()), true)
     });
-    match saved {
-        Ok(Ok(())) => {}
-        Ok(Err(m)) => {
-            discard();
-            return Err(m);
+    let failed = match saved {
+        Ok(Ok(())) => None,
+        Ok(Err(m)) => Some(m),
+        Err(_) => Some("the project could not be saved; the project list was not changed".to_owned()),
+    };
+    if let Some(m) = failed {
+        if let Some(earlier) = earlier {
+            crate::upload::restore_job(&dir, id, &file_name, earlier);
         }
-        Err(_) => {
-            discard();
-            return Err("the project could not be saved; the project list was not changed".to_owned());
-        }
+        discard();
+        return Err(m);
+    }
+    if !ingested.queued && crate::extract_queue::pending(&dir, id, &file_name).is_some() {
+        let _ = crate::extract_queue::clear(&dir, id, &file_name);
     }
     let mut jobs = vec![outbox::Job { kind: "index", project: id, file: Some(file_name.as_str()), payload: None }];
     // #1914/#1919: the plain copy's index entries go once the list without it is on disk, and only
@@ -714,7 +762,21 @@ mod tests {
             let node = c.get("node");
             match (node.get("error").as_str(), &got) {
                 (Some(want), Err(m)) => assert_eq!(m, want, "{name}: error"),
-                (None, Ok(file)) => assert_eq!(json(file), node.get("file").as_str().unwrap(), "{name}: file"),
+                (None, Ok(file)) => {
+                    // The record as core's caller holds it (see the recorder): its text, and the
+                    // fields the write set.
+                    let content = file.get("content").as_str().map(str::to_owned).unwrap_or_else(|| {
+                        crate::sources::text(&dir, call.get("project").as_str().unwrap(), file).unwrap_or_default()
+                    });
+                    let view = JValue::obj([
+                        ("name", file.get("name").clone()),
+                        ("source", file.get("source").clone()),
+                        ("attachment", file.get("attachment").clone()),
+                        ("document", file.get("document").clone()),
+                        ("content", JValue::Str(content)),
+                    ]);
+                    assert_eq!(json(&view), node.get("file").as_str().unwrap(), "{name}: file");
+                }
                 (want, got) => panic!("{name}: core {want:?}, port {got:?}"),
             }
             assert_eq!(*script.calls.borrow(), calls_of(node.get("calls")), "{name}: storage calls");

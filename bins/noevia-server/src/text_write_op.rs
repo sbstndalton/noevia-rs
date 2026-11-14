@@ -28,6 +28,9 @@ use crate::project_store::{authorised, Store};
 use crate::App;
 
 pub const PATH: &str = "/v1/projects/text-write";
+/// The body cap: core's upload cap for the text (25 MB) after JSON escaping (at most 6 bytes per
+/// byte for control characters), plus the options.
+const BODY_CAP: usize = 25 * 1024 * 1024 * 6 + 1024 * 1024;
 
 fn answer(status: StatusCode, body: &JValue) -> Response<Body> {
     let mut res = Response::new(Body::from(wtf16::stringify(body).unwrap_or_default()));
@@ -53,7 +56,8 @@ pub fn route(router: Router, store: Store, app: Option<Arc<App>>) -> Router {
         post(move |headers: HeaderMap, raw: Bytes| {
             let (store, app) = (store.clone(), app.clone());
             async move { serve(store, app, headers, raw).await }
-        }),
+        })
+        .layer(axum::extract::DefaultBodyLimit::max(BODY_CAP)),
     )
 }
 

@@ -115,6 +115,18 @@ add('adopt-name-differs', [alpha()], DAV, stored(), { ...adoptPlain('qa-alpha'),
 add('adopt-folder-fails', [bare()], DAV, { files: {}, dirs: [], fail: { mkdir: { [ROOT]: err(502, 'storage returned 503', { upstream: 503 }) } } }, adoptPlain('qa-bare'));
 add('adopt-write-412', [alpha()], DAV, stored({ fail: { write: { [`${F}/Text/plain.txt`]: err(412, 'changed', { code: 'changed', upstream: 412 }) } } }), adoptPlain('qa-alpha'));
 
+add('create-replaces-local', [bare()], null, null, { project: 'qa-bare', name: 'plain.txt', text: 'QA replaced', options: {} });
+add('create-image', [bare()], null, null, { project: 'qa-bare', name: 'pic.png', text: 'QA not really an image', options: {} });
+add('create-html', [bare()], null, null, { project: 'qa-bare', name: 'page.html', text: '<p>QA</p>', options: {} });
+add('create-falsy-entries', [bare((p) => { p.files.unshift(null, 0, ''); p.sourceFolders = [`${ROOT}/x`, `${ROOT}/x`]; })], DAV, { files: {}, dirs: [ROOT, `${ROOT}/x`], fail: {} }, { project: 'qa-bare', name: 'new.md', text: 'QA', options: {} });
+add('create-remote-dup-sources', [alpha((p) => { p.sourceFolders = [F, F, `${ROOT}/y`]; })], DAV, stored(), { project: 'qa-alpha', name: 'new.md', text: 'QA', options: {} });
+add('adopt-null-target', [alpha()], DAV, stored(), adoptPlain('qa-alpha', { adoptTo: null }));
+add('adopt-empty-account', [alpha()], DAV, stored(), adoptPlain('qa-alpha', { adoptAccount: '' }));
+add('adopt-write-unknown', [alpha()], DAV, stored({ fail: { write: { [`${F}/Text/plain.txt`]: err(502, 'connection lost', { code: 'unknown' }) } } }), adoptPlain('qa-alpha'));
+add('adopt-version-fails', [alpha()], DAV, stored({ fail: { version: { [`${F}/Text/plain.txt`]: err(502, 'storage returned 503', { upstream: 503 }) } } }), adoptPlain('qa-alpha'));
+add('edit-stored-unsupported', [alpha()], DAV, stored({ fail: { version: { [`${F}/Text/notes.md`]: err(400, 'this storage cannot report a file version', { code: 'unsupported' }) } } }), editNotes('QA x'));
+add('edit-stored-read-403', [alpha()], DAV, stored({ fail: { read: { [`${F}/Text/notes.md`]: err(502, 'storage returned 403', { upstream: 403 }) } } }), editNotes('QA x'));
+
 // ── The scripted storage ─────────────────────────────────────────────────────
 function scripted(conn, spec, calls) {
   const files = new Map(Object.entries((spec && spec.files) || {}));
@@ -202,16 +214,20 @@ async function run(c) {
   const store = createProjectStore({ fs, path, reasoningEffort: {}, projectAppearance: (b) => b, rag, storageClient, documentSources: {}, authService, currentWorkspace,
     PROJECTS: proxy('projects'), FREE_CHATS: proxy('freeChats'), sanitizeToolboxes: (b) => b, defaultToolboxes: () => [], PROJECT_ROOT_FOLDER: ROOT, createProjectFolder, projectSweep: { afterDelete: async () => {} } });
   let answer;
+  const writesBefore = writes.length;
   try {
     const project = store.getProject(c.call.project) || { id: c.call.project };
     const file = await store.writeProjectTextFile(project, c.call.name, c.call.text, c.call.options);
-    answer = { file: JSON.stringify(file) };
+    // The record as the caller holds it: its text through the source accessor (core's save moved it
+    // to its file), and the fields the write set.
+    const view = { name: file.name, source: file.source, attachment: file.attachment, document: file.document, content: String(file.content || '') };
+    answer = { file: JSON.stringify(view) };
   } catch (e) {
     answer = { error: String(e && e.message ? e.message : e) };
   }
   for (let i = 0; i < 10; i += 1) await new Promise((r) => setTimeout(r, 0));
   while (workspace.pendingStoreWrites()) await workspace.pendingStoreWrites().catch(() => {});
-  const last = writes.filter((w) => w.name === 'projects.json').pop();
+  const last = writes.slice(writesBefore).filter((w) => w.name === 'projects.json').pop();
   const saved = last ? (JSON.parse(last.text).projects || []).find((p) => p && p.id === c.call.project) : null;
   fs.rmSync(root, { recursive: true, force: true });
   return { ...answer, calls, project: saved ? JSON.stringify(saved) : null, index };
