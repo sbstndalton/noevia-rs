@@ -302,7 +302,7 @@ impl<H: Host> Turn<'_, H> {
         &mut self,
         body: &JValue,
         cap: Option<u64>,
-        offer_tools: bool,
+        tools: Option<&[JValue]>,
         round: &mut Round,
     ) {
         let p = self.p;
@@ -327,8 +327,8 @@ impl<H: Host> Turn<'_, H> {
             );
         }
         // chat.cjs offers the tools here even on the final-answer round (requestTools() only).
-        if offer_tools {
-            js::set(&mut request, "tools", JValue::Arr(p.tools.clone()));
+        if let Some(tools) = tools {
+            js::set(&mut request, "tools", JValue::Arr(tools.to_vec()));
         }
         let shown = self.exchange.shown_text;
         let error = |text: String| event("error", vec![("text", js::s(text))]);

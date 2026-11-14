@@ -64,6 +64,9 @@ pub struct Prepared {
     /// #769: the provenance policy is on for this turn (`provenance: true`, present only then; a core that has it
     /// on hands the turn off only to a front naming the `provenance` capability).
     pub provenance: bool,
+    /// Roadmap E: what the routed list's `more_tools` widens to, on a turn whose tools routing narrowed (`widen`,
+    /// present only then; a core that narrowed hands the turn off only to a front naming `more-tools`).
+    pub widen: Option<Widen>,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -90,6 +93,17 @@ pub struct Prepared {
     /// The project's instruction skills; `None` without a project (and from an older core, which hands off no
     /// turn whose project has skills).
     pub skills: Option<Skills>,
+}
+
+/// The project's whole tool selection, as chat.cjs resolves it when the model calls `more_tools`.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Widen {
+    pub tools: Vec<JValue>,
+    pub routes: Vec<(String, String)>,
+    pub writes: Vec<String>,
+    pub public: Vec<String>,
+    pub edit_tools: Vec<String>,
+    pub once_tools: Vec<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -175,6 +189,39 @@ fn flag(v: &JValue, key: &str) -> bool {
     v.get(key) == &JValue::Bool(true)
 }
 
+/// `[[tool, server]]`: the MCP routes of a tool list.
+fn route_pairs(v: &JValue, key: &str) -> Result<Vec<(String, String)>, Unreadable> {
+    list(v, key)?
+        .iter()
+        .map(|r| match r {
+            JValue::Arr(pair) => match (
+                pair.first().and_then(JValue::as_str),
+                pair.get(1).and_then(JValue::as_str),
+                pair.len(),
+            ) {
+                (Some(a), Some(b), 2) => Ok((a.to_string(), b.to_string())),
+                _ => Err(Unreadable(format!("prepared.{key} holds a bad pair"))),
+            },
+            _ => Err(Unreadable(format!("prepared.{key} holds a bad pair"))),
+        })
+        .collect()
+}
+
+fn widen(v: &JValue) -> Result<Option<Widen>, Unreadable> {
+    match v {
+        JValue::Undefined => Ok(None),
+        JValue::Obj(_) => Ok(Some(Widen {
+            tools: list(v, "tools")?,
+            routes: route_pairs(v, "routes")?,
+            writes: names(v, "writes")?,
+            public: names(v, "public")?,
+            edit_tools: names(v, "editTools")?,
+            once_tools: names(v, "onceTools")?,
+        })),
+        _ => Err(Unreadable("prepared.widen is not an object".into())),
+    }
+}
+
 impl Prepared {
     /// Reads a `prepared` frame (the parsed `data:` object).
     pub fn read(frame: &JValue) -> Result<Prepared, Unreadable> {
@@ -187,20 +234,7 @@ impl Prepared {
         let chat = need(frame, "chat")?;
         let turn = need(frame, "turn")?;
         let title = need(chat, "title")?;
-        let routes = list(frame, "routes")?
-            .iter()
-            .map(|r| match r {
-                JValue::Arr(pair) => match (
-                    pair.first().and_then(JValue::as_str),
-                    pair.get(1).and_then(JValue::as_str),
-                    pair.len(),
-                ) {
-                    (Some(a), Some(b), 2) => Ok((a.to_string(), b.to_string())),
-                    _ => Err(Unreadable("prepared.routes holds a bad pair".into())),
-                },
-                _ => Err(Unreadable("prepared.routes holds a bad pair".into())),
-            })
-            .collect::<Result<Vec<_>, _>>()?;
+        let routes = route_pairs(frame, "routes")?;
         Ok(Prepared {
             started_at: need(frame, "startedAt")?
                 .as_num()
@@ -241,6 +275,7 @@ impl Prepared {
             },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
             provenance: flag(frame, "provenance"),
+            widen: widen(frame.get("widen"))?,
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),

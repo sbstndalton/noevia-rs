@@ -24,9 +24,10 @@ pub const PREPARED_CAP: usize = 40 * 1024 * 1024;
 pub const HANDOFF_CAPS_HEADER: &str = "x-noevia-chat-handoff-caps";
 /// What this executor runs beyond the first hand-off step, for [`HANDOFF_CAPS_HEADER`]: `skills`, the
 /// instruction skills checks ([`crate::skills`]); `once`, the coworker page save's per-call card (#2446,
-/// [`crate::gate`]); `provenance`, the provenance policy's write checks (#769, [`crate::taint`]). Without them
-/// core keeps a turn whose project has skills, that offers the page save, or that runs with the provenance policy on.
-pub const HANDOFF_CAPS: &str = "skills,once,provenance";
+/// [`crate::gate`]); `provenance`, the provenance policy's write checks (#769, [`crate::taint`]); `more-tools`, the
+/// routed list's `more_tools` widening (Roadmap E, [`crate::native`]). Without them core keeps a turn whose project has
+/// skills, that offers the page save, that runs with the provenance policy on, or whose tools routing narrowed.
+pub const HANDOFF_CAPS: &str = "skills,once,provenance,more-tools";
 
 /// What a chunk of core's stream gives.
 #[derive(Debug, Clone, PartialEq)]

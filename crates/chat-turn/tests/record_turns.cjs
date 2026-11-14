@@ -516,7 +516,9 @@ async function runTurn(c, { handoff = false } = {}) {
         backend: 'legacy', model: null, calibrated: false, latencyMs: null, status: 'fallback', fallbackReason: 'disabled', fallbackCause: null } }), servedCatalogue: async () => [], modelsInstalled: async () => [], missingRoles: () => [], staleRolesError: () => null,
       // `vision`: what the probe says of the answering model's image input (chat.cjs visionProbe).
       visionProbe: async () => c.vision || { supported: false, reason: 'none' }, visionDescriptions: new Map(), skillsIndexFor: () => [],
-      chatSkillRouter: { select: async () => ({ loaded: [] }) }, chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
+      chatSkillRouter: { select: async () => ({ loaded: [] }) },
+      // `narrow`: tool routing (features.toolRouter, chat-tool-routing.cjs) keeps only these boxes; narrowed when it dropped any.
+      chatToolRouter: { select: async (ids) => (c.narrow ? { ids: ids.filter((id) => c.narrow.includes(id)), routed: true, narrowed: ids.some((id) => !c.narrow.includes(id)) } : { ids, routed: false }) },
       ...toolbox, oauthServerIds: () => new Set(), accountReady: () => true,
       // The bridge call as the native executor makes it: every field of its request (rust-chat-native.cjs EXECUTE_PATH).
       executeToolCall: async (proj, name, args, allowed, signal, outcome, options) => {
@@ -568,7 +570,7 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance']), supervising: () => false } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools']), supervising: () => false } } : {}),
       // `provenance`: the provenance policy is on (#769, features.provenancePolicy; index.cjs passes { enabled }).
       ...(c.provenance ? { provenancePolicy: { enabled: () => true } } : {}),
     });
@@ -598,7 +600,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
@@ -958,6 +960,18 @@ const CASES = [
   { name: 'provenance_unchecked', about: 'A write whose arguments nest too deep to check: unchecked, so it is asked about on its own card under the chat grant; approved.', provenance: true, chatWide: true,
     rounds: [{ frames: [toolCall('drive_create_file', `{"name":"qa-deep.txt","content":"QA","to":${'['.repeat(9)}"qa"${']'.repeat(9)}}`), finish('tool_calls')] },
       answer('Created it after asking.')] },
+  // Track R15: tool routing narrowed the list (Roadmap E); the model may ask once for the rest (more_tools).
+  { name: 'more_tools_offered', about: 'Routing kept the core tools only: more_tools is offered and the answer needs none.', narrow: ['core'],
+    rounds: [answer('Answered with the core tools.')] },
+  { name: 'more_tools_widens', about: 'The model asks for more tools: the Drive box comes back (tools_scope all tools), and the next round reads with it.', narrow: ['core'],
+    rounds: [{ frames: [toolCall('more_tools', '{}'), finish('tool_calls')] },
+      { frames: [toolCall('drive_read_file', '{"fileId":"qa-file-m1"}', 'qa-call-2'), finish('tool_calls')] }, answer('Read it with the widened tools.')] },
+  { name: 'more_tools_twice', about: 'more_tools twice in one round: the second is told everything is already available; a widened read in the same round runs.', narrow: ['core'],
+    rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('more_tools', '{}', 'qa-call-2', 1), toolCall('drive_read_file', '{"fileId":"qa-file-m2"}', 'qa-call-3', 2), finish('tool_calls')] },
+      answer('Done after widening.')] },
+  { name: 'more_tools_routes', about: 'Routing kept Drive only in a project with the documents box: widening brings the MCP tools with their routes; a read in the same round and the next both reach the documents server.', narrow: ['gdrive'], docs: true, project: QA_DOCS,
+    rounds: [{ frames: [toolCall('more_tools', '{}', 'qa-call-1', 0), toolCall('project_read_file', '{"name":"qa-notes.txt"}', 'qa-call-2', 1), finish('tool_calls')] },
+      { frames: [toolCall('project_read_file', '{"name":"qa-plan.txt"}', 'qa-call-3'), finish('tool_calls')] }, answer('Read both notes.')] },
 ];
 
 (async () => {

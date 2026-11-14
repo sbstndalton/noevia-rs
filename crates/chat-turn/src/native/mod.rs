@@ -192,9 +192,27 @@ fn next_offset(calls: &[(f64, Slot)]) -> f64 {
         + 1.0
 }
 
+/// `new Map([...a, ...b])` as a list of pairs: `a`'s keys in order, then `b`'s new ones; `b`'s values win.
+fn map_merge(a: &[(String, String)], b: &[(String, String)]) -> Vec<(String, String)> {
+    let mut out = a.to_vec();
+    for (k, v) in b {
+        match out.iter_mut().find(|(n, _)| n == k) {
+            Some(slot) => slot.1 = v.clone(),
+            None => out.push((k.clone(), v.clone())),
+        }
+    }
+    out
+}
+
 /// The rounds' own state, across rounds.
 struct Rounds {
     messages: Vec<JValue>,
+    /// chat.cjs `activeTools`: the frame's tools, the widened list once `more_tools` ran.
+    tools: Vec<JValue>,
+    /// `more_tools` ran in this turn (chat.cjs `widened`).
+    widened: bool,
+    /// chat.cjs `nextToolRoutes`: the widened list's routes, applied when the next round starts.
+    next_routes: Option<Vec<(String, String)>>,
     /// `roundMessages !== prepared.messages`: the round-0 `context` event is sent when they differ.
     changed: bool,
     tools_off: bool,
@@ -222,7 +240,7 @@ impl<H: Host> Turn<'_, H> {
     async fn budget(&self, s: &mut Rounds, fit: &Fit, round: i32) -> Result<(), bool> {
         let host = self.host;
         let p = self.p;
-        let tools = JValue::Arr(p.tools.clone());
+        let tools = JValue::Arr(s.tools.clone());
         let mut budget = context_fit::measure(&s.messages, &tools, fit.limit);
         let mut compacted = false;
         if over(&budget) {
@@ -326,14 +344,14 @@ impl<H: Host> Turn<'_, H> {
             );
         }
         if !s.final_pass && self.offers_tools(s) {
-            js::set(&mut body, "tools", JValue::Arr(p.tools.clone()));
+            js::set(&mut body, "tools", JValue::Arr(s.tools.clone()));
         }
         body
     }
 
     /// chat.cjs `requestTools().tools`.
     fn offers_tools(&self, s: &Rounds) -> bool {
-        !s.tools_off && !self.p.tools.is_empty()
+        !s.tools_off && !s.tools.is_empty()
     }
 
     async fn rounds(&mut self, fit: Fit) -> Ended {
@@ -343,6 +361,9 @@ impl<H: Host> Turn<'_, H> {
             .then(|| context_fit::thinking::thinking_cap(&p.effort, fit.max_tokens));
         let mut s = Rounds {
             messages: fit.messages.clone(),
+            tools: p.tools.clone(),
+            widened: false,
+            next_routes: None,
             changed: false,
             tools_off: false,
             final_pass: false,
@@ -397,6 +418,10 @@ impl<H: Host> Turn<'_, H> {
         loop {
             if round >= if s.final_pass { 4 } else { 3 } || host.left() {
                 break;
+            }
+            // chat.cjs: `new Map([...toolRoutes, ...nextToolRoutes])` (the widened list's routes win from here).
+            if let Some(next) = s.next_routes.take() {
+                gate.routes = map_merge(&gate.routes, &next);
             }
             // A loaded skill was disabled or changed: no further model round (#272).
             if self.skills.revoked(host).await {
@@ -524,7 +549,12 @@ impl<H: Host> Turn<'_, H> {
                 }
             }
             if !current.saw_anything {
-                self.fallback(&body, cap, self.offers_tools(&s), &mut current)
+                self.fallback(
+                    &body,
+                    cap,
+                    self.offers_tools(&s).then_some(s.tools.as_slice()),
+                    &mut current,
+                )
                     .await;
             }
             // #1552: tools on offer, no call, and the reply ends on announcing one: one more try.
@@ -736,6 +766,26 @@ impl<H: Host> Turn<'_, H> {
             if host.left() {
                 break;
             }
+            // Roadmap E: the routed list's more_tools widens to the project's whole selection, once.
+            if c.name == "more_tools" && !c.too_large {
+                if let Some(widen) = &p.widen {
+                    let reply = self.more_tools(s, gate, widen);
+                    host.emit(&event(
+                        "tool_result",
+                        vec![
+                            ("index", js::n(self.exchange.tool_offset + i)),
+                            ("name", js::s(c.name.clone())),
+                            ("text", js::s(js::slice(&reply, 300))),
+                        ],
+                    ));
+                    s.messages.push(js::obj([
+                        ("role", js::s("tool")),
+                        ("tool_call_id", c.id.clone()),
+                        ("content", js::s(reply)),
+                    ]));
+                    continue;
+                }
+            }
             let call = Call {
                 index: *i,
                 id: c.id.clone(),
@@ -762,6 +812,38 @@ impl<H: Host> Turn<'_, H> {
                 }
             }
         }
+    }
+
+    /// chat.cjs's `more_tools` answer: the first call widens the offered tools to the frame's `widen` list (the
+    /// rest of this round keeps the narrowed routes, a widened name only fills a gap; from the next round the
+    /// widened routes win) and says `tools_scope` "all tools"; a later call is told they already are.
+    fn more_tools(&self, s: &mut Rounds, gate: &mut Tools<'_>, widen: &crate::prepared::Widen) -> String {
+        if s.widened {
+            return "All of this project's tools are already available.".to_string();
+        }
+        s.widened = true;
+        s.tools = widen.tools.clone();
+        let names: Vec<String> = widen
+            .tools
+            .iter()
+            .map(|t| t.get("function").get("name").as_str().unwrap_or("").to_string())
+            .collect();
+        for n in &names {
+            if gate.allowed.insert(n.clone()) {
+                gate.allowed_order.push(n.clone());
+            }
+        }
+        gate.writes.extend(widen.writes.iter().cloned());
+        gate.public.extend(widen.public.iter().cloned());
+        gate.edit_tools.extend(widen.edit_tools.iter().cloned());
+        gate.once_tools.extend(widen.once_tools.iter().cloned());
+        gate.routes = map_merge(&widen.routes, &gate.routes);
+        s.next_routes = Some(widen.routes.clone());
+        self.host.emit(&event("tools_scope", vec![("text", js::s("all tools"))]));
+        format!(
+            "More tools are now available: {}. Continue with the task.",
+            names.join(", ")
+        )
     }
 
     /// The close: the notes for a reply with no answer, `telemetry` complete, `done`, then the title.
