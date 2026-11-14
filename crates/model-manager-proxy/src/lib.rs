@@ -65,6 +65,7 @@
 pub mod evidence;
 pub mod js;
 pub mod sections;
+pub mod sweep_guard;
 
 use js::{prop, strict_eq, string, string_or_empty, to_number, trim};
 use js_json::{wtf16, JValue};
