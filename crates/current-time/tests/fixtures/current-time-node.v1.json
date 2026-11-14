@@ -9,7 +9,7 @@
   "noevia-core commit": "ed14631a15b0eabfada17c80a9f568bf02f2a19a",
   "toolboxes.cjs": "f2be13090ecb2efc3fb3e49c090108e94b7218e6dc3d6ff8b3224773f5d3b121",
   "current-time-part.cjs": "cc5ce4f15e9c3cf66de8debf087bc7faa1975077d8945ff350ae3d1b76ce9324",
-  "gen-fixtures.cjs": "fe1d140dbc4a48014352b7e35ea21ddb04f5d889f499dd94a5809ecdc4f92d3f"
+  "gen-fixtures.cjs": "83ba77f191d6a72e758ca1e897083e228f1a2cd1f7b049d86773e9bc3a45072b"
  },
  "zoneInstants": [
   "2026-01-15T12:00:00.000Z",
@@ -29932,6 +29932,788 @@
    "now": -8640000000000000,
    "failed": false,
    "text": "Current time: Monday, 19 April 271822 at 20:53:32 GMT-3:06:28 (America/Sao_Paulo) | ISO: -271821-04-20T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 16 of 271822 (weeks run Monday to Sunday; ISO week 1 of 271822 began Monday 31 December 271821); day 109 of 365 in 271822, 256 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1794636312000,
+   "failed": false,
+   "text": "Current time: Sat Nov 14 2026 01:05:12 GMT-0500 (Eastern Standard Time) | ISO: 2026-11-14T06:05:12.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 46 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 318 of 365 in 2026, 47 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1794636312000,
+   "failed": false,
+   "text": "Current time: Sat Nov 14 2026 01:05:12 GMT-0500 (Eastern Standard Time) | ISO: 2026-11-14T06:05:12.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 46 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 318 of 365 in 2026, 47 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1794636000000,
+   "failed": false,
+   "text": "Current time: Sat Nov 14 2026 01:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2026-11-14T06:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 46 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 318 of 365 in 2026, 47 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1794636000000,
+   "failed": false,
+   "text": "Current time: Sat Nov 14 2026 01:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2026-11-14T06:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 46 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 318 of 365 in 2026, 47 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1791806400000,
+   "failed": false,
+   "text": "Current time: Mon Oct 12 2026 08:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-12T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 42 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 285 of 365 in 2026, 80 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1791806400000,
+   "failed": false,
+   "text": "Current time: Mon Oct 12 2026 08:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-12T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 42 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 285 of 365 in 2026, 80 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1774745999999,
+   "failed": false,
+   "text": "Current time: Sat Mar 28 2026 20:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-03-29T00:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 13 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 87 of 365 in 2026, 278 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1774745999999,
+   "failed": false,
+   "text": "Current time: Sat Mar 28 2026 20:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-03-29T00:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 13 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 87 of 365 in 2026, 278 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1774746000000,
+   "failed": false,
+   "text": "Current time: Sat Mar 28 2026 21:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-03-29T01:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 13 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 87 of 365 in 2026, 278 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1774746000000,
+   "failed": false,
+   "text": "Current time: Sat Mar 28 2026 21:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-03-29T01:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 13 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 87 of 365 in 2026, 278 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1792889999999,
+   "failed": false,
+   "text": "Current time: Sat Oct 24 2026 20:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-25T00:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 43 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 297 of 365 in 2026, 68 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1792889999999,
+   "failed": false,
+   "text": "Current time: Sat Oct 24 2026 20:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-25T00:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 43 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 297 of 365 in 2026, 68 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1792890000000,
+   "failed": false,
+   "text": "Current time: Sat Oct 24 2026 21:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-25T01:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 43 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 297 of 365 in 2026, 68 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1792890000000,
+   "failed": false,
+   "text": "Current time: Sat Oct 24 2026 21:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-25T01:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 43 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 297 of 365 in 2026, 68 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1772953199999,
+   "failed": false,
+   "text": "Current time: Sun Mar 08 2026 01:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2026-03-08T06:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 10 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 67 of 365 in 2026, 298 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1772953199999,
+   "failed": false,
+   "text": "Current time: Sun Mar 08 2026 01:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2026-03-08T06:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 10 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 67 of 365 in 2026, 298 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1772953200000,
+   "failed": false,
+   "text": "Current time: Sun Mar 08 2026 03:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-03-08T07:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 10 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 67 of 365 in 2026, 298 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1772953200000,
+   "failed": false,
+   "text": "Current time: Sun Mar 08 2026 03:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-03-08T07:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 10 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 67 of 365 in 2026, 298 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1793512799999,
+   "failed": false,
+   "text": "Current time: Sun Nov 01 2026 01:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-11-01T05:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 44 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 305 of 365 in 2026, 60 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1793512799999,
+   "failed": false,
+   "text": "Current time: Sun Nov 01 2026 01:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-11-01T05:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 44 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 305 of 365 in 2026, 60 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1793512800000,
+   "failed": false,
+   "text": "Current time: Sun Nov 01 2026 01:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2026-11-01T06:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 44 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 305 of 365 in 2026, 60 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1793512800000,
+   "failed": false,
+   "text": "Current time: Sun Nov 01 2026 01:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2026-11-01T06:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 44 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 305 of 365 in 2026, 60 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1775318399999,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 11:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T15:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1775318399999,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 11:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T15:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1775318400000,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 12:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T16:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1775318400000,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 12:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T16:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1791043199999,
+   "failed": false,
+   "text": "Current time: Sat Oct 03 2026 11:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-03T15:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 40 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 276 of 365 in 2026, 89 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1791043199999,
+   "failed": false,
+   "text": "Current time: Sat Oct 03 2026 11:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-03T15:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 40 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 276 of 365 in 2026, 89 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1791043200000,
+   "failed": false,
+   "text": "Current time: Sat Oct 03 2026 12:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-03T16:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 40 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 276 of 365 in 2026, 89 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1791043200000,
+   "failed": false,
+   "text": "Current time: Sat Oct 03 2026 12:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-10-03T16:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 40 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 276 of 365 in 2026, 89 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1775311199999,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 09:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T13:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1775311199999,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 09:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T13:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1775311200000,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 10:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T14:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1775311200000,
+   "failed": false,
+   "text": "Current time: Sat Apr 04 2026 10:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-04-04T14:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 14 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 94 of 365 in 2026, 271 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1790431199999,
+   "failed": false,
+   "text": "Current time: Sat Sep 26 2026 09:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-09-26T13:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 39 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 269 of 365 in 2026, 96 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1790431199999,
+   "failed": false,
+   "text": "Current time: Sat Sep 26 2026 09:59:59 GMT-0400 (Eastern Daylight Time) | ISO: 2026-09-26T13:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 39 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 269 of 365 in 2026, 96 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1790431200000,
+   "failed": false,
+   "text": "Current time: Sat Sep 26 2026 10:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-09-26T14:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 39 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 269 of 365 in 2026, 96 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1790431200000,
+   "failed": false,
+   "text": "Current time: Sat Sep 26 2026 10:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 2026-09-26T14:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 39 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 269 of 365 in 2026, 96 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1798759800000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2026 18:30:00 GMT-0500 (Eastern Standard Time) | ISO: 2026-12-31T23:30:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 365 of 365 in 2026, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1798759800000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2026 18:30:00 GMT-0500 (Eastern Standard Time) | ISO: 2026-12-31T23:30:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 365 of 365 in 2026, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1798761599999,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2026 18:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2026-12-31T23:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 365 of 365 in 2026, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1798761599999,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2026 18:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2026-12-31T23:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 365 of 365 in 2026, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1798761600000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2026 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2027-01-01T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 365 of 365 in 2026, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1798761600000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2026 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2027-01-01T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 365 of 365 in 2026, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1609416000000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2020 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2020-12-31T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 366 of 366 in 2020, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1609416000000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2020 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2020-12-31T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 366 of 366 in 2020, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1609502400000,
+   "failed": false,
+   "text": "Current time: Fri Jan 01 2021 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2021-01-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (the ISO year is not the calendar year 2021) (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 1 of 365 in 2021, 364 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1609502400000,
+   "failed": false,
+   "text": "Current time: Fri Jan 01 2021 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2021-01-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (the ISO year is not the calendar year 2021) (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 1 of 365 in 2021, 364 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1609718399000,
+   "failed": false,
+   "text": "Current time: Sun Jan 03 2021 18:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2021-01-03T23:59:59.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (the ISO year is not the calendar year 2021) (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 3 of 365 in 2021, 362 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1609718399000,
+   "failed": false,
+   "text": "Current time: Sun Jan 03 2021 18:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2021-01-03T23:59:59.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (the ISO year is not the calendar year 2021) (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 3 of 365 in 2021, 362 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1609718400000,
+   "failed": false,
+   "text": "Current time: Sun Jan 03 2021 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2021-01-04T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (the ISO year is not the calendar year 2021) (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 3 of 365 in 2021, 362 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1609718400000,
+   "failed": false,
+   "text": "Current time: Sun Jan 03 2021 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2021-01-04T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2020 (the ISO year is not the calendar year 2021) (weeks run Monday to Sunday; ISO week 1 of 2020 began Monday 30 December 2019); day 3 of 365 in 2021, 362 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1735560000000,
+   "failed": false,
+   "text": "Current time: Mon Dec 30 2024 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2024-12-30T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 1 of 2025 (the ISO year is not the calendar year 2024) (weeks run Monday to Sunday; ISO week 1 of 2025 began Monday 30 December 2024); day 365 of 366 in 2024, 1 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1735560000000,
+   "failed": false,
+   "text": "Current time: Mon Dec 30 2024 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2024-12-30T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 1 of 2025 (the ISO year is not the calendar year 2024) (weeks run Monday to Sunday; ISO week 1 of 2025 began Monday 30 December 2024); day 365 of 366 in 2024, 1 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1451599200000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2015 17:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2015-12-31T22:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2015 (weeks run Monday to Sunday; ISO week 1 of 2015 began Monday 29 December 2014); day 365 of 365 in 2015, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1451599200000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2015 17:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2015-12-31T22:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2015 (weeks run Monday to Sunday; ISO week 1 of 2015 began Monday 29 December 2014); day 365 of 365 in 2015, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1451613600000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2015 21:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2016-01-01T02:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2015 (weeks run Monday to Sunday; ISO week 1 of 2015 began Monday 29 December 2014); day 365 of 365 in 2015, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1451613600000,
+   "failed": false,
+   "text": "Current time: Thu Dec 31 2015 21:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2016-01-01T02:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2015 (weeks run Monday to Sunday; ISO week 1 of 2015 began Monday 29 December 2014); day 365 of 365 in 2015, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1988107200000,
+   "failed": false,
+   "text": "Current time: Fri Dec 31 2032 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2032-12-31T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2032 (weeks run Monday to Sunday; ISO week 1 of 2032 began Monday 29 December 2031); day 366 of 366 in 2032, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1988107200000,
+   "failed": false,
+   "text": "Current time: Fri Dec 31 2032 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2032-12-31T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 53 of 2032 (weeks run Monday to Sunday; ISO week 1 of 2032 began Monday 29 December 2031); day 366 of 366 in 2032, 0 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1709208000000,
+   "failed": false,
+   "text": "Current time: Thu Feb 29 2024 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2024-02-29T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2024 (weeks run Monday to Sunday; ISO week 1 of 2024 began Monday 1 January 2024); day 60 of 366 in 2024, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1709208000000,
+   "failed": false,
+   "text": "Current time: Thu Feb 29 2024 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2024-02-29T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2024 (weeks run Monday to Sunday; ISO week 1 of 2024 began Monday 1 January 2024); day 60 of 366 in 2024, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1835481599999,
+   "failed": false,
+   "text": "Current time: Tue Feb 29 2028 18:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2028-02-29T23:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2028 (weeks run Monday to Sunday; ISO week 1 of 2028 began Monday 3 January 2028); day 60 of 366 in 2028, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1835481599999,
+   "failed": false,
+   "text": "Current time: Tue Feb 29 2028 18:59:59 GMT-0500 (Eastern Standard Time) | ISO: 2028-02-29T23:59:59.999Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2028 (weeks run Monday to Sunday; ISO week 1 of 2028 began Monday 3 January 2028); day 60 of 366 in 2028, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 951782400000,
+   "failed": false,
+   "text": "Current time: Mon Feb 28 2000 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2000-02-29T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2000 (weeks run Monday to Sunday; ISO week 1 of 2000 began Monday 3 January 2000); day 59 of 366 in 2000, 307 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 951782400000,
+   "failed": false,
+   "text": "Current time: Mon Feb 28 2000 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2000-02-29T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2000 (weeks run Monday to Sunday; ISO week 1 of 2000 began Monday 3 January 2000); day 59 of 366 in 2000, 307 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 4107542400000,
+   "failed": false,
+   "text": "Current time: Sun Feb 28 2100 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2100-03-01T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 8 of 2100 (weeks run Monday to Sunday; ISO week 1 of 2100 began Monday 4 January 2100); day 59 of 365 in 2100, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 4107542400000,
+   "failed": false,
+   "text": "Current time: Sun Feb 28 2100 19:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2100-03-01T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 8 of 2100 (weeks run Monday to Sunday; ISO week 1 of 2100 began Monday 4 January 2100); day 59 of 365 in 2100, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1740783600000,
+   "failed": false,
+   "text": "Current time: Fri Feb 28 2025 18:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2025-02-28T23:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2025 (weeks run Monday to Sunday; ISO week 1 of 2025 began Monday 30 December 2024); day 59 of 365 in 2025, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1740783600000,
+   "failed": false,
+   "text": "Current time: Fri Feb 28 2025 18:00:00 GMT-0500 (Eastern Standard Time) | ISO: 2025-02-28T23:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 9 of 2025 (weeks run Monday to Sunday; ISO week 1 of 2025 began Monday 30 December 2024); day 59 of 365 in 2025, 306 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 1789000000123.75,
+   "failed": false,
+   "text": "Current time: Wed Sep 09 2026 20:26:40 GMT-0400 (Eastern Daylight Time) | ISO: 2026-09-10T00:26:40.123Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 37 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 252 of 365 in 2026, 113 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": 5
+   },
+   "now": 1789000000123.75,
+   "failed": false,
+   "text": "Current time: Wed Sep 09 2026 20:26:40 GMT-0400 (Eastern Daylight Time) | ISO: 2026-09-10T00:26:40.123Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 37 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 252 of 365 in 2026, 113 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 804600000000,
+   "failed": false,
+   "text": "Current time: Sat Jul 01 1995 08:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 1995-07-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 26 of 1995 (weeks run Monday to Sunday; ISO week 1 of 1995 began Monday 2 January 1995); day 182 of 365 in 1995, 183 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -838987200000,
+   "failed": false,
+   "text": "Current time: Tue Jun 01 1943 08:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 1943-06-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 22 of 1943 (weeks run Monday to Sunday; ISO week 1 of 1943 began Monday 4 January 1943); day 152 of 365 in 1943, 213 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 13089600000,
+   "failed": false,
+   "text": "Current time: Mon Jun 01 1970 08:00:00 GMT-0400 (Eastern Daylight Time) | ISO: 1970-06-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 23 of 1970 (weeks run Monday to Sunday; ISO week 1 of 1970 began Monday 29 December 1969); day 152 of 365 in 1970, 213 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -12219249600000,
+   "failed": false,
+   "text": "Current time: Fri Oct 15 1582 07:03:58 GMT-0456 (Eastern Daylight Time) | ISO: 1582-10-15T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 41 of 1582 (weeks run Monday to Sunday; ISO week 1 of 1582 began Monday 4 January 1582); day 288 of 365 in 1582, 77 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -12219336000000,
+   "failed": false,
+   "text": "Current time: Thu Oct 14 1582 07:03:58 GMT-0456 (Eastern Daylight Time) | ISO: 1582-10-14T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 41 of 1582 (weeks run Monday to Sunday; ISO week 1 of 1582 began Monday 4 January 1582); day 287 of 365 in 1582, 78 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -14818680000000,
+   "failed": false,
+   "text": "Current time: Fri Jun 01 1500 07:03:58 GMT-0456 (Eastern Daylight Time) | ISO: 1500-06-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 22 of 1500 (weeks run Monday to Sunday; ISO week 1 of 1500 began Monday 1 January 1500); day 152 of 365 in 1500, 213 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -62154043200000,
+   "failed": false,
+   "text": "Current time: Thu Jun 01 0000 07:03:58 GMT-0456 (Eastern Daylight Time) | ISO: 0000-06-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 22 of 1901 (the ISO year is not the calendar year 1) (weeks run Monday to Sunday; ISO week 1 of 1901 began Monday 31 December 1900); day 152 of 365 in 1, 213 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -62185665600000,
+   "failed": false,
+   "text": "Current time: Tue Jun 01 -0001 07:03:58 GMT-0456 (Eastern Daylight Time) | ISO: -000001-06-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 22 of 1902 (the ISO year is not the calendar year 2) (weeks run Monday to Sunday; ISO week 1 of 1902 began Monday 30 December 1901); day 152 of 365 in 2, 213 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -100000008000000,
+   "failed": false,
+   "text": "Current time: Thu Feb 15 -1199 07:03:58 GMT-0456 (Eastern Standard Time) | ISO: -001199-02-15T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 7 of 1200 (weeks run Monday to Sunday; ISO week 1 of 1200 began Monday 3 January 1200); day 46 of 366 in 1200, 320 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 8615994667200000,
+   "failed": false,
+   "text": "Current time: Wed Jan 01 275000 07:00:00 GMT-0500 (Eastern Standard Time) | ISO: +275000-01-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 1 of 275000 (weeks run Monday to Sunday; ISO week 1 of 275000 began Monday 30 December 274999); day 1 of 365 in 275000, 364 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -8582544216000000,
+   "failed": false,
+   "text": "Current time: Sat Jan 01 -270000 07:03:58 GMT-0456 (Eastern Standard Time) | ISO: -270000-01-01T12:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 1 of 270001 (weeks run Monday to Sunday; ISO week 1 of 270001 began Monday 1 January 270001); day 1 of 365 in 270001, 364 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": 8640000000000000,
+   "failed": false,
+   "text": "Current time: Fri Sep 12 275760 20:00:00 GMT-0400 (Eastern Daylight Time) | ISO: +275760-09-13T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 37 of 275760 (weeks run Monday to Sunday; ISO week 1 of 275760 began Monday 31 December 275759); day 256 of 366 in 275760, 110 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {},
+   "now": -8640000000000000,
+   "failed": false,
+   "text": "Current time: Mon Apr 19 -271821 19:03:58 GMT-0456 (Eastern Daylight Time) | ISO: -271821-04-20T00:00:00.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 16 of 271822 (weeks run Monday to Sunday; ISO week 1 of 271822 began Monday 31 December 271821); day 109 of 365 in 271822, 256 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": "Europe/Berlin"
+   },
+   "now": 1794636312000,
+   "failed": false,
+   "text": "Current time: Saturday, 14 November 2026 at 07:05:12 CET (Europe/Berlin) | ISO: 2026-11-14T06:05:12.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 46 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 318 of 365 in 2026, 47 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": "Asia/Tokyo"
+   },
+   "now": 1794636312000,
+   "failed": false,
+   "text": "Current time: Saturday, 14 November 2026 at 15:05:12 GMT+9 (Asia/Tokyo) | ISO: 2026-11-14T06:05:12.000Z | Calendar facts, computed by the server (use them as given, do not recount): ISO week 46 of 2026 (weeks run Monday to Sunday; ISO week 1 of 2026 began Monday 29 December 2025); day 318 of 365 in 2026, 47 days left; the year ends on 31 December."
+  },
+  {
+   "processTZ": "America/New_York",
+   "serverZone": "America/New_York",
+   "args": {
+    "timezone": "Bogus/Zone"
+   },
+   "now": 1794636312000,
+   "failed": true,
+   "text": "ERROR: unknown IANA timezone \"Bogus/Zone\""
   },
   {
    "processTZ": "Europe/Berlin",

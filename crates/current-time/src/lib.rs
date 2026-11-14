@@ -188,6 +188,17 @@ pub fn verified(zone: &str, now_ms: f64) -> bool {
     }
 }
 
+/// The server zone [`run`] needs for a call without a `timezone` argument, from the process's `TZ`
+/// environment value, when this port can be sure it is the one Node's ICU uses: an IANA zone ID
+/// spelled exactly as tzdb spells it (no leading `:`, no POSIX rule string, no offset) that this port
+/// knows. `None` otherwise (also for `TZ` unset, where ICU reads the system's zone file): a caller
+/// that must answer as Node does hands such calls to Node.
+pub fn server_zone_from_tz(tz: Option<&str>) -> Option<&str> {
+    let tz = tz?;
+    let exact = tz.parse::<Tz>().is_ok_and(|z| z.name() == tz);
+    (exact && matches!(lookup(tz), Some(Zone::Named(..)))).then_some(tz)
+}
+
 /// The IDs [`verified`] leaves to Node, for the tests.
 #[doc(hidden)]
 pub fn divergent_ids() -> &'static [&'static str] {
