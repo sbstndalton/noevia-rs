@@ -45,8 +45,8 @@ pub struct Runtime {
     pub server_zone: Option<String>,
 }
 
-/// Core's answer, kept once it is a 200 (an older core's 404, a gone account or no answer is asked
-/// again next time).
+/// Core's answer, kept once it is a 200 or an older core's 404 (core and the front start and stop
+/// together); a gone account's 404 or no answer is asked again next time.
 static RUNTIME: Mutex<Option<Runtime>> = Mutex::new(None);
 
 /// Core's Node, if already known.
@@ -59,8 +59,16 @@ pub fn runtime_known() -> Option<Runtime> {
 
 /// What an answer of core's op `runtime` (`{node, icu, tz, zone}`) says, if it is one to keep.
 pub fn runtime_of(asked: Option<(u16, JValue)>) -> Option<Runtime> {
-    let Some((200, body)) = asked else {
-        return None;
+    let body = match asked {
+        Some((200, body)) => body,
+        // A core without the op: nothing here until it is replaced (with the front).
+        Some((404, body)) if body.get("error").as_str() != Some("no such account") => {
+            return Some(Runtime {
+                recorded: false,
+                server_zone: None,
+            })
+        }
+        _ => return None,
     };
     let field = |k: &str| body.get(k).as_str().unwrap_or("").to_string();
     let zone = field("zone");
@@ -203,7 +211,13 @@ mod tests {
     fn what_core_reports_decides() {
         let (node, icu, tz) = current_time::recorded_runtime();
         assert_eq!(runtime_of(None), None);
-        assert_eq!(runtime_of(Some((404, JValue::Null))), None);
+        let older = Runtime {
+            recorded: false,
+            server_zone: None,
+        };
+        assert_eq!(runtime_of(Some((404, JValue::Null))), Some(older));
+        let gone = js_json::parse(r#"{"error":"no such account"}"#).unwrap();
+        assert_eq!(runtime_of(Some((404, gone.clone()))), None);
         assert_eq!(runtime_of(Some((500, JValue::Null))), None);
         assert_eq!(
             runtime_of(reported(node, icu, tz, "America/New_York")),
@@ -233,7 +247,7 @@ mod tests {
         // The process-wide cache (only this test touches it): nothing answered before a 200.
         let data = data_dir("runtime");
         assert_eq!(answer(&data, USER, &run("{}"), NOW, yes), None);
-        assert!(!runtime_answered(Some((404, JValue::Null))));
+        assert!(!runtime_answered(Some((404, gone))));
         assert_eq!(runtime_known(), None);
         assert!(!runtime_answered(reported(node, icu, "2099z", "UTC")));
         assert_eq!(answer(&data, USER, &run("{}"), NOW, yes), None);
