@@ -38,6 +38,8 @@ pub mod load_advisor;
 pub mod node_lease;
 // Track R11: `PUT /api/models/preset` behind NOEVIA_RUST_MODEL_WRITES (model_writes_routes.rs).
 pub mod preset;
+// sbstndalton/noevia#2641: Node's recovery from lost coverage (the settle driver).
+pub mod recovery;
 pub mod reload;
 pub mod router;
 pub mod v8_json;
@@ -208,6 +210,11 @@ pub struct Maint {
     pub(crate) node: Arc<node_lease::NodeLeases>,
     /// The maintenance lease authority (row J): the one table of who holds the engine.
     pub authority: lease::Authority,
+    /// #2641: Node's lose-at-margin coverage for leases on Node's gate (`NOEVIA_RUST_LEASE_COVERAGE`).
+    pub coverage: gate::Coverage,
+    /// #2641: repairs the native auto-tune runner owes and runs itself (its own settle included); the
+    /// settle driver leaves the recovery to them meanwhile.
+    pub(crate) repairs_owed: std::sync::atomic::AtomicUsize,
     /// The inbox entries that failed or could not be removed, by file name.
     pub(crate) drain: std::sync::Mutex<evidence_live::DrainState>,
     /// A job of this process is running: one at a time.
@@ -368,6 +375,11 @@ impl Maint {
             source_client,
             node,
             authority: lease::Authority::new(),
+            coverage: gate::Coverage {
+                node: get(crate::config::LEASE_COVERAGE).as_deref() == Some("node"),
+                ..gate::Coverage::default()
+            },
+            repairs_owed: std::sync::atomic::AtomicUsize::new(0),
             drain: std::sync::Mutex::new(evidence_live::DrainState::default()),
             local: Arc::new(AtomicBool::new(false)),
             data_dir,
@@ -526,6 +538,8 @@ impl Maint {
                             own.map(|g| (self.authority.clone(), g)),
                             reason,
                             deadline_after(max),
+                            // #2641: Node's lifecycle when the switch is on (a lost hold owes the settle).
+                            Some(&self.coverage),
                         ))
                     }
                     // Refused: Node holds no latch for it, but the guard's ticket release is harmless.
@@ -556,6 +570,31 @@ impl Maint {
     /// Whether a job of this process holds the engine (the local flag).
     pub fn local_held(&self) -> bool {
         self.local.load(Ordering::Acquire)
+    }
+
+    /// Chat admission's view (Node's `held()`): a lease is held, or, with Node's coverage (#2641), a
+    /// recovery from lost coverage is still owed (the authority's, the settle driver's, or a repair the
+    /// auto-tune runner owes: its worker completes the shared ticket after its first key).
+    pub fn maintenance_held(&self) -> bool {
+        self.authority.held()
+            || (self.coverage.node
+                && (self.authority.recovery_pending()
+                    || self.coverage.recoveries.pending()
+                    || self.repairs_owed.load(Ordering::Acquire) > 0))
+    }
+
+    /// #2641: the settle driver ([`recovery::drive`]), with Node's coverage only. Call once at boot.
+    pub fn spawn_recoveries(self: &Arc<Self>) {
+        if !self.coverage.node {
+            return;
+        }
+        let registry = Arc::clone(&self.coverage.recoveries);
+        tokio::spawn(recovery::drive(
+            registry,
+            recovery::FrontEnv {
+                maint: Arc::clone(self),
+            },
+        ));
     }
 }
 

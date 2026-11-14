@@ -884,7 +884,7 @@ async fn native_retrieve(
             .ok()
             .flatten();
     let app = &account.app;
-    let held = || app.config.maint.authority.held();
+    let held = || app.config.maint.maintenance_held();
     app.config
         .retrieval
         .retrieve(Inputs {

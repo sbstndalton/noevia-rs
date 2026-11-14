@@ -538,6 +538,11 @@ impl Config {
 /// Track R12's switch for the settings routes Node still answers (see `Config::settings_routes`).
 pub const SETTINGS_ROUTES: &str = "NOEVIA_RUST_SETTINGS_ROUTES";
 
+/// sbstndalton/noevia#2641: `node` gives this front's leases on Node's gate Node's own lose-at-margin
+/// lifecycle and the settle driver (`model_maint::gate::Coverage`, read by `Maint::from_lookup`);
+/// unset or anything else keeps today's coverage rules exactly.
+pub const LEASE_COVERAGE: &str = "NOEVIA_RUST_LEASE_COVERAGE";
+
 /// The deployment switches retired by sbstndalton/noevia#1071: the routes they moved are always
 /// the front's. A leftover value only earns a warning.
 pub const RETIRED_SWITCHES: &[&str] = &[

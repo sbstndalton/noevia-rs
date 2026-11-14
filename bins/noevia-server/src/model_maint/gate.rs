@@ -18,6 +18,7 @@
 
 use super::lease;
 use super::node_lease::{LeaseGrant, NodeLeases};
+use super::recovery::{Registry, SETTLE};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue, CONTENT_TYPE};
 use serde_json::Value;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -512,6 +513,48 @@ const STEP_MARGIN: Duration = Duration::from_secs(15);
 const RELEASE_LIMIT: Duration = Duration::from_secs(30);
 const EXPIRY_MARGIN: Duration = Duration::from_millis(100);
 
+/// sbstndalton/noevia#2641: how a lease on Node's gate is covered. With `node`
+/// (`NOEVIA_RUST_LEASE_COVERAGE=node`) a lease follows Node's own lifecycle for one
+/// (inference-maintenance.cjs `nativeHolding`/`lose`, `assertCovered`, `dispatchSignal`): a renewal
+/// lapsing within `margin`, the hard limit within it, or an ended lease is the loss, which ends the
+/// calls in flight ([`Hold::lost_wait`]) and gives the lease back owing the recovery; a step starts
+/// while it is covered by renewal ([`Hold::assert_covered`]), not only when one confirmation outlasts
+/// it. Off (the default) every hold behaves exactly as before.
+#[derive(Debug, Clone)]
+pub struct Coverage {
+    pub node: bool,
+    /// Node's `coverageMarginMs`.
+    pub margin: Duration,
+    /// Where a lost hold without a repair worker of its own owes its settle (Node's `recoveries`).
+    pub recoveries: Arc<Registry>,
+}
+
+impl Default for Coverage {
+    fn default() -> Self {
+        Coverage {
+            node: false,
+            margin: STEP_MARGIN,
+            recoveries: Arc::new(Registry::default()),
+        }
+    }
+}
+
+/// Node's reasons a lease is lost or does not cover a step (`lose(why)`, `coverageError(why)`).
+pub(crate) const PASSED: &str = "passed its limit";
+pub(crate) const NOT_RENEWED: &str = "could not be renewed";
+pub(crate) const ENDED: &str = "was ended by the lease authority";
+const CANNOT_COVER: &str = "cannot cover the next step";
+
+/// Node's `coverageError(why)` text (503, `maintenanceCoverageLost`).
+pub fn coverage_message(why: &str) -> String {
+    format!("The maintenance lease {why}, so this work stopped before changing anything else.")
+}
+
+/// The line Node's `lose(why)` logs.
+fn loss_line(why: &str) -> String {
+    format!("[models] this process's maintenance lease {why}; its work stops before its next step, and chat stays paused until it ends")
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum ReleaseState {
     Idle,
@@ -544,6 +587,18 @@ struct Shared {
     release_wake: tokio::sync::Notify,
     /// The authority's lease this hold is (row J): its fence. `None` for the gate's hold.
     auth: Option<(lease::Authority, lease::Grant)>,
+    /// #2641 ([`Coverage`]): Node's lifecycle for this lease, its margin, why it was lost, the
+    /// in-flight calls' wake, and where it owes its settle when let go after a loss.
+    node: bool,
+    margin: Duration,
+    why: Mutex<Option<&'static str>>,
+    lost_wake: tokio::sync::Notify,
+    settle: Option<Arc<Registry>>,
+    /// The release found the recovery required (decided under the release lock): letting the hold
+    /// go owes the settle even without a loss of its own (a fenced or already-owed lease).
+    owes_settle: AtomicBool,
+    /// `let_go` ran (Node's release is idempotent: `if(released)return`).
+    let_go_done: AtomicBool,
 }
 
 impl Shared {
@@ -569,6 +624,13 @@ impl Shared {
             lease_end,
             lost: AtomicBool::new(false),
             auth: None,
+            node: false,
+            margin: STEP_MARGIN,
+            why: Mutex::new(None),
+            lost_wake: tokio::sync::Notify::new(),
+            settle: None,
+            owes_settle: AtomicBool::new(false),
+            let_go_done: AtomicBool::new(false),
         })
     }
 
@@ -649,6 +711,184 @@ impl Shared {
     }
 }
 
+/// #2641: Node's lifecycle of a native lease (inference-maintenance.cjs `nativeHolding`), for a
+/// hold with [`Coverage::node`]. Every decision takes `now`, so the recordings of Node replay on it.
+impl Shared {
+    fn lost_why(&self) -> Option<&'static str> {
+        *self.why.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn confirmed_at(&self) -> Instant {
+        *self.confirmed.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    /// Node's `lose(why)`: once, and only while the hold is neither let go nor being given back.
+    /// The calls in flight end ([`Self::lost_wait`]) and the renewer gives the lease back, owing the
+    /// recovery. The line it logged, if it lost the hold.
+    fn lose(&self, why: &'static str) -> Option<String> {
+        let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if *state != ReleaseState::Idle || self.released.load(Ordering::Acquire) {
+            return None;
+        }
+        let mut slot = self.why.lock().unwrap_or_else(|p| p.into_inner());
+        if slot.is_some() {
+            return None;
+        }
+        *slot = Some(why);
+        self.lost.store(true, Ordering::Release);
+        drop(slot);
+        drop(state);
+        let line = loss_line(why);
+        eprintln!("{line}");
+        self.lost_wake.notify_waiters();
+        self.wake.notify_one();
+        Some(line)
+    }
+
+    /// Node's `assertCovered(step)` at `now`: `Err(why)`. A lapse within the margin (Node's last
+    /// confirmation or the authority's lease), the hard limit within it and an ended authority lease
+    /// are the loss itself; a step that merely does not fit before the hard limit is refused without
+    /// it. Always covered for the gate's hold.
+    fn assert_covered_at(&self, now: Instant, step: Duration) -> Result<(), &'static str> {
+        let Some(ttl) = self.lease_ttl else {
+            return Ok(());
+        };
+        if self.lost.load(Ordering::Acquire) {
+            return Err(self.lost_why().unwrap_or(ENDED));
+        }
+        let m = self.margin;
+        let lost = |why: &'static str| {
+            self.lose(why);
+            Err(why)
+        };
+        if now + m >= self.confirmed_at() + ttl {
+            return lost(NOT_RENEWED);
+        }
+        if self.lease_end.is_some_and(|end| now + m >= end) {
+            return lost(PASSED);
+        }
+        if let Some((a, g)) = self.auth.as_ref() {
+            if !a.covers(&g.id, g.generation, Duration::ZERO) {
+                return lost(ENDED);
+            }
+            if !a.covers_step(&g.id, g.generation, m, Duration::ZERO) {
+                return lost(NOT_RENEWED);
+            }
+            if !a.covers_step(&g.id, g.generation, m, step) {
+                return Err(CANNOT_COVER);
+            }
+        }
+        if self.lease_end.is_some_and(|end| now + step + m >= end) {
+            return Err(CANNOT_COVER);
+        }
+        Ok(())
+    }
+
+    /// Node's renewal tick before it renews: false when the hold has ended, or when its hard limit
+    /// is within the margin (`lose('passed its limit')`).
+    fn tick_at(&self, now: Instant) -> bool {
+        if self.lost.load(Ordering::Acquire) || self.released.load(Ordering::Acquire) {
+            return false;
+        }
+        if self.lease_end.is_some_and(|end| now + self.margin >= end) {
+            self.lose(PASSED);
+            return false;
+        }
+        true
+    }
+
+    /// The renewal's answer, asked at `asked` and come at `now` (true / false: ended / none): false
+    /// when the hold has ended, Node answered that it ended, or the last confirmation lapses within
+    /// the margin. A late answer after the loss changes nothing.
+    fn renewed_at(&self, asked: Instant, now: Instant, answer: Option<bool>) -> bool {
+        if self.lost.load(Ordering::Acquire) || self.released.load(Ordering::Acquire) {
+            return false;
+        }
+        let Some(ttl) = self.lease_ttl else {
+            return true;
+        };
+        match answer {
+            Some(true) => {
+                *self.confirmed.lock().unwrap_or_else(|p| p.into_inner()) = asked;
+                true
+            }
+            Some(false) => {
+                self.lose(ENDED);
+                false
+            }
+            None if now + self.margin >= self.confirmed_at() + ttl => {
+                self.lose(NOT_RENEWED);
+                false
+            }
+            None => true,
+        }
+    }
+
+    /// Node's `release()`: the hold is let go (under the same lock as a loss, so a loss is either
+    /// seen here or never happens), and a lost one, or one whose release found the recovery
+    /// required, owes `settle`.
+    /// Once only (true the first time): a second call (the `Drop` after `release`) owes nothing again.
+    fn let_go(&self) -> bool {
+        let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
+        if self.let_go_done.swap(true, Ordering::AcqRel) {
+            return false;
+        }
+        self.released.store(true, Ordering::Release);
+        let owes = self.lost.load(Ordering::Acquire) || self.owes_settle.load(Ordering::Acquire);
+        drop(state);
+        self.wake.notify_one();
+        if let (true, Some(r)) = (owes, self.settle.as_ref()) {
+            r.require(SETTLE, None);
+        }
+        true
+    }
+
+    /// The release's `if(recoveries.size)scheduleRecovery(0)`, once this process's admission is back.
+    fn kick_owed(&self) {
+        if let Some(r) = self.settle.as_ref().filter(|r| r.pending()) {
+            r.kick();
+        }
+    }
+
+    /// Resolves once the hold is lost: the loss itself, or a coverage check at the point its last
+    /// confirmation (or hard limit) comes within the margin, which is the loss (Node's
+    /// `dispatchSignal`). Checked at least every second, for the authority's own end.
+    async fn lost_wait(&self) {
+        loop {
+            let lost = self.lost_wake.notified();
+            tokio::pin!(lost);
+            lost.as_mut().enable();
+            if self.lost.load(Ordering::Acquire) {
+                return;
+            }
+            let now = Instant::now();
+            let mut at = now + Duration::from_secs(1);
+            if let Some(ttl) = self.lease_ttl {
+                let lapse = self.confirmed_at() + ttl;
+                at = at.min(lapse.checked_sub(self.margin).unwrap_or(now));
+            }
+            if let Some(end) = self.lease_end {
+                at = at.min(end.checked_sub(self.margin).unwrap_or(now));
+            }
+            tokio::select! {
+                () = lost => {}
+                () = tokio::time::sleep_until(at.into()) => {
+                    if Instant::now() < at {
+                        // The tokio clock ran ahead of the std clock this hold keeps its times on
+                        // (a paused test clock): no coverage check can fall due, only the loss
+                        // itself ends the wait (no spin). Production runs on the real clock.
+                        lost_signal(self).await;
+                        return;
+                    }
+                    if self.assert_covered_at(Instant::now(), Duration::ZERO).is_err() {
+                        return;
+                    }
+                }
+            }
+        }
+    }
+}
+
 impl Shared {
     // Serialize renewal/loss decisions with the transition to intentional release.
     // None means release has started; it must not turn a completed run into a loss.
@@ -657,11 +897,17 @@ impl Shared {
         if *state != ReleaseState::Idle {
             return None;
         }
-        let live = Instant::now() < self.deadline()
+        let overdue = Instant::now() >= self.deadline();
+        let live = !overdue
             && self
                 .auth
                 .as_ref()
                 .is_none_or(|(a, g)| a.renew(&g.id, Some(g.generation)));
+        if !live && self.node {
+            drop(state);
+            self.lose(if overdue { PASSED } else { ENDED });
+            return Some(false);
+        }
         if !live {
             self.lost.store(true, Ordering::Release);
             eprintln!("[models] the maintenance lease authority ended this front's lease; the work stops before its next step");
@@ -670,6 +916,10 @@ impl Shared {
     }
 
     fn node_renewal_refused(&self) {
+        if self.node {
+            self.lose(ENDED);
+            return;
+        }
         let state = self.release.lock().unwrap_or_else(|p| p.into_inner());
         if *state == ReleaseState::Idle {
             self.lost.store(true, Ordering::Release);
@@ -681,6 +931,21 @@ impl Shared {
         let Ok(rt) = tokio::runtime::Handle::try_current() else {
             return;
         };
+        let needs = || {
+            self.lost.load(Ordering::Acquire)
+                || !self.fenced(Duration::ZERO)
+                || self
+                    .auth
+                    .as_ref()
+                    .is_some_and(|(a, _)| a.recovery_pending())
+        };
+        let require = || {
+            self.auth.as_ref().map_or_else(
+                || self.lease_id.clone().unwrap_or_default(),
+                |(a, _)| a.require_recovery(),
+            )
+        };
+        let mut decided = None;
         {
             let mut state = match self.release.lock() {
                 Ok(s) => s,
@@ -690,21 +955,20 @@ impl Shared {
                 return;
             }
             *state = ReleaseState::Pending;
+            // #2641: the recovery is required before anyone can see the hold let go (`let_go` takes
+            // this lock), so the settle driver never finds a lost hold's recovery not yet owed.
+            if self.node {
+                let needs_recovery = needs();
+                if needs_recovery {
+                    self.owes_settle.store(true, Ordering::Release);
+                }
+                decided = Some((needs_recovery, needs_recovery.then(require)));
+            }
         }
-        let needs_recovery = self.lost.load(Ordering::Acquire)
-            || !self.fenced(Duration::ZERO)
-            || self
-                .auth
-                .as_ref()
-                .is_some_and(|(a, _)| a.recovery_pending());
-        let recovery_ticket = if needs_recovery {
-            Some(self.auth.as_ref().map_or_else(
-                || self.lease_id.clone().unwrap_or_default(),
-                |(a, _)| a.require_recovery(),
-            ))
-        } else {
-            None
-        };
+        let (needs_recovery, recovery_ticket) = decided.unwrap_or_else(|| {
+            let needs_recovery = needs();
+            (needs_recovery, needs_recovery.then(require))
+        });
         self.release_authority();
         self.released.store(true, Ordering::Release);
         self.wake.notify_one();
@@ -811,7 +1075,9 @@ impl Hold {
         }
     }
 
-    /// A lease on Node's gate, renewed until `deadline`.
+    /// A lease on Node's gate, renewed until `deadline`. `coverage`: Node's lifecycle when it is on;
+    /// then every hold (a recovery's too: Node's release re-adds the settle) owes the settle when it
+    /// is let go after a loss.
     pub(super) fn leased(
         local: Arc<AtomicBool>,
         node: Arc<NodeLeases>,
@@ -819,6 +1085,7 @@ impl Hold {
         auth: Option<(lease::Authority, lease::Grant)>,
         reason: &str,
         deadline: Instant,
+        coverage: Option<&Coverage>,
     ) -> Hold {
         let mut shared = Shared::new(
             Some(grant.id),
@@ -830,6 +1097,11 @@ impl Hold {
         if let Some(inner) = Arc::get_mut(&mut shared) {
             inner.auth = auth;
             inner.node_generation = grant.generation;
+            if let Some(c) = coverage.filter(|c| c.node) {
+                inner.node = true;
+                inner.margin = c.margin;
+                inner.settle = Some(Arc::clone(&c.recoveries));
+            }
         }
         if let Ok(mut at) = shared.confirmed.lock() {
             *at = grant.asked;
@@ -905,12 +1177,60 @@ impl Hold {
     /// margin), as the native auto-tune runner's calls do. A call that cannot be ended that way
     /// must use the stricter [`Hold::may_start`] (sbstndalton/noevia#2641).
     pub fn covers(&self, step: Duration) -> bool {
+        if self.shared.node {
+            return self.assert_covered(step).is_ok();
+        }
         !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step, true)
+    }
+
+    /// #2641, Node's `assertCovered(step)` ([`Coverage::node`]): `Err` with Node's coverage error
+    /// text. A lapse within the margin is the loss (the calls in flight end, the release owes the
+    /// recovery). Without Node's lifecycle: [`Self::covers`], with the same text on a refusal.
+    pub fn assert_covered(&self, step: Duration) -> Result<(), String> {
+        if !self.shared.node {
+            return if self.covers(step) {
+                Ok(())
+            } else {
+                Err(coverage_message(
+                    self.shared.lost_why().unwrap_or(NOT_RENEWED),
+                ))
+            };
+        }
+        if self.shared.released.load(Ordering::Acquire) {
+            return Err(coverage_message(self.shared.lost_why().unwrap_or(ENDED)));
+        }
+        self.shared
+            .assert_covered_at(Instant::now(), step)
+            .map_err(coverage_message)
+    }
+
+    /// Whether the hold follows Node's lifecycle ([`Coverage::node`]).
+    pub fn node_coverage(&self) -> bool {
+        self.shared.node
+    }
+
+    /// #2641, Node's `dispatchSignal`: resolves once the hold is lost (with [`Coverage::node`]; never
+    /// otherwise), so a call in flight ends with [`Self::coverage_error`].
+    pub async fn lost_wait(&self) {
+        if self.shared.node {
+            self.shared.lost_wait().await;
+        } else {
+            std::future::pending::<()>().await;
+        }
+    }
+
+    /// Node's coverage error for a lost hold (`The maintenance lease <why>, so ...`).
+    pub fn coverage_error(&self) -> String {
+        coverage_message(self.shared.lost_why().unwrap_or(NOT_RENEWED))
     }
 
     /// Node's rule without marking a loss: for a check whose caller cannot drive the settle a
     /// lost hold owes (the public calibration worker, until sbstndalton/noevia#2641).
     pub fn fits(&self, step: Duration) -> bool {
+        // With Node's lifecycle a lost hold's settle is driven, so the check is Node's own.
+        if self.shared.node {
+            return self.covers(step);
+        }
         !self.shared.released.load(Ordering::Acquire) && self.shared.covers(step, false)
     }
 
@@ -920,6 +1240,9 @@ impl Hold {
         if self.shared.lost.load(Ordering::Acquire) || self.shared.released.load(Ordering::Acquire)
         {
             return false;
+        }
+        if self.shared.node {
+            return self.covers(Duration::ZERO);
         }
         let Some(ttl) = self.shared.lease_ttl else {
             return true;
@@ -934,6 +1257,12 @@ impl Hold {
     pub(crate) fn write_fence(&self) -> super::ini::WriteAllowed {
         let shared = Arc::clone(&self.shared);
         Arc::new(move || {
+            if shared.node {
+                return !shared.released.load(Ordering::Acquire)
+                    && shared
+                        .assert_covered_at(Instant::now(), Duration::ZERO)
+                        .is_ok();
+            }
             !shared.lost.load(Ordering::Acquire)
                 && !shared.released.load(Ordering::Acquire)
                 && shared.fenced(Duration::ZERO)
@@ -1019,6 +1348,15 @@ impl Hold {
 
     /// Ends the hold: the gate's token is given back, the local flag cleared.
     pub async fn release(mut self) {
+        if self.shared.node {
+            // #2641: the recovery is required first, then the hold is let go, then the driver kicked.
+            if let Some(node) = self.node.as_ref() {
+                self.shared.start_release(Arc::clone(node));
+            }
+            self.finish();
+            self.release_node_lease().await;
+            return;
+        }
         self.finish();
         let token = self.shared.token.lock().ok().and_then(|mut t| t.take());
         if let (Some(gate), Some(token)) = (self.gate.as_ref(), token.as_ref()) {
@@ -1030,17 +1368,32 @@ impl Hold {
     }
 
     fn finish(&mut self) {
-        self.shared.released.store(true, Ordering::Release);
-        self.shared.wake.notify_one();
+        let mut first = false;
+        if self.shared.node {
+            first = self.shared.let_go();
+        } else {
+            self.shared.released.store(true, Ordering::Release);
+            self.shared.wake.notify_one();
+        }
         if !self.local_finished {
             self.local.store(false, Ordering::Release);
             self.local_finished = true;
+        }
+        if first {
+            self.shared.kick_owed();
         }
     }
 }
 
 impl Drop for Hold {
     fn drop(&mut self) {
+        if self.shared.node {
+            if let Some(node) = self.node.take() {
+                self.shared.start_release(node);
+            }
+            self.finish();
+            return;
+        }
         self.finish();
         if let Some(node) = self.node.take() {
             self.shared.start_release(node);
@@ -1108,6 +1461,9 @@ async fn renew_loop(shared: Arc<Shared>, gate: Arc<Gate>, every: Duration, reaso
 }
 
 async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration) {
+    if shared.node {
+        return node_lease_loop(shared, node, every).await;
+    }
     loop {
         if !shared.pause(every).await {
             return;
@@ -1137,6 +1493,58 @@ async fn lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration)
     }
     shared.start_release(node);
 }
+
+/// #2641: Node's renewal tick for a native lease (`nativeHolding` `tick`). A loss (here, or from a
+/// coverage check meanwhile) gives the lease back at once, owing the recovery (Node's `lose()` releases
+/// its token), while the hold keeps this process's own admission until the work lets it go.
+async fn node_lease_loop(shared: Arc<Shared>, node: Arc<NodeLeases>, every: Duration) {
+    loop {
+        if !shared.pause(every).await {
+            return;
+        }
+        if shared.lost.load(Ordering::Acquire) || !shared.tick_at(Instant::now()) {
+            break;
+        }
+        match shared.renew_authority() {
+            None => return,
+            Some(false) => break,
+            Some(true) => {}
+        }
+        let Some(id) = shared.token.lock().ok().and_then(|t| t.clone()) else {
+            return;
+        };
+        let asked = Instant::now();
+        let answer = tokio::select! {
+            answer = node.renew(&id) => answer,
+            () = lost_signal(&shared) => break,
+        };
+        if !shared.renewed_at(asked, Instant::now(), answer) {
+            break;
+        }
+    }
+    if shared.released.load(Ordering::Acquire) && !shared.lost.load(Ordering::Acquire) {
+        // Let go meanwhile: its own release gives the lease back.
+        return;
+    }
+    shared.start_release(node);
+}
+
+/// Resolves once the hold is marked lost (no coverage check of its own).
+async fn lost_signal(shared: &Shared) {
+    loop {
+        let lost = shared.lost_wake.notified();
+        tokio::pin!(lost);
+        lost.as_mut().enable();
+        if shared.lost.load(Ordering::Acquire) {
+            return;
+        }
+        lost.await;
+    }
+}
+
+#[cfg(test)]
+#[path = "gate_replay.rs"]
+mod replay;
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
@@ -1201,6 +1609,7 @@ mod tests {
             None,
             "synthetic",
             Instant::now() + deadline,
+            None,
         );
         (hold, seen, proceed, ack)
     }

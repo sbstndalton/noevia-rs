@@ -1229,6 +1229,31 @@ fn refuse(ids: &[String], reason: Option<&str>) -> Outcome {
     Outcome { status: 409, body }
 }
 
+/// The preset step's coverage before a write or reload: Node's `assertCovered(PRESET_STEP_MS)` with
+/// its words under Node's coverage (#2641), the whole-step rule otherwise.
+fn preset_step_refused(hold: &Hold) -> Option<Outcome> {
+    if hold.node_coverage() {
+        return hold
+            .assert_covered(PRESET_STEP)
+            .err()
+            .map(|m| message(503, &m));
+    }
+    (!hold.may_start(PRESET_STEP)).then(|| message(503, LEASE_LOST))
+}
+
+/// A router call: a covered dispatch under Node's coverage (#2641; `Err`: the coverage error), as
+/// before otherwise.
+async fn covered<T>(
+    holding: &Hold,
+    call: impl std::future::Future<Output = T>,
+) -> Result<T, String> {
+    if holding.node_coverage() {
+        super::recovery::dispatch(holding, call).await
+    } else {
+        Ok(call.await)
+    }
+}
+
 /// A router answer that is not ok, passed on as the route does (`json(res, status, body)`).
 fn passed_on(status: u16, body: &Option<Value>) -> Outcome {
     Outcome {
@@ -1266,6 +1291,18 @@ impl Maint {
         holding: &Hold,
         expect: Option<&str>,
     ) -> Result<Result<super::router::Reply, &'static str>, ()> {
+        self.router_reload_as(router, holding, expect, false).await
+    }
+
+    /// [`Self::router_reload`]; `node` (#2641, the reload's own calls with Node's coverage): each
+    /// router call is a covered dispatch (Node's `request`), which a lost hold ends (`lease_lost`).
+    async fn router_reload_as(
+        &self,
+        router: &Router,
+        holding: &Hold,
+        expect: Option<&str>,
+        node: bool,
+    ) -> Result<Result<super::router::Reply, &'static str>, ()> {
         let before = self.ini_text().await;
         if let Some(expect) = expect {
             if before.as_deref() != Some(expect) {
@@ -1273,14 +1310,28 @@ impl Maint {
             }
         }
         // Checked again here, right at the call: reading the file above takes what it takes.
-        if !holding.may_start(RELOAD_LIMIT) {
+        let covered = if node {
+            holding.assert_covered(Duration::ZERO).is_ok()
+        } else {
+            holding.may_start(RELOAD_LIMIT)
+        };
+        if !covered {
             return Ok(Err("lease_lost"));
         }
         let ticket = self.guard.begin(ORIGIN_RUST).ticket;
         let token = holding.token();
-        let result = router
-            .get("/models?reload=1", token.as_deref(), RELOAD_LIMIT)
-            .await;
+        let call = router.get("/models?reload=1", token.as_deref(), RELOAD_LIMIT);
+        let result = if node {
+            match super::recovery::dispatch(holding, call).await {
+                Ok(r) => r,
+                Err(_) => {
+                    self.settle(ticket, Settle::Forget).await;
+                    return Ok(Err("lease_lost"));
+                }
+            }
+        } else {
+            call.await
+        };
         let reply = match result {
             Ok(r) => r,
             Err(_) => {
@@ -1292,8 +1343,14 @@ impl Maint {
             self.settle(ticket, Settle::Forget).await;
             return Ok(Ok(reply));
         }
-        let outcome = match router.models(token.as_deref()).await {
-            Ok(after) if after.ok => {
+        let call = router.models(token.as_deref());
+        let after = if node {
+            super::recovery::dispatch(holding, call).await.ok()
+        } else {
+            Some(call.await)
+        };
+        let outcome = match after {
+            Some(Ok(after)) if after.ok => {
                 let after_text = self.ini_text().await;
                 match (rows(&after.body), before) {
                     (Some(listing), Some(before)) => Settle::Record {
@@ -1384,9 +1441,9 @@ impl Maint {
             Err(HoldError::NeedsGate) => return Err(message(503, NEEDS_TOKEN)),
             Err(HoldError::NodeUnavailable) => return Err(message(503, NO_ARBITER)),
         };
-        if !hold.may_start(PRESET_STEP) {
+        if let Some(refused) = preset_step_refused(&hold) {
             hold.release().await;
-            return Err(message(503, LEASE_LOST));
+            return Err(refused);
         }
         Ok(hold)
     }
@@ -1411,11 +1468,19 @@ impl Maint {
     }
 
     async fn reload_inner(&self, router: &Router, holding: &Hold, unload: bool) -> Outcome {
+        let node = holding.node_coverage();
+        // #2641: Node's reloadHeld asserts the whole preset step first.
+        if node {
+            if let Some(refused) = preset_step_refused(holding) {
+                return refused;
+            }
+        }
         let token = holding.token();
         let hold = token.as_deref();
-        let listing = match router.models(hold).await {
-            Ok(l) => l,
-            Err(_) => return message(500, COULD_NOT),
+        let listing = match covered(holding, router.models(hold)).await {
+            Ok(Ok(l)) => l,
+            Ok(Err(_)) => return message(500, COULD_NOT),
+            Err(lost) => return message(503, &lost),
         };
         if !listing.ok {
             return passed_on(listing.status, &listing.body);
@@ -1434,8 +1499,9 @@ impl Maint {
             }
             // Right before the call: list again; a model that started loading meanwhile, or a
             // moved router, refuses (#1040). The file itself is re-read inside the reload.
-            let again = match router.models(hold).await {
-                Ok(a) if a.ok => a,
+            let again = match covered(holding, router.models(hold)).await {
+                Ok(Ok(a)) if a.ok => a,
+                Err(lost) => return message(503, &lost),
                 _ => return refuse(&loaded, Some("unknown")),
             };
             let Some(again_rows) = rows(&again.body).cloned() else {
@@ -1457,20 +1523,31 @@ impl Maint {
         if kept.is_empty() {
             holding.cover(worst_case(loaded.len()));
             for id in &loaded {
+                if node {
+                    // A covered dispatch (Node's `post`): a lost hold ends it, and the reload.
+                    if let Err(lost) = covered(holding, router.unload(id, hold)).await {
+                        return message(503, &lost);
+                    }
+                    continue;
+                }
                 if !holding.may_start(UNLOAD_LIMIT) {
                     return message(503, LEASE_LOST);
                 }
                 let _ = router.unload(id, hold).await;
             }
         }
-        if !holding.may_start(RELOAD_LIMIT) {
+        if !node && !holding.may_start(RELOAD_LIMIT) {
             return message(503, LEASE_LOST);
         }
-        let result = match self.router_reload(router, holding, expect.as_deref()).await {
+        let result = match self
+            .router_reload_as(router, holding, expect.as_deref(), node)
+            .await
+        {
             Ok(r) => r,
             Err(()) => return message(500, COULD_NOT),
         };
         match result {
+            Err("lease_lost") if node => message(503, &holding.coverage_error()),
             Err("lease_lost") => message(503, LEASE_LOST),
             Err(why) => refuse(&kept, Some(why)),
             Ok(reply) if !reply.ok => message(502, NOT_RELOADED),
