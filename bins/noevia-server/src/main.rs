@@ -78,7 +78,8 @@ fn legacy_claim_cli(args: impl Iterator<Item = OsString>) -> ExitCode {
     }
 }
 /// `--ensure-schema`: core's start-up steps on `UI_DATA_DIR/cowork.db` (boot-schema), with core's two
-/// first-run lines when a setup code is made, then the store's own schema guards on the result.
+/// first-run lines when a setup code is made, then the store's own guards (reader and writer) on the
+/// result.
 fn ensure_schema_cli(get: impl Fn(&str) -> Option<String>, err: &mut impl Write) -> ExitCode {
     use rand_core::{OsRng, RngCore};
     let Some(dir) = get("UI_DATA_DIR").filter(|d| !d.is_empty()).map(PathBuf::from) else {
@@ -102,8 +103,12 @@ fn ensure_schema_cli(get: impl Fn(&str) -> Option<String>, err: &mut impl Write)
             return ExitCode::FAILURE;
         }
     }
-    match server_store::Store::open(&dir) {
-        Ok(_) => ExitCode::SUCCESS,
+    // The store's own guards judge the result, the reader's and the writer's (as bootstrap.rs does).
+    let opened = server_store::Store::open(&dir).and_then(|_| {
+        server_store::Writer::open(&dir, server_store::RustAuth::owned()).map(|_| ())
+    });
+    match opened {
+        Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
             let _ = writeln!(err, "noevia-server: cowork.db: {e}");
             ExitCode::FAILURE

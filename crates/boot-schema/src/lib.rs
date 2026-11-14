@@ -10,6 +10,12 @@
 //! directory-mcp.cjs (with its three guarded column adds), rust-mcp-credentials.cjs, chatgpt-oauth.cjs and
 //! diary-connectors.cjs. Every statement is core's own text ([`sql`]): SQLite keeps it in sqlite_master.
 //! A second run changes nothing. Replayed on recorded Node boots (`tests/node_schema.rs`).
+//!
+//! Stricter than Node's start, which ran each statement on its own: everything after the pragmas is one
+//! write transaction, so a run that fails leaves the database as it was, and a first-run setup-code file
+//! made by a failed run is taken away with it (its hash was never saved). A `directory_mcp_servers`
+//! with `personal` but not `declared_json` (a Node start stopped between the pair) gets the missing
+//! column, where Node's start would fail on it.
 
 pub mod sql;
 
@@ -174,64 +180,91 @@ pub fn ensure(
         .recursive(true)
         .mode(0o700)
         .create(data_dir)?;
-    let db = Connection::open(data_dir.join("cowork.db"))?;
-    db.busy_timeout(std::time::Duration::from_secs(5))?;
-    db.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))?;
-    db.pragma_update(None, "foreign_keys", true)?;
+    let mut conn = Connection::open(data_dir.join("cowork.db"))?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    conn.pragma_update_and_check(None, "journal_mode", "WAL", |_| Ok(()))?;
+    conn.pragma_update(None, "foreign_keys", true)?;
+    // Every step below in one write transaction: a run that fails anywhere leaves the database as it
+    // was (SQLite's DDL is transactional; the statements' text, and so sqlite_master, is the same), so
+    // no column pair is ever half added and the next run starts again from the same place.
+    let db = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+    let setup_file = data_dir.join("first-run-setup-code");
+    let mut made_setup_file = false;
+    let result = steps(&db, ctx, random, &setup_file, &mut made_setup_file);
+    let done = result.and_then(|booted| {
+        db.commit()?;
+        Ok(booted)
+    });
+    if done.is_err() && made_setup_file {
+        // Without its hash the code could never be used, and its file would stop the next run from
+        // making one: take it away with the rest.
+        let _ = std::fs::remove_file(&setup_file);
+    }
+    done
+}
+
+/// The steps inside [`ensure`]'s transaction.
+fn steps(
+    db: &Connection,
+    ctx: &Context,
+    random: &mut dyn FnMut(&mut [u8]),
+    setup_file: &Path,
+    made_setup_file: &mut bool,
+) -> Result<Booted, Error> {
     db.execute_batch(sql::AUTH)?;
     // v3
-    if !has_column(&db, "user_features", "onboarded")? {
+    if !has_column(db, "user_features", "onboarded")? {
         db.execute_batch(sql::V3)?;
     }
-    version(&db, 3)?;
+    version(db, 3)?;
     // v4
-    if !has_column(&db, "storage_connections", "region")? {
+    if !has_column(db, "storage_connections", "region")? {
         db.execute_batch(
             "ALTER TABLE storage_connections ADD COLUMN region TEXT NOT NULL DEFAULT 'us-east-1'",
         )?;
     }
-    if !has_column(&db, "storage_connections", "bucket")? {
+    if !has_column(db, "storage_connections", "bucket")? {
         db.execute_batch(
             "ALTER TABLE storage_connections ADD COLUMN bucket TEXT NOT NULL DEFAULT ''",
         )?;
     }
-    version(&db, 4)?;
+    version(db, 4)?;
     // v5
-    if !has_column(&db, "user_features", "insights_badge")? {
+    if !has_column(db, "user_features", "insights_badge")? {
         db.execute_batch(
             "ALTER TABLE user_features ADD COLUMN insights_badge INTEGER NOT NULL DEFAULT 0",
         )?;
     }
-    if !has_column(&db, "user_features", "insights_seen_at")? {
+    if !has_column(db, "user_features", "insights_seen_at")? {
         db.execute_batch("ALTER TABLE user_features ADD COLUMN insights_seen_at INTEGER")?;
     }
-    version(&db, 5)?;
+    version(db, 5)?;
     // device-auth.cjs ensureDeviceSchema
     db.execute_batch(sql::DEVICE)?;
-    if !has_column(&db, "device_tokens", "replaced_by")? {
+    if !has_column(db, "device_tokens", "replaced_by")? {
         db.execute_batch("ALTER TABLE device_tokens ADD COLUMN replaced_by TEXT")?;
     }
-    if !has_column(&db, "users", "credential_epoch")? {
+    if !has_column(db, "users", "credential_epoch")? {
         db.execute_batch(
             "ALTER TABLE users ADD COLUMN credential_epoch INTEGER NOT NULL DEFAULT 0",
         )?;
     }
     // The relying party a passkey made before rp_id was recorded belongs to.
-    let origin = setting(&db, "public_origin_admin")?
+    let origin = setting(db, "public_origin_admin")?
         .or_else(|| Some(ctx.public_origin.clone()).filter(|o| !o.is_empty()))
-        .map_or_else(|| setting(&db, "public_origin"), |o| Ok(Some(o)))?
+        .map_or_else(|| setting(db, "public_origin"), |o| Ok(Some(o)))?
         .unwrap_or_default();
     let relying_party = rp_for(&origin, &ctx.rp_id)?;
-    if !has_column(&db, "passkeys", "rp_id")? {
+    if !has_column(db, "passkeys", "rp_id")? {
         db.execute_batch("ALTER TABLE passkeys ADD COLUMN rp_id TEXT")?;
     }
-    let backfill = setting(&db, "passkey_rp_id")?.unwrap_or(relying_party);
+    let backfill = setting(db, "passkey_rp_id")?.unwrap_or(relying_party);
     db.execute(
         "UPDATE passkeys SET rp_id=? WHERE rp_id IS NULL",
         [backfill],
     )?;
     db.execute("DELETE FROM settings WHERE key='passkey_rp_id'", [])?;
-    if setting(&db, "instance_id")?.is_none() {
+    if setting(db, "instance_id")?.is_none() {
         let mut b = [0u8; 16];
         random(&mut b);
         db.execute(
@@ -241,7 +274,6 @@ pub fn ensure(
     }
     // The first-run setup code, for a database with no account yet.
     let mut booted = Booted::default();
-    let setup_file = data_dir.join("first-run-setup-code");
     let users: i64 = db.query_row("SELECT count(*) AS n FROM users", [], |r| r.get(0))?;
     if users == 0 && !setup_file.exists() {
         let mut b = Zeroizing::new([0u8; 16]);
@@ -255,7 +287,8 @@ pub fn ensure(
                 .write(true)
                 .create_new(true)
                 .mode(0o600)
-                .open(&setup_file)?;
+                .open(setup_file)?;
+            *made_setup_file = true;
             file.write_all(format!("{}\n", code.as_str()).as_bytes())?;
             file.sync_all()?;
         }
@@ -289,6 +322,12 @@ pub fn ensure(
     }
     if !directory_column("personal")? {
         db.execute_batch("ALTER TABLE directory_mcp_servers ADD COLUMN personal INTEGER NOT NULL DEFAULT 0; ALTER TABLE directory_mcp_servers ADD COLUMN declared_json TEXT NOT NULL DEFAULT '[]'")?;
+    } else if !directory_column("declared_json")? {
+        // The pair's second half, missing after a start that stopped between the two (Node's start
+        // then fails on every read of the table): added with the same statement, so the same text.
+        db.execute_batch(
+            "ALTER TABLE directory_mcp_servers ADD COLUMN declared_json TEXT NOT NULL DEFAULT '[]'",
+        )?;
     }
     db.execute_batch(sql::MCP_CREDENTIALS)?;
     db.execute_batch(sql::CHATGPT_OAUTH)?;

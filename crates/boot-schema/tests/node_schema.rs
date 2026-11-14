@@ -177,3 +177,85 @@ fn recorded_node_boots() {
         assert_eq!(dump(&dir), got, "{name}: a second run changed something");
     }
 }
+
+/// A run that fails after the setup code's file was made leaves neither the file nor anything else:
+/// the next run makes a code whose hash is saved (Node's start could always be restarted; once it is
+/// gone, a stuck first-run setup could only be repaired by hand).
+#[test]
+fn a_failed_run_leaves_nothing_half_done() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("ui-data");
+    std::fs::create_dir(&dir).unwrap();
+    let db = Connection::open(dir.join("cowork.db")).unwrap();
+    db.execute_batch(
+        "CREATE TABLE settings(key TEXT PRIMARY KEY, value TEXT NOT NULL);
+         CREATE TRIGGER qa_refuse BEFORE INSERT ON settings WHEN NEW.key='setup_code_hash'
+           BEGIN SELECT RAISE(ABORT,'qa'); END;",
+    )
+    .unwrap();
+    drop(db);
+    let mut fill = |buf: &mut [u8]| buf.fill(7);
+    assert!(ensure(&dir, &Context::default(), &mut fill).is_err());
+    assert!(
+        !dir.join("first-run-setup-code").exists(),
+        "the file went with the failed run"
+    );
+    let db = Connection::open(dir.join("cowork.db")).unwrap();
+    let tables: i64 = db
+        .query_row(
+            "SELECT count(*) FROM sqlite_master WHERE type='table'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(tables, 1, "nothing of the failed run is left");
+    db.execute_batch("DROP TRIGGER qa_refuse").unwrap();
+    drop(db);
+    let booted = ensure(&dir, &Context::default(), &mut fill).unwrap();
+    let code = booted.setup_code.unwrap();
+    let db = Connection::open(dir.join("cowork.db")).unwrap();
+    let hash: String = db
+        .query_row(
+            "SELECT value FROM settings WHERE key='setup_code_hash'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(hash, format!("{:x}", Sha256::digest(code.as_bytes())));
+    assert_eq!(
+        std::fs::read_to_string(dir.join("first-run-setup-code")).unwrap(),
+        format!("{}\n", code.as_str())
+    );
+}
+
+/// A directory table with `personal` but not `declared_json` (a pair half added elsewhere) is never
+/// passed as complete: either the column is added or the run fails.
+#[test]
+fn a_half_added_directory_pair_is_not_passed_silently() {
+    let temp = tempfile::tempdir().unwrap();
+    let dir = temp.path().join("ui-data");
+    std::fs::create_dir(&dir).unwrap();
+    Connection::open(dir.join("cowork.db"))
+        .unwrap()
+        .execute_batch(
+            "CREATE TABLE directory_mcp_servers(id TEXT PRIMARY KEY, registry_name TEXT NOT NULL UNIQUE,
+               title TEXT NOT NULL, url TEXT NOT NULL, added_by TEXT, added_at INTEGER NOT NULL,
+               headers_enc TEXT, oauth INTEGER NOT NULL DEFAULT 0, personal INTEGER NOT NULL DEFAULT 0);",
+        )
+        .unwrap();
+    let mut fill = |buf: &mut [u8]| buf.fill(7);
+    let result = ensure(&dir, &Context::default(), &mut fill);
+    let db = Connection::open(dir.join("cowork.db")).unwrap();
+    let has: bool = db
+        .query_row(
+            "SELECT count(*) FROM pragma_table_info('directory_mcp_servers') WHERE name='declared_json'",
+            [],
+            |r| r.get::<_, i64>(0),
+        )
+        .unwrap()
+        == 1;
+    assert!(
+        has || result.is_err(),
+        "declared_json missing after a run that passed"
+    );
+}
