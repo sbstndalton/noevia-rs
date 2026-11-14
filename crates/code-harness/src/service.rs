@@ -874,11 +874,27 @@ impl Service {
             return Err(not_set_up());
         };
         task.context = resolved.context.clone();
+        // Council p14: with a relay per run, the lease the start resolved with ends when the task
+        // starts (its runs open their own), so no token is open while it plans.
+        let relay =
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| setup.run_relay(&resolved)))
+                .ok()
+                .flatten();
+        let per_run = relay.is_some();
         let start = Arc::new(StartState {
             signal: Signal::new(),
             phase: Mutex::new(Phase::Queued),
             task: Mutex::new(None),
-            gate: gate.map(|g| Arc::new(move || g.enter()) as crate::executor::Gate),
+            gate: gate.map(|g| {
+                Arc::new(move || {
+                    g.enter().map(|mut lease| {
+                        if per_run {
+                            lease.run_ended();
+                        }
+                        lease
+                    })
+                }) as crate::executor::Gate
+            }),
             lease: Mutex::new(None),
             log: self.options.log.clone(),
             now: self.options.now.clone(),
@@ -893,7 +909,8 @@ impl Service {
             workspaces: Arc::new(PipeWorkspaces(tenant.workspaces.clone())),
             harness: Arc::new(
                 PipeHarness::new(tenant.executor.clone(), resolved.engine.clone())
-                    .on_machine(front_machine_key(resolved.facts.as_ref())),
+                    .on_machine(front_machine_key(resolved.facts.as_ref()))
+                    .with_relay(relay),
             ),
             approvals: Arc::new(Asker(self.registry.clone())),
             tree: tenant.workspaces.clone(),

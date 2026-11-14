@@ -666,9 +666,8 @@ pub fn relay_over(
         Some(t.machine)
     });
     let r = Arc::clone(&reader);
-    let target: code_engine_relay::TargetFn = Arc::new(move |user: &str| {
-        r(user).map(|machine| CodeTarget { machine }.relay())
-    });
+    let target: code_engine_relay::TargetFn =
+        Arc::new(move |user: &str| r(user).map(|machine| CodeTarget { machine }.relay()));
     let mut o = code_engine_relay::Options::new(Arc::clone(&machines), target, url);
     o.log = Arc::new(|e| log_relay(&e));
     RelayState {
@@ -687,6 +686,21 @@ impl RelayState {
         model: Option<&str>,
     ) -> Result<code_engine_relay::Opened, code_engine_relay::Refusal> {
         self.relay.open_for(user, task_id, model, None).await
+    }
+
+    /// Open the relay for one Executor run of a Planner task (council p14): with `expect` (the
+    /// machine key the Planner pinned) the run is refused unless the Code role is still there
+    /// (code-machine.cjs `open({ expect })`); `None`: no check, as Node's `expect: undefined`.
+    pub async fn open_expecting(
+        &self,
+        user: &str,
+        task_id: &str,
+        model: Option<&str>,
+        expect: Option<&str>,
+    ) -> Result<code_engine_relay::Opened, code_engine_relay::Refusal> {
+        self.relay
+            .open_for(user, task_id, model, expect.map(Some))
+            .await
     }
 
     /// The Code role's machine for one start's role engine.
@@ -1406,7 +1420,10 @@ mod tests {
         assert!(!e.external);
         // No JSON-schema capability on a machine row.
         assert_ne!(
-            e.provider.get("capabilities").get("jsonSchemaParam").as_bool(),
+            e.provider
+                .get("capabilities")
+                .get("jsonSchemaParam")
+                .as_bool(),
             Some(true)
         );
         assert_eq!(
@@ -1419,7 +1436,10 @@ mod tests {
     fn the_machine_key_is_the_relay_s_target_key() {
         let t = qa_target();
         let relay = CodeTarget { machine: t.clone() }.relay();
-        assert_eq!(Some(key_of(&t)), code_engine_relay::target_key(Some(&relay)));
+        assert_eq!(
+            Some(key_of(&t)),
+            code_engine_relay::target_key(Some(&relay))
+        );
         assert_eq!(key_of(&t), "qa-m1|http://10.9.0.5:8080|qa-coder");
     }
 

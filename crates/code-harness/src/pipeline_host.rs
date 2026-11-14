@@ -70,6 +70,21 @@ pub fn machine_refusal(lease: Option<&str>, pinned: &JValue) -> Option<&'static 
     }
 }
 
+/// core code-harness.cjs `runExecutor`'s relay for one run of a start whose Code role is on an
+/// inference machine (`endpoint.relay.open({ taskId, model, expect: machine })`, council p14,
+/// noevia#2800 item 3): the run's engine (the relay's URL, the run's token, the machine's model and
+/// context) and its lease, which ends the token when dropped. Node opens one per run and closes
+/// it in the run's `finally`, so no token is open while the task plans, is verified, reviewed or
+/// audited, or between revisions. A refusal is the run's failure with Node's public message.
+pub trait RunRelay: Send + Sync {
+    fn open(
+        &self,
+        task_id: &str,
+        model: Option<&str>,
+        expect: Option<&str>,
+    ) -> Result<(Engine, Lease), XFail>;
+}
+
 /// code-service.cjs's refusal when the pipeline cannot be built for this start.
 pub const NOT_SET_UP: &str = "The Planner pipeline is not set up on this server.";
 
@@ -354,6 +369,8 @@ pub struct PipeHarness {
     pub engine: Option<Engine>,
     /// The relay's target key of the run's lease (`None`: this machine's engine).
     pub machine: Option<String>,
+    /// A relay lease per run ([`RunRelay`]); `None`: every run uses [`PipeHarness::engine`].
+    pub relay: Option<Arc<dyn RunRelay>>,
     handles: Mutex<HashMap<u64, RunHandle>>,
     next: AtomicU64,
 }
@@ -364,6 +381,7 @@ impl PipeHarness {
             executor,
             engine,
             machine: None,
+            relay: None,
             handles: Mutex::new(HashMap::new()),
             next: AtomicU64::new(1),
         }
@@ -371,6 +389,12 @@ impl PipeHarness {
     /// The run's engine is a relay lease on this target key (a start on an inference machine).
     pub fn on_machine(mut self, key: Option<String>) -> PipeHarness {
         self.machine = key;
+        self
+    }
+
+    /// Each run opens its own relay lease ([`RunRelay`]) and gives it back when it ends.
+    pub fn with_relay(mut self, relay: Option<Arc<dyn RunRelay>>) -> PipeHarness {
+        self.relay = relay;
         self
     }
 
@@ -433,6 +457,22 @@ impl driver::Harness for PipeHarness {
             self.executor.release_run(&run);
             return Err(Fail::new(text));
         }
+        // Council p14: this run's relay lease, held until the turn is over (Node closes it in
+        // runExecutor's `finally`, just before releaseRun; here just after the release).
+        let (engine, _run_lease) = match &self.relay {
+            None => (self.engine.clone(), None),
+            Some(relay) => {
+                // `expect: machine`: the machine the Planner pinned (not given: no check).
+                let expect = opts.get("machine").as_str();
+                match relay.open(run.task_id(), opts.get("model").as_str(), expect) {
+                    Ok((engine, lease)) => (Some(engine), Some(lease)),
+                    Err(e) => {
+                        self.executor.release_run(&run);
+                        return Err(from_x(e));
+                    }
+                }
+            }
+        };
         let text = |k: &str| opts.get(k).as_str().unwrap_or("").to_string();
         let req = StartRequest {
             prompt: text("prompt"),
@@ -443,7 +483,7 @@ impl driver::Harness for PipeHarness {
             sandbox_kind: text("sandboxKind"),
             prompt_preparation: text("promptPreparation"),
             context: text("context"),
-            engine: self.engine.clone(),
+            engine,
             ..StartRequest::default()
         };
         let cancel = Cancel::new();
@@ -563,6 +603,12 @@ pub trait Setup: Send + Sync {
         _resolved: &crate::service::Resolved,
     ) -> Arc<dyn crate::review_gate::Reviewer> {
         Arc::new(crate::review_gate::Unconfigured)
+    }
+    /// The relay each run of this start opens for itself ([`RunRelay`]), when its Code role is on
+    /// an inference machine the host relays to; `None` (the default): every run uses the start's
+    /// engine and the start's lease.
+    fn run_relay(&self, _resolved: &crate::service::Resolved) -> Option<Arc<dyn RunRelay>> {
+        None
     }
 }
 
@@ -710,7 +756,10 @@ mod tests {
         // Pinned on the lease's machine: runs.
         assert_eq!(on(&s(key)), None);
         // Pinned elsewhere, or here (`null`) while the lease is on a machine: relay.open's refusal.
-        assert_eq!(on(&s("qa-m2|http://10.9.0.6:8080|qa-coder")), Some(MOVED_ELSEWHERE));
+        assert_eq!(
+            on(&s("qa-m2|http://10.9.0.6:8080|qa-coder")),
+            Some(MOVED_ELSEWHERE)
+        );
         assert_eq!(on(&JValue::Null), Some(MOVED_ELSEWHERE));
         // No relay: a pinned machine is "moved back here"; `null` runs.
         assert_eq!(here(&s(key)), Some(MOVED_BACK));

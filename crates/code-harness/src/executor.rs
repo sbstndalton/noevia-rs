@@ -204,6 +204,13 @@ pub struct ClaimRequest<'a> {
 #[derive(Clone)]
 pub struct RunHandle(Arc<Handle>);
 
+impl RunHandle {
+    /// The task this run is for.
+    pub fn task_id(&self) -> &str {
+        &self.0.task_id
+    }
+}
+
 /// One Code task executor per workspace.
 pub struct Executor {
     deps: Arc<Deps>,

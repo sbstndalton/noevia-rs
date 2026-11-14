@@ -1828,6 +1828,10 @@ async fn a_planner_task_on_a_machine_plans_runs_reviews_and_completes_there() {
 
         let card = r.card(&task, "approve_plan").await;
         assert_eq!(*machine_roles.lock().unwrap(), vec!["planner"]);
+        // Council p14 (noevia#2800 item 3): no relay token is open while the task plans; the
+        // lease the start resolved with ended when the task started, as Node opens none before
+        // its first run.
+        assert_eq!(relay.relay.active(), 0, "no relay lease while the task plans");
         let decide = |id: &str| json!({"decision": "approve", "approvalId": id});
         let approve = r.code(&format!("/{task}/approve"));
         let (status, _) = r.call(OWNER, "POST", &approve, Some(decide(card["id"].as_str().unwrap()))).await;
@@ -1837,6 +1841,9 @@ async fn a_planner_task_on_a_machine_plans_runs_reviews_and_completes_there() {
         // were asked of the machine (the same roles, in the same order, as on this machine).
         let card = r.card(&task, "review_change").await;
         let head = git(&r.repo, &["rev-parse", &branch]);
+        // The run's own relay lease ended with the run (runExecutor's `finally`), before the
+        // verifier, the review and the audit.
+        assert_eq!(relay.relay.active(), 0, "the run's relay lease ended with the run");
         assert_ne!(head, base);
         assert_eq!(r.sandbox.lock().unwrap().prompts, 1);
         let asked = r.verified.lock().unwrap().clone();

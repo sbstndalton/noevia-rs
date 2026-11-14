@@ -57,8 +57,9 @@
 //!   engine's `model_mismatch` text; Node pins the review afresh on wherever the role is then
 //!   and reviews the change with that model (noevia#2800 item 1). A direct task's relay lease
 //!   ends with the agent's run, before the review card, as Node's `runExecutor` closes it; a
-//!   Planner task keeps one relay lease for all its runs, where Node opens one per run
-//!   (noevia#2800 item 3);
+//!   Planner task's start lease ends when the task starts and each run opens its own with the
+//!   Planner's machine as `expect` ([`FrontRunRelay`], noevia#2800 item 3), as Node's do; each
+//!   closes just after the run's release rather than just before it;
 //! - the inference budget check (core `modelManager.loadRefusal`) is core's, asked over its bridge:
 //!   when core cannot answer, the Planner's pin is refused as over budget ([`BUDGET_UNCHECKED`])
 //!   rather than pinned unchecked;
@@ -588,6 +589,59 @@ impl FrontPipeline {
     }
 }
 
+/// Council p14 (noevia#2800 item 3): a Planner task on a machine opens the relay for each run, as
+/// core's runExecutor does (`relay.open({ taskId, model, expect: machine })`, closed in its
+/// `finally`), instead of holding the start's lease for the whole task.
+struct FrontRunRelay {
+    state: Arc<code_machine::RelayState>,
+    owner: String,
+    blocking: role_engine::Blocking,
+}
+
+impl code_harness::pipeline_host::RunRelay for FrontRunRelay {
+    fn open(
+        &self,
+        task_id: &str,
+        model: Option<&str>,
+        expect: Option<&str>,
+    ) -> Result<(Engine, Lease), Fail> {
+        let opened =
+            self.blocking.block_on(
+                self.state
+                    .open_expecting(&self.owner, task_id, model, expect),
+            );
+        match opened {
+            Ok(opened) => Ok((
+                Engine {
+                    base_url: Some(opened.base_url.clone()),
+                    api_key: Some(opened.token.clone()),
+                    model: Some(opened.model.clone()),
+                    context_tokens: opened.context_tokens,
+                },
+                Box::new(RelayHeld(Some(opened))),
+            )),
+            Err(r) => {
+                // Pinned on a machine with the role back here: code-harness.cjs's own words
+                // (the relay's are for a start).
+                let message = if r
+                    .message
+                    .starts_with("The Code role moved back to this machine")
+                {
+                    code_harness::pipeline_host::MOVED_BACK.to_string()
+                } else {
+                    r.message
+                };
+                Err(Fail {
+                    status: None,
+                    message: message.clone(),
+                    public_message: Some(message),
+                    result: JValue::Undefined,
+                })
+            }
+        }
+    }
+}
+
 impl Setup for FrontPipeline {
     fn enabled(&self) -> bool {
         use server_features::Feature;
@@ -622,6 +676,20 @@ impl Setup for FrontPipeline {
             )),
             None => Arc::new(Unreachable),
         }
+    }
+
+    fn run_relay(
+        &self,
+        resolved: &Resolved,
+    ) -> Option<Arc<dyn code_harness::pipeline_host::RunRelay>> {
+        let app = self.app.upgrade()?;
+        let (owner, _) = code_machine::front_machine_of(resolved.facts.as_ref()?)?;
+        let state = app.code_relay.get().and_then(Clone::clone)?;
+        Some(Arc::new(FrontRunRelay {
+            state,
+            owner,
+            blocking: role_engine::Blocking::with_handle(self.rt.clone()),
+        }))
     }
 
     fn create(&self, parts: Parts, resolved: &Resolved) -> Option<driver::Deps> {
