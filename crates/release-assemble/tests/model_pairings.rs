@@ -269,7 +269,7 @@ fn core_requires_matches_node() {
     let refs: Vec<&Path> = paths.iter().map(|p| p.as_path()).collect();
     let out = run_bash(
         tmp.path(),
-        "set -euo pipefail\n. \"$0\"\nfor f in \"$@\"; do printf '%s\\n' \"$(core_requires \"$f\" ./m.cjs)\"; done\n",
+        "set -euo pipefail\ntree=/nonexistent\n. \"$0\"\nfor f in \"$@\"; do printf '%s\\n' \"$(core_requires \"$f\" ./m.cjs)\"; done\n",
         &refs,
     );
     assert!(out.status.success(), "the shell loop ran");

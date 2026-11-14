@@ -142,7 +142,7 @@ fn core_reads_switch(module: Option<&[u8]>, switch: &str) -> bool {
 /// line to the line that closes it (`];` or `]);`), every `//` comment cut first. `Ok(true)` = status 0,
 /// `Ok(false)` = 1 (no such list, or the path not in it), `Err` = 2 (unreadable, or the list not closed before
 /// the next declaration or the end).
-pub fn mw_core_has(module: &Path, list: &str, path: &str) -> Result<bool, ()> {
+fn mw_core_has(module: &Path, list: &str, path: &str) -> Result<bool, ()> {
     let body = body_of(module)?;
     let start = format!("const {list} = ");
     let decl = ere(r"^(const|let|var|function|module[.]exports) ");

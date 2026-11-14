@@ -16,7 +16,8 @@
 //! release-assemble project-routes-core FILE [NAME] a Core module's OWNED_ROUTES (project_routes_core)
 //! release-assemble core-requires FILE MODULE     yes, no or invalid: does the Core module call
 //!                                                 require(MODULE) (core_requires, without node)
-//! release-assemble code-body FILE                 the code lines a pairing reads (code_body)
+//! release-assemble code-body FILE                 the code lines a pairing reads, as "$(code_body FILE)"
+//!                                                 gives them (trailing blank lines dropped) plus one newline
 //! release-assemble pairing NAME TREE              one ownership pairing over an assembled tree; NAME is
 //!                                                 feature, model-reads, project-reads, project-lifecycle,
 //!                                                 project-files, project-config, code-egress,
