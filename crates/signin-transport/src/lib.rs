@@ -16,9 +16,12 @@
 //!   (`session`, `authorised`), sans I/O.
 //! - [`texts`]: every person-facing line. Provider and backend names are the caller's; no name is
 //!   built in.
+//! - [`fetch`]: the whole `fetchFor` call over the caller's broker and backend ([`fetch::Wire`]):
+//!   the order of the steps above and the edges core handles inline.
 //! - [`js`]: the JavaScript coercions the port needs (`Number()`, `Date#toISOString`).
 
 pub mod events;
+pub mod fetch;
 pub mod js;
 pub mod reply;
 pub mod request;
