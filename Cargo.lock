@@ -4012,6 +4012,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "storage-tools"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "server-storage-reads",
+ "storage-path",
+ "zeroize",
+]
+
+[[package]]
 name = "stream-guard"
 version = "0.1.0"
 dependencies = [
