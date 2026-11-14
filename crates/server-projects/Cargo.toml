@@ -25,6 +25,10 @@ prompt-framing = { path = "../prompt-framing" }
 review-verdict = { path = "../review-verdict" }
 task-lifecycle = { path = "../task-lifecycle" }
 upload-sniff = { path = "../upload-sniff" }
+# The chat's read_project_file (file_read.rs): the name resolver core runs as wasm, and a stored document's notice
+# and pages (workspace crates).
+project-file-names = { path = "../project-file-names" }
+document-read = { path = "../document-read" }
 storage-path = { path = "../storage-path" }
 toolboxes-permitted = { path = "../toolboxes-permitted" }
 url = "2.5"

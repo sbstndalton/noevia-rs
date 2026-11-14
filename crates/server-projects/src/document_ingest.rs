@@ -240,7 +240,12 @@ pub fn ingest(
     let mut figures = FigureBytes::new();
     let mut outcome = "unchanged";
     let out = match cached {
-        Some(c) if c.get("completion").as_str() != Some(extract::COMPLETION) => {
+        // #1864/#1865: a record without the completion pass gets it once; #1867: a completed one whose OCR
+        // was refused for size alone is reopened once the worker takes the file.
+        Some(c)
+            if c.get("completion").as_str() != Some(extract::COMPLETION)
+                || extract::reopenable(&c) =>
+        {
             let completed =
                 extract::complete_document(name, bytes, c.clone(), engine, limits, &mut figures);
             if completed != c {
