@@ -82,12 +82,16 @@ fn framed(kind: &str, label: &str, body: &str) -> String {
     frame_untrusted(kind, label, &cap(body, MAX_BLOCK.saturating_sub(frame)))
 }
 
-/// `(c.updatedAt || 0)` as the sort reads it; see the crate's named difference.
+/// `(c.updatedAt || 0)` as the subtraction reads it (`ToNumber`). A `NaN` (the crate's named
+/// difference) sorts as 0, so the order stays total.
 fn updated(c: &JValue) -> f64 {
-    match c.get("updatedAt") {
-        JValue::Num(n) if n.is_finite() => *n,
-        JValue::Bool(true) => 1.0,
-        _ => 0.0,
+    let v = c.get("updatedAt");
+    let n = if v.truthy() { js::to_number(v) } else { 0.0 };
+    // `-0` and `0` subtract to 0: one value for both, as for `NaN`.
+    if n.is_nan() || n == 0.0 {
+        0.0
+    } else {
+        n
     }
 }
 
@@ -129,11 +133,7 @@ pub fn for_code(project: &JValue, chats: &[JValue]) -> Result<String, Thrown> {
         .filter(|c| c.truthy() && c.get("title").truthy())
         .collect();
     // `sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0))`: stable, newest first.
-    recent.sort_by(|a, b| {
-        updated(b)
-            .partial_cmp(&updated(a))
-            .unwrap_or(std::cmp::Ordering::Equal)
-    });
+    recent.sort_by(|a, b| updated(b).total_cmp(&updated(a)));
     recent.truncate(MAX_CHATS);
     if !recent.is_empty() {
         let mut lines = Vec::with_capacity(recent.len());

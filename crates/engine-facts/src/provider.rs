@@ -159,6 +159,10 @@ pub fn get_provider(view: &[JValue], id: &JValue, default_id: &str) -> Option<JV
 /// provider's key as a bearer token unless it is empty or `local`. The key is in the answer: the
 /// caller sends it and never logs it.
 pub fn headers(provider: &JValue, extra: &JValue) -> Result<JValue, Thrown> {
+    // `provider.apiKey` on no provider throws.
+    if provider.is_nullish() {
+        return Err(Thrown);
+    }
     let mut h = vec![(
         "Content-Type".to_string(),
         JValue::Str("application/json".into()),
@@ -182,7 +186,7 @@ pub fn headers(provider: &JValue, extra: &JValue) -> Result<JValue, Thrown> {
 
 /// `withoutUserinfo(url)`: an address that parses and names a user or a password, without them;
 /// anything else as it is.
-fn without_userinfo(text: String) -> String {
+pub fn without_userinfo(text: String) -> String {
     match url::Url::parse(&text) {
         Ok(mut u) if !u.username().is_empty() || u.password().is_some_and(|p| !p.is_empty()) => {
             let _ = u.set_username("");
@@ -217,10 +221,31 @@ pub fn projection(provider: Option<&JValue>) -> Result<Option<provider_egress::P
     }))
 }
 
+/// The port's input limit (`dav-parse-wasm.cjs` `jsonOpCall`): the UTF-8 of
+/// `JSON.stringify([projection])` and the op byte. Over it, Node's call fails, which counts as
+/// external.
+fn too_large(p: &provider_egress::Provider) -> bool {
+    let units = p.base_url.len() + p.label.len() + p.kind.as_ref().map_or(0, Vec::len);
+    // A UTF-16 unit is at most 6 bytes of JSON (`\uXXXX`); anything shorter cannot reach the limit.
+    if units.saturating_mul(6) + 64 < provider_egress::MAX_INPUT_BYTES {
+        return false;
+    }
+    let text = |u: &[u16]| JValue::Str(js::from_units(u));
+    let projection = JValue::Arr(vec![JValue::obj([
+        ("kind", p.kind.as_deref().map_or(JValue::Null, text)),
+        ("external", JValue::Bool(p.external)),
+        ("baseUrl", text(&p.base_url)),
+        ("label", text(&p.label)),
+    ])]);
+    wtf16::stringify(&projection)
+        .is_none_or(|json| json.len() + 1 > provider_egress::MAX_INPUT_BYTES)
+}
+
 /// `isExternalProvider(provider)`: the port's verdict on the projection; unknown, or a projection
-/// Node could not make, counts as external.
+/// Node could not make or send, counts as external.
 pub fn is_external(provider: Option<&JValue>) -> bool {
     match projection(provider) {
+        Ok(Some(p)) if too_large(&p) => true,
         Ok(p) => provider_egress::external_strict(p.as_ref()),
         Err(Thrown) => true,
     }

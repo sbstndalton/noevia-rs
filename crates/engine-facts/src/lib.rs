@@ -19,9 +19,12 @@
 //! the tune state, the feature flags and the project.
 //!
 //! Named differences:
-//! - [`shared`]: a chat whose `updatedAt` is neither a number, `null`, `false` nor `true` (a string,
-//!   an object) is sorted as 0 (Node coerces it, and a `NaN` leaves the order to V8's sort), as
-//!   `chat-prepare`'s `forChat` does. Chat rows are written by the server with numbers.
+//! - [`shared`]: a chat whose `updatedAt` reads as `NaN` (text that is not a number, an object)
+//!   sorts as 0 here, where V8's sort leaves the order of a `NaN` difference to its algorithm. Chat
+//!   rows are written by the server with numbers.
+//! - [`code::answer`] takes the project as the caller read it. Core's `getProject` also reconciles
+//!   the project's instruction skills, which throws (core's 503) for a malformed `files` field; the
+//!   front reads the stored record without that step.
 
 pub mod code;
 pub mod provider;

@@ -260,3 +260,66 @@ fn the_default_row_is_the_deployment_s() {
     );
     assert!(format!("{d:?}").contains("<redacted>"));
 }
+
+#[test]
+fn no_key_reaches_debug_output() {
+    let env = |k: &str| match k {
+        "INFERENCE_API_KEY" => Some("qa-secret-key".to_string()),
+        "INFERENCE_BASE_URL" => Some("http://qa:qa-secret-pass@qa-engine.invalid/v1".to_string()),
+        "CODE_ENGINE_API_KEY" => Some("qa-secret-code".to_string()),
+        _ => None,
+    };
+    let deployment = Deployment::from_lookup(&env);
+    let code_env = CodeEnv::from_lookup(&env);
+    let provider = deployment.provider();
+    let inputs = Inputs {
+        env: &code_env,
+        provider: &provider,
+        external: false,
+        roles: &JValue::Null,
+        last_loaded: &JValue::Null,
+        role_wanted: true,
+    };
+    let project = wtf16::parse(r#"{"id":"qa-project"}"#).unwrap();
+    let answer = code::answer(
+        Some(&project),
+        &inputs,
+        |_| Ok::<_, ()>(JValue::Null),
+        || JValue::Bool(false),
+    );
+    let Answer::Facts(facts) = &answer else {
+        panic!("{answer:?}")
+    };
+    assert_eq!(
+        facts.get("engine").get("apiKey").as_str(),
+        Some("qa-secret-code")
+    );
+    assert_eq!(
+        facts.get("role").get("apiKey").as_str(),
+        Some("qa-secret-key")
+    );
+    for shown in [
+        format!("{answer:?}"),
+        format!("{deployment:?}"),
+        format!("{code_env:?}"),
+    ] {
+        assert!(!shown.contains("qa-secret"), "{shown}");
+    }
+}
+
+#[test]
+fn a_projection_too_large_for_the_port_is_external() {
+    let row = |n: usize| {
+        JValue::obj([
+            ("baseUrl", JValue::from("http://qa-engine.invalid/v1")),
+            ("label", JValue::Str("\u{1}".repeat(n))),
+        ])
+    };
+    // `\u0001` is six bytes of JSON: about 1.4 million of them pass the 8 MiB limit.
+    assert!(!provider::is_external(Some(&row(1_000_000))));
+    assert!(provider::is_external(Some(&row(1_500_000))));
+    assert_eq!(
+        provider::headers(&JValue::Null, &JValue::Undefined),
+        Err(engine_facts::Thrown)
+    );
+}

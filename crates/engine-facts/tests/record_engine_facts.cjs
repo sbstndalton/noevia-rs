@@ -122,7 +122,9 @@ const BASES = [undefined, null, '', 5, 'http://qa-engine.invalid:8080', 'http://
   'https://api.openai.com/v2', 'https://api.openai.com/v1?x=1', 'https://api.openai.com/v1#f', 'https://user:pw@api.openai.com/v1',
   'https://api.openai.com:443/v1', 'https://api.openai.com:8443/v1', 'http://api.openai.com/v1', 'not a url', 'https://qa.example.invalid/v1',
   'https://openrouter.ai/api/v1', 'https://api.groq.com/openai/v1', 'https://qa.openrouter.ai/v1', 'https://user:pw@qa.openrouter.ai/v1',
-  'https://xn--qa-ufa.invalid/v1', 'https://qa%41.invalid/', 'https://qä.invalid/v1', 'http://[::1]:8080/v1', 'http://127.0.0.1:11434'];
+  'https://xn--qa-ufa.invalid/v1', 'https://qa%41.invalid/', 'https://qä.invalid/v1', 'http://[::1]:8080/v1', 'http://127.0.0.1:11434',
+  // The trial-terms host the egress rules name (external: the key is withheld), with and without a user, and a lookalike.
+  'https://integrate.api.nvidia.com/v1', 'https://qa:pw@integrate.api.nvidia.com/v1', 'https://NVIDIA.com./v1', 'https://qa-nvidia.com.invalid/v1'];
 const KEYS = [undefined, null, '', 'local', 'qa-key', 'qa key with spaces', 5, 0, true];
 const IDS = [undefined, null, 'default', 'lemonade', 'qa-provider', 'qa-other', 'chatgpt', '', 5, 'qa-local'];
 
@@ -194,7 +196,7 @@ const words = (n) => Array.from({ length: n }, () => pick(WORDS)).join(pick([' '
 const long = (n) => words(n) + 'x'.repeat(Math.floor(rand() * 4)) + '😀'.repeat(Math.floor(rand() * 3));
 function randomChat(i) {
   return clean({ id: maybe(0.9, pick([`qa-chat-${i}`, 5])), title: maybe(0.9, pick([long(3), long(40), '', 0, 7, true, { a: 1 }, ['qa', 'b']])),
-    preview: maybe(0.6, pick([long(5), long(60), '', 0, null])), updatedAt: maybe(0.9, pick([1000 + i, 5000 - i, 0, null, true, 1000 + i])) });
+    preview: maybe(0.6, pick([long(5), long(60), '', 0, null])), updatedAt: maybe(0.9, pick([1000 + i, 5000 - i, 0, null, true, 1000 + i, String(2000 + i), ' 3000 ', '-0', [4000 - i], '0x10', false])) });
 }
 function randomProject(i) {
   const chats = rand() < 0.1 ? pick([null, 'qa', 5, {}, true]) : Array.from({ length: Math.floor(rand() * 12) }, (_, k) => (rand() < 0.05 ? pick([null, 5, 'qa']) : randomChat(k)));
@@ -204,11 +206,24 @@ function randomProject(i) {
     memories: maybe(0.6, pick([[], [long(2), '', '  ', 5, null, long(90)], Array.from({ length: 25 }, (_, k) => `QA memory ${k}`), 'qa', {}, 5])),
     chats });
 }
+// Over the 6,000-unit cap: long goal and instructions, 20 or more memories of up to 300 units (some made of astral
+// characters, so the cut can fall inside a pair), invalid entries mixed in before and after the 20th valid one.
+function bigProject(i) {
+  const emoji = (n) => '😀'.repeat(n);
+  const memory = (k) => pick([`QA memory ${k} ` + long(60), emoji(140 + (k % 30)), 'x'.repeat(250 + k) + emoji(40), long(90)]);
+  const memories = [];
+  for (let k = 0; memories.filter((m) => typeof m === 'string' && m.trim()).length < 20 + (i % 6); k += 1) {
+    memories.push(rand() < 0.25 ? pick(['', '   ', 5, null, { qa: 1 }, ['qa']]) : memory(k));
+  }
+  return { id: `qa-big-${i}`, name: pick([long(30), emoji(50), 'QA big']), sharedContext: { code: true },
+    goal: pick([long(150), emoji(400)]), instructions: pick([long(700), 'y'.repeat(2999) + emoji(5), emoji(1600)]), memories,
+    chats: Array.from({ length: 12 }, (_, k) => ({ id: `qa-chat-${k}`, title: pick([long(40), emoji(80)]), preview: pick([long(60), emoji(100)]), updatedAt: 100 + k })) };
+}
 const forCodeCases = [];
 const loadChatsFor = (project) => new Function('getProject', `${SANITIZE}${LOAD}return loadChats;`)(() => project);
 function attempt(f) { try { return { out: f() }; } catch (e) { return { throws: e.constructor.name }; } }
-for (let n = 0; n < 500; n += 1) {
-  const project = viaJson(randomProject(n));
+for (let n = 0; n < 600; n += 1) {
+  const project = viaJson(n < 500 ? randomProject(n) : bigProject(n));
   forCodeCases.push({ project, ...attempt(() => shared.forCode(project, loadChatsFor(project)(project.id))) });
 }
 
@@ -218,7 +233,9 @@ const ENVS = [{}, { INFERENCE_BASE_URL: 'http://qa-engine.invalid:8080', MODEL_M
   { LEMONADE_BASE_URL: 'http://qa-lemonade.invalid:8000', LEMONADE_API_KEY: 'qa-lemonade-key' },
   { INFERENCE_BASE_URL: 'https://openrouter.ai/api/v1', INFERENCE_API_KEY: 'qa-cloud-key', DEFAULT_PROVIDER_ID: 'qa-local' },
   { INFERENCE_BASE_URL: 'https://api.openai.com/v1', MODEL_MANAGER_KIND: 'none', DEFAULT_PROVIDER_LABEL: 'QA label' },
-  { INFERENCE_BASE_URL: '', LEMONADE_BASE_URL: '', MODEL_MANAGER_KIND: '' }];
+  { INFERENCE_BASE_URL: '', LEMONADE_BASE_URL: '', MODEL_MANAGER_KIND: '' },
+  { INFERENCE_BASE_URL: 'https://integrate.api.nvidia.com/v1', INFERENCE_API_KEY: 'qa-trial-key', MODEL_MANAGER_KIND: 'llamacpp' },
+  { INFERENCE_BASE_URL: 'https://qa:pw@integrate.api.nvidia.com/v1', INFERENCE_API_KEY: 'qa-trial-key' }];
 const CODE_ENVS = [{}, { CODE_ENGINE_URL: 'http://qa-code-engine.invalid:9000' }, { CODE_ENGINE_URL: 'http://qa-code-engine.invalid:9000/v1///' },
   { CODE_ENGINE_URL: '', CODE_ENGINE_API_KEY: '' }, { CODE_ENGINE_API_KEY: 'qa-code-key' }, { CODE_CONTEXT_TOKENS: '32768' },
   { CODE_CONTEXT_TOKENS: ' 0x10 ' }, { CODE_CONTEXT_TOKENS: '1e3' }, { CODE_CONTEXT_TOKENS: 'qa' }, { CODE_CONTEXT_TOKENS: '0' },

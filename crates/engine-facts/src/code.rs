@@ -29,7 +29,10 @@ impl std::fmt::Debug for Deployment {
         f.debug_struct("Deployment")
             .field("id", &self.id)
             .field("label", &self.label)
-            .field("base_url", &self.base_url)
+            .field(
+                "base_url",
+                &provider::without_userinfo(self.base_url.clone()),
+            )
             .field("api_key", &"<redacted>")
             .field("kind", &self.kind)
             .finish()
@@ -257,8 +260,9 @@ pub struct Inputs<'a> {
     pub role_wanted: bool,
 }
 
-/// The bridge's answer.
-#[derive(Debug, Clone, PartialEq)]
+/// The bridge's answer. Its `Debug` names the fields of [`Answer::Facts`] but never their values
+/// (the engine and role keys are in them).
+#[derive(Clone, PartialEq)]
 pub enum Answer {
     /// 404 `project not found`.
     NotFound,
@@ -266,6 +270,22 @@ pub enum Answer {
     Unavailable(&'static str),
     /// 200 with this body.
     Facts(JValue),
+}
+
+impl std::fmt::Debug for Answer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Answer::NotFound => f.write_str("NotFound"),
+            Answer::Unavailable(reason) => f.debug_tuple("Unavailable").field(reason).finish(),
+            Answer::Facts(facts) => {
+                let names: Vec<&str> = match facts {
+                    JValue::Obj(items) => items.iter().map(|(k, _)| k.as_str()).collect(),
+                    _ => Vec::new(),
+                };
+                write!(f, "Facts({names:?}, values redacted)")
+            }
+        }
+    }
 }
 
 /// Core's answer for one start. `project` is `getProject(projectId)` for the user; `target(role)`
