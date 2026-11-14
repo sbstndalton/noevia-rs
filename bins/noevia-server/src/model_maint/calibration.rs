@@ -35,6 +35,9 @@ pub const STOPPED: &str = "noevia stopped during calibration.";
 pub const NOT_RESTORED: &str = " The original profile was not restored because models.ini changed since the run started; check this model's context size.";
 /// `request('/models?reload=1', {}, 120000)`.
 pub(super) const RELOAD_TIMEOUT: Duration = Duration::from_secs(120);
+/// llamacpp-manager.cjs `PRESET_STEP_MS`: the lease a models.ini write and its 120 s router re-read
+/// need left (`maintenance.assertCovered(PRESET_STEP_MS)`).
+pub(super) const PRESET_STEP: Duration = Duration::from_secs(150);
 
 /// The state file name Core uses (`index.cjs` `calibrationStatePath`).
 pub fn state_path(data_dir: &Path, suffix: &str) -> PathBuf {
@@ -518,6 +521,10 @@ pub enum Applied {
     /// on the lost lease (llamacpp-manager.cjs applyUnlocked's loss branch, #2550). Putting back
     /// `before` while models.ini is still at `revision` is owed to a recovery under a fresh hold.
     LeaseLost { revision: String, before: String },
+    /// Not written: the hold could no longer cover the write and its re-read
+    /// (`maintenance.assertCovered(PRESET_STEP_MS)` threw its coverage error before the commit,
+    /// #2608). The caller ends as for a lost lease; there is nothing of this write to restore.
+    Uncovered,
 }
 
 const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
@@ -546,8 +553,9 @@ impl Maint {
     /// [`Maint::apply_unlocked`] with the HTTP status Node's `applyUnlocked` answers (200 written,
     /// 404 not installed, 409 something loaded, 503 a reload or restore failure; a thrown write is
     /// 500): the native auto-tune runner treats a 409 as fatal, as Node's does. `Ok((status,
-    /// error))`; `Err((revision, before))` when the lease was lost after the write
-    /// ([`Applied::LeaseLost`]).
+    /// error))`; `Err(Some((revision, before)))` when the lease was lost after the write
+    /// ([`Applied::LeaseLost`]), `Err(None)` when the hold could not cover the write and nothing
+    /// was written ([`Applied::Uncovered`]): both are Node's coverage error.
     pub async fn apply_unlocked_reply(
         &self,
         holding: &super::Hold,
@@ -555,12 +563,13 @@ impl Maint {
         base_revision: &str,
         options: &[(String, Option<String>)],
         backup: bool,
-    ) -> Result<(u16, Option<String>), (String, String)> {
+    ) -> Result<(u16, Option<String>), Option<(String, String)>> {
         let (applied, status) = self
             .apply_unlocked_with_status(holding, model, base_revision, options, backup)
             .await;
         Ok(match applied {
-            Applied::LeaseLost { revision, before } => return Err((revision, before)),
+            Applied::LeaseLost { revision, before } => return Err(Some((revision, before))),
+            Applied::Uncovered => return Err(None),
             Applied::Ok => (200, None),
             Applied::Refused(e) => (
                 status,
@@ -645,6 +654,11 @@ impl Maint {
             Ok(Err(t)) => return (Applied::Threw(t.message), t.status.unwrap_or(500)),
             Err(_) => return (Applied::Threw("Internal error".into()), 500),
         };
+        // Row J review P1 (#2608): the write and its re-read are one step; it starts only while the
+        // hold can still cover it, or nothing is written (Node throws its 503 coverage error here).
+        if !holding.may_start(PRESET_STEP) {
+            return (Applied::Uncovered, 503);
+        }
         if let Err(e) = ini.commit(&candidate, backup).await {
             // A settled Model Loader outcome carries its own message; nothing was reloaded.
             if e.status >= 500 {
@@ -980,7 +994,7 @@ pub struct LongPrompt {
     prompt_per_second: Option<f64>,
     prompt_ms: Option<f64>,
     /// The record when a save fell due in the chunk being fed (Node saves inside its read loop,
-    /// so a stop later in that chunk comes after the save).
+    /// so the rest of that chunk, and a stop in it, come after the save).
     due_save: Option<Progress>,
 }
 
@@ -999,9 +1013,12 @@ impl LongPrompt {
         }
     }
 
-    /// After a [`Feed::Stop`]: the record as it was when Node's loop saved earlier in the chunk
-    /// that stopped (it saves, then stops), if a save fell due there.
-    pub fn save_before_stop(&mut self) -> Option<Progress> {
+    /// After a feed: the record as it was when Node's loop saved in that chunk (a save that fell
+    /// due there, before the rest of the chunk or a stop in it), if one did. Should two fall due
+    /// in one chunk (1.5 s apart within it), this is the later one and Node's earlier save is
+    /// not repeated: one chunk's events are read in microseconds, and under a recorded clock
+    /// they are read at one instant.
+    pub fn take_due_save(&mut self) -> Option<Progress> {
         self.due_save.take()
     }
 

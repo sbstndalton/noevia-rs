@@ -226,6 +226,8 @@ struct SaveCounts {
     snapshots: std::sync::atomic::AtomicUsize,
     peak: std::sync::atomic::AtomicUsize,
     dispatched: std::sync::atomic::AtomicUsize,
+    /// The job of every state write, in order (what each save would put in the file).
+    jobs: Mutex<Vec<JValue>>,
 }
 #[cfg(test)]
 struct SaveCount(std::sync::Arc<SaveCounts>);
@@ -284,6 +286,10 @@ pub struct Worker {
     fence_timer: Mutex<Option<Arc<tests::TestGate>>>,
     #[cfg(test)]
     long_expirations: std::sync::atomic::AtomicUsize,
+    /// Wall time (ms) the long read's clock is ahead of the real one: a test's engine "takes" it
+    /// to produce a chunk, as Node's recorded `clock` events do.
+    #[cfg(test)]
+    clock_skew: std::sync::atomic::AtomicU32,
     #[cfg(test)]
     finalize_gate: Mutex<Option<Arc<tests::TestGate>>>,
     #[cfg(test)]
@@ -633,6 +639,8 @@ impl Worker {
             #[cfg(test)]
             long_expirations: std::sync::atomic::AtomicUsize::new(0),
             #[cfg(test)]
+            clock_skew: std::sync::atomic::AtomicU32::new(0),
+            #[cfg(test)]
             finalize_gate: Mutex::new(None),
             #[cfg(test)]
             run_abort: Mutex::new(None),
@@ -776,6 +784,10 @@ impl Worker {
         }
         #[cfg(test)]
         let counted = SaveCount::new(Arc::clone(&self.save_counts));
+        #[cfg(test)]
+        if let Ok(mut jobs) = self.save_counts.jobs.lock() {
+            jobs.push(state.job().clone());
+        }
         let task = tokio::task::spawn_blocking(move || {
             #[cfg(test)]
             let _counted = counted;
@@ -1829,6 +1841,13 @@ impl Worker {
                 let _ = self.save().await;
                 return Err(Thrown::Fatal(LEASE_LOST.into()));
             }
+            // #2608: nothing written, since the hold could not cover the write and its re-read.
+            // Node's coverage error ends the run as a lost lease does (llamacpp-calibration.cjs
+            // `e.coverageLost`: no restore on this hold; one owed only for an earlier write).
+            Applied::Uncovered => {
+                self.with(|i| i.lease_lost = true);
+                return Err(Thrown::Fatal(LEASE_LOST.into()));
+            }
         }
         let revision = self
             .current_revision()
@@ -2097,7 +2116,7 @@ impl Worker {
         index: usize,
         budget_ms: f64,
     ) -> Result<Long, Thrown> {
-        let started = now_ms();
+        let started = self.now();
         let allowance = Duration::from_secs_f64((budget_ms * 1.5 / 1000.0).max(0.0));
         let read = self.stream_long_inner(hold, model, content, abort, index, budget_ms, started);
         match tokio::time::timeout(allowance, read).await {
@@ -2108,7 +2127,7 @@ impl Worker {
                 self.show_progress(index, &Progress::default());
                 Ok(Long::Done(LongOutcome::OverBudget {
                     predicted: false,
-                    eta_ms: now_ms() - started,
+                    eta_ms: self.now() - started,
                 }))
             }
         }
@@ -2164,14 +2183,17 @@ impl Worker {
                 Ok(None) => break,
                 Err(_) => return Err(Thrown::Other("The long prompt stream failed.".into())),
             };
-            let fed = reader.feed(&chunk, &mut now_ms, &mut progress);
+            let fed = reader.feed(&chunk, &mut || self.now(), &mut progress);
+            // #2619 (llamacpp-calibration.cjs:298-300): Node saves at the event a save falls due on,
+            // inside its read loop, so the file gets the record as it was then; the rest of the
+            // chunk (or the stop it ends in, 1.5x the budget included) comes after that save.
+            if let Some(at_save) = reader.take_due_save() {
+                self.show_progress(index, &at_save);
+                let _ = self.save().await;
+            }
             self.show_progress(index, &progress);
             match fed {
-                Feed::Continue { save } => {
-                    if save {
-                        let _ = self.save().await;
-                    }
-                }
+                Feed::Continue { .. } => {}
                 // Dropping the response closes the request, as Node's abort does.
                 Feed::Stop(outcome) => {
                     progress.eta_seconds = None;
@@ -2180,9 +2202,18 @@ impl Worker {
                 }
             }
         }
-        let outcome = reader.finish(now_ms(), &mut progress);
+        let outcome = reader.finish(self.now(), &mut progress);
         self.show_progress(index, &progress);
         Ok(Long::Done(outcome))
+    }
+
+    /// The long read's clock: `now_ms`, ahead by the test's `clock_skew` in tests.
+    fn now(&self) -> f64 {
+        #[cfg(test)]
+        let skew = f64::from(self.clock_skew.load(Ordering::Acquire));
+        #[cfg(not(test))]
+        let skew = 0.0;
+        now_ms() + skew
     }
 
     fn show_progress(&self, index: usize, p: &Progress) {
@@ -3100,6 +3131,13 @@ impl Worker {
                 let _ = self.save().await;
                 return Err(Thrown::Fatal(LEASE_LOST.into()));
             }
+            // #2608: nothing written, since the hold could not cover the write and its re-read.
+            // Node's coverage error ends the run as a lost lease does (llamacpp-calibration.cjs
+            // `e.coverageLost`: no restore on this hold; one owed only for an earlier write).
+            Applied::Uncovered => {
+                self.with(|i| i.lease_lost = true);
+                return Err(Thrown::Fatal(LEASE_LOST.into()));
+            }
         }
         let revision = self
             .current_revision()
@@ -3366,6 +3404,26 @@ mod tests {
         /// Node's load decision (this engine also stands in for Node's loopback listener): given the
         /// 1-based number of the ask and its body, the status and body it answers. None: no refusal.
         node: Option<NodeAnswer>,
+        /// The first long prompt answers 200 and streams what the test sends, chunk by chunk
+        /// (later ones answer as usual).
+        long_body: Option<LongBody>,
+    }
+
+    type LongBody = Arc<Mutex<Option<tokio::sync::mpsc::UnboundedReceiver<bytes::Bytes>>>>;
+
+    /// A body that sends each chunk the test hands it, and ends when the test drops its sender.
+    struct Channel(tokio::sync::mpsc::UnboundedReceiver<bytes::Bytes>);
+    impl http_body::Body for Channel {
+        type Data = bytes::Bytes;
+        type Error = std::convert::Infallible;
+        fn poll_frame(
+            mut self: std::pin::Pin<&mut Self>,
+            cx: &mut std::task::Context<'_>,
+        ) -> std::task::Poll<Option<Result<http_body::Frame<bytes::Bytes>, Self::Error>>> {
+            self.0
+                .poll_recv(cx)
+                .map(|c| c.map(|b| Ok(http_body::Frame::data(b))))
+        }
     }
 
     type NodeAnswer = Arc<dyn Fn(usize, &Value) -> (u16, Value) + Send + Sync>;
@@ -3413,6 +3471,7 @@ mod tests {
             silent_poll,
             live,
             node,
+            long_body,
         } = synth;
         let asks = Arc::new(std::sync::atomic::AtomicUsize::new(0));
         let status = Arc::new(Mutex::new("unloaded".to_owned()));
@@ -3438,6 +3497,7 @@ mod tests {
                 Arc::clone(&asks),
             );
             let silent_poll = silent_poll.clone();
+            let long_body = long_body.clone();
             async move {
                 let (parts, body) = req.into_parts();
                 let path = parts.uri.path().to_owned();
@@ -3502,6 +3562,9 @@ mod tests {
                         }
                         if silent {
                             return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Silent { polled: silent_poll })).unwrap();
+                        }
+                        if let Some(rx) = long_body.and_then(|b| b.lock().unwrap().take()) {
+                            return Response::builder().status(200).header("content-type", "text/event-stream").body(Body::new(Channel(rx))).unwrap();
                         }
                         let events = if ctx_of() <= 8192.0 {
                             format!("data: {}\n\ndata: [DONE]\n\n", json!({"choices": [{"delta": {"content": marker}}]}))
@@ -5967,6 +6030,87 @@ mod tests {
         assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI);
     }
 
+    /// #2619: the long-prompt read saves as Node's `streamLong` does (llamacpp-calibration.cjs at
+    /// noevia-core cc74c6f3, lines 290-300; no Node recording of the public worker exists, the
+    /// private calibrator's traces leave public calibrators out). Line 298 saves when 1.5 s passed
+    /// since the last save, at the progress event itself and inside the read loop: the file gets
+    /// the record as it was at that event, before the chunk's later events move it on (a chunk of
+    /// two progress events, 1 % and 2 %, saves 1 %). Line 300 stops the read once it has run past
+    /// 1.5x the budget, after line 298 saved (an event at 50 % arriving 46 s into a 30 s budget is
+    /// saved, then the read stops). `lastSave` starts at 0, so the first event always saves.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_long_read_saves_the_record_as_it_was_when_its_save_fell_due() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        let (port, _) = synthetic_engine_with(
+            ini.clone(),
+            Synth {
+                long_body: Some(Arc::new(Mutex::new(Some(rx)))),
+                ..Synth::default()
+            },
+        )
+        .await;
+        let w = worker(d.path(), port);
+        let event = |processed: u32| {
+            format!(
+                "data: {}\n\n",
+                json!({"prompt_progress": {"total": 10_000, "processed": processed, "cache": 0, "time_ms": 100}})
+            )
+        };
+        // The first long step's record in each save, while it ran: its `progress`.
+        let saved = |w: &Worker| -> Vec<f64> {
+            w.save_counts
+                .jobs
+                .lock()
+                .unwrap()
+                .iter()
+                .filter_map(|job| {
+                    let JValue::Arr(steps) = job.get("steps") else {
+                        return None;
+                    };
+                    let long = steps
+                        .iter()
+                        .find(|s| s.get("kind").as_str() == Some("long"))?;
+                    (long.get("status").as_str() == Some("running"))
+                        .then(|| long.get("progress").as_num())
+                        .flatten()
+                })
+                .collect()
+        };
+        tx.send(bytes::Bytes::from(event(100) + &event(200))).unwrap();
+        w.launch("synthetic", plan(16_384.0, 30.0)).await.unwrap();
+        delta_wait(|| !saved(&w).is_empty()).await;
+        assert_eq!(saved(&w), vec![1.0], "saved at the 1 % event, not after the chunk");
+        // The engine takes 46 s for the next chunk: past 1.5x the 30 s budget.
+        w.clock_skew.store(46_000, Ordering::Release);
+        tx.send(bytes::Bytes::from(event(5_000))).unwrap();
+        let job = settled(&w).await;
+        drop(tx);
+        assert_eq!(
+            saved(&w),
+            vec![1.0, 50.0],
+            "the save that fell due came before the stop"
+        );
+        let JValue::Arr(steps) = job.get("steps") else {
+            panic!("{job:?}")
+        };
+        let long = steps
+            .iter()
+            .find(|s| s.get("kind").as_str() == Some("long"))
+            .unwrap();
+        assert_eq!(long.get("status").as_str(), Some("failed"), "{long:?}");
+        assert_eq!(long.get("cause").as_str(), Some("time"), "{long:?}");
+        assert_eq!(long.get("progress").as_num(), Some(50.0), "{long:?}");
+        let reason = long.get("reason").as_str().unwrap_or("");
+        assert!(
+            reason.starts_with("Filling this context took ")
+                && reason.ends_with(" s, over the 30 s limit."),
+            "{reason}"
+        );
+    }
+
     /// P3-1: the lease counts one unload request for every model live at launch, more than four
     /// included, and the run's first unload unloads them all.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -6314,12 +6458,15 @@ mod tests {
         .expect("the lease watch saw the lease end");
     }
 
-    /// #2550 (llamacpp-manager.cjs applyUnlocked's loss branch): a write whose lease is lost
-    /// before its re-read, or can no longer cover it, puts nothing back on that lease and asks the
-    /// router for nothing more; the write's revision and the text before it come back for a
-    /// recovery under a fresh hold.
+    /// #2550 (llamacpp-manager.cjs applyUnlocked's loss branch) and #2608 (its
+    /// `maintenance.assertCovered(PRESET_STEP_MS)` before the commit): a hold that is already lost,
+    /// or whose lease ends within the write and its 120 s re-read, writes nothing and asks the
+    /// router for nothing (`Err(None)`, Node's coverage error). A lease lost after the commit (the
+    /// AFTER_COMMIT hook) puts nothing back on that lease and asks the router for nothing more; the
+    /// write's revision and the text before it come back for a recovery under a fresh hold.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_write_whose_lease_is_lost_restores_nothing_on_the_lost_lease() {
+        let options = vec![("ctx-size".to_owned(), Some("8192".to_owned()))];
         for lapse in [false, true] {
             let d = tempfile::tempdir().unwrap();
             let ini = d.path().join("models.ini");
@@ -6327,7 +6474,7 @@ mod tests {
             std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
             let (port, seen) = synthetic_engine(ini.clone(), false).await;
             let ended = Arc::new(AtomicBool::new(false));
-            // A lease that ends within the re-read's 120 s, or one the authority ends.
+            // A lease that ends within the write's 150 s step, or one the authority ended.
             let hard = lapse.then_some(60_000);
             let (lease, _) = lease_stub(hard, Arc::clone(&ended)).await;
             let w = worker_with(d.path(), port, Some(lease));
@@ -6340,7 +6487,6 @@ mod tests {
                 ended.store(true, Ordering::Release);
                 until_lost(&hold).await;
             }
-            let options = vec![("ctx-size".to_owned(), Some("8192".to_owned()))];
             let reply = w
                 .maint
                 .apply_unlocked_reply(
@@ -6351,19 +6497,107 @@ mod tests {
                     true,
                 )
                 .await;
-            let written = std::fs::read_to_string(&ini).unwrap();
-            assert!(written.contains("ctx-size = 8192"), "{lapse}: {written}");
+            assert_eq!(reply, Err(None), "{lapse}");
             assert_eq!(
-                reply,
-                Err((super::super::ini::sha(&written), INI.to_owned())),
-                "{lapse}"
+                std::fs::read_to_string(&ini).unwrap(),
+                INI,
+                "{lapse}: nothing written"
             );
             assert!(
                 !seen.lock().unwrap().iter().any(|r| r.contains("reload")),
-                "{lapse}: nothing was re-read on the lost lease"
+                "{lapse}: nothing was re-read"
             );
             hold.release().await;
         }
+        // The lease ends between the commit and its re-read.
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, seen) = synthetic_engine(ini.clone(), false).await;
+        let ended = Arc::new(AtomicBool::new(false));
+        let (lease, _) = lease_stub(None, Arc::clone(&ended)).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        let hold = w
+            .maint
+            .acquire_for_run("synthetic apply", Duration::from_secs(30))
+            .await
+            .unwrap();
+        let end = Arc::clone(&ended);
+        let hook: super::super::calibration::AfterCommit = Arc::new(move |h| {
+            end.store(true, Ordering::Release);
+            // Off the worker, so the lease watch can run meanwhile.
+            tokio::task::block_in_place(|| {
+                let deadline = std::time::Instant::now() + WATCHDOG;
+                while h.excluded() && std::time::Instant::now() < deadline {
+                    std::thread::sleep(Duration::from_millis(5));
+                }
+            });
+        });
+        super::super::calibration::AFTER_COMMIT
+            .lock()
+            .unwrap()
+            .push((ini.clone(), hook));
+        let reply = w
+            .maint
+            .apply_unlocked_reply(
+                &hold,
+                "synthetic",
+                &super::super::ini::sha(INI),
+                &options,
+                true,
+            )
+            .await;
+        super::super::calibration::AFTER_COMMIT
+            .lock()
+            .unwrap()
+            .retain(|(p, _)| p != &ini);
+        let written = std::fs::read_to_string(&ini).unwrap();
+        assert!(written.contains("ctx-size = 8192"), "{written}");
+        assert_eq!(
+            reply,
+            Err(Some((super::super::ini::sha(&written), INI.to_owned())))
+        );
+        assert!(
+            !seen.lock().unwrap().iter().any(|r| r.contains("reload")),
+            "nothing was re-read on the lost lease"
+        );
+        hold.release().await;
+    }
+
+    /// #2608: a run whose lease cannot cover a profile write and its re-read (its lease ends within
+    /// 60 s, under Node's 150 s `PRESET_STEP_MS`) writes nothing and ends as a lost lease does
+    /// (llamacpp-calibration.cjs: the coverage error is `e.coverageLost`, so the step fails, the run
+    /// restores nothing on that lease, and a recovery is owed only once a write has happened; this
+    /// was the run's first write, so none is).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_write_the_lease_cannot_cover_is_refused_and_ends_the_run_as_a_lost_lease() {
+        let d = tempfile::tempdir().unwrap();
+        let ini = d.path().join("models.ini");
+        std::fs::write(&ini, INI).unwrap();
+        std::fs::write(d.path().join("synthetic.gguf"), b"GGUF synthetic").unwrap();
+        let (port, engine) = synthetic_engine(ini.clone(), false).await;
+        let (lease, _) = lease_stub(Some(60_000), Arc::new(AtomicBool::new(false))).await;
+        let w = worker_with(d.path(), port, Some(lease));
+        w.launch("synthetic", plan(16_384.0, 120.0)).await.unwrap();
+        let job = settled_or_recovering(&w).await;
+        assert_eq!(job.get("status").as_str(), Some("interrupted"), "{job:?}");
+        assert_eq!(job.get("phase").as_str(), Some("Interrupted"), "{job:?}");
+        assert_eq!(job.get("error").as_str(), Some(LEASE_LOST), "{job:?}");
+        assert!(!job.get("lastRevision").truthy(), "{job:?}");
+        assert_eq!(job.get("restored"), &JValue::Undefined, "{job:?}");
+        assert_eq!(job.get("pendingRestore"), &JValue::Undefined, "{job:?}");
+        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI, "nothing written");
+        let engine = engine.lock().unwrap();
+        assert!(
+            !engine
+                .iter()
+                .any(|r| r.contains("reload") || r.contains("/models/load")),
+            "nothing re-read or loaded: {engine:?}"
+        );
+        drop(engine);
+        readmitted(&w).await;
+        assert!(!w.lease_lost());
     }
 
     /// #2550 review: the run's first write, whose lease ends before its re-read: nothing is restored

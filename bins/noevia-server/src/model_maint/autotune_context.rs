@@ -1743,7 +1743,7 @@ impl<E: Engine, H: Hooks + 'static> Core<E, H> {
                 }
                 Feed::Stop(outcome) => {
                     // Node's loop saved earlier in this chunk, then stopped.
-                    if let Some(at_save) = reader.save_before_stop() {
+                    if let Some(at_save) = reader.take_due_save() {
                         self.show_progress(slot, index, &at_save);
                         self.save();
                     }

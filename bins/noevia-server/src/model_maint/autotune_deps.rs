@@ -5,6 +5,7 @@
 //! through dav-parse.wasm. Built only when `AUTOTUNE_RUNNER_IMPL=rust`; nothing here runs otherwise.
 
 use super::autotune_context::{Limits, PrivateCalibrator};
+use super::calibration::PRESET_STEP;
 use super::{Hold, Maint};
 use autotune_runner::{Abort, Call, Deps, Fail, Quirks, Release, Spawn, StageHooks};
 use js_json::{wtf16, JValue};
@@ -28,8 +29,6 @@ const IDLE_POLL: Duration = Duration::from_millis(500);
 const FACTS_LIMIT: Duration = Duration::from_secs(3);
 /// How often a call in flight checks that its hold still excludes everyone.
 const LOSS_POLL: Duration = Duration::from_millis(500);
-/// llamacpp-manager.cjs `PRESET_STEP_MS`: a write and its 120 s router reload.
-const PRESET_STEP: Duration = Duration::from_secs(150);
 /// The longest `recoverNow` waits for the owed repairs.
 const RECOVER_NOW_LIMIT: Duration = Duration::from_secs(15 * 60);
 /// A run's lease (Node's maintenance hold has no limit of its own; the authority caps it).
@@ -737,7 +736,10 @@ impl Deps for FrontDeps {
         // write's own restore is owed to a recovery under a fresh lease (the phase's restore
         // becomes another), and chat stays closed until it has run.
         let (status, error) = match reply {
-            Err((revision, before)) => {
+            // Not written (the hold stopped covering the write after the check above): Node's
+            // coverage error, with nothing of this write to restore.
+            Err(None) => return Err(coverage_error()),
+            Err(Some((revision, before))) => {
                 let key = format!("apply:{revision}");
                 if let Ok(mut owed) = self.apply_restores.lock() {
                     owed.entry(key.clone()).or_insert((revision, before));

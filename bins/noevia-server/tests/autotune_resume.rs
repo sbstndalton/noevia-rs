@@ -8,6 +8,15 @@ const PATH: &str = "/api/models/autotune/resume";
 const FACTS: &str = "/internal/autotune-resume/facts";
 const PREPARE: &str = "/internal/autotune-resume/prepare";
 const COMMIT: &str = "/internal/autotune-resume/commit";
+const INVALIDATE: &str = "/internal/auto-roles/invalidate";
+const SCAN_CLEAR: &str = "/internal/model-manager-scan/clear";
+/// What the route asked the actor (Core's model-read invalidation and scan clear left out).
+fn actor(up: &Upstream) -> Vec<Seen> {
+    up.seen()
+        .into_iter()
+        .filter(|r| r.path != INVALIDATE && r.path != SCAN_CLEAR)
+        .collect()
+}
 fn facts() -> Value {
     json!({"available":true,"token":"a".repeat(64),"generation":"b".repeat(64),"starting":false,"revision":"r1","job":{"status":"cancelled","model":"synthetic","unsafe":false,"revision":"r1","pendingRevision":null,"models":[{"model":"synthetic","base":null,"mode":"fast","status":"interrupted","sectionCreated":false,"identitySet":false,"identity":null,"planned":true,"configured":true,"baseConfigured":false,"phases":[{"id":"context","status":"interrupted","restored":true,"steps":[{"status":"passed"},{"status":"pending"}]}]}]}})
 }
@@ -71,7 +80,7 @@ async fn native_resume_owns_confirmation_queue_identity_reset_and_response() {
     assert_eq!(s, 202);
     assert_eq!(j(&b), public_job());
     assert!(h.contains("cache-control: no-store"));
-    let seen = up.seen();
+    let seen = actor(&up);
     assert_eq!(seen.len(), 4);
     assert_eq!(seen[0].path, FACTS);
     assert_eq!(j(&seen[0].body), json!({}));
@@ -104,7 +113,7 @@ async fn auth_csrf_method_availability_and_confirmation_precede_preparation() {
     assert_eq!(write(f.addr, "POST", PATH, MEMBER, "{}").await.0, 403);
     assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
     assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"{}").await.0, 403);
-    assert!(up.seen().is_empty());
+    assert!(actor(&up).is_empty());
     assert_eq!(get(f.addr, PATH, ADMIN).await.0, 405);
     assert_eq!(write(f.addr, "POST", PATH, ADMIN, "{bad").await.0, 400);
     assert_eq!(
@@ -283,4 +292,32 @@ async fn unknown_public_job_status_is_not_serialized_as_a_valid_resume_result() 
     let (s, body) = write(f.addr, "POST", PATH, ADMIN, r#"{"confirmPause":true}"#).await;
     assert_eq!(s, 503);
     assert!(!body.to_string().contains("never-public"));
+}
+
+/// #2618, core routes/models.cjs at cc74c6f3 (lines 196-202 and 244): every request Core served
+/// under /api/models/ but a GET or HEAD invalidated its shared model reads first (a member's
+/// too), then, past the administrator check, cleared its cached folder scan (not for OPTIONS);
+/// a signed-out or CSRF-refused request never reached it. Both come before the actor is asked.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn writes_drop_cores_model_reads_then_past_the_admin_check_its_scan() {
+    let (_d, f, up) = rig().await;
+    let calls = || (up.count(INVALIDATE), up.count(SCAN_CLEAR));
+    assert_eq!(write(f.addr, "POST", PATH, "", "{}").await.0, 401);
+    assert_eq!(raw(f.addr, "POST", PATH, ADMIN, "", b"{}").await.0, 403);
+    assert_eq!(calls(), (0, 0));
+    assert_eq!(get(f.addr, PATH, MEMBER).await.0, 403);
+    assert_eq!(calls(), (0, 0));
+    assert_eq!(write(f.addr, "POST", PATH, MEMBER, "{}").await.0, 403);
+    assert_eq!(calls(), (1, 0));
+    assert_eq!(get(f.addr, PATH, ADMIN).await.0, 405);
+    assert_eq!(calls(), (1, 0));
+    assert_eq!(write(f.addr, "OPTIONS", PATH, ADMIN, "").await.0, 405);
+    assert_eq!(calls(), (2, 0));
+    assert_eq!(write(f.addr, "PUT", PATH, ADMIN, "").await.0, 405);
+    assert_eq!(calls(), (3, 1));
+    let before = up.seen().len();
+    assert_eq!(write(f.addr, "POST", PATH, ADMIN, r#"{"confirmPause":true}"#).await.0, 202);
+    assert_eq!(calls(), (4, 2));
+    let paths: Vec<String> = up.seen()[before..].iter().map(|r| r.path.clone()).collect();
+    assert_eq!(&paths[..3], [INVALIDATE, SCAN_CLEAR, FACTS], "{paths:?}");
 }
