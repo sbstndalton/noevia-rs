@@ -71,7 +71,8 @@ impl Texts {
         if !e.is_object() {
             return None;
         }
-        let kind = js::to_string(&first_truthy(&[e.get("type"), e.get("code")]).unwrap_or(&JValue::Str(String::new())));
+        let empty = JValue::Str(String::new());
+        let kind = js::to_string(first_truthy(&[e.get("type"), e.get("code")]).unwrap_or(&empty));
         let message = e.get("message").as_str().or_else(|| e.get("detail").as_str()).unwrap_or("");
         if kind == "usage_limit_reached" || contains_ci(message, "usage limit") {
             let resets_at = js::to_number(e.get("resets_at"));

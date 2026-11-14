@@ -248,11 +248,15 @@ impl ChatParts {
         self.tool_index.iter().find(|(key, _)| *key == k).map(|(_, i)| *i)
     }
 
+    /// `index = toolIndex.size; toolIndex.set(id, index)`: a key already present (two calls
+    /// without an id, say) is overwritten and the size does not grow, as core's Map does.
     fn open_index(&mut self, id: &JValue) -> usize {
         let index = self.tool_index.len();
         let k = self.key(id);
-        // Map#set on a present key keeps the size; only reached for absent keys here.
-        self.tool_index.push((k, index));
+        match self.tool_index.iter_mut().find(|(key, _)| *key == k) {
+            Some(slot) => slot.1 = index,
+            None => self.tool_index.push((k, index)),
+        }
         self.saw_tool = true;
         index
     }

@@ -3841,6 +3841,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "signin-transport"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "proptest",
+ "sha2",
+ "url",
+]
+
+[[package]]
 name = "simd-adler32"
 version = "0.3.10"
 source = "registry+https://github.com/rust-lang/crates.io-index"

@@ -6,20 +6,14 @@ use js_json::JValue;
 pub fn is_js_space(c: char) -> bool {
     matches!(
         c,
-        '\t' | '\n'
-            | '\u{0B}'
-            | '\u{0C}'
-            | '\r'
-            | ' '
-            | '\u{A0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200A}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202F}'
-            | '\u{205F}'
-            | '\u{3000}'
-            | '\u{FEFF}'
+        '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r' | ' ' | '\u{A0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200A}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202F}'
+                | '\u{205F}'
+                | '\u{3000}'
+                | '\u{FEFF}'
     )
 }
 
@@ -29,7 +23,14 @@ pub fn string_to_number(text: &str) -> f64 {
     if s.is_empty() {
         return 0.0;
     }
-    for (prefix, radix) in [("0x", 16), ("0X", 16), ("0o", 8), ("0O", 8), ("0b", 2), ("0B", 2)] {
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
         if let Some(digits) = s.strip_prefix(prefix) {
             if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
                 return f64::NAN;
@@ -140,7 +141,9 @@ pub fn iso_string(ms: f64) -> Option<String> {
     } else {
         format!("+{y:06}")
     };
-    Some(format!("{year}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}.{ms:03}Z"))
+    Some(format!(
+        "{year}-{m:02}-{d:02}T{hh:02}:{mm:02}:{ss:02}.{ms:03}Z"
+    ))
 }
 
 /// Days since 1970-01-01 to (year, month, day), proleptic Gregorian (H. Hinnant's algorithm).
@@ -179,10 +182,22 @@ mod tests {
     #[test]
     fn iso_as_js() {
         assert_eq!(iso_string(0.0).as_deref(), Some("1970-01-01T00:00:00.000Z"));
-        assert_eq!(iso_string(-1.0).as_deref(), Some("1969-12-31T23:59:59.999Z"));
-        assert_eq!(iso_string(8.64e15).as_deref(), Some("+275760-09-13T00:00:00.000Z"));
-        assert_eq!(iso_string(-8.64e15).as_deref(), Some("-271821-04-20T00:00:00.000Z"));
-        assert_eq!(iso_string(253_402_300_800_000.0).as_deref(), Some("+010000-01-01T00:00:00.000Z"));
+        assert_eq!(
+            iso_string(-1.0).as_deref(),
+            Some("1969-12-31T23:59:59.999Z")
+        );
+        assert_eq!(
+            iso_string(8.64e15).as_deref(),
+            Some("+275760-09-13T00:00:00.000Z")
+        );
+        assert_eq!(
+            iso_string(-8.64e15).as_deref(),
+            Some("-271821-04-20T00:00:00.000Z")
+        );
+        assert_eq!(
+            iso_string(253_402_300_800_000.0).as_deref(),
+            Some("+010000-01-01T00:00:00.000Z")
+        );
         assert_eq!(iso_string(8.64e15 + 1.0), None);
     }
 }

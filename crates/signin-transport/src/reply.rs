@@ -12,7 +12,10 @@ pub const PROVIDER_MESSAGE_HEADER: &str = "x-noevia-provider-message";
 /// `errorResponse(status, message, code)`: the JSON body (content-type application/json, plus
 /// [`PROVIDER_MESSAGE_HEADER`]: 1).
 pub fn error_body(refusal: &Refusal) -> String {
-    let mut error = vec![("message".to_string(), JValue::from(refusal.message.as_str()))];
+    let mut error = vec![(
+        "message".to_string(),
+        JValue::from(refusal.message.as_str()),
+    )];
     if let Some(code) = refusal.code.as_deref().filter(|c| !c.is_empty()) {
         error.push(("code".to_string(), JValue::from(code)));
     }
@@ -36,7 +39,11 @@ impl ReplyId {
             ("model", JValue::from(self.model.as_str())),
             (
                 "choices",
-                JValue::Arr(vec![JValue::obj([("index", JValue::Num(0.0)), ("delta", delta), ("finish_reason", finish)])]),
+                JValue::Arr(vec![JValue::obj([
+                    ("index", JValue::Num(0.0)),
+                    ("delta", delta),
+                    ("finish_reason", finish),
+                ])]),
             ),
         ]))
     }
@@ -68,12 +75,26 @@ pub struct ChatStream {
 
 impl ChatStream {
     /// The start of a streamed reply.
-    pub fn start(texts: &Texts, reply: ReplyId, first: Option<&Part>) -> (Start, Option<ChatStream>) {
+    pub fn start(
+        texts: &Texts,
+        reply: ReplyId,
+        first: Option<&Part>,
+    ) -> (Start, Option<ChatStream>) {
         if let Some(Part::Error { message, status }) = first {
-            return (Start::Refuse(Refusal::new(status.unwrap_or(502), message.clone())), None);
+            return (
+                Start::Refuse(Refusal::new(status.unwrap_or(502), message.clone())),
+                None,
+            );
         }
-        let mut s = ChatStream { reply, source: texts.source.clone(), closed: false };
-        let mut frames = vec![s.reply.chunk(JValue::obj([("role", JValue::from("assistant"))]), JValue::Null)];
+        let mut s = ChatStream {
+            reply,
+            source: texts.source.clone(),
+            closed: false,
+        };
+        let mut frames = vec![s.reply.chunk(
+            JValue::obj([("role", JValue::from("assistant"))]),
+            JValue::Null,
+        )];
         match first {
             Some(p) => frames.extend(s.frames(Some(p))),
             None => frames.extend(s.frames(None)),
@@ -96,14 +117,19 @@ impl ChatStream {
                 vec![
                     frame(&JValue::obj([(
                         "error",
-                        JValue::obj([("message", JValue::from(message.as_str())), ("source", JValue::from(self.source.as_str()))]),
+                        JValue::obj([
+                            ("message", JValue::from(message.as_str())),
+                            ("source", JValue::from(self.source.as_str())),
+                        ]),
                     )])),
                     DONE.to_string(),
                 ]
             }
             Some(Part::Delta(delta)) => vec![self.reply.chunk(delta.clone(), JValue::Null)],
             Some(Part::Finish { finish, usage }) => {
-                let mut out = vec![self.reply.chunk(JValue::obj::<&str>([]), JValue::from(finish.as_str()))];
+                let mut out = vec![self
+                    .reply
+                    .chunk(JValue::obj::<&str>([]), JValue::from(finish.as_str()))];
                 if usage.truthy() {
                     out.push(frame(&JValue::obj([
                         ("id", JValue::from(self.reply.id.as_str())),
@@ -130,8 +156,13 @@ pub fn completion(reply: &ReplyId, parts: &[Part]) -> Result<String, Refusal> {
     let mut usage = JValue::Null;
     for part in parts {
         match part {
-            Part::Error { message, status } => return Err(Refusal::new(status.unwrap_or(502), message.clone())),
-            Part::Finish { finish: f, usage: u } => {
+            Part::Error { message, status } => {
+                return Err(Refusal::new(status.unwrap_or(502), message.clone()))
+            }
+            Part::Finish {
+                finish: f,
+                usage: u,
+            } => {
                 finish.clone_from(f);
                 usage = u.clone();
             }
@@ -149,8 +180,12 @@ pub fn completion(reply: &ReplyId, parts: &[Part]) -> Result<String, Refusal> {
                         if calls.len() <= index {
                             calls.resize(index + 1, None);
                         }
-                        let Some(slot) = calls.get_mut(index) else { continue };
-                        let entry = slot.get_or_insert_with(|| (tc.get("id").clone(), String::new(), String::new()));
+                        let Some(slot) = calls.get_mut(index) else {
+                            continue;
+                        };
+                        let entry = slot.get_or_insert_with(|| {
+                            (tc.get("id").clone(), String::new(), String::new())
+                        });
                         if tc.get("id").truthy() {
                             entry.0 = tc.get("id").clone();
                         }
@@ -167,7 +202,14 @@ pub fn completion(reply: &ReplyId, parts: &[Part]) -> Result<String, Refusal> {
     }
     let mut message = vec![
         ("role".to_string(), JValue::from("assistant")),
-        ("content".to_string(), if content.is_empty() { JValue::Null } else { JValue::from(content) }),
+        (
+            "content".to_string(),
+            if content.is_empty() {
+                JValue::Null
+            } else {
+                JValue::from(content)
+            },
+        ),
     ];
     if !reasoning.is_empty() {
         message.push(("reasoning_content".to_string(), JValue::from(reasoning)));
@@ -179,7 +221,13 @@ pub fn completion(reply: &ReplyId, parts: &[Part]) -> Result<String, Refusal> {
             JValue::obj([
                 ("id", id),
                 ("type", JValue::from("function")),
-                ("function", JValue::obj([("name", JValue::from(name)), ("arguments", JValue::from(arguments))])),
+                (
+                    "function",
+                    JValue::obj([
+                        ("name", JValue::from(name)),
+                        ("arguments", JValue::from(arguments)),
+                    ]),
+                ),
             ])
         })
         .collect();

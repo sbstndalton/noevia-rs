@@ -38,7 +38,13 @@ impl SessionCache {
 
     /// The cached session when the caller has no rejected token, the signal is readable and equal,
     /// and it is still in time. Every other path drops the user's entry (core deletes before asking).
-    pub fn lookup(&mut self, user: &str, signal: Option<&str>, rejected: bool, now: f64) -> Option<Session> {
+    pub fn lookup(
+        &mut self,
+        user: &str,
+        signal: Option<&str>,
+        rejected: bool,
+        now: f64,
+    ) -> Option<Session> {
         if !rejected {
             if let Some(mark) = signal {
                 if let Some(hit) = self.entries.iter().find(|e| e.user == user) {
@@ -70,7 +76,12 @@ impl SessionCache {
                 e.until = until;
                 e.signal = mark.to_string();
             }
-            None => self.entries.push_back(Entry { user: user.to_string(), session: session.clone(), until, signal: mark.to_string() }),
+            None => self.entries.push_back(Entry {
+                user: user.to_string(),
+                session: session.clone(),
+                until,
+                signal: mark.to_string(),
+            }),
         }
         while self.entries.len() > SESSION_CACHE_MAX {
             self.entries.pop_front();
@@ -87,7 +98,11 @@ impl SessionCache {
 pub enum BrokerAnswer {
     Ok(Session),
     /// `{ ok: false, error, status, code }` (fields as sent; any may be missing).
-    Refused { error: Option<String>, status: Option<f64>, code: Option<String> },
+    Refused {
+        error: Option<String>,
+        status: Option<f64>,
+        code: Option<String>,
+    },
     /// The ask itself failed (channel down).
     Unreachable,
 }
@@ -96,9 +111,19 @@ pub enum BrokerAnswer {
 pub fn broker_refusal(texts: &Texts, answer: &BrokerAnswer) -> Option<Refusal> {
     match answer {
         BrokerAnswer::Ok(_) => None,
-        BrokerAnswer::Unreachable => Some(Refusal { status: 503, message: texts.transient.clone(), code: Some("transient".into()) }),
-        BrokerAnswer::Refused { error, status, code } => {
-            let message = error.as_deref().map_or_else(|| texts.transient.clone(), |e| js_json::js_slice(e, 300));
+        BrokerAnswer::Unreachable => Some(Refusal {
+            status: 503,
+            message: texts.transient.clone(),
+            code: Some("transient".into()),
+        }),
+        BrokerAnswer::Refused {
+            error,
+            status,
+            code,
+        } => {
+            let message = error
+                .as_deref()
+                .map_or_else(|| texts.transient.clone(), |e| js_json::js_slice(e, 300));
             let status = status
                 .filter(|s| s.fract() == 0.0 && (400.0..600.0).contains(s))
                 .map_or(503, |s| {
@@ -106,7 +131,11 @@ pub fn broker_refusal(texts: &Texts, answer: &BrokerAnswer) -> Option<Refusal> {
                     let s = s as u16;
                     s
                 });
-            Some(Refusal { status, message, code: code.clone() })
+            Some(Refusal {
+                status,
+                message,
+                code: code.clone(),
+            })
         }
     }
 }
@@ -119,7 +148,10 @@ pub enum Step {
     /// Send the request with this session.
     Send(Session),
     /// Tell the broker this sign-in failed (`chatgptReject(user, generation)`), then answer `Refuse`.
-    Reject { generation: js_json::JValue, then: Refusal },
+    Reject {
+        generation: js_json::JValue,
+        then: Refusal,
+    },
     /// Pass the backend's answer on (any status but the handled 401s).
     Pass,
     /// Answer with this error (the `x-noevia-provider-message` error response).
@@ -141,12 +173,17 @@ impl Default for Authorise {
 
 impl Authorise {
     pub fn new() -> Self {
-        Authorise { attempt: 0, last: None }
+        Authorise {
+            attempt: 0,
+            last: None,
+        }
     }
 
     /// The first step: always ask (the cache is consulted by the caller through [`SessionCache`]).
     pub fn start(&self) -> Step {
-        Step::AskBroker { rejected_token: None }
+        Step::AskBroker {
+            rejected_token: None,
+        }
     }
 
     /// The broker answered (or the cache did).
@@ -157,7 +194,8 @@ impl Authorise {
                 Step::Send(s)
             }
             other => {
-                let r = broker_refusal(texts, &other).unwrap_or_else(|| Refusal::new(401, texts.transient.clone()));
+                let r = broker_refusal(texts, &other)
+                    .unwrap_or_else(|| Refusal::new(401, texts.transient.clone()));
                 Step::Refuse(r)
             }
         }
@@ -170,12 +208,22 @@ impl Authorise {
         }
         self.attempt += 1;
         match (self.attempt, self.last.take()) {
-            (1, Some(s)) => Step::AskBroker { rejected_token: Some(s.access_token) },
+            (1, Some(s)) => Step::AskBroker {
+                rejected_token: Some(s.access_token),
+            },
             (_, Some(s)) => Step::Reject {
                 generation: s.generation,
-                then: Refusal { status: 401, message: texts.reconnect.clone(), code: Some("reconnect".into()) },
+                then: Refusal {
+                    status: 401,
+                    message: texts.reconnect.clone(),
+                    code: Some("reconnect".into()),
+                },
             },
-            (_, None) => Step::Refuse(Refusal { status: 401, message: texts.reconnect.clone(), code: Some("reconnect".into()) }),
+            (_, None) => Step::Refuse(Refusal {
+                status: 401,
+                message: texts.reconnect.clone(),
+                code: Some("reconnect".into()),
+            }),
         }
     }
 }

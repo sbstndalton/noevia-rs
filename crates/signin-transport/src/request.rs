@@ -21,7 +21,11 @@ pub struct Refusal {
 
 impl Refusal {
     pub fn new(status: u16, message: String) -> Self {
-        Refusal { status, message, code: None }
+        Refusal {
+            status,
+            message,
+            code: None,
+        }
     }
 }
 
@@ -43,7 +47,10 @@ fn text_of(content: &JValue) -> String {
 }
 
 fn input_text(text: &str) -> JValue {
-    JValue::obj([("type", JValue::from("input_text")), ("text", JValue::from(text))])
+    JValue::obj([
+        ("type", JValue::from("input_text")),
+        ("text", JValue::from(text)),
+    ])
 }
 
 /// `userParts(content)`.
@@ -54,7 +61,11 @@ fn user_parts(content: &JValue) -> JValue {
     let mut parts = Vec::new();
     if let JValue::Arr(items) = content {
         for part in items.iter().filter(|p| p.is_object()) {
-            match (part.get("type").as_str(), part.get("text").as_str(), part.get("image_url").get("url").as_str()) {
+            match (
+                part.get("type").as_str(),
+                part.get("text").as_str(),
+                part.get("image_url").get("url").as_str(),
+            ) {
                 (Some("text"), Some(text), _) => parts.push(input_text(text)),
                 (Some("image_url"), _, Some(url)) => parts.push(JValue::obj([
                     ("type", JValue::from("input_image")),
@@ -73,10 +84,15 @@ fn user_parts(content: &JValue) -> JValue {
 /// `toolChoice(choice)`.
 fn tool_choice(choice: &JValue) -> Option<JValue> {
     match choice {
-        JValue::Str(s) if matches!(s.as_str(), "auto" | "none" | "required") => Some(choice.clone()),
+        JValue::Str(s) if matches!(s.as_str(), "auto" | "none" | "required") => {
+            Some(choice.clone())
+        }
         JValue::Obj(_) if choice.get("type").as_str() == Some("function") => {
             choice.get("function").get("name").as_str().map(|name| {
-                JValue::obj([("type", JValue::from("function")), ("name", JValue::from(name))])
+                JValue::obj([
+                    ("type", JValue::from("function")),
+                    ("name", JValue::from(name)),
+                ])
             })
         }
         _ => None,
@@ -103,7 +119,10 @@ fn response_format(rf: &JValue) -> Option<JValue> {
                 ("type".to_string(), JValue::from("json_schema")),
                 ("name".to_string(), JValue::from(name)),
                 ("schema".to_string(), js.get("schema").clone()),
-                ("strict".to_string(), JValue::Bool(js.get("strict").as_bool() == Some(true))),
+                (
+                    "strict".to_string(),
+                    JValue::Bool(js.get("strict").as_bool() == Some(true)),
+                ),
             ];
             if let Some(d) = js.get("description").as_str() {
                 out.push(("description".to_string(), JValue::from(d)));
@@ -150,7 +169,10 @@ pub fn to_responses_request(body: &JValue) -> Vec<(String, JValue)> {
                     }
                     if let JValue::Arr(calls) = m.get("tool_calls") {
                         for call in calls.iter().filter(|c| c.is_object()) {
-                            let (Some(id), Some(name)) = (call.get("id").as_str(), call.get("function").get("name").as_str()) else {
+                            let (Some(id), Some(name)) = (
+                                call.get("id").as_str(),
+                                call.get("function").get("name").as_str(),
+                            ) else {
                                 continue;
                             };
                             if name.is_empty() {
@@ -188,12 +210,18 @@ pub fn to_responses_request(body: &JValue) -> Vec<(String, JValue)> {
         }
     }
     let mut out: Vec<(String, JValue)> = vec![
-        ("model".into(), JValue::from(js::or_str(body.get("model"), ""))),
+        (
+            "model".into(),
+            JValue::from(js::or_str(body.get("model"), "")),
+        ),
         ("instructions".into(), JValue::from("")),
         ("input".into(), JValue::Arr(input)),
         ("stream".into(), JValue::Bool(true)),
         ("store".into(), JValue::Bool(false)),
-        ("include".into(), JValue::Arr(vec![JValue::from("reasoning.encrypted_content")])),
+        (
+            "include".into(),
+            JValue::Arr(vec![JValue::from("reasoning.encrypted_content")]),
+        ),
     ];
     let tools: Vec<JValue> = match body.get("tools") {
         JValue::Arr(tools) => tools
@@ -205,14 +233,25 @@ pub fn to_responses_request(body: &JValue) -> Vec<(String, JValue)> {
                 let parameters = if f.get("parameters").is_object() {
                     f.get("parameters").clone()
                 } else {
-                    JValue::obj([("type", JValue::from("object")), ("properties", JValue::obj::<&str>([]))])
+                    JValue::obj([
+                        ("type", JValue::from("object")),
+                        ("properties", JValue::obj::<&str>([])),
+                    ])
                 };
                 Some(JValue::obj([
                     ("type", JValue::from("function")),
                     ("name", JValue::from(name)),
-                    ("description", f.get("description").as_str().map_or(JValue::Undefined, JValue::from)),
+                    (
+                        "description",
+                        f.get("description")
+                            .as_str()
+                            .map_or(JValue::Undefined, JValue::from),
+                    ),
                     ("parameters", parameters),
-                    ("strict", JValue::Bool(f.get("strict").as_bool() == Some(true))),
+                    (
+                        "strict",
+                        JValue::Bool(f.get("strict").as_bool() == Some(true)),
+                    ),
                 ]))
             })
             .collect(),
@@ -220,12 +259,22 @@ pub fn to_responses_request(body: &JValue) -> Vec<(String, JValue)> {
     };
     if !tools.is_empty() {
         out.push(("tools".into(), JValue::Arr(tools)));
-        out.push(("tool_choice".into(), tool_choice(body.get("tool_choice")).unwrap_or_else(|| JValue::from("auto"))));
+        out.push((
+            "tool_choice".into(),
+            tool_choice(body.get("tool_choice")).unwrap_or_else(|| JValue::from("auto")),
+        ));
     }
-    if let Some(effort) = body.get("reasoning_effort").as_str().filter(|e| BASIC_EFFORTS.contains(e)) {
+    if let Some(effort) = body
+        .get("reasoning_effort")
+        .as_str()
+        .filter(|e| BASIC_EFFORTS.contains(e))
+    {
         out.push((
             "reasoning".into(),
-            JValue::obj([("effort", JValue::from(effort)), ("summary", JValue::from("auto"))]),
+            JValue::obj([
+                ("effort", JValue::from(effort)),
+                ("summary", JValue::from("auto")),
+            ]),
         ));
     }
     if let Some(format) = response_format(body.get("response_format")) {
@@ -236,7 +285,10 @@ pub fn to_responses_request(body: &JValue) -> Vec<(String, JValue)> {
 
 /// `uuidFrom(text)`: a UUID-shaped, stable digest (never reversible to the text).
 pub fn uuid_from(text: &str) -> String {
-    let h: String = Sha256::digest(text.as_bytes()).iter().map(|b| format!("{b:02x}")).collect();
+    let h: String = Sha256::digest(text.as_bytes())
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect();
     let part = |a: usize, b: usize| h.get(a..b).unwrap_or("");
     let nibble = u8::from_str_radix(part(16, 17), 16).unwrap_or(0);
     format!(
@@ -298,14 +350,25 @@ pub struct Planned {
 fn join(values: &[JValue]) -> String {
     values
         .iter()
-        .map(|v| if v.is_nullish() { String::new() } else { js::to_string(v) })
+        .map(|v| {
+            if v.is_nullish() {
+                String::new()
+            } else {
+                js::to_string(v)
+            }
+        })
         .collect::<Vec<_>>()
         .join(", ")
 }
 
 /// The second half of `fetchFor`'s checks: `catalogue` is the broker's answer (`None` when it could
 /// not be read), `conversation_id` the [`uuid_from`] of user and conversation.
-pub fn plan(texts: &Texts, parsed: &Parsed, catalogue: Option<&JValue>, conversation_id: Option<&str>) -> Result<Planned, Refusal> {
+pub fn plan(
+    texts: &Texts,
+    parsed: &Parsed,
+    catalogue: Option<&JValue>,
+    conversation_id: Option<&str>,
+) -> Result<Planned, Refusal> {
     let Parsed { body, model } = parsed;
     let model80 = js_slice(model, 80);
     let entries: Option<&[JValue]> = match catalogue {
@@ -315,14 +378,25 @@ pub fn plan(texts: &Texts, parsed: &Parsed, catalogue: Option<&JValue>, conversa
     let slug_is = |m: &JValue| m.get("slug").as_str() == Some(model.as_str());
     if let Some(items) = entries {
         if !items.is_empty() && !items.iter().any(slug_is) {
-            let first8: Vec<JValue> = items.iter().take(8).map(|m| m.get("slug").clone()).collect();
-            return Err(Refusal::new(400, texts.not_on_account(&model80, &join(&first8))));
+            let first8: Vec<JValue> = items
+                .iter()
+                .take(8)
+                .map(|m| m.get("slug").clone())
+                .collect();
+            return Err(Refusal::new(
+                400,
+                texts.not_on_account(&model80, &join(&first8)),
+            ));
         }
     }
     let stream = body.get("stream").as_bool() == Some(true);
     let mut request = to_responses_request(body);
     let info = entries.and_then(|items| items.iter().find(|m| slug_is(m)));
-    if let Some(asked) = body.get("reasoning_effort").as_str().filter(|a| !a.is_empty() && *a != "default") {
+    if let Some(asked) = body
+        .get("reasoning_effort")
+        .as_str()
+        .filter(|a| !a.is_empty() && *a != "default")
+    {
         let offered = match info.map(|i| i.get("levels")) {
             Some(JValue::Arr(levels)) if !levels.is_empty() => Some(levels),
             _ => None,
@@ -343,8 +417,15 @@ pub fn plan(texts: &Texts, parsed: &Parsed, catalogue: Option<&JValue>, conversa
         }
         if !basic {
             // { ...(request.reasoning || {}), effort: asked, summary: request.reasoning?.summary || 'auto' }
-            let prior = request.iter().find(|(k, _)| k == "reasoning").map(|(_, v)| v.clone());
-            let summary = prior.as_ref().map(|p| p.get("summary").clone()).filter(JValue::truthy).unwrap_or_else(|| JValue::from("auto"));
+            let prior = request
+                .iter()
+                .find(|(k, _)| k == "reasoning")
+                .map(|(_, v)| v.clone());
+            let summary = prior
+                .as_ref()
+                .map(|p| p.get("summary").clone())
+                .filter(JValue::truthy)
+                .unwrap_or_else(|| JValue::from("auto"));
             let mut reasoning = match prior {
                 Some(JValue::Obj(items)) => items,
                 _ => Vec::new(),
@@ -365,7 +446,11 @@ pub fn plan(texts: &Texts, parsed: &Parsed, catalogue: Option<&JValue>, conversa
         }
         let summary = info.get("summary");
         if info.get("summaryParam").truthy() && summary.as_str() != Some("none") {
-            let value = if summary.truthy() { summary.clone() } else { JValue::from("auto") };
+            let value = if summary.truthy() {
+                summary.clone()
+            } else {
+                JValue::from("auto")
+            };
             assign(&mut reasoning, "summary", value);
         } else {
             reasoning.retain(|(k, _)| k != "summary");
@@ -420,11 +505,19 @@ impl std::fmt::Debug for Session {
 }
 
 /// `upstreamHeaders(t, accept, conversationId)`, in Node's order.
-pub fn headers(protocol: &Protocol, session: &Session, accept: &str, conversation_id: Option<&str>) -> Vec<(String, String)> {
+pub fn headers(
+    protocol: &Protocol,
+    session: &Session,
+    accept: &str,
+    conversation_id: Option<&str>,
+) -> Vec<(String, String)> {
     let mut h = vec![
         ("content-type".to_string(), "application/json".to_string()),
         ("accept".to_string(), accept.to_string()),
-        ("authorization".to_string(), format!("Bearer {}", session.access_token)),
+        (
+            "authorization".to_string(),
+            format!("Bearer {}", session.access_token),
+        ),
         (protocol.account_header.clone(), session.account_id.clone()),
         ("user-agent".to_string(), protocol.user_agent.clone()),
     ];

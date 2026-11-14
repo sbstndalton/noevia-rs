@@ -97,9 +97,17 @@ fn streams_match_core_whole_and_cut_everywhere() {
     let now = f.get("now").as_num().unwrap();
     let JValue::Obj(streams) = f.get("streams") else { panic!() };
     assert!(streams.len() > 25);
+    let mut differences = 0;
     for (name, st) in streams {
         let chunks = chunks_of(st.get("chunks"));
-        let want = json(st.get("parts"));
+        let mut want = json(st.get("parts"));
+        if want.contains("\"thrown\":\"Invalid time value\"") {
+            // Named difference (noevia bug, see the crate report): core throws while formatting a
+            // reset time past JS's date range, which kills the reply; the port leaves the time out.
+            assert_eq!(name, "errorFarDate");
+            want = format!("[{{\"error\":\"{}\",\"status\":429}}]", t.usage_limit("", ""));
+            differences += 1;
+        }
         let refs: Vec<&[u8]> = chunks.iter().map(Vec::as_slice).collect();
         let got = JValue::Arr(parts_of(&t, now, &refs).iter().map(part_json).collect());
         assert_eq!(json(&got), want, "stream {name}");
@@ -113,6 +121,7 @@ fn streams_match_core_whole_and_cut_everywhere() {
             assert_eq!(json(&two), want, "stream {name} cut at {cut}");
         }
     }
+    assert_eq!(differences, 1);
 }
 
 struct Run {
@@ -206,7 +215,12 @@ fn run_fetch(t: &Texts, protocol: &Protocol, now: f64, input: &JValue) -> Run {
                     ("body", JValue::from(planned.body.as_str())),
                     ("redirect", JValue::from("error")),
                 ]));
-                let u = if upstream.is_empty() { JValue::Undefined } else { upstream.remove(0) };
+                // core's fake backend answers the text stream once a case's list is used up.
+                let u = if upstream.is_empty() {
+                    JValue::obj([("status", JValue::Num(200.0)), ("chunks", fixture().get("streams").get("text").get("chunks").clone())])
+                } else {
+                    upstream.remove(0)
+                };
                 let status = u.get("status").as_num().map_or(200, |x| x as u16);
                 let bytes = if u.is_nullish() { Vec::new() } else { chunks_of(u.get("chunks")).concat() };
                 step = auth.on_status(t, status);
