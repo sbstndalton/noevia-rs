@@ -1071,6 +1071,8 @@ mod tests {
 
     #[test]
     fn a_late_write_racing_the_delete_never_resurrects_the_transcript() {
+        // Rounds whose delete got in while the writers were still writing.
+        let mut raced = 0;
         for round in 0..20 {
             let (root, dir) = setup();
             seed_free(root.path(), &dir);
@@ -1094,17 +1096,25 @@ mod tests {
                         })
                     })
                     .collect();
-                // noevia#2271: the lock is taken by polling, so four writers in a tight loop can
-                // keep the delete out past its wait. That is Busy (a 429 the client retries) and
-                // changes nothing; the delete is retried as a client would, and the race below
-                // still has to leave no transcript.
+                // noevia#2271 (CI: `Err(Store(Busy))`): the lock is taken by polling, so four
+                // writers in a tight loop can keep the delete out past its wait. That is Busy (a
+                // 503 the client retries) and changes nothing; the delete is retried as a client
+                // would, but only while a writer still runs: a Busy after they finished fails.
+                let mut first = true;
                 let deleted = loop {
                     match del(root.path(), "qa-c1", Kind::Free) {
-                        Err(DeleteError::Store(StoreError::Busy)) => continue,
+                        Err(DeleteError::Store(StoreError::Busy))
+                            if writers.iter().any(|w| !w.is_finished()) =>
+                        {
+                            first = false;
+                        }
                         other => break other.unwrap().deleted,
                     }
                 };
                 assert!(deleted, "{round}");
+                if first && writers.iter().any(|w| !w.is_finished()) {
+                    raced += 1;
+                }
                 for w in writers {
                     w.join().unwrap();
                 }
@@ -1119,6 +1129,7 @@ mod tests {
                 Appended::Deleted
             );
         }
+        assert!(raced > 0, "no round deleted while the writers were writing");
     }
 
     #[test]

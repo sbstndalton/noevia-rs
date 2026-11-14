@@ -632,6 +632,8 @@ async fn no_project_route_may_name_the_hidden_project_in_any_spelling() {
                 )
                 .await;
             assert_eq!(a.status, 404, "{m} {p}{tail}: {}", a.json);
+            // The front's own refusal, not a 404 from the stub behind it (noevia#2473 review).
+            assert_eq!(a.json["error"], "no such project", "{m} {p}{tail}");
         }
     }
     // Nothing moved: the project is as the coworker's write left it.
