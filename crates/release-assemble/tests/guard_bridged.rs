@@ -437,7 +437,9 @@ fn gen_task_reads(r: &mut Rng, root: &Path) {
                 _ => toml.push_str("methods = [\"GET\"]\n"),
             }
         }
-        toml.push_str("[[route]]\npath = \"/api/projects/{projectId}/code/{task}/x\"\nowner = \"node\"\n");
+        toml.push_str(
+            "[[route]]\npath = \"/api/projects/{projectId}/code/{task}/x\"\nowner = \"node\"\n",
+        );
         write(&root.join("rs/contracts/http/routes.toml"), &toml);
     }
     let mut refused = vec![
