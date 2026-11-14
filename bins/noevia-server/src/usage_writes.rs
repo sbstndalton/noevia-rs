@@ -137,3 +137,52 @@ pub fn record(data_dir: &Path, user: &str, what: Record<'_>) -> Recorded {
         },
     }
 }
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used)]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    const USER: &str = "aaaaaaaa-8888-4aaa-8aaa-aaaaaaaaaaaa";
+
+    fn usage() -> JValue {
+        js_json::wtf16::parse(r#"{"promptTokens":3,"completionTokens":2}"#).unwrap()
+    }
+
+    #[test]
+    fn records_only_into_an_existing_account_and_never_through_a_link() {
+        let d = tempfile::tempdir().unwrap();
+        let model = JValue::Str("qa-model".into());
+        // No account directory: nothing, and nothing is made.
+        let u = usage();
+        assert_eq!(record(d.path(), USER, Record::Reply { model: &model, usage: &u }), Recorded::Nothing);
+        assert!(!d.path().join("users").exists());
+        assert_eq!(record(d.path(), "../x", Record::Tool { name: &model }), Recorded::Skipped);
+        let dir = d.path().join("users").join(USER);
+        std::fs::create_dir_all(&dir).unwrap();
+        let u = usage();
+        assert_eq!(record(d.path(), USER, Record::Reply { model: &model, usage: &u }), Recorded::Written);
+        let file = dir.join("usage.json");
+        assert_eq!(std::fs::metadata(&file).unwrap().permissions().mode() & 0o777, 0o600);
+        let stored: serde_json::Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        let day = stored["days"].as_object().unwrap().values().next().unwrap().clone();
+        assert_eq!((day["input"].as_f64(), day["models"]["qa-model"]["replies"].as_f64()), (Some(3.0), Some(1.0)));
+        assert_eq!(record(d.path(), USER, Record::Tool { name: &JValue::Str("qa_tool".into()) }), Recorded::Written);
+        assert_eq!(record(d.path(), USER, Record::Tool { name: &JValue::Str(String::new()) }), Recorded::Nothing);
+        // Only usage.json is left in the directory (no temporary file).
+        let names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name()).collect();
+        assert_eq!(names, vec![std::ffi::OsString::from("usage.json")]);
+        // A linked usage.json is left alone, and so is what it points at.
+        std::fs::remove_file(&file).unwrap();
+        let outside = d.path().join("outside.json");
+        std::fs::write(&outside, "{}").unwrap();
+        std::os::unix::fs::symlink(&outside, &file).unwrap();
+        assert_eq!(record(d.path(), USER, Record::Tool { name: &model }), Recorded::Skipped);
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "{}");
+        std::fs::remove_file(&file).unwrap();
+        std::fs::hard_link(&outside, &file).unwrap();
+        assert_eq!(record(d.path(), USER, Record::Tool { name: &model }), Recorded::Skipped);
+        assert_eq!(std::fs::read_to_string(&outside).unwrap(), "{}");
+    }
+}
