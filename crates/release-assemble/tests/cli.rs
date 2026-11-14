@@ -6,7 +6,9 @@ use std::fs;
 use std::process::{Command, Output};
 
 fn bin(args: &[&str]) -> Output {
-    let out = Command::new(env!("CARGO_BIN_EXE_release-assemble")).args(args).output();
+    let out = Command::new(env!("CARGO_BIN_EXE_release-assemble"))
+        .args(args)
+        .output();
     out.unwrap_or_else(|e| unreachable(&e.to_string()))
 }
 
@@ -29,7 +31,10 @@ fn plan_lock_value_and_refusals() {
     fs::write(&lock, format!("# c\nNOEVIA_WEB_REF=self\nNOEVIA_CORE_REF={h40}\nNOEVIA_CORE_SHA256={h64}\nNOEVIA_RS_REF={h40}\n")).ok();
     let out = bin(&["plan", &lock_s, "11bf2da7"]);
     assert_eq!(out.status.code(), Some(0));
-    assert_eq!(text(&out.stdout), format!("web\tself\ncore\t{h40}\t{h64}\nservices\tself\nrs\tnone\n"));
+    assert_eq!(
+        text(&out.stdout),
+        format!("web\tself\ncore\t{h40}\t{h64}\nservices\tself\nrs\tnone\n")
+    );
     let out = bin(&["lock-value", &lock_s, "NOEVIA_CORE_REF"]);
     assert_eq!(text(&out.stdout), format!("{h40}\n"));
     // usage: bad sha, unknown subcommand
@@ -55,10 +60,18 @@ fn checksum_extract_and_manifest() {
     assert!(release_assemble::tree::pack(&src, &["top"], &tgz, 0).is_ok());
     let tgz_s = tgz.to_string_lossy().into_owned();
     let sum = release_assemble::digest::sha256_file(&tgz).unwrap_or_default();
-    assert_eq!(bin(&["check-sha256", &tgz_s, "noevia-web", "r", &sum]).status.code(), Some(0));
+    assert_eq!(
+        bin(&["check-sha256", &tgz_s, "noevia-web", "r", &sum])
+            .status
+            .code(),
+        Some(0)
+    );
     let out = bin(&["check-sha256", &tgz_s, "noevia-web", "r", &"0".repeat(64)]);
     assert_eq!(out.status.code(), Some(1));
-    assert_eq!(text(&out.stderr), "assemble-release: noevia-web tarball checksum mismatch at r\n");
+    assert_eq!(
+        text(&out.stderr),
+        "assemble-release: noevia-web tarball checksum mismatch at r\n"
+    );
     let dest = d.path().join("dest");
     fs::create_dir_all(&dest).ok();
     let out = bin(&["extract", &tgz_s, &dest.to_string_lossy(), "1"]);

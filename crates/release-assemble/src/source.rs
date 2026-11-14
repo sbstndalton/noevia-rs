@@ -44,7 +44,12 @@ impl ProcessSource {
 
 /// Run to completion within `deadline` (killed after it); stdout and stderr are discarded.
 pub fn run_with_deadline(cmd: &mut Command, deadline: Duration) -> bool {
-    let Ok(mut child) = cmd.stdin(Stdio::null()).stdout(Stdio::null()).stderr(Stdio::null()).spawn() else {
+    let Ok(mut child) = cmd
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+    else {
         return false;
     };
     let start = Instant::now();
@@ -68,7 +73,12 @@ impl Source for ProcessSource {
         for p in paths {
             let spec = format!("{prefix}/{p}");
             let ok = run_with_deadline(
-                Command::new("git").arg("-C").arg(&self.repo).arg("cat-file").arg("-e").arg(format!("{}:{spec}", self.full_sha)),
+                Command::new("git")
+                    .arg("-C")
+                    .arg(&self.repo)
+                    .arg("cat-file")
+                    .arg("-e")
+                    .arg(format!("{}:{spec}", self.full_sha)),
                 self.deadline,
             );
             if !ok {
@@ -77,7 +87,9 @@ impl Source for ProcessSource {
             specs.push(spec);
         }
         let strip = prefix.bytes().filter(|b| *b == b'/').count() + 1;
-        let archive = self.work.join(format!("export-{}.tar", prefix.replace('/', "_")));
+        let archive = self
+            .work
+            .join(format!("export-{}.tar", prefix.replace('/', "_")));
         let ok = run_with_deadline(
             Command::new("git")
                 .arg("-C")
@@ -103,12 +115,26 @@ impl Source for ProcessSource {
         Ok(())
     }
 
-    fn fetch(&mut self, repo: &str, reference: &str, sha256: &str, dest: &Path) -> Result<(), String> {
+    fn fetch(
+        &mut self,
+        repo: &str,
+        reference: &str,
+        sha256: &str,
+        dest: &Path,
+    ) -> Result<(), String> {
         let tgz = self.work.join(format!("{repo}.tar.gz"));
         let url = format!("{}/{repo}/tar.gz/{reference}", self.base_url);
         let ok = run_with_deadline(
             Command::new(&self.curl)
-                .args(["-fsSL", "--proto", "=https", "--tlsv1.2", "--retry", "3", "-o"])
+                .args([
+                    "-fsSL",
+                    "--proto",
+                    "=https",
+                    "--tlsv1.2",
+                    "--retry",
+                    "3",
+                    "-o",
+                ])
                 .arg(&tgz)
                 .arg(&url),
             self.deadline,
@@ -121,7 +147,8 @@ impl Source for ProcessSource {
             .and_then(|mut f| tar::read_gz(&mut f))
             .map_err(|e| format!("{repo} tarball at {reference}: {e}"))?;
         std::fs::create_dir_all(dest).map_err(|e| format!("{repo}: {e}"))?;
-        tar::extract(&entries, 1, dest).map_err(|e| format!("{repo} tarball at {reference}: {e}"))?;
+        tar::extract(&entries, 1, dest)
+            .map_err(|e| format!("{repo} tarball at {reference}: {e}"))?;
         Ok(())
     }
 

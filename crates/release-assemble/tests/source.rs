@@ -13,12 +13,25 @@ const EXCERPT: &str = include_str!("../fixtures/assemble-release-excerpt.sh");
 
 fn section(name: &str) -> String {
     let start = format!("#@{name}\n");
-    let from = EXCERPT.find(&start).map(|i| i + start.len()).unwrap_or(EXCERPT.len());
-    EXCERPT.get(from..).unwrap_or_default().split("\n#@").next().unwrap_or_default().to_string()
+    let from = EXCERPT
+        .find(&start)
+        .map(|i| i + start.len())
+        .unwrap_or(EXCERPT.len());
+    EXCERPT
+        .get(from..)
+        .unwrap_or_default()
+        .split("\n#@")
+        .next()
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn have(tool: &str) -> bool {
-    Command::new(tool).arg("--version").output().map(|o| o.status.success()).unwrap_or(false)
+    Command::new(tool)
+        .arg("--version")
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false)
 }
 
 #[allow(clippy::panic)]
@@ -31,34 +44,81 @@ fn write(path: &Path, data: &[u8], exec: bool) {
         fs::create_dir_all(p).ok();
     }
     fs::write(path, data).ok();
-    fs::set_permissions(path, fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 })).ok();
+    fs::set_permissions(
+        path,
+        fs::Permissions::from_mode(if exec { 0o755 } else { 0o644 }),
+    )
+    .ok();
 }
 
 fn git(dir: &Path, args: &[&str]) -> String {
     let out = Command::new("git")
         .arg("-C")
         .arg(dir)
-        .args(["-c", "user.name=QA Release", "-c", "user.email=qa@example.invalid"])
+        .args([
+            "-c",
+            "user.name=QA Release",
+            "-c",
+            "user.email=qa@example.invalid",
+        ])
         .args(args)
         .output();
-    out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string()).unwrap_or_default()
+    out.map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default()
 }
 
 /// A pre-cutover noevia layout: apps/web (web + core paths) and services/.
 fn qa_repo(root: &Path) -> String {
     let web = [
-        "src/main.ts", "public/icon.svg", "index.html", "vite.config.ts", "tsconfig.json", "package.json",
-        "package-lock.json", "scripts/build.sh", "contracts/a.json", "tests/client/a.test.ts", "qa/run.sh",
-        "tests/hermetic-network.cjs", ".gitignore", ".dockerignore", "server/index.cjs", "server/package.json",
-        "tests/server/a.test.cjs", "tests/fixtures/f.json",
+        "src/main.ts",
+        "public/icon.svg",
+        "index.html",
+        "vite.config.ts",
+        "tsconfig.json",
+        "package.json",
+        "package-lock.json",
+        "scripts/build.sh",
+        "contracts/a.json",
+        "tests/client/a.test.ts",
+        "qa/run.sh",
+        "tests/hermetic-network.cjs",
+        ".gitignore",
+        ".dockerignore",
+        "server/index.cjs",
+        "server/package.json",
+        "tests/server/a.test.cjs",
+        "tests/fixtures/f.json",
     ];
     for f in web {
-        let body = if f == ".gitignore" { "node_modules/\n" } else { f };
-        write(&root.join("apps/web").join(f), body.as_bytes(), f.ends_with(".sh"));
+        let body = if f == ".gitignore" {
+            "node_modules/\n"
+        } else {
+            f
+        };
+        write(
+            &root.join("apps/web").join(f),
+            body.as_bytes(),
+            f.ends_with(".sh"),
+        );
     }
-    write(&root.join("apps/web/server/ui-data/state.json"), b"{}", false);
-    for s in ["diary", "docling", "laya", "model-manager", "ocr", "code-sandbox"] {
-        write(&root.join("services").join(s).join("Dockerfile"), s.as_bytes(), false);
+    write(
+        &root.join("apps/web/server/ui-data/state.json"),
+        b"{}",
+        false,
+    );
+    for s in [
+        "diary",
+        "docling",
+        "laya",
+        "model-manager",
+        "ocr",
+        "code-sandbox",
+    ] {
+        write(
+            &root.join("services").join(s).join("Dockerfile"),
+            s.as_bytes(),
+            false,
+        );
     }
     std::os::unix::fs::symlink("Dockerfile", root.join("services/ocr/Dockerfile.link")).ok();
     write(&root.join("README.md"), b"QA", false);
@@ -69,9 +129,18 @@ fn qa_repo(root: &Path) -> String {
 }
 
 fn walk(root: &Path) -> Vec<String> {
-    let out = Command::new("find").arg(root).arg("-printf").arg("%P %y %m %s\n").output();
+    let out = Command::new("find")
+        .arg(root)
+        .arg("-printf")
+        .arg("%P %y %m %s\n")
+        .output();
     let mut lines: Vec<String> = out
-        .map(|o| String::from_utf8_lossy(&o.stdout).lines().map(str::to_string).collect())
+        .map(|o| {
+            String::from_utf8_lossy(&o.stdout)
+                .lines()
+                .map(str::to_string)
+                .collect()
+        })
         .unwrap_or_default();
     // Modes beyond the executable bit come from the extracting process's umask (GNU tar applies it,
     // the Rust reader writes 0644/0755): compare the type, the executable bit and the size.
@@ -90,7 +159,11 @@ fn walk(root: &Path) -> Vec<String> {
     lines
 }
 
-fn shell(script_tail: &str, envs: &[(&str, &Path)], path_prefix: Option<&Path>) -> Result<(), String> {
+fn shell(
+    script_tail: &str,
+    envs: &[(&str, &Path)],
+    path_prefix: Option<&Path>,
+) -> Result<(), String> {
     let script = format!(
         "set -euo pipefail\ndie() {{ echo \"assemble-release: $*\" >&2; exit 1; }}\n{}\n{script_tail}\n",
         section("sources")
@@ -124,9 +197,31 @@ fn export_self_matches_the_shell() {
     let work = d.path().join("work");
     fs::create_dir_all(&work).ok();
     let cases: [(&str, &[&str]); 4] = [
-        ("apps/web", &["server", "contracts", "tests/server", "tests/fixtures", "tests/hermetic-network.cjs"]),
-        ("services", &["diary", "docling", "laya", "model-manager", "ocr"]),
-        ("apps/web", &["src", "public", "index.html", ".gitignore", ".dockerignore", "qa"]),
+        (
+            "apps/web",
+            &[
+                "server",
+                "contracts",
+                "tests/server",
+                "tests/fixtures",
+                "tests/hermetic-network.cjs",
+            ],
+        ),
+        (
+            "services",
+            &["diary", "docling", "laya", "model-manager", "ocr"],
+        ),
+        (
+            "apps/web",
+            &[
+                "src",
+                "public",
+                "index.html",
+                ".gitignore",
+                ".dockerignore",
+                "qa",
+            ],
+        ),
         ("services", &["diary", "missing-one", "ocr"]),
     ];
     for (i, (prefix, paths)) in cases.iter().enumerate() {
@@ -137,11 +232,24 @@ fn export_self_matches_the_shell() {
         let tail = format!("export_self \"$dest\" {prefix} {}", paths.join(" "));
         let sh = shell(
             &tail,
-            &[("repo", &repo), ("work", &work), ("dest", &sh_dest), ("full_sha", Path::new(&full)), ("sha", Path::new(&full[..8]))],
+            &[
+                ("repo", &repo),
+                ("work", &work),
+                ("dest", &sh_dest),
+                ("full_sha", Path::new(&full)),
+                ("sha", Path::new(&full[..8])),
+            ],
             None,
         );
-        let mut src = ProcessSource::new(repo.clone(), full[..8].to_string(), full.clone(), work.clone());
-        let rs = src.export_self(&rs_dest, prefix, paths).map_err(|e| format!("assemble-release: {e}"));
+        let mut src = ProcessSource::new(
+            repo.clone(),
+            full[..8].to_string(),
+            full.clone(),
+            work.clone(),
+        );
+        let rs = src
+            .export_self(&rs_dest, prefix, paths)
+            .map_err(|e| format!("assemble-release: {e}"));
         assert_eq!(rs, sh, "case {i}");
         assert_eq!(walk(&rs_dest), walk(&sh_dest), "case {i}");
     }
@@ -168,12 +276,29 @@ fn fetch_remote_matches_the_shell() {
     let repo = d.path().join("repo");
     let full = qa_repo(&repo);
     let tgz = d.path().join("codeload.tar.gz");
-    git(&repo, &["archive", "--format=tar.gz", "--prefix=noevia-web-qa/", "-o", &tgz.to_string_lossy(), "HEAD"]);
+    git(
+        &repo,
+        &[
+            "archive",
+            "--format=tar.gz",
+            "--prefix=noevia-web-qa/",
+            "-o",
+            &tgz.to_string_lossy(),
+            "HEAD",
+        ],
+    );
     let good = release_assemble::digest::sha256_file(&tgz).unwrap_or_default();
     let bin = d.path().join("bin");
     let curl = stub_curl(&bin);
     let reference = "a".repeat(40);
-    for (i, (sum, fail)) in [(good.clone(), "0"), ("0".repeat(64), "0"), (good.clone(), "1")].iter().enumerate() {
+    for (i, (sum, fail)) in [
+        (good.clone(), "0"),
+        ("0".repeat(64), "0"),
+        (good.clone(), "1"),
+    ]
+    .iter()
+    .enumerate()
+    {
         let sh_dest = d.path().join(format!("fsh{i}"));
         let rs_dest = d.path().join(format!("frs{i}"));
         let sh_work = d.path().join(format!("wsh{i}"));
@@ -187,7 +312,9 @@ fn fetch_remote_matches_the_shell() {
         let sh = shell(&tail, &[("work", &sh_work), ("dest", &sh_dest)], Some(&bin));
         let mut src = ProcessSource::new(repo.clone(), "qa".into(), full.clone(), rs_work);
         src.curl = curl.clone().into_os_string();
-        let rs = src.fetch("noevia-web", &reference, sum, &rs_dest).map_err(|e| format!("assemble-release: {e}"));
+        let rs = src
+            .fetch("noevia-web", &reference, sum, &rs_dest)
+            .map_err(|e| format!("assemble-release: {e}"));
         assert_eq!(rs, sh, "case {i}");
         assert_eq!(walk(&rs_dest), walk(&sh_dest), "case {i}");
     }
@@ -206,12 +333,21 @@ fn self_lock_assembles_components() {
     let tree = d.path().join("tree");
     let work = d.path().join("work");
     fs::create_dir_all(&work).ok();
-    let lock = release_assemble::lock::Lock::from_bytes(b"NOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n");
+    let lock =
+        release_assemble::lock::Lock::from_bytes(b"NOEVIA_WEB_REF=self\nNOEVIA_CORE_REF=self\n");
     let mut src = ProcessSource::new(repo, full[..8].to_string(), full.clone(), work);
     let got = assemble_components(&lock, &full[..8], &full, &tree, &mut src);
     let got = got.map(|r| (r.web, r.core, r.services, r.rs));
-    assert_eq!(got, Ok((full.clone(), full.clone(), full.clone(), String::new())));
-    for need in ["web/src/main.ts", "core/server/index.cjs", "core/code-sandbox/Dockerfile", "services/ocr/Dockerfile"] {
+    assert_eq!(
+        got,
+        Ok((full.clone(), full.clone(), full.clone(), String::new()))
+    );
+    for need in [
+        "web/src/main.ts",
+        "core/server/index.cjs",
+        "core/code-sandbox/Dockerfile",
+        "services/ocr/Dockerfile",
+    ] {
         assert!(tree.join(need).exists(), "{need}");
     }
     assert!(!tree.join("services/code-sandbox").exists());

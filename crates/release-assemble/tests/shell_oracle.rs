@@ -205,6 +205,27 @@ fn values(rng: &mut Lcg, sum: bool) -> String {
 }
 
 fn random_lock(rng: &mut Lcg) -> Vec<u8> {
+    // Half the locks start valid (every component pinned or self, rs pinned) and change one key, so
+    // the later steps (services, noevia-rs, its Cargo.toml) are reached as often as the early ones.
+    if rng.next().is_multiple_of(2) {
+        let mut lines: Vec<String> = Vec::new();
+        for k in ["NOEVIA_WEB", "NOEVIA_CORE", "NOEVIA_SERVICES", "NOEVIA_RS"] {
+            if k != "NOEVIA_RS" && rng.next().is_multiple_of(3) {
+                lines.push(format!("{k}_REF=self"));
+            } else {
+                lines.push(format!("{k}_REF={}", hex(40, rng.next())));
+                lines.push(format!("{k}_SHA256={}", hex(64, rng.next())));
+            }
+        }
+        let n = lines.len() as u64;
+        let at = usize::try_from(rng.next() % n).unwrap_or(0);
+        if let Some(line) = lines.get_mut(at) {
+            let key = line.split('=').next().unwrap_or_default().to_string();
+            let sum = key.ends_with("_SHA256");
+            *line = format!("{key}={}", values(rng, sum));
+        }
+        return lines.join("\n").into_bytes();
+    }
     let keys = ["NOEVIA_WEB", "NOEVIA_CORE", "NOEVIA_SERVICES", "NOEVIA_RS"];
     let mut lines: Vec<String> = vec!["# Pinned sources (generated)".into()];
     for k in keys {
@@ -239,11 +260,27 @@ fn random_lock(rng: &mut Lcg) -> Vec<u8> {
 fn compare(lock: &[u8], sha: &str, full: &str, dir: &Path) -> String {
     let sh = run_shell(lock, sha, full, dir);
     let rs = run_rust(lock, sha, full, dir);
-    assert_eq!(rs.result, sh.result, "verdict differs for lock:\n{}", String::from_utf8_lossy(lock));
-    assert_eq!(rs.log, sh.log, "tree calls differ for lock:\n{}", String::from_utf8_lossy(lock));
+    assert_eq!(
+        rs.result,
+        sh.result,
+        "verdict differs for lock:\n{}",
+        String::from_utf8_lossy(lock)
+    );
+    assert_eq!(
+        rs.log,
+        sh.log,
+        "tree calls differ for lock:\n{}",
+        String::from_utf8_lossy(lock)
+    );
     match rs.result {
         Ok(_) => "ok".to_string(),
-        Err(e) => e.split(" in versions.lock at ").last().unwrap_or_default().to_string() + &e,
+        Err(e) => {
+            e.split(" in versions.lock at ")
+                .last()
+                .unwrap_or_default()
+                .to_string()
+                + &e
+        }
     }
 }
 
@@ -306,8 +343,19 @@ fn generated_locks_match_the_shell() {
         kinds.insert(verdict);
     }
     // The generator must reach every outcome, or the comparison proves little.
-    for want in ["ok", "must be 'self'", "is pinned but", "must be a 40-char", "not 64 lowercase", "no Cargo.toml", "could not download"] {
-        assert!(kinds.iter().any(|k| k.contains(want)), "no generated lock reached: {want} ({kinds:?})");
+    for want in [
+        "ok",
+        "must be 'self'",
+        "is pinned but",
+        "must be a 40-char",
+        "not 64 lowercase",
+        "no Cargo.toml",
+        "could not download",
+    ] {
+        assert!(
+            kinds.iter().any(|k| k.contains(want)),
+            "no generated lock reached: {want} ({kinds:?})"
+        );
     }
 }
 
@@ -382,9 +430,15 @@ fn excerpt_is_verbatim() {
         let mut lines: Vec<&str> = s.lines().collect();
         if section_name == "resolve" {
             let first = lines.remove(0);
-            assert!(real_lines.contains(&first), "resolve: {first} is no longer in the script");
+            assert!(
+                real_lines.contains(&first),
+                "resolve: {first} is no longer in the script"
+            );
         }
         let block = lines.join("\n");
-        assert!(real.contains(&block), "the {section_name} excerpt is no longer one verbatim block");
+        assert!(
+            real.contains(&block),
+            "the {section_name} excerpt is no longer one verbatim block"
+        );
     }
 }
