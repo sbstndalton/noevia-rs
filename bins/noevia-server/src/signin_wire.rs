@@ -40,9 +40,9 @@ pub const CAPS_TOKEN: &str = "signin-transport-v1";
 pub const BROKER_WAIT: Duration = Duration::from_secs(45);
 /// The backend connect bound (core: none).
 pub const CONNECT_TIMEOUT: Duration = Duration::from_secs(30);
-/// The message of a failed send (undici's `TypeError: fetch failed`).
+/// The message of a failed send (core's fetch rejects with `TypeError: fetch failed`).
 pub const SEND_FAILED: &str = "fetch failed";
-/// The message of a body read that failed part-way (undici's `TypeError: terminated`).
+/// The message of a body read that failed part-way (core's fetch: `TypeError: terminated`).
 pub const READ_FAILED: &str = "terminated";
 
 /// What one call answers (re-exported for the caller and the tests).
@@ -59,6 +59,11 @@ pub fn offered(caps: &str) -> bool {
 
 /// core's `fileSignal(file)`: `<inode>:<size>:<mtime ns>`, "" when the file does not exist,
 /// `None` (unreadable: nothing is cached) on any other failure.
+///
+/// Named difference (noevia#2724 item 3): core's `fileSignal` throws on any other failure, so
+/// the chat call itself fails before the broker is asked. Here the call goes on without the
+/// cache (the session is asked of the broker every time), which answers the same turn and
+/// keeps no session a later change could have made stale.
 pub fn file_signal(path: &Path) -> Option<String> {
     use std::os::unix::fs::MetadataExt;
     match std::fs::metadata(path) {
@@ -348,18 +353,18 @@ pub async fn fetch_for<A: Accounts>(
     fetch::fetch(wire, cache, &call).await
 }
 
-/// Headers a pass-through answer does not carry on (the connection's own, re-framed by the server).
-fn hop_by_hop(name: &str) -> bool {
-    matches!(
-        name,
-        "connection"
-            | "keep-alive"
-            | "transfer-encoding"
-            | "te"
-            | "trailer"
-            | "upgrade"
-            | "content-length"
-    )
+/// The backend headers a pass-through answer carries on (noevia#2724 item 1): an allow-list of
+/// what the chat loop reads of a provider answer, the content type and the provider-message
+/// label. Everything else (cookies, authentication challenges, encodings, the backend's own
+/// `x-*` headers, the connection's own headers) stays at the front.
+///
+/// Named difference: core hands the backend's whole header set to its chat loop, which reads
+/// only these two and the local gate's refusal header. A backend's copy of the gate's header
+/// is dropped here: only the local gate may claim a gate refusal.
+pub const PASSED_ON: [&str; 2] = ["content-type", "x-noevia-provider-message"];
+
+fn passed_on(name: &str) -> bool {
+    PASSED_ON.iter().any(|p| name.eq_ignore_ascii_case(p))
 }
 
 fn set(res: &mut Response<HttpResponseBody>, name: &'static str, value: &'static str) {
@@ -405,7 +410,7 @@ pub fn into_response(answer: Answer<HttpBody>) -> Result<Response<HttpResponseBo
             let mut res = Response::new(HttpResponseBody::from_stream(stream));
             with_status(&mut res, u.status);
             for (k, v) in &u.headers {
-                if hop_by_hop(k) {
+                if !passed_on(k) {
                     continue;
                 }
                 if let (Ok(name), Ok(value)) = (

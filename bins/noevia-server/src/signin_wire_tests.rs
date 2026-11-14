@@ -610,12 +610,13 @@ async fn recorded_cases_over_real_http_match_core() {
     };
     assert_eq!(cases.len(), 107);
     let mut wrong = Vec::new();
-    let (mut ran, mut skips) = (0, 0);
+    let mut ran = 0;
+    let mut skips: Vec<String> = Vec::new();
     for c in &cases {
         let (input, want) = (c.get("input"), c.get("output"));
         let name = s(input.get("name"));
         if skipped(input).is_some() {
-            skips += 1;
+            skips.push(name);
             continue;
         }
         ran += 1;
@@ -725,8 +726,30 @@ async fn recorded_cases_over_real_http_match_core() {
         wrong.len(),
         wrong.join("\n")
     );
-    assert!(ran >= 90, "ran {ran}, skipped {skips}");
-    assert_eq!(ran + skips, cases.len());
+    // Exact counts and the exact skip set (noevia#2724 item 2): 93 replayed, 14 skipped by name.
+    skips.sort();
+    let mut want_skips = vec![
+        // Named differences and late failures, pinned by the crate's replay.
+        "bodyNull",
+        "catalogueNonArrayNoBody",
+        "catalogueNullEntry",
+        "catalogueNumber",
+        "catalogueObject",
+        "catalogueString",
+        "completeFailAfterError",
+        "noBody204",
+        "noBody304",
+        "streamFailAfterFinish",
+        // A null body with a status that has a body on the wire.
+        "noBody200",
+        "noBody200Stream",
+        "noBody429",
+        "noBody500",
+    ];
+    want_skips.sort_unstable();
+    assert_eq!(skips, want_skips);
+    assert_eq!(ran, 93, "ran {ran}, skipped {}", skips.len());
+    assert_eq!(ran + skips.len(), cases.len());
 }
 
 fn json(v: &JValue) -> String {
