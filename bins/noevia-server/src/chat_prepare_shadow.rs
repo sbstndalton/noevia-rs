@@ -107,7 +107,7 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
     drop(tokio::spawn(async move {
         let _ = tokio::task::spawn_blocking(move || {
             // allToolboxes(), as the front's catalogue stands (None: not current).
-            let catalogue = quiet_catalogue(&app);
+            let boxes = quiet_boxes(&app);
             // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
             let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
             let flags = Flags {
@@ -116,7 +116,6 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
                     framing && crate::code_routes::feature(&app, Feature::BrainContext),
                 ),
             };
-            let boxes = catalogue.map(|c| toolboxes(&c.boxes));
             let settings = settings_rows(&app);
             let verdict = run(
                 &user_dir,
@@ -134,11 +133,24 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
     }));
 }
 
+/// The catalogue's boxes for the replay's tool questions; a build without the front's MCP discovery
+/// (`rust-storage-reads`) has no catalogue: a history that needs one is then skipped.
+#[cfg(feature = "rust-storage-reads")]
+fn quiet_boxes(app: &Arc<App>) -> Option<Vec<Toolbox>> {
+    quiet_catalogue(app).map(|c| toolboxes(&c.boxes))
+}
+
+#[cfg(not(feature = "rust-storage-reads"))]
+fn quiet_boxes(_app: &Arc<App>) -> Option<Vec<Toolbox>> {
+    None
+}
+
 /// The toolbox catalogue as it stands, read without the side effects of
 /// [`crate::mcp_discovery::read`]: no touch of the demand marker (which wakes core's publishers),
 /// no discovery refresh and no wait. The facts file as published (a stale one is refused), then
 /// discovery's current snapshot (no older than its refresh age). `None` when either is not current:
 /// a history that needs the catalogue is then skipped.
+#[cfg(feature = "rust-storage-reads")]
 fn quiet_catalogue(app: &Arc<App>) -> Option<crate::mcp_discovery::Catalogue> {
     let dir = app.config.data_dir.clone()?;
     let file = dir.join(crate::mcp_discovery::FACTS_FILE);
@@ -205,6 +217,7 @@ fn settings_rows(app: &App) -> Option<(JValue, JValue)> {
 /// The catalogue's boxes as the replay's tool questions read them: each box's id and its tools
 /// (`{ type: 'function', function: { name } }`). The catalogue keeps at most 500 tools of a box and
 /// 128 units of a name; past that a tool is missed, which can only show as a diff.
+#[cfg(feature = "rust-storage-reads")]
 fn toolboxes(boxes: &[crate::mcp_discovery::BoxInfo]) -> Vec<Toolbox> {
     boxes
         .iter()
