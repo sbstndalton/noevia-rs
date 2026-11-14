@@ -107,11 +107,78 @@ fn read_block(r: &mut dyn Read, buf: &mut [u8; BLOCK]) -> io::Result<bool> {
     Ok(true)
 }
 
+/// Size caps of one read (noevia#2726 item 1): a header's size field (octal, base-256 or pax, up to 64
+/// bits) is checked against them BEFORE anything is allocated, and the running total of member data
+/// against `total`, so a hostile or broken archive is refused instead of aborting the process on memory.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Limits {
+    /// One regular file's data.
+    pub member: u64,
+    /// Every member's data together (the reader keeps the members in memory).
+    pub total: u64,
+    /// A pax `x`/`g` record block or a GNU `L`/`K` long name.
+    pub meta: u64,
+    /// Members (headers of any kind), so a stream of empty headers cannot grow the list without end.
+    pub members: u64,
+}
+
+impl Default for Limits {
+    /// Well above today's release inputs (the largest component tarball inflates to a few hundred MiB).
+    fn default() -> Self {
+        Limits {
+            member: 1 << 30,
+            total: 4 << 30,
+            meta: 1 << 20,
+            members: 2_000_000,
+        }
+    }
+}
+
+struct Budget {
+    limits: Limits,
+    used: u64,
+    headers: u64,
+}
+
+impl Budget {
+    fn header(&mut self) -> io::Result<()> {
+        self.headers += 1;
+        if self.headers > self.limits.members {
+            return Err(bad(format!(
+                "tar: more than {} members",
+                self.limits.members
+            )));
+        }
+        Ok(())
+    }
+
+    fn take(&mut self, size: u64, cap: u64, what: &str) -> io::Result<()> {
+        if size > cap {
+            return Err(bad(format!(
+                "tar: {what} of {size} bytes is over the {cap}-byte cap"
+            )));
+        }
+        let used = self.used.saturating_add(size);
+        if used > self.limits.total {
+            return Err(bad(format!(
+                "tar: the archive's data is over the {}-byte cap",
+                self.limits.total
+            )));
+        }
+        self.used = used;
+        Ok(())
+    }
+}
+
 fn read_data(r: &mut dyn Read, size: u64) -> io::Result<Vec<u8>> {
     let len = usize::try_from(size).map_err(|_| bad("tar: member too large"))?;
-    let mut data = vec![0u8; len];
-    r.read_exact(&mut data)
-        .map_err(|_| bad("tar: truncated member"))?;
+    let mut data = Vec::new();
+    // `take` + `read_to_end` grows with the bytes that really arrive: a size field larger than the stream
+    // is a truncation, never a large up-front allocation.
+    Read::take(&mut *r, size).read_to_end(&mut data)?;
+    if data.len() != len {
+        return Err(bad("tar: truncated member"));
+    }
     let pad = (BLOCK - len % BLOCK) % BLOCK;
     let mut skip = vec![0u8; pad];
     r.read_exact(&mut skip)
@@ -148,8 +215,18 @@ fn pax(data: &[u8]) -> io::Result<BTreeMap<String, Vec<u8>>> {
     Ok(out)
 }
 
-/// Read every member of an uncompressed tar stream.
+/// Read every member of an uncompressed tar stream, under the default [`Limits`].
 pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
+    read_all_limited(r, Limits::default())
+}
+
+/// [`read_all`] under explicit caps.
+pub fn read_all_limited(r: &mut dyn Read, limits: Limits) -> io::Result<Vec<Entry>> {
+    let mut budget = Budget {
+        limits,
+        used: 0,
+        headers: 0,
+    };
     let mut out = Vec::new();
     let mut h = [0u8; BLOCK];
     let mut long_name: Option<Vec<u8>> = None;
@@ -165,6 +242,7 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
         if !checksum_ok(&h)? {
             return Err(bad("tar: header checksum mismatch"));
         }
+        budget.header()?;
         let typeflag = h.get(156).copied().unwrap_or(0);
         let pax_size = local.get("size").or_else(|| global.get("size")).cloned();
         let size = match pax_size {
@@ -175,20 +253,26 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
         };
         match typeflag {
             b'x' => {
-                local = pax(&read_data(r, number(field(&h, 124, 12))?)?)?;
+                let n = number(field(&h, 124, 12))?;
+                budget.take(n, limits.meta, "a pax record block")?;
+                local = pax(&read_data(r, n)?)?;
                 continue;
             }
             b'g' => {
-                for (k, v) in pax(&read_data(r, number(field(&h, 124, 12))?)?)? {
+                let n = number(field(&h, 124, 12))?;
+                budget.take(n, limits.meta, "a pax record block")?;
+                for (k, v) in pax(&read_data(r, n)?)? {
                     global.insert(k, v);
                 }
                 continue;
             }
             b'L' => {
+                budget.take(size, limits.meta, "a long name")?;
                 long_name = Some(cstr(&read_data(r, size)?).to_vec());
                 continue;
             }
             b'K' => {
+                budget.take(size, limits.meta, "a long link name")?;
                 long_link = Some(cstr(&read_data(r, size)?).to_vec());
                 continue;
             }
@@ -220,6 +304,13 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
         }
         local.clear();
         let mode = number(field(&h, 100, 8))?;
+        // A directory or a link carries no data GNU tar uses, but its size field is still read past.
+        let cap = if matches!(typeflag, b'0' | 0 | b'7') {
+            limits.member
+        } else {
+            limits.meta
+        };
+        budget.take(size, cap, "a member")?;
         let kind = match typeflag {
             b'0' | 0 | b'7' => Kind::File {
                 executable: mode & 0o111 != 0,
@@ -253,10 +344,16 @@ pub fn read_all(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
     Ok(out)
 }
 
-/// Read a gzip-compressed tar stream (`tar -xz`).
+/// Read a gzip-compressed tar stream (`tar -xz`), under the default [`Limits`].
 pub fn read_gz(r: &mut dyn Read) -> io::Result<Vec<Entry>> {
+    read_gz_limited(r, Limits::default())
+}
+
+/// [`read_gz`] under explicit caps. The inflated stream is read through the caps above (headers are
+/// 512-byte blocks and data is counted), so a gzip bomb ends at the total cap, not at the memory limit.
+pub fn read_gz_limited(r: &mut dyn Read, limits: Limits) -> io::Result<Vec<Entry>> {
     let mut gz = flate2::read::MultiGzDecoder::new(r);
-    read_all(&mut gz)
+    read_all_limited(&mut gz, limits)
 }
 
 /// Member name components, refused when absolute, empty or with `..` (GNU tar strips or skips those).
@@ -278,6 +375,44 @@ fn components(name: &[u8]) -> io::Result<Vec<&[u8]>> {
         )));
     }
     Ok(parts)
+}
+
+/// noevia#2726 item 3: GNU tar writes a symlink's target as it is, absolute or pointing out of the tree.
+/// `pack` and the image build read the extracted tree back, so a target that is empty, absolute or that
+/// climbs above the extraction root (read lexically from the link's own directory, `depth` = the link's
+/// component count after the strip), or that has a `..` after a named component, is refused. No release input has a symlink today (all five repos
+/// checked at the time of writing), so this only closes a door.
+fn link_stays_inside(depth: usize, target: &[u8]) -> io::Result<()> {
+    let show = || String::from_utf8_lossy(target).into_owned();
+    if target.is_empty() || target.first() == Some(&b'/') {
+        return Err(bad(format!(
+            "tar: symlink target {:?} is empty or absolute",
+            show()
+        )));
+    }
+    // Directories above the link inside the root. A `..` after a named component is refused too: the
+    // named component may itself be a link (`d/s -> ../x`, then `l -> d/s/../..`), so only leading `..`
+    // steps are counted, and those climb real directories (extraction never writes through a link).
+    let mut at = depth.saturating_sub(1);
+    let mut named = false;
+    for part in target.split(|c| *c == b'/') {
+        match part {
+            b"" | b"." => {}
+            b".." => {
+                if named {
+                    return Err(bad(format!(
+                        "tar: symlink target {:?} climbs after a named component",
+                        show()
+                    )));
+                }
+                at = at.checked_sub(1).ok_or_else(|| {
+                    bad(format!("tar: symlink target {:?} leaves the tree", show()))
+                })?;
+            }
+            _ => named = true,
+        }
+    }
+    Ok(())
 }
 
 #[cfg(unix)]
@@ -355,6 +490,8 @@ pub fn extract(entries: &[Entry], strip: usize, dest: &Path) -> io::Result<usize
                 set_mode(&path, if *executable { 0o755 } else { 0o644 })?;
             }
             Kind::Symlink { target } => {
+                // noevia#2738 item 3: refuse before the file at this path is removed.
+                link_stays_inside(kept.len(), target)?;
                 if let Some(m) = existing {
                     if m.file_type().is_dir() {
                         return Err(bad(format!("tar: {} is a directory", path.display())));

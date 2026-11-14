@@ -9,16 +9,50 @@
 //!                                                 required entries, release-refs, ui-data prune,
 //!                                                 .dockerignore, deterministic tarball
 //! release-assemble manifest TGZ                   content manifest (compare two release tarballs)
+//! release-assemble routes-toml FILE               the pairing guards' routes.toml records (routes_toml);
+//!                                                 a refused file prints `line N: <reason>` and exits 2
+//! release-assemble move-capability FILE NAME VALUE KIND
+//!                                                 exit 0 when the marker is declared (move_capability)
+//! release-assemble project-routes-core FILE [NAME] a Core module's OWNED_ROUTES (project_routes_core)
+//! release-assemble pairing NAME TREE              one ownership pairing over an assembled tree; NAME is
+//!                                                 feature, model-reads, project-reads, project-lifecycle,
+//!                                                 project-files, project-config, code-egress,
+//!                                                 calibration-cancel, calibration-routes, research
+//!                                                 task-reads, model-scan, document-pages,
+//!                                                 conversation-import, project-documents,
+//!                                                 public-pages, plugin-directory, or one of the facts
+//!                                                 pairings (facts::ALL: autotune-settings,
+//!                                                 idle-unload-read, model-assignments, preset-read,
+//!                                                 autotune-clear, autotune-resume, autotune-cancel,
+//!                                                 autotune-untuned)
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
+use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
-use release_assemble::{digest, tar, tree};
+use release_assemble::{bridged, digest, facts, tar, tree};
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ";
+const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | pairing NAME TREE";
+
+fn write_out(bytes: &[u8]) -> Result<(), String> {
+    use std::io::Write;
+    let mut out = std::io::stdout().lock();
+    out.write_all(bytes)
+        .and_then(|()| out.flush())
+        .map_err(|e| e.to_string())
+}
+
+fn write_lines(lines: &[Vec<u8>]) -> Result<(), String> {
+    let mut all = Vec::new();
+    for l in lines {
+        all.extend_from_slice(l);
+        all.push(b'\n');
+    }
+    write_out(&all)
+}
 
 fn die(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("assemble-release: {msg}");
@@ -118,6 +152,84 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         ["manifest", tgz] => {
             for line in tree::manifest(&open_tgz(tgz)?) {
                 println!("{line}");
+            }
+            Ok(ExitCode::SUCCESS)
+        }
+        ["routes-toml", file] => {
+            let rt = guard::routes_toml_file(Path::new(file));
+            write_out(&rt.stdout())?;
+            match rt.error {
+                None => Ok(ExitCode::SUCCESS),
+                Some(e) => {
+                    eprintln!("{e}");
+                    Ok(ExitCode::from(2))
+                }
+            }
+        }
+        ["move-capability", file, name, value, kind] => {
+            let Some(kind) = MoveKind::parse(kind) else {
+                return Ok(usage());
+            };
+            let src = guard::read_file(Path::new(file));
+            Ok(
+                if guard::move_capability(src.as_deref(), name, value, kind) {
+                    ExitCode::SUCCESS
+                } else {
+                    ExitCode::from(1)
+                },
+            )
+        }
+        ["project-routes-core", file, rest @ ..] => {
+            let name = match rest {
+                [] | [""] => "OWNED_ROUTES",
+                [n] => *n,
+                _ => return Ok(usage()),
+            };
+            let src = guard::read_file(Path::new(file));
+            write_lines(&guard::project_routes_core(src.as_deref(), name))?;
+            Ok(ExitCode::SUCCESS)
+        }
+        ["pairing", which, tree_dir] => {
+            let t = Path::new(tree_dir);
+            match *which {
+                "feature" => guard::namespace_pairing(t, &guard::FEATURE_OWNERSHIP)?,
+                "model-reads" => guard::namespace_pairing(t, &guard::MODEL_READ_OWNERSHIP)?,
+                "project-reads" => guard::namespace_pairing(t, &guard::PROJECT_READ_OWNERSHIP)?,
+                "project-lifecycle" => {
+                    guard::namespace_pairing(t, &guard::PROJECT_LIFECYCLE_OWNERSHIP)?
+                }
+                // The storage pair runs first in the script (Core and the front agree by then), so its
+                // front half is its verdict.
+                "project-files" => {
+                    guard::project_files_pairing(t, guard::project_storage_rs_owner(t))?
+                }
+                "project-config" => guard::project_config_pairing(t)?,
+                "document-pages" => {
+                    guard::namespace_pairing(t, &guard::PROJECT_DOCUMENT_PAGES_OWNERSHIP)?
+                }
+                // The create/delete pair runs first in the script, so its front half is its verdict.
+                "conversation-import" => {
+                    guard::conversation_import_pairing(t, guard::project_lifecycle_rs_owner(t))?
+                }
+                "project-documents" => guard::project_documents_pairing(t)?,
+                "public-pages" => guard::namespace_pairing(t, &guard::PUBLIC_PAGES_OWNERSHIP)?,
+                "plugin-directory" => {
+                    guard::namespace_pairing(t, &guard::PLUGIN_DIRECTORY_OWNERSHIP)?
+                }
+                "code-egress" => bridged::code_egress_pairing(t)?,
+                "research" => bridged::research_pairing(t)?,
+                "task-reads" => bridged::task_reads_pairing(t)?,
+                "model-scan" => bridged::model_scan_pairing(t)?,
+                "calibration-cancel" => {
+                    bridged::calibration_pairing(t, &bridged::CALIBRATION_CANCEL)?
+                }
+                "calibration-routes" => {
+                    bridged::calibration_pairing(t, &bridged::CALIBRATION_ROUTES)?
+                }
+                other => match facts::by_name(other) {
+                    Some(p) => facts::facts_pairing(t, p)?,
+                    None => return Ok(usage()),
+                },
             }
             Ok(ExitCode::SUCCESS)
         }

@@ -11,9 +11,28 @@
 //! - [`tree`]: the end of the assembly (ui-data prune, `release-refs`, `.dockerignore`, the required
 //!   entries and the final `tar -czf`), plus a content manifest to compare two release tarballs.
 //!
+//! - [`guard`] (council p7): the ownership pairing guards' shared primitives (`routes_toml`,
+//!   `project_routes_rs`, `switched_routes`, `project_routes_core`, `code_lines`, `code_has`'s comment
+//!   filter, `move_capability`) and the first pairings built on them (feature, model reads).
+//!
+//! - [`guard`] (council p8) also: the four project pairings (source reads, create/delete, file delete,
+//!   configuration); [`bridged`]: the calibration cancel and start/read, code egress issuer, deep research,
+//!   task read and model scan read pairings, with `code_has` over real EREs.
+//!
+//! - [`guard`] (council p10) also: the document page reader, conversation import, document upload, public
+//!   page and plugin directory pairings.
+//!
+//! - [`facts`] (council p10): the eight single-path pairings whose Core side is a refusal module plus a
+//!   facts or state bridge (auto-tune settings, dismissal, resume, cancellation and untuned discovery;
+//!   idle unload, model assignments and preset reads) as one table, and [`bridged::posix_ere`], which
+//!   gives `code_has` POSIX bracket expressions (`[[]`, `[]]`, a literal `\`) as grep reads them.
+//!
 //! Nothing in the release path calls this crate yet.
 
+pub mod bridged;
 pub mod digest;
+pub mod facts;
+pub mod guard;
 pub mod lock;
 pub mod plan;
 pub mod source;

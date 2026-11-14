@@ -3092,6 +3092,7 @@ name = "release-assemble"
 version = "0.1.0"
 dependencies = [
  "flate2",
+ "regex",
  "sha2",
  "tempfile",
 ]

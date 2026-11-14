@@ -2,6 +2,7 @@
 //! a local QA git repo and a stub `curl` that serves a local tarball (no network). Skipped without git.
 #![cfg(unix)]
 
+mod common;
 use release_assemble::plan::{assemble_components, Source};
 use release_assemble::source::ProcessSource;
 use std::fs;
@@ -188,7 +189,7 @@ fn shell(
 #[test]
 fn export_self_matches_the_shell() {
     if !have("git") || !have("bash") || !have("tar") {
-        eprintln!("source: git/bash/tar missing, skipped");
+        common::skip("source: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -278,6 +279,7 @@ fn stub_curl(bin: &Path) -> PathBuf {
 #[test]
 fn fetch_remote_matches_the_shell() {
     if !have("git") || !have("bash") || !have("tar") {
+        common::skip("source: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
@@ -333,6 +335,7 @@ fn fetch_remote_matches_the_shell() {
 #[test]
 fn self_lock_assembles_components() {
     if !have("git") {
+        common::skip("source: a tool this comparison runs is not installed");
         return;
     }
     let d = tmp();
