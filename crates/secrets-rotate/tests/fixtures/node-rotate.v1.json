@@ -1,0 +1,3130 @@
+{
+ "generator": "crates/secrets-rotate/tests/record_rotate.cjs",
+ "keys": {
+  "current": "896de75fcd96c1eb7b1e4aa403f2b7aa5f5d1cad51f38124285e8aa483b5f3e7",
+  "previous": "e4be62b241ef3a7ebea6cb83fcd728e74d7557d4ffeddd1e9cdb1b2437b57900",
+  "other": "4c99c91754edc3fdfce6dc26c3890e89b981cc8fe0570c92d5c955eefe89f424"
+ },
+ "admin": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+ "wasmSha256": "2305d64d1a75a57b3c52eda673b384c819718aae540c570837b4aeb4ef5e5cb9",
+ "sources": {
+  "server/routes/auth.cjs": "6223c64d34c585e20401e4cccad1842eb73368f4960d553ac736526ccc859b01",
+  "server/secrets-rotate.cjs": "7e24d517de6d27cf540521913fba978efbaf56a449f3ee8d283ddd980c8a8f38",
+  "server/secrets.cjs": "3ef31e111ca217a0b8c370555adab73e419ba8e07eb08e22d002d8f98a4bc7fa",
+  "server/secret-envelope.cjs": "3dab7db0e4b5830b26e30b874a978869874fae98199d28c55d9eafe0f55838c5",
+  "server/gdrive-seal.cjs": "92173fc86dae26befcb4579f18e2e9fe4d00353ba8099e114084cb867e5404b5"
+ },
+ "cases": [
+  {
+   "name": "typical",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "member-refused",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    },
+    "role": "member"
+   },
+   "expected": {
+    "status": 403,
+    "reply": "{\"error\":\"administrator required\"}",
+    "audits": [],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": true
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "no-previous-key",
+   "input": {
+    "previous": "none",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":3,\"upgraded\":0,\"empty\":0,\"failed\":2},\"failures\":[{\"table\":\"storage_connections\",\"ref\":[\"22222222-5555-4222-8222-222222222222\"],\"error\":\"credential could not be opened\"},{\"table\":\"chatgpt_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\"],\"error\":\"credential could not be opened\"}],\"previousKey\":false}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":3,\"upgraded\":0,\"empty\":0,\"failed\":2},\"failed\":[{\"table\":\"storage_connections\",\"ref\":[\"22222222-5555-4222-8222-222222222222\"]},{\"table\":\"chatgpt_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": true
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "previous-env-hex",
+   "input": {
+    "previous": "env-hex",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "previous-env-base64",
+   "input": {
+    "previous": "env-base64",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "previous-same-as-current",
+   "input": {
+    "previous": "same",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":3,\"upgraded\":0,\"empty\":0,\"failed\":2},\"failures\":[{\"table\":\"storage_connections\",\"ref\":[\"22222222-5555-4222-8222-222222222222\"],\"error\":\"credential could not be opened\"},{\"table\":\"chatgpt_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\"],\"error\":\"credential could not be opened\"}],\"previousKey\":false}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":3,\"upgraded\":0,\"empty\":0,\"failed\":2},\"failed\":[{\"table\":\"storage_connections\",\"ref\":[\"22222222-5555-4222-8222-222222222222\"]},{\"table\":\"chatgpt_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": true
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "statuses",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:V_AL-tERH3TKWTkDyXGQf46jpqTouucReLyhSUvY1tYajZx-J54"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dNRRAEyucjMAiwuEJY0bzwUt6bJpRfVMC8EpQByVka9WR7BzNkYb"
+     },
+     {
+      "user": "33333333-5555-4333-8333-333333333333",
+      "value": "enc:v1:I3eo2LHY6rYVklxxqEqIg-6DwnsP9BXHv7sdBxl6zQrwrp_HjrUfsO0"
+     },
+     {
+      "user": "44444444-5555-4444-8444-444444444444",
+      "value": "enc:v1:KodbORMRHp6XGI4XBh9Vz9kiAC3VQOuVMr4-Dv3xJC66eo7rxbf-dINO"
+     },
+     {
+      "user": "55555555-5555-4555-8555-555555555555",
+      "value": "qa-plaintext-secret"
+     },
+     {
+      "user": "66666666-5555-4666-8666-666666666666",
+      "value": "enc:v2:BlnuU611h2_EPBRZu7IuuK49B9SS2PhScDMN4xBytSo7eth-0rXEJ8mr9Tu6"
+     },
+     {
+      "user": "77777777-5555-4777-8777-777777777777",
+      "value": "enc:v2:T19eVqEcqg-WiGgK7D8roW-AZx8XNpb4UtimThEDvIicq9xwStDAR7XE"
+     },
+     {
+      "user": "88888888-5555-4888-8888-888888888888",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "99999999-5555-4999-8999-999999999999",
+      "value": "enc:v1:AAAA"
+     },
+     {
+      "user": "",
+      "value": "enc:v2:870rzrYBs9qNDfOTdGzGsqMTpv7OQypBlrW3fhdWbiACD0c9s32IYKg"
+     },
+     {
+      "user": "aaaaaaaa-6666-4aaa-8aaa-aaaaaaaaaaaa",
+      "value": "enc:v2:NQ-Jm7BmJ7FGPybydtzZnCy7bowT1gK-TDjycA"
+     },
+     {
+      "user": "bbbbbbbb-6666-4bbb-8bbb-bbbbbbbbbbbb",
+      "value": "enc:v2:BaZJM9SOrtqe7ArP4FOC7iQYunA_CfAbJT5K1clL8yU5UZYwuyL0kfFBLDRb"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":4,\"upgraded\":2,\"empty\":0,\"failed\":5},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":8,\"upgraded\":2,\"empty\":0,\"failed\":5},\"failures\":[{\"table\":\"storage_connections\",\"ref\":[\"66666666-5555-4666-8666-666666666666\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"77777777-5555-4777-8777-777777777777\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"88888888-5555-4888-8888-888888888888\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"99999999-5555-4999-8999-999999999999\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"\"],\"error\":\"credential is bound to an unknown account\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":8,\"upgraded\":2,\"empty\":0,\"failed\":5},\"failed\":[{\"table\":\"storage_connections\",\"ref\":[\"66666666-5555-4666-8666-666666666666\"]},{\"table\":\"storage_connections\",\"ref\":[\"77777777-5555-4777-8777-777777777777\"]},{\"table\":\"storage_connections\",\"ref\":[\"88888888-5555-4888-8888-888888888888\"]},{\"table\":\"storage_connections\",\"ref\":[\"99999999-5555-4999-8999-999999999999\"]},{\"table\":\"storage_connections\",\"ref\":[\"\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-previous"
+       }
+      },
+      {
+       "user": "33333333-5555-4333-8333-333333333333",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-v1-current"
+       }
+      },
+      {
+       "user": "44444444-5555-4444-8444-444444444444",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-v1-previous"
+       }
+      },
+      {
+       "user": "55555555-5555-4555-8555-555555555555",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-plaintext-secret"
+       }
+      },
+      {
+       "user": "66666666-5555-4666-8666-666666666666",
+       "same": true
+      },
+      {
+       "user": "77777777-5555-4777-8777-777777777777",
+       "same": true
+      },
+      {
+       "user": "88888888-5555-4888-8888-888888888888",
+       "same": true
+      },
+      {
+       "user": "99999999-5555-4999-8999-999999999999",
+       "same": true
+      },
+      {
+       "user": "",
+       "same": true
+      },
+      {
+       "user": "aaaaaaaa-6666-4aaa-8aaa-aaaaaaaaaaaa",
+       "same": false,
+       "version": "",
+       "opened": {
+        "keyUsed": "none",
+        "plain": ""
+       }
+      },
+      {
+       "user": "bbbbbbbb-6666-4bbb-8bbb-bbbbbbbbbbbb",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa é 😀 \u0000 text"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "no-chatgpt-table",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": null,
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": []
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "empty-tables",
+   "input": {
+    "previous": "file",
+    "storage": [],
+    "chatgpt": [],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":1,\"rotated\":3,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":1,\"rotated\":3,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [],
+     "chatgpt_oauth_tokens": []
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "cas-conflict",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    },
+    "conflict": {
+     "table": "storage_connections",
+     "user": "22222222-5555-4222-8222-222222222222"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failures\":[{\"table\":\"storage_connections\",\"ref\":[\"22222222-5555-4222-8222-222222222222\"],\"error\":\"changed while rotating; run the rotation again\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failed\":[{\"table\":\"storage_connections\",\"ref\":[\"22222222-5555-4222-8222-222222222222\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "qa-chan",
+       "opened": {
+        "keyUsed": "none",
+        "plain": ""
+       },
+       "raw": "qa-changed-meanwhile"
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "cas-conflict-chatgpt",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    },
+    "conflict": {
+     "table": "chatgpt_oauth_tokens",
+     "user": "11111111-5555-4111-8111-111111111111"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failures\":[{\"table\":\"chatgpt_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\"],\"error\":\"changed while rotating; run the rotation again\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failed\":[{\"table\":\"chatgpt_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "qa-chan",
+       "opened": {
+        "keyUsed": "none",
+        "plain": ""
+       },
+       "raw": "qa-changed-meanwhile"
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "drive-files",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [
+     {
+      "name": "a.sealed",
+      "text": "Tlf7jurzOKi7C/kKLKONxE/WEeTxd4gCTTcmKyznaXrwZMgf+eLN+iHRHbOyFw=="
+     },
+     {
+      "name": "b.sealed",
+      "text": "dienj4XG0uC3VUAeIg+kk9ClGC1GUkx/B0npT6E8n6BayD40u8xSYPgcObnVkQ=="
+     },
+     {
+      "name": "c.sealed",
+      "text": ""
+     },
+     {
+      "name": "d.sealed",
+      "text": " \n\t"
+     },
+     {
+      "name": "e.sealed",
+      "text": "not sealed"
+     },
+     {
+      "name": "f.sealed",
+      "text": "p1EXtKxU2mlOAjnZwjondYE6O53P9BRcGRTpwNgnUPXbEXsy"
+     },
+     {
+      "name": "g.txt",
+      "text": "rJYq+0r9F47eBADoUh9zIGT32ZMW4XqIsdgZ8g4x+56iJtT+106x3txTJaMExw=="
+     },
+     {
+      "name": "B.sealed",
+      "text": "j1jH6pSfQCSMoLzxVVRQ8hQFPb+Fg3bVz4kZIrllQq8zlU73NIVXLUkH8MiX2Q=="
+     }
+    ],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 2,
+       "rotated": 0,
+       "empty": 2,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":2,\"rotated\":0,\"upgraded\":0,\"empty\":2,\"failed\":3},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":4,\"rotated\":5,\"upgraded\":0,\"empty\":2,\"failed\":3},\"failures\":[{\"table\":\"google_drive_users\",\"ref\":\"b.sealed\",\"error\":\"not sealed under the current key; the Rust front has not re-sealed it\"},{\"table\":\"google_drive_users\",\"ref\":\"e.sealed\",\"error\":\"not sealed under the current key; the Rust front has not re-sealed it\"},{\"table\":\"google_drive_users\",\"ref\":\"f.sealed\",\"error\":\"not sealed under the current key; the Rust front has not re-sealed it\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":4,\"rotated\":5,\"upgraded\":0,\"empty\":2,\"failed\":3},\"failed\":[{\"table\":\"google_drive_users\",\"ref\":\"b.sealed\"},{\"table\":\"google_drive_users\",\"ref\":\"e.sealed\"},{\"table\":\"google_drive_users\",\"ref\":\"f.sealed\"}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "drive-front-rotated-more-than-current",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [
+     {
+      "name": "a.sealed",
+      "text": "9fBgM+NFcKYa63tYPMvi5ufK33hAjI/4Jq5Z2Dhz"
+     }
+    ],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 5,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":6,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":6,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "drive-front-failed",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [
+     {
+      "name": "b.sealed",
+      "text": "pqxzSpPjQx/Me+NZAelOxnOmZRFkETSlMHNpDTQH"
+     }
+    ],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": false,
+      "status": 503
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failures\":[{\"table\":\"google_drive_users\",\"ref\":\"b.sealed\",\"error\":\"not sealed under the current key; the Rust front has not re-sealed it\"},{\"table\":\"google_drive_users\",\"ref\":null,\"error\":\"the Rust front could not re-seal the Google Drive token files (503)\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failed\":[{\"table\":\"google_drive_users\",\"ref\":\"b.sealed\"},{\"table\":\"google_drive_users\",\"ref\":null}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "drive-front-failed-nothing-failed",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [
+     {
+      "name": "a.sealed",
+      "text": "Okjdh4o6YTaX0zydfR5x6m774nOROI4ARlnLgDMg"
+     }
+    ],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": false,
+      "status": 503
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":3,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":3,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "drive-front-unreachable",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [
+     {
+      "name": "b.sealed",
+      "text": "hkOzvNmJ/8H4VMoSrfmUyhFiDKU1zhgRhV10SYLJ"
+     }
+    ],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": "throws"
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failures\":[{\"table\":\"google_drive_users\",\"ref\":\"b.sealed\",\"error\":\"not sealed under the current key; the Rust front has not re-sealed it\"},{\"table\":\"google_drive_users\",\"ref\":null,\"error\":\"the Rust front could not re-seal the Google Drive token files (unreachable)\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":1},\"failed\":[{\"table\":\"google_drive_users\",\"ref\":\"b.sealed\"},{\"table\":\"google_drive_users\",\"ref\":null}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "drive-no-folder",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": null,
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failures\":[],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":2,\"rotated\":5,\"upgraded\":0,\"empty\":0,\"failed\":0},\"failed\":[]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "provider-and-mcp-failures",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 1
+       }
+      },
+      "failures": [
+       {
+        "table": "shared_providers",
+        "ref": 0,
+        "error": "credential could not be opened"
+       }
+      ]
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 1
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": [
+       {
+        "table": "mcp_oauth_tokens",
+        "ref": [
+         "11111111-5555-4111-8111-111111111111",
+         "qa-server"
+        ],
+        "error": "credential could not be opened"
+       }
+      ]
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":1,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":1},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":1,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":2},\"failures\":[{\"table\":\"shared_providers\",\"ref\":0,\"error\":\"credential could not be opened\"},{\"table\":\"mcp_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\",\"qa-server\"],\"error\":\"credential could not be opened\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":1,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":2},\"failed\":[{\"table\":\"shared_providers\",\"ref\":0},{\"table\":\"mcp_oauth_tokens\",\"ref\":[\"11111111-5555-4111-8111-111111111111\",\"qa-server\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "qa-pass-2"
+       }
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "providers-throw",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": "throws",
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 500,
+    "reply": "{\"error\":\"the Rust front answered the re-seal with something unexpected\"}",
+    "audits": [],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": true
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "mcp-throws",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:nj8VYyTULw6ktvT8TMbl1hIl9bNZDyzx94Et1SGvKlfdYPLNyg"
+     },
+     {
+      "user": "22222222-5555-4222-8222-222222222222",
+      "value": "enc:v2:dHTB5-2SmvWA_mbkc4etKz-qet3wBn7FtfM10_rSk1QbdJzYhg"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": "throws",
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 500,
+    "reply": "{\"error\":\"the Rust front answered the re-seal with something unexpected\"}",
+    "audits": [],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      },
+      {
+       "user": "22222222-5555-4222-8222-222222222222",
+       "same": true
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": true
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  },
+  {
+   "name": "many-failures",
+   "input": {
+    "previous": "file",
+    "storage": [
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000000",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000001",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000002",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000003",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000004",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000005",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000006",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000007",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000008",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000009",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000010",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000011",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000012",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000013",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000014",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000015",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000016",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000017",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000018",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000019",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000020",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000021",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000022",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000023",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000024",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000025",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000026",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000027",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000028",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000029",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000030",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000031",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000032",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000033",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000034",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000035",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000036",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000037",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000038",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000039",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000040",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000041",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000042",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000043",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000044",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000045",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000046",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000047",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000048",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000049",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000050",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000051",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000052",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000053",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000054",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000055",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000056",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000057",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000058",
+      "value": "enc:v2:!!!!"
+     },
+     {
+      "user": "cccccccc-6666-4ccc-8ccc-000000000059",
+      "value": "enc:v2:!!!!"
+     }
+    ],
+    "chatgpt": [
+     {
+      "user": "11111111-5555-4111-8111-111111111111",
+      "value": "enc:v2:87qeQI4G_PwjQOCGbjMVlD9e2CHVEMPmoHUCA87q_LkCYmL7erFd-foUvf_vFj56pn5o--seKNc-YcF1cQ0"
+     }
+    ],
+    "drive": [],
+    "front": {
+     "providers": {
+      "tables": {
+       "shared_providers": {
+        "current": 1,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "user_providers:11111111-5555-4111-8111-111111111111": {
+        "current": 0,
+        "rotated": 2,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "mcp": {
+      "tables": {
+       "mcp_oauth_tokens": {
+        "current": 0,
+        "rotated": 1,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "mcp_oauth_clients": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_user_keys": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       },
+       "directory_mcp_servers": {
+        "current": 0,
+        "rotated": 0,
+        "upgraded": 0,
+        "empty": 0,
+        "failed": 0
+       }
+      },
+      "failures": []
+     },
+     "gdrive": {
+      "ok": true,
+      "counts": {
+       "current": 0,
+       "rotated": 1,
+       "empty": 0,
+       "failed": 0
+      }
+     }
+    }
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"tables\":{\"storage_connections\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":60},\"chatgpt_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"google_drive_users\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"shared_providers\":{\"current\":1,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"user_providers:11111111-5555-4111-8111-111111111111\":{\"current\":0,\"rotated\":2,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_tokens\":{\"current\":0,\"rotated\":1,\"upgraded\":0,\"empty\":0,\"failed\":0},\"mcp_oauth_clients\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_user_keys\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0},\"directory_mcp_servers\":{\"current\":0,\"rotated\":0,\"upgraded\":0,\"empty\":0,\"failed\":0}},\"totals\":{\"current\":1,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":60},\"failures\":[{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000000\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000001\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000002\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000003\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000004\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000005\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000006\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000007\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000008\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000009\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000010\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000011\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000012\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000013\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000014\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000015\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000016\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000017\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000018\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000019\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000020\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000021\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000022\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000023\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000024\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000025\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000026\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000027\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000028\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000029\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000030\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000031\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000032\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000033\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000034\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000035\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000036\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000037\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000038\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000039\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000040\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000041\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000042\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000043\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000044\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000045\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000046\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000047\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000048\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000049\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000050\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000051\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000052\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000053\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000054\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000055\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000056\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000057\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000058\"],\"error\":\"credential could not be opened\"},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000059\"],\"error\":\"credential could not be opened\"}],\"previousKey\":true}",
+    "audits": [
+     {
+      "action": "secrets.rotate",
+      "actor": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "target": "aaaaaaaa-5555-4aaa-8aaa-aaaaaaaaaaaa",
+      "detail": "{\"totals\":{\"current\":1,\"rotated\":4,\"upgraded\":0,\"empty\":0,\"failed\":60},\"failed\":[{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000000\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000001\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000002\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000003\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000004\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000005\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000006\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000007\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000008\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000009\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000010\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000011\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000012\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000013\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000014\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000015\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000016\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000017\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000018\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000019\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000020\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000021\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000022\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000023\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000024\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000025\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000026\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000027\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000028\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000029\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000030\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000031\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000032\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000033\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000034\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000035\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000036\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000037\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000038\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000039\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000040\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000041\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000042\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000043\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000044\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000045\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000046\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000047\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000048\"]},{\"table\":\"storage_connections\",\"ref\":[\"cccccccc-6666-4ccc-8ccc-000000000049\"]}]}"
+     }
+    ],
+    "after": {
+     "storage_connections": [
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000000",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000001",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000002",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000003",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000004",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000005",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000006",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000007",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000008",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000009",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000010",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000011",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000012",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000013",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000014",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000015",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000016",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000017",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000018",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000019",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000020",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000021",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000022",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000023",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000024",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000025",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000026",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000027",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000028",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000029",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000030",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000031",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000032",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000033",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000034",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000035",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000036",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000037",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000038",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000039",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000040",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000041",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000042",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000043",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000044",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000045",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000046",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000047",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000048",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000049",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000050",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000051",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000052",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000053",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000054",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000055",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000056",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000057",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000058",
+       "same": true
+      },
+      {
+       "user": "cccccccc-6666-4ccc-8ccc-000000000059",
+       "same": true
+      }
+     ],
+     "chatgpt_oauth_tokens": [
+      {
+       "user": "11111111-5555-4111-8111-111111111111",
+       "same": false,
+       "version": "enc:v2:",
+       "opened": {
+        "keyUsed": "current",
+        "plain": "{\"access\":\"qa-a\",\"refresh\":\"qa-r\"}"
+       }
+      }
+     ]
+    },
+    "unchangedDrive": true
+   }
+  }
+ ]
+}
