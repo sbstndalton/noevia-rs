@@ -3,7 +3,10 @@
 //! (docling-service), always. sbstndalton/noevia#1071 retired NOEVIA_DOCLING_IMPL and the Python
 //! HTTP server it could select: a leftover value in an older environment file only earns one
 //! warning, and nothing here starts `server.py`. A build without the `native-docling` capability
-//! refuses before it listens or starts a worker.
+//! refuses before it listens or starts a worker. A few exact first arguments run the image's helper
+//! commands instead (tools.rs: healthcheck, synthetic-pdfs, synthetic-pdf); no other start changes.
+
+mod tools;
 
 /// The retired selector, and the one line a leftover value earns.
 const RETIRED: &str = "NOEVIA_DOCLING_IMPL";
@@ -23,8 +26,20 @@ fn retired_warning(value: Option<std::ffi::OsString>) -> Option<&'static str> {
     }
 }
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let args: Vec<std::ffi::OsString> = std::env::args_os().skip(1).collect();
+    if let Some(code) = tools::dispatch(
+        &args,
+        std::env::var_os("DOCLING_PORT"),
+        &mut std::io::stderr(),
+    ) {
+        std::process::exit(code);
+    }
+    server()
+}
+
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+async fn server() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(warning) = retired_warning(std::env::var_os(RETIRED)) {
         eprintln!("{warning}");
     }
