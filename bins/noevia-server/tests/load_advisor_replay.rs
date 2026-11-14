@@ -122,7 +122,11 @@ fn response_bytes(r: &JValue) -> Vec<u8> {
             .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
             .collect()
     } else {
-        r.get("body").as_str().unwrap_or_default().as_bytes().to_vec()
+        r.get("body")
+            .as_str()
+            .unwrap_or_default()
+            .as_bytes()
+            .to_vec()
     };
     let status = r.get("status").as_num().unwrap() as u16;
     let mut head = vec![format!("HTTP/1.1 {status} QA")];
@@ -214,12 +218,12 @@ async fn serve(mut socket: TcpStream, state: &Mutex<State>, replies: &[JValue], 
         s.arrivals += 1;
         let busy = single && s.pending > 0;
         let reply = if busy {
-            json_reply(503, r#"{"error":"busy"}"#)
+            json_reply(503.0, r#"{"error":"busy"}"#)
         } else {
             replies
                 .get(index)
                 .cloned()
-                .unwrap_or_else(|| json_reply(500, r#"{"error":"unscripted"}"#))
+                .unwrap_or_else(|| json_reply(500.0, r#"{"error":"unscripted"}"#))
         };
         let header = |k: &str| {
             req.headers
@@ -283,9 +287,7 @@ async fn replay(sc: &JValue) -> (JValue, Vec<String>) {
             .map(|(k, v)| {
                 (
                     k.clone(),
-                    v.as_str()
-                        .unwrap()
-                        .replace(PORT, &stub.port.to_string()),
+                    v.as_str().unwrap().replace(PORT, &stub.port.to_string()),
                 )
             })
             .collect(),
@@ -307,7 +309,10 @@ async fn replay(sc: &JValue) -> (JValue, Vec<String>) {
             let a = tokio::spawn(async move { first.judge(&a_input).await });
             let deadline = Instant::now() + Duration::from_secs(5);
             while stub.requests() == 0 {
-                assert!(Instant::now() < deadline, "the first question never arrived");
+                assert!(
+                    Instant::now() < deadline,
+                    "the first question never arrived"
+                );
                 tokio::time::sleep(Duration::from_millis(5)).await;
             }
             let b = advisor.judge(&input(sc, 1)).await;

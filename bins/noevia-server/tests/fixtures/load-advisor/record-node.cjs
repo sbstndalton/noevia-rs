@@ -68,8 +68,8 @@ add('invalid-scores-array', LAYA, [json(200, { selected: 'oom', scores: [0.7, 0.
 add('invalid-scores-missing', LAYA, [json(200, { selected: 'oom' })], [ASK]);
 add('invalid-selected-number', LAYA, [json(200, { selected: 1, scores: scores(0.7, 0.1, 0.1, 0.05, 0.05) })], [ASK]);
 add('invalid-score-infinite', LAYA, [json(200, '{"selected":"oom","scores":{"oom":1e400,"load_failed":0.1,"recall_failed":0.1,"template":0.05,"unknown":0.05}}')], [ASK]);
-add('duplicate-keys-last-wins', LAYA, [json(200, '{"selected":"load_failed","scores":{"oom":0.1,"load_failed":0.1,"recall_failed":0.05,"template":0.05,"unknown":0.05,"oom":0.05,"load_failed":0.75},"selected":"oom"}')], [ASK]);
-add('duplicate-keys-valid', LAYA, [json(200, '{"selected":"oom","scores":{"oom":0.1,"load_failed":0.1,"recall_failed":0.05,"template":0.05,"unknown":0.05,"oom":0.7}}')], [ASK]);
+add('duplicate-keys-last-wins', LAYA, [json(200, '{"selected":"load_failed","scores":{"oom":0.1,"load_failed":0.1,"recall_failed":0.1,"template":0.05,"unknown":0.05,"oom":0.05,"load_failed":0.75},"selected":"oom"}')], [ASK]);
+add('duplicate-keys-valid', LAYA, [json(200, '{"selected":"oom","scores":{"oom":0.1,"load_failed":0.1,"recall_failed":0.1,"template":0.05,"unknown":0.05,"oom":0.7}}')], [ASK]);
 add('deeply-nested-extra-field', LAYA, [json(200, `{"selected":"oom","scores":${JSON.stringify(scores(0.7, 0.1, 0.1, 0.05, 0.05))},"x":${'['.repeat(300)}${']'.repeat(300)}}`)], [ASK]);
 add('not-json', LAYA, [json(200, 'not json')], [ASK]);
 add('json-null', LAYA, [json(200, 'null')], [ASK]);
@@ -116,7 +116,7 @@ add('reset-twice-error', LAYA, [{ reset: true }, { reset: true }, USED], [ASK]);
 add('connection-refused-error', LAYA, [], [ASK], { stub: { closed: true } });
 add('redirect-302-error', LAYA, [{ status: 302, headers: [['Location', `http://127.0.0.1:${PORT}/v1/decisions`]], body: '' }, USED], [ASK]);
 add('redirect-307-error', LAYA, [{ status: 307, headers: [['Location', '/v1/decisions']], body: '' }, USED], [ASK]);
-add('lane-held-after-timeout', LAYA, [{ ...USED, delayMs: 2600 }, USED], [ASK, ask('qa-engine stopped: asked after a timeout')], { calls: 'sequential', stub: { singleWorker: true } });
+add('lane-held-after-timeout', LAYA, [{ ...USED, delayMs: 2600 }, USED], [ASK, ask('qa-engine stopped: asked after a slow answer')], { calls: 'sequential', stub: { singleWorker: true } });
 add('lane-hold-cap-hang', LAYA, [{ hang: true }, USED], [ASK, ask('qa-engine stopped: asked behind a hang')], { calls: 'sequential', stub: { singleWorker: true } });
 add('sequential-questions', LAYA, [USED, laya('template', scores(0.05, 0.05, 0.05, 0.8, 0.05))], [ASK, ask('qa-engine stopped: another question')], { calls: 'sequential', stub: { singleWorker: true } });
 // The engine text as the question's state.

@@ -150,7 +150,9 @@ impl Endpoint {
         let key = if typesafe {
             get("COWORK_DECISION_API_KEY")
                 .map(|k| crate::decision_settings_routes::js_trim(&k).to_owned())
-                .filter(|k| (1..=256).contains(&k.len()) && k.bytes().all(|b| (0x21..=0x7e).contains(&b)))
+                .filter(|k| {
+                    (1..=256).contains(&k.len()) && k.bytes().all(|b| (0x21..=0x7e).contains(&b))
+                })
         } else {
             None
         };
@@ -207,7 +209,10 @@ impl Endpoint {
                         OPTIONS
                             .iter()
                             .map(|(id, l)| {
-                                JValue::obj([("id", JValue::from(*id)), ("label", JValue::from(*l))])
+                                JValue::obj([
+                                    ("id", JValue::from(*id)),
+                                    ("label", JValue::from(*l)),
+                                ])
                             })
                             .collect(),
                     ),
