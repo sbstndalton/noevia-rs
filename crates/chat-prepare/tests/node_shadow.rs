@@ -432,3 +432,62 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
         other => panic!("{other:?}"),
     }
 }
+
+/// A new project chat's id is core's (its random part cannot be made again), but only one of the
+/// shape chat.cjs makes during the turn is taken: another shows as a diff in `chat`.
+#[test]
+fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
+    let f = fixture();
+    let t = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("name").as_str() == Some("project_no_chat_id"))
+        .unwrap();
+    let input = t.get("input");
+    let project = items(input, "projects").first().unwrap();
+    let empty = JValue::Arr(Vec::new());
+    let check = |frame: &JValue| {
+        compare(&ShadowTurn {
+            body: input.get("body"),
+            frame,
+            instructions: None,
+            memory: None,
+            free_chats: Some(&empty),
+            project: Some(project),
+            time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
+            history_cap: 1000,
+            titles: true,
+            workspace: true,
+            settings: Some(Settings {
+                effort_default: &JValue::Undefined,
+                sampling_presets: &JValue::Undefined,
+            }),
+            catalogue: None,
+        })
+    };
+    assert_eq!(check(t.get("prepared")), Verdict::Match);
+    let started = t.get("prepared").get("startedAt").as_num().unwrap();
+    for bad in [
+        "qa-chat".to_string(),
+        format!("p-{}-ABC", started as i64),
+        format!("p-{}-qa", started as i64 - 1),
+        format!("p-{}-qa", started as i64 + 700_000),
+        format!("p-{}-toolong", started as i64),
+    ] {
+        let JValue::Obj(mut items) = t.get("prepared").clone() else {
+            panic!()
+        };
+        let JValue::Obj(mut chat) = t.get("prepared").get("chat").clone() else {
+            panic!()
+        };
+        for key in ["id", "contextId", "key"] {
+            wtf16::set(&mut chat, key, JValue::from(bad.as_str()));
+        }
+        wtf16::set(&mut items, "chat", JValue::Obj(chat));
+        match check(&JValue::Obj(items)) {
+            Verdict::Diff(d) => assert_eq!(d.field, "chat", "{bad}"),
+            other => panic!("{bad}: {other:?}"),
+        }
+    }
+}

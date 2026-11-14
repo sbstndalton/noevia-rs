@@ -583,8 +583,14 @@ mod tests {
             );
             let name = t.get("name").as_str().unwrap_or_default();
             // The recorded turns made to be skipped (what is not ported yet) say why; all others match.
-            if name.ends_with("_skipped") {
-                assert!(matches!(verdict, Verdict::Skip(_)), "{name}: {}", verdict.line());
+            let skipped = [
+                ("project_files_skipped", "files"),
+                ("project_shared_context_skipped", "shared-context"),
+                ("project_assets_skipped", "assets"),
+                ("free_chat_context_project_skipped", "context-project"),
+            ];
+            if let Some((_, reason)) = skipped.iter().find(|(n, _)| *n == name) {
+                assert_eq!(verdict, Verdict::Skip(reason), "{name}");
                 continue;
             }
             assert_eq!(verdict, Verdict::Match, "{name}");

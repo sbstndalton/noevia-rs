@@ -19,6 +19,10 @@
 //! turn that started within milliseconds of midnight in the zone); the zone is the caller's
 //! (`serverTimeZone()`: core's process zone, which the front reads the same way).
 //!
+//! Known source of a false `diff` (not detected yet): a file uploaded to a covered project that is
+//! still processing when the turn starts gets core's not-ready line (chat.cjs ~649), which is not
+//! built here (the source jobs are core's).
+//!
 //! Recorded in `tests/fixtures/node-shadow.v1.json`, written by `tests/record_shadow.cjs` (whole
 //! free-chat turns through `createChatHandler` with the hand-off asked for).
 
@@ -364,7 +368,15 @@ fn chat_and_turn(t: &ShadowTurn<'_>, project: Option<&JValue>) -> (JValue, JValu
     // A project turn without a chat id gets a new one (chat.cjs: `p-${Date.now()}-${Math.random()...}`):
     // core's, read from its frame (the random part cannot be made again here).
     let chat_id = match project {
-        Some(_) if !body.get("chatId").truthy() => t.frame.get("chat").get("id"),
+        Some(_) if !body.get("chatId").truthy() => {
+            let made = t.frame.get("chat").get("id");
+            if new_chat_id(made, t.frame.get("startedAt")) {
+                made
+            } else {
+                // Not one chat.cjs makes: compared as no id, so the frame's shows as a diff.
+                &null
+            }
+        }
         _ => or(body.get("chatId"), &null),
     };
     let project_id = project.map_or(&null, |p| p.get("id"));
@@ -451,6 +463,28 @@ fn chat_and_turn(t: &ShadowTurn<'_>, project: Option<&JValue>) -> (JValue, JValu
         ),
     ]);
     (chat, turn)
+}
+
+/// Whether `id` is a chat id chat.cjs makes for a new project chat during this turn:
+/// `p-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, the time no earlier than the
+/// turn's start and within ten minutes of it.
+fn new_chat_id(id: &JValue, started_at: &JValue) -> bool {
+    let (Some(id), Some(start)) = (id.as_str(), started_at.as_num()) else {
+        return false;
+    };
+    let Some((ms, suffix)) = id.strip_prefix("p-").and_then(|r| r.split_once('-')) else {
+        return false;
+    };
+    let in_turn = ms.len() <= 16
+        && ms.bytes().all(|b| b.is_ascii_digit())
+        && ms
+            .parse::<f64>()
+            .is_ok_and(|t| t >= start && t <= start + 600_000.0);
+    in_turn
+        && suffix.len() <= 6
+        && suffix
+            .bytes()
+            .all(|b| b.is_ascii_digit() || b.is_ascii_lowercase())
 }
 
 /// chat.cjs `createChatHandler`'s `streamIdleMs` default (index.cjs passes none).
