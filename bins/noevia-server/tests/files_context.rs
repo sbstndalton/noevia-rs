@@ -151,19 +151,21 @@ struct Rig {
     query: String,
 }
 
-/// The account (`disabled`: its `disabled_at` set), the Node-written index, the embedding
+/// The account (`None`: no `users` row; `Some(disabled)`: a row, `disabled_at` set or not), the Node-written index, the embedding
 /// configuration naming the stub, and an `App` with `NOEVIA_RUST_RETRIEVAL=mode`.
-async fn rig(mode: &str, disabled: bool) -> Rig {
+async fn rig(mode: &str, account: Option<bool>) -> Rig {
     let r = recorded();
     let dir = tempfile::tempdir().unwrap();
     let data = dir.path().to_path_buf();
     let db = Connection::open(server_store::db_path(&data)).unwrap();
     db.execute_batch(SCHEMA).unwrap();
-    db.execute(
+    if let Some(disabled) = account {
+        db.execute(
         "INSERT INTO users (id, username, username_norm, display_name, role, password_hash, webauthn_user_id, disabled_at, created_at, updated_at) VALUES (?1, 'qa-user', 'qa-user', 'QA user', 'member', 'qa-hash', 'qa-webauthn', ?2, 1, 1)",
         rusqlite::params![USER, disabled.then_some(1_i64)],
     )
     .unwrap();
+    }
     drop(db);
     rebuild(
         &data
@@ -264,7 +266,7 @@ fn answered(native: Native) -> (String, Value, Value) {
 
 #[tokio::test]
 async fn on_places_nodes_recorded_hits_as_excerpts() {
-    let r = rig("on", false).await;
+    let r = rig("on", Some(false)).await;
     let project = JValue::Str(PROJECT.into());
     let req = request(&project, large_files(&r.want), &r.query);
     let (block, placed, injected) = answered(answer(Arc::clone(&r.app), &req).await);
@@ -291,13 +293,13 @@ async fn on_places_nodes_recorded_hits_as_excerpts() {
 
 #[tokio::test]
 async fn shadow_answers_too_and_off_defers() {
-    let r = rig("shadow", false).await;
+    let r = rig("shadow", Some(false)).await;
     let project = JValue::Str(PROJECT.into());
     let req = request(&project, large_files(&r.want), &r.query);
     let (_, placed, _) = answered(answer(Arc::clone(&r.app), &req).await);
     assert_eq!(placed.as_array().unwrap().len(), r.want.len());
 
-    let off = rig("off", false).await;
+    let off = rig("off", Some(false)).await;
     let req = request(&project, large_files(&off.want), &off.query);
     assert_eq!(
         answer(Arc::clone(&off.app), &req).await,
@@ -307,9 +309,9 @@ async fn shadow_answers_too_and_off_defers() {
 }
 
 #[tokio::test]
-async fn a_tombstoned_project_or_a_disabled_account_gets_the_heads_without_an_embed() {
+async fn a_tombstoned_project_or_a_removed_account_gets_the_heads_without_an_embed() {
     let project = JValue::Str(PROJECT.into());
-    let r = rig("on", false).await;
+    let r = rig("on", Some(false)).await;
     let user_dir = r.dir.path().join("users").join(USER);
     server_projects::outbox::tombstone(&user_dir, PROJECT, None, 1).unwrap();
     let req = request(&project, large_files(&r.want), &r.query);
@@ -324,16 +326,41 @@ async fn a_tombstoned_project_or_a_disabled_account_gets_the_heads_without_an_em
         .iter()
         .all(|e| e["kind"] == "file"));
 
-    let d = rig("on", true).await;
-    let req = request(&project, large_files(&d.want), &d.query);
-    let (block, _, _) = answered(answer(Arc::clone(&d.app), &req).await);
-    assert_eq!(d.embeds.load(Ordering::SeqCst), 0);
+    // A removed account (no users row): no search.
+    let gone = rig("on", None).await;
+    let req = request(&project, large_files(&gone.want), &gone.query);
+    let (block, _, _) = answered(answer(Arc::clone(&gone.app), &req).await);
+    assert_eq!(gone.embeds.load(Ordering::SeqCst), 0);
     assert!(block.contains("qa filler line."));
 }
 
 #[tokio::test]
+async fn a_disabled_account_that_still_exists_is_searched_as_node_searches_it() {
+    // workspace.cjs isRemoved reads only whether the row exists.
+    let r = rig("on", Some(true)).await;
+    let project = JValue::Str(PROJECT.into());
+    let req = request(&project, large_files(&r.want), &r.query);
+    let (_, placed, _) = answered(answer(Arc::clone(&r.app), &req).await);
+    assert_eq!(r.embeds.load(Ordering::SeqCst), 1);
+    assert_eq!(placed.as_array().unwrap().len(), r.want.len());
+}
+
+#[tokio::test]
+async fn a_request_without_an_account_is_nodes_shared_index() {
+    let r = rig("on", Some(false)).await;
+    let project = JValue::Str(PROJECT.into());
+    let mut req = request(&project, large_files(&r.want), &r.query);
+    req.user = "";
+    assert_eq!(
+        answer(Arc::clone(&r.app), &req).await,
+        Native::Defer("shared index")
+    );
+    assert_eq!(r.embeds.load(Ordering::SeqCst), 0);
+}
+
+#[tokio::test]
 async fn small_files_only_never_embed() {
-    let r = rig("on", false).await;
+    let r = rig("on", Some(false)).await;
     let project = JValue::Str(PROJECT.into());
     let files = vec![Source::plain(JValue::obj([
         ("name", JValue::Str("qa-small.md".into())),

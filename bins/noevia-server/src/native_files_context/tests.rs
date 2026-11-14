@@ -378,14 +378,13 @@ fn the_answer_feeds_the_turns_sources_as_nodes_does() {
 }
 
 #[test]
-fn an_unknown_account_is_not_searchable() {
+fn without_a_readable_store_the_account_counts_as_present() {
+    // workspace.cjs isRemoved fails open: a store that cannot be read is not a removed account.
     let dir = tempfile::tempdir().unwrap();
-    // No auth store, no account: not searchable.
-    assert!(!searchable(
-        dir.path(),
-        "0123abcd-0000-4000-8000-0000000000c1",
-        "qa-proj"
-    ));
+    let user = "0123abcd-0000-4000-8000-0000000000c1";
+    assert!(account_present(dir.path(), user));
+    // No outbox: nothing tombstoned.
+    assert!(searchable(dir.path(), user, "qa-proj"));
 }
 
 #[test]

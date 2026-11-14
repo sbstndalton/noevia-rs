@@ -13,8 +13,8 @@
 //!    attachment's reason (`document_read::notice`; a throw there is the turn's throw);
 //! 3. when sqlite-vec registers and a file is over `DIRECT_INJECT_MAX`: `searchProject` for the
 //!    question, natively ([`native_retrieval`](crate::native_retrieval)), past the guards
-//!    `searchProjectNow` applies for an account (a removed or disabled account, or a project the
-//!    front tombstoned in the account's index outbox: no hits);
+//!    `searchProjectNow` applies for an account (a removed account, or a project the front
+//!    tombstoned in the account's index outbox: no hits);
 //! 4. `project_retrieval::context::files_context` (the composition, recorded from core by track
 //!    R4), and what it placed and injected as `onSources(placed, injected)` reports it, as JSON
 //!    with Node's key order (`{file, body, score, kind}` for an excerpt, `{file, body, kind}` for a
@@ -30,6 +30,7 @@
 //!   record holds (Node would coerce it with `String()`; not guessed here);
 //! - `source length`: a source whose saved `chars` puts it on the other side of
 //!   `DIRECT_INJECT_MAX` than its text does (Node sorts it by `chars`, the composition by the text);
+//! - `shared index`: the request has no account (Node searches the shared `RAG_DIR` itself);
 //! - whatever the native search defers for (a shared-engine target, an unreadable configuration or
 //!   reranker settings, `deadline`).
 //!
@@ -241,11 +242,26 @@ pub fn max_chars() -> usize {
     })
 }
 
+/// Core's `userActive` (`workspace.cjs` `isRemoved`): the account's `users` row exists, disabled
+/// or not; a store that cannot be read counts as present, as Node's check fails open.
+pub fn account_present(data_dir: &Path, user: &str) -> bool {
+    let Ok(store) = server_store::Store::open(data_dir) else {
+        return true;
+    };
+    store
+        .read(|r| {
+            r.row("SELECT id FROM users WHERE id=?1", [user], |row| {
+                row.get::<_, String>(0)
+            })
+        })
+        .map_or(true, |row| row.is_some())
+}
+
 /// Whether `searchProjectNow`'s guards leave the account's project searchable: the account is
-/// present and not disabled, and the account's index outbox holds no tombstone of the project
-/// (unreadable: not searchable, the named difference).
+/// present ([`account_present`]), and the account's index outbox holds no tombstone of the
+/// project (unreadable: not searchable, the named difference).
 pub fn searchable(data_dir: &Path, user: &str, project: &str) -> bool {
-    if !crate::project_file_read::account_active(data_dir, user) {
+    if !account_present(data_dir, user) {
         return false;
     }
     let Ok(dir) = server_projects::store::user_dir(data_dir, user) else {
@@ -263,6 +279,10 @@ pub async fn answer(app: Arc<crate::App>, request: &Request<'_>) -> Native {
     let Some(data_dir) = app.config.data_dir.clone() else {
         return Native::Defer("off");
     };
+    // Without an account Node searches the shared `RAG_DIR` index itself (`nativeSearch && userId`).
+    if request.user.is_empty() {
+        return Native::Defer("shared index");
+    }
     let rag_available = embedding_worker::sqlite_vec_loader::register().is_ok();
     let user = request.user.to_owned();
     let question = request.query.to_owned();
