@@ -529,7 +529,10 @@ const boxRecord = (b) => ({ id: b.id, label: b.label, source: b.source, inApp: b
     + `(${differences.length} named differences)`;
   if (at > 0) {
     const committed = fs.readFileSync(process.argv[at + 1], 'utf8');
-    if (committed !== text) { process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
+    if (committed !== text) {
+    // A host that cannot run Node takes the fresh recording from CI (chat-prepare.yml uploads RECORD_FRESH).
+    if (process.env.RECORD_FRESH) fs.writeFileSync(process.env.RECORD_FRESH, text);
+    process.stderr.write('the recording differs from the committed fixture: record it again\n'); process.exit(1); }
     process.stderr.write(`ok: ${counts} recorded as committed\n`);
   } else {
     process.stderr.write(`recorded: ${counts}\n`);
