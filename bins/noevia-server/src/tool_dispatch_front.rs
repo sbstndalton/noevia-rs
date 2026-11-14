@@ -78,7 +78,11 @@ mod tests {
             project_id: None,
             name: name.into(),
             args: args.into(),
-            allowed: vec!["qa_lookup".into(), PAGE_TOOL.into(), "get_current_time".into()],
+            allowed: vec![
+                "qa_lookup".into(),
+                PAGE_TOOL.into(),
+                "get_current_time".into(),
+            ],
             routes: vec![("qa_lookup".into(), "qa-server".into())],
             chat_key: Some("qa-chat".into()),
             exchange_key: "qa-exchange".into(),
@@ -94,7 +98,14 @@ mod tests {
     #[test]
     fn only_the_value_1_turns_it_on() {
         assert!(switch_on(Some("1")));
-        for v in [None, Some(""), Some("0"), Some("true"), Some("on"), Some(" 1")] {
+        for v in [
+            None,
+            Some(""),
+            Some("0"),
+            Some("true"),
+            Some("on"),
+            Some(" 1"),
+        ] {
             assert!(!switch_on(v), "{v:?}");
         }
     }

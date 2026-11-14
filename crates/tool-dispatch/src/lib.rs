@@ -188,7 +188,10 @@ pub(crate) fn checked(
 /// The route for `name` in `routes`, as `routes.get(name)` then `typeof route === 'string' && route`:
 /// `None` = the map does not hold the name, `Some(None)` = it holds an empty server id (no route, but the
 /// name still counts as held for the coworker check), `Some(Some(id))` = routed.
-pub(crate) fn route_of<'a>(routes: Option<&'a [(String, String)]>, name: &str) -> Option<Option<&'a str>> {
+pub(crate) fn route_of<'a>(
+    routes: Option<&'a [(String, String)]>,
+    name: &str,
+) -> Option<Option<&'a str>> {
     let (_, server) = routes?.iter().rev().find(|(n, _)| n == name)?;
     Some(if server.is_empty() {
         None

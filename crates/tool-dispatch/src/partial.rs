@@ -149,7 +149,10 @@ mod tests {
         let k = Knowledge::offer_only(&allowed, &routes, "page");
         assert!(matches!(
             decide("page", "", &k),
-            Decision::Route(Route::Mcp { server: Some(_), .. })
+            Decision::Route(Route::Mcp {
+                server: Some(_),
+                ..
+            })
         ));
     }
 

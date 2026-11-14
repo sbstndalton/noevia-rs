@@ -59,8 +59,8 @@ fn a_decided_route_is_always_cores_whatever_the_host_does_not_know() {
         let kiwix = strs(c.get("kiwix")).unwrap_or_default();
         let drive = strs(c.get("drive")).unwrap_or_default();
         let mcp: HashSet<String> = strs(c.get("mcp")).unwrap_or_default().into_iter().collect();
-        let applies =
-            c.get("specialist").as_bool() == Some(true) && c.get("project").as_str() == Some("coworker");
+        let applies = c.get("specialist").as_bool() == Some(true)
+            && c.get("project").as_str() == Some("coworker");
         let offer = Offer {
             allowed: allowed.as_ref(),
             routes: routes.as_deref(),
@@ -88,7 +88,9 @@ fn a_decided_route_is_always_cores_whatever_the_host_does_not_know() {
                         offer_only_decided += 1;
                     }
                 }
-                Decision::Core => assert_ne!(hidden, 0, "all known, left to core: {name:?} {raw:?}"),
+                Decision::Core => {
+                    assert_ne!(hidden, 0, "all known, left to core: {name:?} {raw:?}")
+                }
             }
         }
         if allowed.is_some() && routes.is_some() {
@@ -96,7 +98,10 @@ fn a_decided_route_is_always_cores_whatever_the_host_does_not_know() {
         }
     }
     // The offer alone settles a real share (refusals and routed calls): the wiring has work to do.
-    assert!(offer_only_decided > 500, "offer only decided {offer_only_decided}");
+    assert!(
+        offer_only_decided > 500,
+        "offer only decided {offer_only_decided}"
+    );
     assert!(decided > cases.len() * 4, "decided {decided}");
     assert!(with_offer > 100, "cases with a full offer {with_offer}");
 }
