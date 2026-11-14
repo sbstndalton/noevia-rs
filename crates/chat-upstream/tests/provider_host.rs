@@ -1022,3 +1022,50 @@ fn a_provider_rows_stream_has_no_local_idle_limit() {
         "{seen:?}"
     );
 }
+
+/// The frame's `runtimeLimit` (CONTINUE 2 of council p3): a provider-row turn's context is measured against
+/// chat-context.cjs `hostedLimit` as [`chat_upstream::limit::hosted_limit`] computes it from the row, not the
+/// local 8192 fallback; without the field the fallback stays.
+#[test]
+fn a_provider_rows_turn_uses_the_hosted_limit() {
+    let r = row("https://qa-provider.example/v1/", false);
+    let t = resolved(&r);
+    let context = |f: &JValue| {
+        let inner = Fake::new(vec![stream(reply_stream(), Tail::End)]);
+        let rows = ScriptRows::steady(&r);
+        let host = ProviderHost::new(&inner, &rows, t.clone(), bound(&r, &t), DEFAULT_ID).unwrap();
+        assert_eq!(run_on(&host, f), Ended::Done);
+        let events = inner.events();
+        let c = events
+            .iter()
+            .map(|e| js_json::parse(e).unwrap())
+            .find(|v| v.get("type").as_str() == Some("context"))
+            .unwrap_or_else(|| panic!("no context event: {events:#?}"));
+        (
+            c.get("limit").as_num().unwrap(),
+            c.get("limitSource").as_str().unwrap().to_string(),
+        )
+    };
+    let plain = frame(&t.url, false, false);
+    assert_eq!(
+        context(&plain),
+        (8192.0, chat_upstream::limit::LOCAL_FALLBACK.1.to_string())
+    );
+    for stated in [js_json::JValue::Undefined, js_json::JValue::Num(65_536.0)] {
+        let mut stated_row = r.clone();
+        if let js_json::JValue::Obj(items) = &mut stated_row {
+            js_json::wtf16::set(items, "contextTokens", stated.clone());
+        }
+        let (tokens, source) = chat_upstream::limit::hosted_limit(&stated_row);
+        let mut f = plain.clone();
+        chat_turn::js::set(
+            &mut f,
+            "runtimeLimit",
+            chat_turn::js::obj([
+                ("tokens", chat_turn::js::n(tokens as f64)),
+                ("source", chat_turn::js::s(source)),
+            ]),
+        );
+        assert_eq!(context(&f), (tokens as f64, source.to_string()), "{stated:?}");
+    }
+}

@@ -101,6 +101,9 @@ impl<H: Host> Turn<'_, H> {
                 Ok(found) => found,
                 Err(text) => return Err(self.fail(&text)),
             }
+        } else if let Some(hosted) = &p.runtime_limit {
+            // A provider row's turn: chat-context.cjs `hostedLimit`, as core settled it.
+            hosted.clone()
         } else {
             (
                 8192,

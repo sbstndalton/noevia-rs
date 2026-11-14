@@ -70,6 +70,11 @@ pub struct Prepared {
     pub manager_enabled: bool,
     /// The local model manager grants the model's lease.
     pub model_lease: bool,
+    /// A provider row's runtime limit and its source text (chat-context.cjs `hostedLimit`: the row's stated
+    /// context, else the hosted default): `runtimeLimit: {tokens, source}`, present only on a turn without the
+    /// local model manager (chat.cjs passes `manager: null` for every row but the default). Absent: the local
+    /// fallback, as before. Core sends it only to a front naming the `providers` capability.
+    pub runtime_limit: Option<(u64, String)>,
     pub chat_id: Option<String>,
     pub context_id: Option<String>,
     pub chat_key: Option<String>,
@@ -171,6 +176,36 @@ fn skills(v: &JValue) -> Result<Option<Skills>, Unreadable> {
     }
 }
 
+/// The smallest and largest context a provider row may state (providers.cjs `CONTEXT_TOKENS_MIN`/`_MAX`).
+const RUNTIME_LIMIT_MIN: f64 = 2_048.0;
+const RUNTIME_LIMIT_MAX: f64 = 2_000_000.0;
+
+/// `runtimeLimit`: absent, or `{tokens, source}` with a whole number of tokens in [2048, 2e6] and a text
+/// source; anything else refuses the frame (never read as the fallback). It never comes with the manager on.
+fn runtime_limit(v: &JValue, manager_enabled: bool) -> Result<Option<(u64, String)>, Unreadable> {
+    let bad = || Unreadable("prepared.runtimeLimit is not a limit".into());
+    match v {
+        JValue::Undefined => Ok(None),
+        JValue::Obj(_) => {
+            if manager_enabled {
+                return Err(Unreadable(
+                    "prepared.runtimeLimit comes with managerEnabled".into(),
+                ));
+            }
+            let n = v.get("tokens").as_num().ok_or_else(bad)?;
+            if !(n.is_finite() && n.fract() == 0.0 && (RUNTIME_LIMIT_MIN..=RUNTIME_LIMIT_MAX).contains(&n)) {
+                return Err(bad());
+            }
+            let source = v.get("source").as_str().ok_or_else(bad)?;
+            // Whole and in [2048, 2e6]: exact as an integer.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            let tokens = n as u64;
+            Ok(Some((tokens, source.to_string())))
+        }
+        _ => Err(bad()),
+    }
+}
+
 fn flag(v: &JValue, key: &str) -> bool {
     v.get(key) == &JValue::Bool(true)
 }
@@ -249,6 +284,7 @@ impl Prepared {
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),
+            runtime_limit: runtime_limit(frame.get("runtimeLimit"), flag(frame, "managerEnabled"))?,
             chat_id: id_text(chat, "id")?,
             context_id: id_text(chat, "contextId")?,
             chat_key: id_text(chat, "key")?,
@@ -276,5 +312,56 @@ impl Prepared {
             },
             skills: skills(frame.get("skills"))?,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn frame(extra: &str, manager: bool) -> JValue {
+        js_json::parse(&format!(
+            r#"{{"type":"prepared","v":1,"startedAt":1,"model":"qa-model","effort":"default",
+"provider":{{"id":"qa-provider","label":"QA","localEngine":false,"capabilities":null}},
+"upstreamUrl":"https://qa.example/v1/chat/completions","limitScope":"qa","messages":[],"tools":[],"routes":[],
+"writes":[],"public":[],"automaticOnlyWrites":[],"managerEnabled":{manager},"modelLease":false,
+"chat":{{"id":"qa-chat","grantScope":"chat","grantHolder":null,"recentWrites":[],
+"title":{{"chatId":"qa-chat","firstMessage":"QA","enabled":false}}}},
+"turn":{{"message":"QA","streamIdleMs":0}}{extra}}}"#
+        ))
+        .unwrap()
+    }
+
+    #[test]
+    fn the_runtime_limit_is_a_hosted_limit_or_absent() {
+        assert_eq!(Prepared::read(&frame("", false)).unwrap().runtime_limit, None);
+        for (tokens, source) in [(2048, "Provider setting"), (32_768, "Default for hosted providers"), (2_000_000, "x")]
+        {
+            let f = frame(
+                &format!(r#","runtimeLimit":{{"tokens":{tokens},"source":"{source}"}}"#),
+                false,
+            );
+            assert_eq!(
+                Prepared::read(&f).unwrap().runtime_limit,
+                Some((tokens, source.to_string()))
+            );
+        }
+        for bad in [
+            r#"null"#,
+            r#"32768"#,
+            r#"{"tokens":2047,"source":"x"}"#,
+            r#"{"tokens":2000001,"source":"x"}"#,
+            r#"{"tokens":4096.5,"source":"x"}"#,
+            r#"{"tokens":"4096","source":"x"}"#,
+            r#"{"tokens":4096}"#,
+            r#"{"tokens":4096,"source":1}"#,
+        ] {
+            let f = frame(&format!(r#","runtimeLimit":{bad}"#), false);
+            assert!(Prepared::read(&f).is_err(), "{bad}");
+        }
+        // The hosted limit is the no-manager branch only: with the manager on, the frame is refused.
+        let f = frame(r#","runtimeLimit":{"tokens":4096,"source":"x"}"#, true);
+        assert!(Prepared::read(&f).is_err());
+        assert_eq!(Prepared::read(&frame("", true)).unwrap().runtime_limit, None);
     }
 }
