@@ -63,6 +63,10 @@ pub fn unserve(app: &crate::server::App, uid: &str) {
 /// recovers and serves as before. True when the tenant's reads may be served without the
 /// child's stamp. The caller has checked the request's credentials (as Python's handlers do
 /// before `_tenant_state`).
+///
+/// Named difference (D27): the child's own state for the tenant still sweeps every document
+/// once on its first request of the tenant (Python's `dirty_on_recover`), under the lease it
+/// takes on this process's slot: a second re-index pass over unchanged text, nothing else.
 pub fn recover_for_reads(app: &crate::server::App, uid: &str) -> bool {
     let Some(embedder) = app.save_embedder.get().cloned() else {
         return false;
