@@ -12,6 +12,8 @@ pub struct SseDecoder {
     /// Undecoded tail bytes: an incomplete UTF-8 sequence at a chunk's end.
     pending: Vec<u8>,
     buffer: String,
+    /// The stream's first character has been decoded (a byte-order mark is dropped only there).
+    started: bool,
 }
 
 /// The end of the first blank line in `s`: (start, end) of the `\r?\n\r?\n` match.
@@ -57,8 +59,19 @@ impl SseDecoder {
     }
 
     /// `TextDecoder#decode(chunk, { stream: true })`: invalid bytes become U+FFFD, an incomplete
-    /// sequence at the end waits for the next chunk.
+    /// sequence at the end waits for the next chunk, and one byte-order mark at the very start of
+    /// the stream is dropped (`ignoreBOM` is false; noevia#2699).
     fn decode(&mut self, chunk: &[u8]) {
+        self.decode_utf8(chunk);
+        if !self.started && !self.buffer.is_empty() {
+            self.started = true;
+            if self.buffer.starts_with('\u{FEFF}') {
+                self.buffer.drain(..'\u{FEFF}'.len_utf8());
+            }
+        }
+    }
+
+    fn decode_utf8(&mut self, chunk: &[u8]) {
         self.pending.extend_from_slice(chunk);
         let bytes = std::mem::take(&mut self.pending);
         let mut rest: &[u8] = &bytes;

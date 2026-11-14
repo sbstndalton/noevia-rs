@@ -2,6 +2,7 @@
 // Records core's own transport (server/chatgpt-oauth.cjs on the core checkout in $CORE) over QA
 // inputs, for tests/node_replay.rs. Usage (on the N5 builder, never on MS02):
 //   CORE=/path/to/core-ref node crates/signin-transport/tests/record_transport.cjs [--check]
+//   Recorded against the noevia-core commit in tests/fixtures/core-ref (check out that commit as $CORE).
 // Product and vendor names in core's output are replaced by neutral words of the same length
 // (so core's 300/200/80-unit cuts fall at the same places); the replay configures those words.
 const fs = require('node:fs');
@@ -104,6 +105,11 @@ const streams = {
   crlf: ['data: {"type":"response.output_text.delta","delta":"a"}\r\n\r\ndata: {"type":"response.output_text.delta","delta":"b"}\n\r\n', 'data: {"type":"response.completed","response":{}}\n\n'],
   badUtf8: [Buffer.concat([Buffer.from('data: {"type":"response.output_text.delta","delta":"x'), Buffer.from([0xff, 0xc3]), Buffer.from('"}\n\n')]),
     Buffer.concat([Buffer.from('data: {"type":"response.completed","response":{}}\n\n'), Buffer.from([0xe2, 0x82])])],
+  // A leading byte-order mark (TextDecoder drops one, at the stream's start only).
+  bom: [Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 'bom' }))]), ev({ type: 'response.completed', response: {} })],
+  bomSplit: [Buffer.from([0xef]), Buffer.from([0xbb]), Buffer.concat([Buffer.from([0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 'split' }))]), ev({ type: 'response.completed', response: {} })],
+  bomTwice: [Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf, 0xef, 0xbb, 0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 'kept' }))]), ev({ type: 'response.completed', response: {} })],
+  bomLater: [ev({ type: 'response.output_text.delta', delta: 'a' }), Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from(ev({ type: 'response.output_text.delta', delta: 'b' }))]), ev({ type: 'response.completed', response: {} })],
 };
 
 async function partsOf(chunks) {
