@@ -65,7 +65,7 @@ pub fn route(router: Router, store: Store, app: Option<Arc<App>>) -> Router {
 }
 
 /// The account's own role, when the account is there and not disabled (core's `runAs`).
-fn account_role(app: &App, user: &str) -> Result<Option<Role>, ()> {
+pub(crate) fn account_role(app: &App, user: &str) -> Result<Option<Role>, ()> {
     let writer = app.writes.writer().map_err(|_| ())?;
     let role = writer
         .read(|r| {
@@ -81,6 +81,65 @@ fn account_role(app: &App, user: &str) -> Result<Option<Role>, ()> {
         Some("member") => Some(Role::Member),
         _ => None,
     })
+}
+
+/// `writeProjectTextFile` as the account `user` with its own `role` (blocking): the file, core's
+/// refusal, or `None` when the front cannot run it now (no extraction client).
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn write_as(
+    app: &Arc<App>,
+    data_dir: &std::path::Path,
+    switch: server_store::RustProjects,
+    user: &str,
+    role: Role,
+    project: &str,
+    name: &str,
+    text: &str,
+    edit: &Edit,
+) -> Option<Result<JValue, String>> {
+    let engine = app.extraction.clone()?;
+    let identity = Identity {
+        user: PublicUser {
+            id: user.to_owned(),
+            username: String::new(),
+            display_name: String::new(),
+            role,
+            disabled: false,
+            diary_enabled: false,
+            onboarded: true,
+        },
+        account_role: role,
+        // A placeholder: storage reads only the id and the role (see the header).
+        credential: Credential::Legacy,
+    };
+    let ctx = server_projects::Ctx {
+        data_dir,
+        user_id: user,
+        switch,
+        now_ms: crate::identity::now_ms(),
+    };
+    let limits = server_projects::extract::Limits::from_env();
+    let root = server_projects::lifecycle::project_root_folder();
+    Some(crate::source_job_routes::with_storage(
+        app,
+        &identity,
+        |storage| {
+            text_write::write_text(
+                &text_write::Env {
+                    ctx,
+                    storage,
+                    engine: engine.as_ref(),
+                    limits: &limits,
+                    project_root: &root,
+                    lock_wait: server_projects::project_documents::FOREGROUND_LOCK_WAIT,
+                },
+                project,
+                name,
+                text,
+                edit,
+            )
+        },
+    ))
 }
 
 async fn serve(
@@ -130,50 +189,20 @@ async fn serve(
             Ok(None) => return error(StatusCode::NOT_FOUND, "no such account"),
             Err(()) => return error(StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
         };
-        let Some(engine) = app.extraction.clone() else {
-            return error(StatusCode::SERVICE_UNAVAILABLE, "unavailable");
-        };
-        let identity = Identity {
-            user: PublicUser {
-                id: user.clone(),
-                username: String::new(),
-                display_name: String::new(),
-                role,
-                disabled: false,
-                diary_enabled: false,
-                onboarded: true,
-            },
-            account_role: role,
-            // A placeholder: storage reads only the id and the role (see the header).
-            credential: Credential::Legacy,
-        };
-        let ctx = server_projects::Ctx {
-            data_dir: &store.data_dir,
-            user_id: &user,
-            switch: store.switch,
-            now_ms: crate::identity::now_ms(),
-        };
-        let limits = server_projects::extract::Limits::from_env();
-        let root = server_projects::lifecycle::project_root_folder();
-        let written = crate::source_job_routes::with_storage(&app, &identity, |storage| {
-            text_write::write_text(
-                &text_write::Env {
-                    ctx,
-                    storage,
-                    engine: engine.as_ref(),
-                    limits: &limits,
-                    project_root: &root,
-                    lock_wait: server_projects::project_documents::FOREGROUND_LOCK_WAIT,
-                },
-                &project,
-                &name,
-                &text,
-                &edit,
-            )
-        });
-        match written {
-            Ok(file) => answer(StatusCode::OK, &JValue::obj([("file", file)])),
-            Err(message) => answer(
+        match write_as(
+            &app,
+            &store.data_dir,
+            store.switch,
+            &user,
+            role,
+            &project,
+            &name,
+            &text,
+            &edit,
+        ) {
+            None => error(StatusCode::SERVICE_UNAVAILABLE, "unavailable"),
+            Some(Ok(file)) => answer(StatusCode::OK, &JValue::obj([("file", file)])),
+            Some(Err(message)) => answer(
                 StatusCode::OK,
                 &JValue::obj([("error", JValue::Str(message))]),
             ),

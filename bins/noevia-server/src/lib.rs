@@ -48,6 +48,8 @@ pub mod health;
 pub mod health_routes;
 pub mod identity;
 pub mod idle_unload_read;
+#[cfg(feature = "rust-storage-reads")]
+pub mod inapp_writes;
 pub mod inference_machines;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]

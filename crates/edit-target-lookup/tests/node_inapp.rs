@@ -147,26 +147,7 @@ fn shapes_core_never_stores_go_to_core() {
         ),
         Prepared::Unsupported
     );
-    let project = wtf16::parse(r#"{"id":"p","files":[{"name":"a.txt","content":"x"}]}"#).unwrap();
-    for count in [r#""0x2""#, "[1]", r#"{"a":1}"#] {
-        let args = wtf16::parse(&format!(
-            r#"{{"name":"a.txt","find":"x","replace":"y","expectedCount":{count}}}"#
-        ))
-        .unwrap();
-        let pin = edit_target_lookup::target_digest("a.txt", None);
-        assert_eq!(
-            prepare(
-                "project_replace_text",
-                &args,
-                Some(&project),
-                None,
-                Some(&pin),
-                &inline
-            ),
-            Prepared::Unsupported,
-            "{count}"
-        );
-    }
+    let project = wtf16::parse(r#"{"id":"p","files":[]}"#).unwrap();
     assert_eq!(
         prepare(
             "diary_append",

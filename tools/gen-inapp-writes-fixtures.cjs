@@ -45,6 +45,10 @@ const alpha = {
     { name: 'astral.txt', content: 'QA \u{1f600} x \u{1f600}' },
     { name: 'orig.pdf', attachment: { state: 'stored', group: 'Documents' } },
     { name: 'x/dup.md', content: 'a' }, { name: 'y/dup.md', content: 'b' },
+    { name: 'lone-end.txt', content: 'QA \ud83d' },
+    { name: 'pairs.txt', content: 'QA \u{1f600} \ud83dx\ude00' },
+    { name: 'noid.txt', content: 'QA noid', attachment: { group: 'Text', state: 'ready' } },
+    { name: 'quo"te\\.txt', content: 'QA q' },
   ],
 };
 const bare = { id: 'qa-bare', files: [{ name: 'plain.txt', content: 'QA plain bare' }] };
@@ -111,6 +115,28 @@ add('replace-astral', 'project_replace_text', 'qa-alpha', { name: 'astral.txt', 
 add('replace-overlap', 'project_replace_text', 'qa-alpha', { name: 'notes.md', find: 'o', replace: 'oo', expectedCount: 4 }, { account: ACCOUNT });
 add('replace-no-pin', 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: 'plain', replace: 'x' }, { pin: 'none' });
 add('replace-adopt', 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: 'plain', replace: 'x' }, { account: ACCOUNT });
+add('append-lone-join', 'project_append_file', 'qa-alpha', { name: 'lone-end.txt', text: '\ude00x' });
+add('append-no-id', 'project_append_file', 'qa-alpha', { name: 'noid.txt', text: 'more' });
+add('append-quote-wrong-pin', 'project_append_file', 'qa-alpha', { name: 'quo"te\\.txt', text: 'x' }, { pin: 'wrong' });
+add('append-empty-account', 'project_append_file', 'qa-alpha', { name: 'plain.txt', text: 'x' }, { account: '' });
+add('replace-lone-in-pair', 'project_replace_text', 'qa-alpha', { name: 'pairs.txt', find: '\ud83d', replace: '!', expectedCount: 2 });
+add('replace-repair', 'project_replace_text', 'qa-alpha', { name: 'pairs.txt', find: 'x', replace: '' });
+add('replace-too-large', 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: 'plain', replace: 'y'.repeat(262140) });
+for (const [k, v] of [['1e0', '1e0'], ['empty', ''], ['minus-zero', '-0'], ['plus', '+1'], ['dot', '1.'], ['nbsp', ' \u00a0 2'], ['big', 1e21], ['hex', '0x2'], ['inf', 'Infinity'], ['list', [1]], ['list-two', [2]], ['obj', { a: 1 }], ['tostring', { toString: 1 }], ['under', '1_0'], ['neg-hex', '-0x1']]) {
+  add(`replace-count-${k}`, 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: 'plain', replace: 'x', expectedCount: v });
+}
+add('replace-find-number', 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: 7, replace: 'x' });
+add('replace-find-list', 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: ['pla', 'in'], replace: 'x' });
+add('replace-find-tostring', 'project_replace_text', 'qa-alpha', { name: 'plain.txt', find: { toString: 1 }, replace: 'x' });
+add('create-name-zero', 'project_create_file', 'qa-bare', { name: 0, text: 'x' });
+add('create-name-spaces', 'project_create_file', 'qa-bare', { name: '   ', text: 'x' });
+add('create-name-slash-end', 'project_create_file', 'qa-bare', { name: 'a/', text: 'x' });
+add('create-name-cut-pair', 'project_create_file', 'qa-bare', { name: `${'n'.repeat(199)}\u{1f600}`, text: 'x' });
+add('create-text-false', 'project_create_file', 'qa-bare', { name: 'f.md', text: false });
+add('create-text-list', 'project_create_file', 'qa-bare', { name: 'l.md', text: [1, [2, null]] });
+add('create-error-cut-pair', 'project_create_file', 'qa-bare', { name: 'e.md', text: 'x' }, { writeFails: `${'e'.repeat(299)}\u{1f600}tail` });
+add('create-error-empty', 'project_create_file', 'qa-bare', { name: 'e.md', text: 'x' }, { writeFails: '' });
+add('create-folder-number', 'project_create_file', 'qa-num', { name: 'n.md', text: 'x' });
 add('replace-folder-number', 'project_replace_text', 'qa-num', { name: 'a.txt', find: 'x', replace: 'y' }, { pin: 'wrong' });
 
 async function run(c) {
@@ -121,7 +147,7 @@ async function run(c) {
     storageAccount: () => c.account,
     writeTextFile: async (_project, name, text, options) => {
       writes.push({ name, text, options: options === undefined ? null : options });
-      if (c.writeFails) throw new Error(c.writeFails);
+      if (c.writeFails !== null) throw new Error(c.writeFails);
       return { name };
     },
     diary: async () => ({}), readProjectFile: async () => '', ragAvailable: () => false, search: async () => [],

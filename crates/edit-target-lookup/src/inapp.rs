@@ -8,8 +8,10 @@
 //! write to make (core's `writeTextFile(project, name, text, options)`) with the text to answer
 //! when it succeeds; [`finish`] shapes the write's outcome. The caller runs the write
 //! (server_projects::text_write) as the account the token names. [`Prepared::Unsupported`] is a
-//! shape core never stores or an argument this port does not coerce (`expectedCount` given as a
-//! non-numeric string, a list or an object): the caller lets core's server answer.
+//! shape core never stores (`files` that is not a list, a truthy non-string `projectFolder`,
+//! `source` or `reservedFolder`): the caller lets core's server answer. The `content` closure
+//! must read `String(file.content || '')` (a source's text); core reads `file.content` itself,
+//! which differs only for a non-string inline value core never stores.
 use crate::{plan_edit_file, target_digest, EditPlan};
 use js_json::{wtf16, JValue};
 
@@ -68,6 +70,8 @@ pub fn text_result(text: &str, is_error: bool) -> JValue {
 
 /// A thrown error as the server answers it: `ERROR: ${message.slice(0, 300)}`.
 pub fn error_result(message: &str) -> JValue {
+    // `String((err && err.message) || err)`: an empty message reads as the error's name.
+    let message = if message.is_empty() { "Error" } else { message };
     text_result(&format!("ERROR: {}", wtf16::slice(message, 300)), true)
 }
 
@@ -158,54 +162,126 @@ fn upload_path_for(project: &JValue, base: &str) -> Option<String> {
     }
 }
 
-/// `Number(v)` for what this port coerces: `None` for a value it leaves to core.
-fn js_number(v: &JValue) -> Option<f64> {
-    match v {
-        JValue::Num(n) => Some(*n),
-        JValue::Bool(b) => Some(if *b { 1.0 } else { 0.0 }),
-        JValue::Null => Some(0.0),
-        JValue::Str(s) => {
-            let t = from_units(prompt_framing::js::trim(&units(s)));
-            if t.is_empty() {
-                return Some(0.0);
-            }
-            let digits = t.strip_prefix(['+', '-']).unwrap_or(&t);
-            let plain = !digits.is_empty()
-                && digits
-                    .bytes()
-                    .all(|b| b.is_ascii_digit() || matches!(b, b'.' | b'e' | b'E' | b'+' | b'-'))
-                && digits
-                    .bytes()
-                    .next()
-                    .is_some_and(|b| b.is_ascii_digit() || b == b'.');
-            if plain {
-                t.parse::<f64>().ok()
-            } else {
-                None
-            }
-        }
-        _ => None,
+/// JS `StringToNumber` over a trimmed string: `NaN` for anything that is not a numeric literal.
+fn string_to_number(t: &str) -> f64 {
+    if t.is_empty() {
+        return 0.0;
     }
+    match t {
+        "Infinity" | "+Infinity" => return f64::INFINITY,
+        "-Infinity" => return f64::NEG_INFINITY,
+        _ => {}
+    }
+    let radix = |prefix: [&str; 2], base: u32| {
+        prefix.iter().find_map(|p| t.strip_prefix(p)).map(|digits| {
+            if digits.is_empty() || !digits.chars().all(|c| c.is_digit(base)) {
+                f64::NAN
+            } else {
+                digits.chars().fold(0.0, |n, c| {
+                    n * f64::from(base) + f64::from(c.to_digit(base).unwrap_or(0))
+                })
+            }
+        })
+    };
+    if let Some(n) = radix(["0x", "0X"], 16)
+        .or_else(|| radix(["0o", "0O"], 8))
+        .or_else(|| radix(["0b", "0B"], 2))
+    {
+        return n;
+    }
+    // StrDecimalLiteral: [+-] (digits [. digits?] | . digits) [(e|E) [+-] digits]
+    let b = t.as_bytes();
+    let mut i = usize::from(matches!(b.first(), Some(b'+' | b'-')));
+    let int = b
+        .get(i..)
+        .map_or(0, |r| r.iter().take_while(|c| c.is_ascii_digit()).count());
+    i += int;
+    let mut frac = 0;
+    if b.get(i) == Some(&b'.') {
+        i += 1;
+        frac = b
+            .get(i..)
+            .map_or(0, |r| r.iter().take_while(|c| c.is_ascii_digit()).count());
+        i += frac;
+    }
+    if int + frac == 0 {
+        return f64::NAN;
+    }
+    if matches!(b.get(i), Some(b'e' | b'E')) {
+        i += 1;
+        if matches!(b.get(i), Some(b'+' | b'-')) {
+            i += 1;
+        }
+        let exp = b
+            .get(i..)
+            .map_or(0, |r| r.iter().take_while(|c| c.is_ascii_digit()).count());
+        if exp == 0 {
+            return f64::NAN;
+        }
+        i += exp;
+    }
+    if i != b.len() {
+        return f64::NAN;
+    }
+    t.parse::<f64>().unwrap_or(f64::NAN)
+}
+
+/// `Number(v)`, or the TypeError's message (an object with its own `toString`).
+fn js_number(v: &JValue) -> Result<f64, String> {
+    Ok(match v {
+        JValue::Num(n) => *n,
+        JValue::Bool(b) => f64::from(u8::from(*b)),
+        JValue::Null => 0.0,
+        JValue::Undefined => f64::NAN,
+        JValue::Str(s) => string_to_number(&from_units(prompt_framing::js::trim(&units(s)))),
+        JValue::Arr(_) | JValue::Obj(_) => {
+            let s = js_string(v)?;
+            string_to_number(&from_units(prompt_framing::js::trim(&units(&s))))
+        }
+    })
 }
 
 /// `str.split(find).length - 1` and `parts.join(replace)` over code units (non-overlapping, from
-/// the left, as JS splits a string by a string).
+/// the left, as JS splits a string by a string), linear in the text (Knuth-Morris-Pratt).
 fn split_replace(content: &str, find: &str, replace: &str) -> (usize, String) {
     let (hay, needle, with) = (units(content), units(find), units(replace));
-    let mut out = Vec::with_capacity(hay.len());
-    let (mut i, mut found) = (0, 0);
-    while i < hay.len() {
-        if hay.get(i..i + needle.len()) == Some(needle.as_slice()) {
-            out.extend_from_slice(&with);
-            i += needle.len();
-            found += 1;
-        } else {
-            if let Some(&u) = hay.get(i) {
-                out.push(u);
-            }
-            i += 1;
+    if needle.is_empty() {
+        return (0, content.to_owned());
+    }
+    // The failure table: the longest proper prefix of needle[..=k] that is also its suffix.
+    let mut fail = vec![0usize; needle.len()];
+    let mut k = 0;
+    for q in 1..needle.len() {
+        while k > 0 && needle.get(q) != needle.get(k) {
+            k = fail.get(k - 1).copied().unwrap_or(0);
+        }
+        if needle.get(q) == needle.get(k) {
+            k += 1;
+        }
+        if let Some(slot) = fail.get_mut(q) {
+            *slot = k;
         }
     }
+    let mut out = Vec::with_capacity(hay.len());
+    let (mut matched, mut found, mut last) = (0usize, 0usize, 0usize);
+    for (i, u) in hay.iter().enumerate() {
+        while matched > 0 && needle.get(matched) != Some(u) {
+            matched = fail.get(matched - 1).copied().unwrap_or(0);
+        }
+        if needle.get(matched) == Some(u) {
+            matched += 1;
+        }
+        if matched == needle.len() {
+            let start = i + 1 - needle.len();
+            out.extend_from_slice(hay.get(last..start).unwrap_or_default());
+            out.extend_from_slice(&with);
+            last = i + 1;
+            found += 1;
+            // Non-overlapping: the next match starts after this one.
+            matched = 0;
+        }
+    }
+    out.extend_from_slice(hay.get(last..).unwrap_or_default());
     (found, from_units(&out))
 }
 
@@ -262,15 +338,20 @@ fn handle(
                 v if !v.truthy() => &[],
                 _ => return Ok(None),
             };
-            let Some(upload) = upload_path_for(project, &name) else {
-                return Ok(None);
-            };
+            // `files.some((f) => f.name === name || f.name === uploadPathFor(project, name))`: the
+            // upload path only for an entry whose name did not match.
             for f in files {
                 if matches!(f, JValue::Null) {
                     return Err("Cannot read properties of null (reading 'name')".into());
                 }
                 let n = f.get("name").as_str();
-                if n == Some(name.as_str()) || n == Some(upload.as_str()) {
+                if n == Some(name.as_str()) {
+                    return Err(format!("\"{name}\" already exists. Use project_append_file or project_replace_text."));
+                }
+                let Some(upload) = upload_path_for(project, &name) else {
+                    return Ok(None);
+                };
+                if n == Some(upload.as_str()) {
                     return Err(format!("\"{name}\" already exists. Use project_append_file or project_replace_text."));
                 }
             }
@@ -333,10 +414,7 @@ fn handle(
                 let (found, next) = split_replace(&current, &find, &replace);
                 let expected = match args.get("expectedCount") {
                     JValue::Undefined => 1.0,
-                    v => match js_number(v) {
-                        Some(n) => n,
-                        None => return Ok(None),
-                    },
+                    v => js_number(v)?,
                 };
                 if expected.fract() != 0.0 || !expected.is_finite() || expected < 1.0 {
                     return Err("expectedCount must be a positive whole number".into());

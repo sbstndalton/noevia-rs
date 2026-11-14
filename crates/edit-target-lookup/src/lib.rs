@@ -386,12 +386,12 @@ pub struct EditPlan {
     pub account: Option<String>,
 }
 
-/// `planEdit(project, raw, { storageAccount })`: the plan, or the error it throws (its message);
-/// [`Unsupported`] for a shape core never stores (ask core).
 /// A project or argument shape core never stores: the caller asks core.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct Unsupported;
 
+/// `planEdit(project, raw, { storageAccount })`: the plan, or the error it throws (its message);
+/// [`Unsupported`] for a shape core never stores (ask core).
 pub fn plan_edit_file(
     project: &JValue,
     raw: &JValue,
