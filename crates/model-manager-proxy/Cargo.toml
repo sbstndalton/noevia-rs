@@ -1,0 +1,17 @@
+[package]
+name = "model-manager-proxy"
+version = "0.1.0"
+description = "The decisions of noevia-core's /api/model-manager/* proxy (routes/models.cjs, track R11): the administrator and configuration checks, the raw path check, the benchmark, sweep, folder-scan delete and models.ini section guards, the preset-write hold, the autoconfig budget, the forwarded request and the mapping of its answer (benchmark evidence, the sweep's release or watch, the delete clean-up), as pure functions over a host trait, replayed on recorded Node output. Nothing calls it yet."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# URLSearchParams over the autoconfig query (the WHATWG application/x-www-form-urlencoded parser and serializer).
+# MIT OR Apache-2.0; already in Cargo.lock.
+form_urlencoded = "=1.2.2"
