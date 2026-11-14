@@ -169,6 +169,7 @@ fn guard_subcommands() {
         "code-egress",
         "calibration-cancel",
         "calibration-routes",
+        "research",
     ] {
         let out = bin(&["pairing", name, &empty_s]);
         assert_eq!(out.status.code(), Some(0), "{name}: {}", text(&out.stderr));
