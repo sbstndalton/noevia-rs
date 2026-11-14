@@ -33,7 +33,6 @@ const EDIT_TOOLS: [&str; 2] = ["project_append_file", "project_replace_text"];
 /// rust-chat-native.cjs `USER_CAP`, `BODY_CAP` (UTF-16 units).
 const USER_CAP: usize = 200;
 const BODY_CAP: usize = 16 * 1024 * 1024;
-const LOOKUP_FAILED: &str = "The file this would change could not be looked up";
 
 /// Whether the switch is on (`1`), read once.
 pub fn enabled() -> bool {
@@ -46,10 +45,27 @@ fn within(s: &str, cap: usize) -> bool {
     js_json::wtf16::len(s) <= cap
 }
 
-/// The answer, from what was read: `None` leaves the call to core's bridge.
+/// The bridge's body as the front sends it is over core's `readJson(req, BODY_CAP)` (bytes).
+fn body_over_cap(user: &str, project_id: Option<&str>, name: &str, args: &str) -> bool {
+    use js_json::JValue;
+    let body = JValue::obj([
+        ("user", JValue::Str(user.to_owned())),
+        (
+            "projectId",
+            project_id.map_or(JValue::Null, |p| JValue::Str(p.to_owned())),
+        ),
+        ("name", JValue::Str(name.to_owned())),
+        ("args", JValue::Str(args.to_owned())),
+    ]);
+    js_json::wtf16::stringify(&body).is_none_or(|t| t.len() > BODY_CAP)
+}
+
+/// The answer, from what was read: `None` leaves the call to core's bridge. `live`: the account has a
+/// `users` row that is not disabled (core's `asUser`; `false` answers 404).
 pub fn answer(
     data_dir: &Path,
     user: &str,
+    live: bool,
     project_id: Option<&str>,
     name: &str,
     args: &str,
@@ -61,15 +77,19 @@ pub fn answer(
         || !within(args, BODY_CAP)
         || project_id.is_some_and(|p| p.is_empty() || !within(p, 200))
         || !EDIT_TOOLS.contains(&name)
+        || body_over_cap(user, project_id, name, args)
     {
         return Some(EditTarget::Failed);
     }
-    // The account's folder is removed with the account (core: `folderGone`, a 404 here).
+    if !live {
+        return Some(EditTarget::Failed);
+    }
+    // A live account whose folder is not there yet: core makes it and answers; left to core.
     let Ok(dir) = server_projects::store::user_dir(data_dir, user) else {
         return Some(EditTarget::Failed);
     };
     if !dir.is_dir() {
-        return Some(EditTarget::Failed);
+        return None;
     }
     let default = std::env::var("DEFAULT_PROVIDER_ID")
         .ok()
@@ -78,18 +98,15 @@ pub fn answer(
     let view = match workspace_view::load(data_dir, user, &default) {
         Ok(v) => v,
         Err(Refused::InvalidUser) => return Some(EditTarget::Failed),
-        // core's load throws: the bridge logs and answers the lookup failure.
-        Err(Refused::Damaged | Refused::Unreadable) => {
-            return Some(EditTarget::Refused(LOOKUP_FAILED.into()))
-        }
-        Err(Refused::Unsupported) => return None,
+        // A projects.json the view refuses: core reads some of these (a number project, a value
+        // wtf16 cannot hold) and throws on others; left to core either way.
+        Err(Refused::Damaged | Refused::Unreadable | Refused::Unsupported) => return None,
     };
     let project = match project_id {
         None => None,
         Some(id) => match view.project(id) {
             Ok(p) => p.map(|p| p.project),
-            Err(Refused::Unsupported) => return None,
-            Err(_) => return Some(EditTarget::Refused(LOOKUP_FAILED.into())),
+            Err(_) => return None,
         },
     };
     let pid = project
@@ -121,13 +138,11 @@ pub fn answer(
     })
 }
 
-/// core `editStorageAccount(user)`: `Ok(None)` for no row or a local one, `Err` when the row
-/// cannot be read.
+/// project-edit-target.cjs `storageAccount(getStorage(user, true))` for a browsable kind
+/// (storage-client.cjs `isBrowsable`), else none; the region as auth.cjs normalises it.
 #[cfg(feature = "rust-storage-reads")]
-fn storage_account(app: &App, user: &str) -> Result<Option<String>, ()> {
-    let store = app.identity.store_blocking().map_err(|_| ())?;
-    let row = server_storage_reads::connection_row::account(&store, user).map_err(|_| ())?;
-    Ok(row.and_then(|r| {
+fn account_digest(row: Option<server_storage_reads::connection_row::Account>) -> Option<String> {
+    row.and_then(|r| {
         matches!(r.kind.as_str(), "webdav" | "nextcloud" | "s3").then(|| {
             server_projects::research_report::storage_account(
                 &r.kind,
@@ -137,7 +152,31 @@ fn storage_account(app: &App, user: &str) -> Result<Option<String>, ()> {
                 &r.username,
             )
         })
-    }))
+    })
+}
+
+/// core `editStorageAccount(user)`: `Ok(None)` for no row or a local one, `Err` when the row
+/// cannot be read.
+#[cfg(feature = "rust-storage-reads")]
+fn storage_account(app: &App, user: &str) -> Result<Option<String>, ()> {
+    let store = app.identity.store_blocking().map_err(|_| ())?;
+    let row = server_storage_reads::connection_row::account(&store, user).map_err(|_| ())?;
+    Ok(account_digest(row))
+}
+
+/// core `asUser`: a `users` row that is not disabled; `Err` when it cannot be read.
+fn live(app: &App, user: &str) -> Result<bool, ()> {
+    let writer = app.writes.writer().map_err(|_| ())?;
+    writer
+        .read(|r| {
+            r.row(
+                "SELECT 1 FROM users WHERE id=?1 AND (disabled_at IS NULL OR disabled_at=0)",
+                [user],
+                |row| row.get::<_, i64>(0),
+            )
+        })
+        .map(|row| row.is_some())
+        .map_err(|_| ())
 }
 
 #[cfg(not(feature = "rust-storage-reads"))]
@@ -162,10 +201,12 @@ pub async fn lookup(
         args.to_owned(),
     );
     tokio::task::spawn_blocking(move || {
+        let live = live(&app, &user).ok()?;
         let account = storage_account(&app, &user).ok()?;
         answer(
             &data_dir,
             &user,
+            live,
             project_id.as_deref(),
             &name,
             &args,
@@ -196,38 +237,58 @@ mod tests {
         format!("{{\"name\":\"{name}\"}}")
     }
 
+    fn ask(root: &tempfile::TempDir, project: Option<&str>, args: &str) -> Option<EditTarget> {
+        answer(
+            root.path(),
+            USER,
+            true,
+            project,
+            "project_append_file",
+            args,
+            None,
+        )
+    }
+
     #[test]
     fn the_bridge_checks_fail_the_lookup() {
         let root = workspace(r#"{"projects":[{"id":"qa-p","files":[{"name":"a.txt"}]}]}"#);
         let d = root.path();
         let a = args("a.txt");
-        for (user, project, name, args) in [
-            ("", Some("qa-p"), "project_append_file", a.as_str()),
-            (USER, Some(""), "project_append_file", a.as_str()),
-            (USER, Some("qa-p"), "project_create_file", a.as_str()),
-            (
-                "not-a-user",
-                Some("qa-p"),
-                "project_append_file",
-                a.as_str(),
-            ),
-            (
-                "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee",
-                Some("qa-p"),
-                "project_append_file",
-                a.as_str(),
-            ),
+        let other = "bbbbbbbb-bbbb-4ccc-8ddd-eeeeeeeeeeee";
+        for (user, live, project, name) in [
+            ("", true, Some("qa-p"), "project_append_file"),
+            (USER, true, Some(""), "project_append_file"),
+            (USER, true, Some("qa-p"), "project_create_file"),
+            ("not-a-user", true, Some("qa-p"), "project_append_file"),
+            // A removed or disabled account: core's asUser answers 404.
+            (USER, false, Some("qa-p"), "project_append_file"),
         ] {
             assert_eq!(
-                answer(d, user, project, name, args, None),
+                answer(d, user, live, project, name, &a, None),
                 Some(EditTarget::Failed),
-                "{user} {project:?} {name}"
+                "{user} {live} {project:?} {name}"
             );
         }
         let long = "p".repeat(201);
         assert_eq!(
-            answer(d, USER, Some(&long), "project_append_file", &a, None),
+            answer(d, USER, true, Some(&long), "project_append_file", &a, None),
             Some(EditTarget::Failed)
+        );
+        // A body over core's 16 MiB byte cap, within 16 Mi UTF-16 units.
+        let big = format!("{{\"name\":\"{}\"}}", "\u{4e2d}".repeat(6 * 1024 * 1024));
+        assert_eq!(ask(&root, Some("qa-p"), &big), Some(EditTarget::Failed));
+        // A live account whose folder core would make first: left to core.
+        assert_eq!(
+            answer(
+                d,
+                other,
+                true,
+                Some("qa-p"),
+                "project_append_file",
+                &a,
+                None
+            ),
+            None
         );
     }
 
@@ -236,10 +297,10 @@ mod tests {
         let root = workspace(
             r#"{"projects":[{"id":"qa-p","projectFolder":"noevia projects/QA","files":[{"name":"a.txt"},{"name":"b.md","document":{"state":"queued"},"textRef":"0000000000000000000000000000000000000000000000000000000000000000"}]}]}"#,
         );
-        let d = root.path();
         let found = answer(
-            d,
+            root.path(),
             USER,
+            true,
             Some("qa-p"),
             "project_replace_text",
             &args("a.txt"),
@@ -256,7 +317,7 @@ mod tests {
         );
         // A queued document whose text file is missing reads as blank: waiting.
         assert_eq!(
-            answer(d, USER, Some("qa-p"), "project_append_file", &args("b.md"), None),
+            ask(&root, Some("qa-p"), &args("b.md")),
             Some(EditTarget::Refused(
                 "\"b.md\" is waiting to be read (document reading is not available yet), so it cannot be edited yet. Nothing was changed.".into()
             ))
@@ -264,14 +325,7 @@ mod tests {
         // No project, or one that does not exist: not in a project.
         for project in [None, Some("qa-none")] {
             assert_eq!(
-                answer(
-                    d,
-                    USER,
-                    project,
-                    "project_append_file",
-                    &args("a.txt"),
-                    None
-                ),
+                ask(&root, project, &args("a.txt")),
                 Some(EditTarget::Refused(
                     "this chat is not in a project, so there are no project files to edit.".into()
                 ))
@@ -280,44 +334,70 @@ mod tests {
     }
 
     #[test]
-    fn a_load_core_throws_on_is_the_lookup_failure_and_odd_shapes_go_to_core() {
-        let root = workspace(r#"{"projects":[null]}"#);
-        assert_eq!(
-            answer(
-                root.path(),
-                USER,
-                Some("qa-p"),
-                "project_append_file",
-                &args("a.txt"),
-                None
-            ),
-            Some(EditTarget::Refused(LOOKUP_FAILED.into()))
-        );
-        let root = workspace(r#"{"projects":[{"id":"qa-p","files":"abc"}]}"#);
-        assert_eq!(
-            answer(
-                root.path(),
-                USER,
-                Some("qa-p"),
-                "project_append_file",
-                &args("a.txt"),
-                None
-            ),
-            None
-        );
-        let root = workspace(
+    fn what_the_view_refuses_or_core_reads_otherwise_goes_to_core() {
+        for projects in [
+            r#"{"projects":[null]}"#,
+            r#"{"projects":[5,{"id":"qa-p","files":[{"name":"a.txt"}]}]}"#,
+            r#"{"projects":[{"id":"qa-p","files":[{"name":"a.txt"}],"x":1e400}]}"#,
+            r#"{"projects":[{"id":"qa-p","files":"abc"}]}"#,
             r#"{"projects":[{"id":"qa-p","projectFolder":7,"files":[{"name":"a.txt"}]}]}"#,
-        );
-        assert_eq!(
-            answer(
-                root.path(),
-                USER,
-                Some("qa-p"),
-                "project_append_file",
-                &args("a.txt"),
-                None
+        ] {
+            let root = workspace(projects);
+            assert_eq!(ask(&root, Some("qa-p"), &args("a.txt")), None, "{projects}");
+        }
+        let root = workspace(r#"{"projects":[{"id":"qa-p","files":[{"name":"a.txt"}]}]}"#);
+        assert_eq!(ask(&root, Some("qa-p"), r#"{"name":1e400}"#), None);
+    }
+
+    /// Recorded from core: `storageAccount({ ...row, region: normalizeS3Region(row.region) })`.
+    #[cfg(feature = "rust-storage-reads")]
+    #[test]
+    fn the_storage_account_is_cores() {
+        use server_storage_reads::connection_row::Account;
+        let row = |kind: &str, base_url: &str, bucket: &str, region: &str, username: &str| {
+            Some(Account {
+                kind: kind.into(),
+                base_url: base_url.into(),
+                bucket: bucket.into(),
+                region: region.into(),
+                username: username.into(),
+            })
+        };
+        for (r, want) in [
+            (
+                row(
+                    "s3",
+                    "https://qa-s3.invalid//",
+                    "qa-bucket",
+                    " EU-West-1 ",
+                    "qa-user",
+                ),
+                "ba5a196e4be4625925dc8c688aa1fcaf71fe645df061b374d8532b65c3722453",
             ),
-            None
-        );
+            (
+                row(
+                    "webdav",
+                    "https://qa-dav.invalid/remote.php/dav/",
+                    "",
+                    "",
+                    "qa-dav",
+                ),
+                "1e400f7a9d9bc6e74336993c03e04b96b871d8601368fb1cd9a1a8641dad832c",
+            ),
+            (
+                row(
+                    "nextcloud",
+                    "https://qa-nc.invalid",
+                    "",
+                    "bad region!",
+                    "qa-nc",
+                ),
+                "a05c7c8a9df5e28f65981a4895f58ae376826d6e099c0a965fd04496222e0e95",
+            ),
+        ] {
+            assert_eq!(account_digest(r).as_deref(), Some(want));
+        }
+        assert_eq!(account_digest(row("local", "", "", "", "")), None);
+        assert_eq!(account_digest(None), None);
     }
 }
