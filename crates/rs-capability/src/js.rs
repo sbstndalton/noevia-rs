@@ -4,8 +4,17 @@
 /// JavaScript's `\s` (and the set `trim()` removes): ASCII tab..CR, space, and the Unicode space separators, line and
 /// paragraph separators and the byte-order mark. Unlike `char::is_whitespace` it has U+FEFF and lacks U+0085.
 pub(crate) fn is_space(c: char) -> bool {
-    matches!(c, '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'..='\u{200a}'
-        | '\u{2028}' | '\u{2029}' | '\u{202f}' | '\u{205f}' | '\u{3000}' | '\u{feff}')
+    matches!(
+        c,
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
+    )
 }
 
 /// Line terminators for JavaScript's `^`/`$` in multiline mode and the characters `.` refuses.
@@ -47,7 +56,11 @@ pub(crate) fn normalize(path: &str) -> String {
         if absolute {
             return "/".to_string();
         }
-        return if trailing { "./".to_string() } else { ".".to_string() };
+        return if trailing {
+            "./".to_string()
+        } else {
+            ".".to_string()
+        };
     }
     if trailing {
         out.push('/');
@@ -83,17 +96,24 @@ pub(crate) fn basename(path: &str) -> &str {
 /// JavaScript `\s`, its negation and `.` as regex classes, so the ported patterns keep their meaning on unusual
 /// characters: `\s`, `\S` and `%DOT%` in a pattern are rewritten to these.
 const WS: &str = r"[\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]";
-const NOT_WS: &str =
-    r"[^\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]";
+const NOT_WS: &str = r"[^\t\n\x0B\x0C\r \x{A0}\x{1680}\x{2000}-\x{200A}\x{2028}\x{2029}\x{202F}\x{205F}\x{3000}\x{FEFF}]";
 const DOT: &str = r"[^\n\r\x{2028}\x{2029}]";
 
 pub(crate) fn pattern(
     cell: &'static std::sync::OnceLock<Option<regex::Regex>>,
     source: &str,
 ) -> Result<&'static regex::Regex, String> {
-    cell.get_or_init(|| regex::Regex::new(&source.replace("\\S", NOT_WS).replace("\\s", WS).replace("%DOT%", DOT)).ok())
-        .as_ref()
-        .ok_or_else(|| "internal pattern".to_string())
+    cell.get_or_init(|| {
+        regex::Regex::new(
+            &source
+                .replace("\\S", NOT_WS)
+                .replace("\\s", WS)
+                .replace("%DOT%", DOT),
+        )
+        .ok()
+    })
+    .as_ref()
+    .ok_or_else(|| "internal pattern".to_string())
 }
 
 #[cfg(test)]

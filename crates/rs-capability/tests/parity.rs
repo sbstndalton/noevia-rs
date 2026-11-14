@@ -44,7 +44,8 @@ fn recorded_cases_and_branch_matrix() {
     let mut all = cases();
     let recorded = all.len();
     assert_eq!(recorded, 448, "fixture size changed: re-copy it from noevia and update this count");
-    let matrix: Vec<(String, String, String, String, Option<BTreeSet<String>>)> = all
+    type Row = (String, String, String, String, Option<BTreeSet<String>>);
+    let matrix: Vec<Row> = all
         .iter()
         .filter(|c| c.origin == "new" && c.name != "new:static-lifetime" && c.name != "new:char-lifetime")
         .map(|c| (c.name.clone(), c.source.clone(), c.declaration.clone(), c.expected.clone(), c.features.clone()))

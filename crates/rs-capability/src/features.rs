@@ -27,7 +27,7 @@ fn feature_headers(cargo: &str) -> Vec<usize> {
             Some(cargo.len())
         } else {
             rest.get(..run)
-                .and_then(|ws| ws.char_indices().filter(|(_, c)| js::is_line_terminator(*c)).map(|(i, _)| i).last())
+                .and_then(|ws| ws.char_indices().filter(|(_, c)| js::is_line_terminator(*c)).map(|(i, _)| i).next_back())
                 .map(|i| after + i)
         };
         ends.extend(end);
@@ -129,7 +129,7 @@ mod tests {
     fn header_and_table_follow_multiline_regex_semantics() {
         assert_eq!(feature_headers("[features]  \n\n\na = []").len(), 1);
         assert!(feature_headers("[features] x\n").is_empty());
-        assert_eq!(feature_headers("x\n[features]").first(), Some(&13));
+        assert_eq!(feature_headers("x\n[features]").first(), Some(&12));
         let graph = feature_graph("[features]\n# c\na = [\"b\", ] # tail\nb = []\n[deps]\nz = 1\n");
         assert_eq!(graph.map(|g| g.len()), Some(2));
         assert!(feature_graph("[features]\na = [broken]").is_none());

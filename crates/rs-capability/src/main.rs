@@ -9,11 +9,16 @@ use std::io::Write;
 use std::path::Path;
 
 fn read(path: &str) -> Option<String> {
-    std::fs::read(path).ok().map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
+    std::fs::read(path)
+        .ok()
+        .map(|bytes| String::from_utf8_lossy(&bytes).into_owned())
 }
 
 fn dirname(file: &str) -> String {
-    match Path::new(file).parent().map(|p| p.to_string_lossy().into_owned()) {
+    match Path::new(file)
+        .parent()
+        .map(|p| p.to_string_lossy().into_owned())
+    {
         Some(p) if !p.is_empty() => p,
         _ if file.starts_with('/') => "/".to_string(),
         _ => ".".to_string(),
@@ -22,12 +27,19 @@ fn dirname(file: &str) -> String {
 
 fn verdict(args: &[String]) -> String {
     let arg = |i: usize| args.get(i).map(String::as_str).filter(|s| !s.is_empty());
-    let Some(source) = arg(0).and_then(read) else { return "invalid(read)".to_string() };
+    let Some(source) = arg(0).and_then(read) else {
+        return "invalid(read)".to_string();
+    };
     let file = arg(0).unwrap_or_default();
     let build_path = arg(3).map(str::to_string).or_else(|| {
-        std::env::var("RS_CAPABILITY_TOP").ok().filter(|t| !t.is_empty()).map(|t| format!("{t}/build/web.Dockerfile"))
+        std::env::var("RS_CAPABILITY_TOP")
+            .ok()
+            .filter(|t| !t.is_empty())
+            .map(|t| format!("{t}/build/web.Dockerfile"))
     });
-    let cargo_path = arg(4).map(str::to_string).unwrap_or_else(|| format!("{}/../Cargo.toml", dirname(file)));
+    let cargo_path = arg(4)
+        .map(str::to_string)
+        .unwrap_or_else(|| format!("{}/../Cargo.toml", dirname(file)));
     let features = match (build_path.as_deref().and_then(read), read(&cargo_path)) {
         (Some(build), Some(cargo)) => rs_capability::derive_features(&build, &cargo),
         _ => None,
@@ -38,7 +50,10 @@ fn verdict(args: &[String]) -> String {
 }
 
 fn main() {
-    let args: Vec<String> = std::env::args_os().skip(1).map(|a| a.to_string_lossy().into_owned()).collect();
+    let args: Vec<String> = std::env::args_os()
+        .skip(1)
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
     let line = verdict(&args);
     let _ = writeln!(std::io::stdout(), "{line}");
 }

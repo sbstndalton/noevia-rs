@@ -108,14 +108,7 @@ impl Lexer {
     }
 
     fn starts(&self, i: usize, text: &str) -> bool {
-        let mut k = i;
-        for c in text.chars() {
-            if self.at(k) != Some(c) {
-                return false;
-            }
-            k += 1;
-        }
-        true
+        text.chars().enumerate().all(|(k, c)| self.at(i + k) == Some(c))
     }
 
     fn find(&self, from: usize, text: &str) -> Option<usize> {
