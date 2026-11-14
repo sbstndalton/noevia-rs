@@ -107,12 +107,16 @@ async fn serve(
         };
         let text_of = |k: &str| body.get(k).as_str().map(str::to_owned);
         let (Some(user), Some(project), Some(name), Some(text)) = (
-            text_of("user").filter(|u| server_projects::store::user_dir(&store.data_dir, u).is_ok()),
+            text_of("user")
+                .filter(|u| server_projects::store::user_dir(&store.data_dir, u).is_ok()),
             text_of("project").filter(|p| !p.is_empty()),
             text_of("name"),
             text_of("text"),
         ) else {
-            return error(StatusCode::BAD_REQUEST, "user, project, name and text are required");
+            return error(
+                StatusCode::BAD_REQUEST,
+                "user, project, name and text are required",
+            );
         };
         let edit = Edit {
             expect_name: body.get("expectName").clone(),

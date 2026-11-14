@@ -1021,8 +1021,15 @@ mod tests {
             if REFUSED_HERE.contains(&name) {
                 assert!(got.is_err(), "{name}: refused here");
                 assert!(script.calls.borrow().is_empty(), "{name}: no storage call");
-                assert_eq!(std::fs::read_to_string(dir.join("projects.json")).unwrap(), before, "{name}");
-                assert!(outbox::jobs(&dir).unwrap().is_empty(), "{name}: no index work");
+                assert_eq!(
+                    std::fs::read_to_string(dir.join("projects.json")).unwrap(),
+                    before,
+                    "{name}"
+                );
+                assert!(
+                    outbox::jobs(&dir).unwrap().is_empty(),
+                    "{name}: no index work"
+                );
                 checked += 1;
                 continue;
             }
@@ -1061,16 +1068,39 @@ mod tests {
             );
             let after = std::fs::read_to_string(dir.join("projects.json")).unwrap();
             // Every other project stays as it was.
-            let (was, now) = (wtf16::parse(&before).unwrap(), wtf16::parse(&after).unwrap());
-            for p in arr(now.get("projects")).iter().filter(|p| p.get("id") != call.get("project")) {
-                let old = arr(was.get("projects")).iter().find(|o| o.get("id") == p.get("id")).unwrap();
+            let (was, now) = (
+                wtf16::parse(&before).unwrap(),
+                wtf16::parse(&after).unwrap(),
+            );
+            for p in arr(now.get("projects"))
+                .iter()
+                .filter(|p| p.get("id") != call.get("project"))
+            {
+                let old = arr(was.get("projects"))
+                    .iter()
+                    .find(|o| o.get("id") == p.get("id"))
+                    .unwrap();
                 assert_eq!(json(p), json(old), "{name}: another project changed");
             }
             match node.get("project").as_str() {
                 None if FIXED_FOLDER_KEPT.contains(&name) => {
-                    let p = arr(now.get("projects")).iter().find(|p| p.get("id") == call.get("project")).unwrap();
-                    let mut want = arr(was.get("projects")).iter().find(|o| o.get("id") == call.get("project")).unwrap().clone();
-                    store::set(&mut want, "projectFolder", JValue::Str(format!("{root_folder}/{}", call.get("project").as_str().unwrap())));
+                    let p = arr(now.get("projects"))
+                        .iter()
+                        .find(|p| p.get("id") == call.get("project"))
+                        .unwrap();
+                    let mut want = arr(was.get("projects"))
+                        .iter()
+                        .find(|o| o.get("id") == call.get("project"))
+                        .unwrap()
+                        .clone();
+                    store::set(
+                        &mut want,
+                        "projectFolder",
+                        JValue::Str(format!(
+                            "{root_folder}/{}",
+                            call.get("project").as_str().unwrap()
+                        )),
+                    );
                     assert_eq!(json(p), json(&want), "{name}: the folder is kept");
                 }
                 None => assert_eq!(after, before, "{name}: projects.json changed"),
@@ -1124,8 +1154,18 @@ mod tests {
         fn docling_configured(&self) -> bool {
             true
         }
-        fn docling(&self, _: &str, _: &[u8], _: bool, _: Option<(u32, u32)>) -> Result<JValue, EngineError> {
-            Err(EngineError { message: "docling is down".into(), status: Some(503), ..Default::default() })
+        fn docling(
+            &self,
+            _: &str,
+            _: &[u8],
+            _: bool,
+            _: Option<(u32, u32)>,
+        ) -> Result<JValue, EngineError> {
+            Err(EngineError {
+                message: "docling is down".into(),
+                status: Some(503),
+                ..Default::default()
+            })
         }
         fn docling_ranges(&self, _: usize) -> Option<bool> {
             None
@@ -1133,7 +1173,13 @@ mod tests {
         fn ocr_configured(&self) -> bool {
             false
         }
-        fn ocr_pages(&self, _: &[u8], _: &[u32], _: Option<u32>, _: Option<u64>) -> Result<Vec<JValue>, EngineError> {
+        fn ocr_pages(
+            &self,
+            _: &[u8],
+            _: &[u32],
+            _: Option<u32>,
+            _: Option<u64>,
+        ) -> Result<Vec<JValue>, EngineError> {
             Err(EngineError::new("no ocr"))
         }
         fn ocr_caps(&self) -> Option<OcrCaps> {
@@ -1149,7 +1195,10 @@ mod tests {
 
     fn rig(projects: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         let root = tempfile::tempdir().unwrap();
-        let dir = root.path().join("users").join("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
+        let dir = root
+            .path()
+            .join("users")
+            .join("aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee");
         std::fs::create_dir_all(&dir).unwrap();
         std::fs::write(dir.join("projects.json"), projects).unwrap();
         (root, dir)
@@ -1157,31 +1206,57 @@ mod tests {
 
     #[test]
     fn a_document_whose_reader_is_down_is_queued_before_its_record() {
-        let (root, dir) = rig(r#"{"projects":[{"id":"qa-p","name":"QA","modes":["chat"],"chats":[],"files":[]}]}"#);
+        let (root, dir) = rig(
+            r#"{"projects":[{"id":"qa-p","name":"QA","modes":["chat"],"chats":[],"files":[]}]}"#,
+        );
         let env = Env {
-            ctx: Ctx { data_dir: root.path(), user_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", switch: server_store::RustProjects::owned(), now_ms: 1 },
+            ctx: Ctx {
+                data_dir: root.path(),
+                user_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                switch: server_store::RustProjects::owned(),
+                now_ms: 1,
+            },
             storage: &Storage::None,
             engine: &DoclingDown,
             limits: &Limits::from_env(),
             project_root: "noevia projects",
             lock_wait: Duration::from_secs(5),
         };
-        let file = write_text(&env, "qa-p", "page.html", "<p>QA page</p>", &Edit::default());
+        let file = write_text(
+            &env,
+            "qa-p",
+            "page.html",
+            "<p>QA page</p>",
+            &Edit::default(),
+        );
         let Ok(file) = file else { panic!("{file:?}") };
         assert!(file.get("document").truthy(), "{}", json(&file));
-        assert!(crate::extract_queue::pending(&dir, "qa-p", "page.html").is_some(), "the job is written");
-        let saved = wtf16::parse(&std::fs::read_to_string(dir.join("projects.json")).unwrap()).unwrap();
-        let listed = arr(arr(saved.get("projects"))[0].get("files")).iter().any(|f| f.get("name").as_str() == Some("page.html"));
+        assert!(
+            crate::extract_queue::pending(&dir, "qa-p", "page.html").is_some(),
+            "the job is written"
+        );
+        let saved =
+            wtf16::parse(&std::fs::read_to_string(dir.join("projects.json")).unwrap()).unwrap();
+        let listed = arr(arr(saved.get("projects"))[0].get("files"))
+            .iter()
+            .any(|f| f.get("name").as_str() == Some("page.html"));
         assert!(listed, "and the record says so");
     }
 
     #[test]
     fn storage_the_front_cannot_use_refuses_every_write() {
-        let (root, dir) = rig(r#"{"projects":[{"id":"qa-p","name":"QA","modes":["chat"],"chats":[],"files":[]}]}"#);
+        let (root, dir) = rig(
+            r#"{"projects":[{"id":"qa-p","name":"QA","modes":["chat"],"chats":[],"files":[]}]}"#,
+        );
         let before = std::fs::read_to_string(dir.join("projects.json")).unwrap();
         let storage = Storage::Refused(503, "Storage is busy; try again shortly.");
         let env = Env {
-            ctx: Ctx { data_dir: root.path(), user_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", switch: server_store::RustProjects::owned(), now_ms: 1 },
+            ctx: Ctx {
+                data_dir: root.path(),
+                user_id: "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+                switch: server_store::RustProjects::owned(),
+                now_ms: 1,
+            },
             storage: &storage,
             engine: &NoEngine,
             limits: &Limits::from_env(),
@@ -1192,7 +1267,10 @@ mod tests {
             write_text(&env, "qa-p", "new.md", "QA", &Edit::default()),
             Err("Storage is busy; try again shortly.".to_owned())
         );
-        assert_eq!(std::fs::read_to_string(dir.join("projects.json")).unwrap(), before);
+        assert_eq!(
+            std::fs::read_to_string(dir.join("projects.json")).unwrap(),
+            before
+        );
         assert!(outbox::jobs(&dir).unwrap().is_empty());
     }
 }
