@@ -30,17 +30,69 @@ const NODE_ONLY: [&str; 13] = [
 ];
 /// chrono-tz zones Node refuses: none (`Etc/Unknown` and `Factory`, which Node refuses, are not chrono-tz zones).
 const CHRONO_ONLY: [&str; 0] = [];
-/// (zone, recorded instant) where chrono-tz's offset is not Node's: the two tz releases differ.
-const OFFSETS_DIFFER: [(&str, &str); 7] = [
-    ("Africa/Casablanca", DEC),
-    ("Africa/El_Aaiun", DEC),
-    ("America/Edmonton", DEC),
-    ("America/Vancouver", DEC),
-    ("America/Yellowknife", DEC),
-    ("Canada/Mountain", DEC),
-    ("Canada/Pacific", DEC),
+/// Tool calls where this port's text is not Node's: "<process TZ> <timezone argument> <now>", by
+/// reason (see the crate's documentation).
+const CALLS_DIFFER: &[&str] = &[
+    // The tz releases: Morocco at +00 from 2026-09-20T01:00Z in Node, +01 here...
+    "UTC Africa/Casablanca 1789866000000",
+    "UTC Africa/Casablanca 1793523599999",
+    "UTC Africa/Casablanca 1793523600000",
+    "UTC Africa/Casablanca 1794636000000",
+    "UTC Africa/El_Aaiun 1789866000000",
+    "UTC Africa/El_Aaiun 1793523599999",
+    "UTC Africa/El_Aaiun 1793523600000",
+    "UTC Africa/El_Aaiun 1794636000000",
+    // ...and British Columbia and Alberta on daylight time after 2026-11-01 (standard time here).
+    "UTC America/Vancouver 1793523600000",
+    "UTC America/Vancouver 1794636000000",
+    "UTC America/Edmonton 1793523599999",
+    "UTC America/Edmonton 1793523600000",
+    "UTC America/Edmonton 1794636000000",
+    "UTC Canada/Pacific 1793523600000",
+    "UTC Canada/Pacific 1794636000000",
+    "UTC Canada/Mountain 1793523599999",
+    "UTC Canada/Mountain 1793523600000",
+    "UTC Canada/Mountain 1794636000000",
+    // Zone names in history (1943, 1970) and past ICU's metazone data (year 275000): Node prints the
+    // GMT form where this port prints the 2026 name for the offset, or the reverse (London 1943 BST).
+    "UTC Europe/Berlin -838987200000",
+    "UTC Europe/London -838987200000",
+    "UTC Europe/London 13089600000",
+    "UTC Europe/Berlin 8615994667200000",
+    "UTC Europe/London 8615994667200000",
+    "UTC Europe/Berlin 8640000000000000",
+    // Date#toString's daylight name for a zone without daylight time in 2026 (Moscow, 1995 and the
+    // equivalent year 2008-2010 V8 uses for year 275760): Node "Moscow Summer Time", here the
+    // standard name.
+    "Europe/Moscow - 804600000000",
+    "Europe/Moscow - 8640000000000000",
 ];
-const DEC: &str = "2026-12-15T12:00:00.000Z";
+/// (zone, first day, last day) at 00:00 UTC in 2026-2027 where chrono-tz's offset is not Node's.
+const DAILY_DIFFER: &[(&str, &str, &str)] = &[
+    ("Africa/Casablanca", "2026-09-21", "2027-02-07"),
+    ("Africa/Casablanca", "2027-03-15", "2027-12-31"),
+    ("Africa/El_Aaiun", "2026-09-21", "2027-02-07"),
+    ("Africa/El_Aaiun", "2027-03-15", "2027-12-31"),
+    ("America/Edmonton", "2026-11-02", "2027-03-14"),
+    ("America/Edmonton", "2027-11-08", "2027-12-31"),
+    ("America/Vancouver", "2026-11-02", "2027-03-14"),
+    ("America/Vancouver", "2027-11-08", "2027-12-31"),
+    ("America/Yellowknife", "2026-11-02", "2027-03-14"),
+    ("America/Yellowknife", "2027-11-08", "2027-12-31"),
+    ("Canada/Mountain", "2026-11-02", "2027-03-14"),
+    ("Canada/Mountain", "2027-11-08", "2027-12-31"),
+    ("Canada/Pacific", "2026-11-02", "2027-03-14"),
+    ("Canada/Pacific", "2027-11-08", "2027-12-31"),
+    // Moldova's transition hour: on these days 00:00 UTC falls between the two releases' times.
+    ("Europe/Chisinau", "2026-03-29", "2026-03-29"),
+    ("Europe/Chisinau", "2026-10-25", "2026-10-25"),
+    ("Europe/Chisinau", "2027-03-28", "2027-03-28"),
+    ("Europe/Chisinau", "2027-10-31", "2027-10-31"),
+    ("Europe/Tiraspol", "2026-03-29", "2026-03-29"),
+    ("Europe/Tiraspol", "2026-10-25", "2026-10-25"),
+    ("Europe/Tiraspol", "2027-03-28", "2027-03-28"),
+    ("Europe/Tiraspol", "2027-10-31", "2027-10-31"),
+];
 
 fn fixture() -> JValue {
     js_json::parse(FIXTURE).expect("fixture parses")
@@ -75,34 +127,30 @@ fn every_tool_call_matches_node() {
             refused += 1;
             continue;
         }
-        let want_text = c.get("text").as_str().unwrap().to_string();
-        let want = if c.get("failed").as_bool().unwrap() {
-            Err(want_text)
-        } else {
-            Ok(want_text)
+        let failed = c.get("failed").as_bool().unwrap();
+        let (ok, text) = match &got {
+            Ok(t) => (true, t),
+            Err(t) => (false, t),
         };
-        if got == want {
+        let matches = ok != failed
+            && match c.get("text").as_str() {
+                Some(want) => text == want,
+                // Node's text holds a lone surrogate (kept as JSON): this port drops it.
+                None => {
+                    let want = c.get("textJson").as_str().unwrap().replace("\\ud83d", "");
+                    js_json::stringify(&JValue::Str(text.clone())).unwrap() == want
+                }
+            };
+        if matches {
             same += 1;
         } else {
-            wrong.push(format!(
-                "{} {server:?} at {now}:\n  node: {want:?}\n  rust: {got:?}",
-                js_json::stringify(args).unwrap()
-            ));
+            let process = c.get("processTZ").as_str().unwrap();
+            let shown = if zone.is_empty() { "-" } else { zone };
+            wrong.push(format!("{process} {shown} {now}"));
         }
     }
-    assert!(
-        wrong.is_empty(),
-        "{} of {} differ:\n{}",
-        wrong.len(),
-        same + wrong.len(),
-        wrong
-            .iter()
-            .take(15)
-            .cloned()
-            .collect::<Vec<_>>()
-            .join("\n")
-    );
-    assert!(same > 2000, "{same} cases");
+    assert_eq!(wrong, CALLS_DIFFER, "tool calls that differ from Node");
+    assert!(same > 2500, "{same} cases");
     assert!(refused > 0);
 }
 
@@ -144,32 +192,60 @@ fn calendar_facts_and_facts_line_match_node() {
 #[test]
 fn zone_table_matches_node_and_chrono_tz() {
     let f = fixture();
-    let instants: Vec<f64> = strs(f.get("zoneInstants"))
-        .iter()
-        .map(|s| {
-            chrono::DateTime::parse_from_rfc3339(s)
-                .unwrap()
-                .timestamp_millis() as f64
-        })
-        .collect();
-    let labels = strs(f.get("zoneInstants"));
-    let (mut node_only, mut differ) = (Vec::new(), Vec::new());
+    let from = chrono::NaiveDate::parse_from_str(f.get("dailyFrom").as_str().unwrap(), "%Y-%m-%d")
+        .unwrap();
+    let day_ms = |i: i64| {
+        (from + chrono::Days::new(i as u64))
+            .and_hms_opt(0, 0, 0)
+            .unwrap()
+            .and_utc()
+            .timestamp_millis() as f64
+    };
+    let (mut node_only, mut differ, mut days) = (Vec::new(), Vec::new(), 0);
     for z in arr(f.get("zones")) {
         let id = z.get("id").as_str().unwrap();
-        for (i, want) in arr(z.get("offsets")).iter().enumerate() {
-            let want = want.as_num().unwrap() as i64;
-            match current_time::utc_offset_minutes(id, instants[i]) {
-                None if i == 0 => node_only.push(id.to_string()),
-                None => {}
-                Some(got) if got != want => differ.push((id.to_string(), labels[i].clone())),
-                Some(_) => {}
+        if current_time::utc_offset_minutes(id, 0.0).is_none() {
+            node_only.push(id.to_string());
+            continue;
+        }
+        let mut i = 0i64;
+        let mut open: Option<(i64, i64)> = None;
+        for run in z.get("daily").as_str().unwrap().split(' ') {
+            let (off, n) = run.split_once('*').unwrap();
+            let (off, n): (i64, i64) = (off.parse().unwrap(), n.parse().unwrap());
+            for _ in 0..n {
+                let same = current_time::utc_offset_minutes(id, day_ms(i)) == Some(off);
+                match (same, open) {
+                    (false, None) => open = Some((i, i)),
+                    (false, Some((a, _))) => open = Some((a, i)),
+                    (true, Some((a, b))) => {
+                        differ.push((id.to_string(), a, b));
+                        open = None;
+                    }
+                    (true, None) => {}
+                }
+                i += 1;
             }
         }
+        if let Some((a, b)) = open {
+            differ.push((id.to_string(), a, b));
+        }
+        days = i;
     }
+    assert_eq!(days, 730);
     assert_eq!(node_only, NODE_ONLY);
+    let date = |i: i64| (from + chrono::Days::new(i as u64)).to_string();
+    let differ: Vec<(String, String, String)> = differ
+        .into_iter()
+        .map(|(z, a, b)| (z, date(a), date(b)))
+        .collect();
+    let want: Vec<(String, String, String)> = DAILY_DIFFER
+        .iter()
+        .map(|(z, a, b)| (z.to_string(), a.to_string(), b.to_string()))
+        .collect();
     assert_eq!(
-        differ,
-        OFFSETS_DIFFER.map(|(a, b)| (a.to_string(), b.to_string()))
+        differ, want,
+        "zone days where chrono-tz's offset is not Node's"
     );
     let rejected = strs(f.get("rejected"));
     for id in &rejected {
@@ -196,7 +272,7 @@ fn zone_table_and_fixture_come_from_the_same_sources() {
     let JValue::Obj(sources) = f.get("sources") else {
         panic!("sources")
     };
-    assert_eq!(sources.len(), 3);
+    assert_eq!(sources.len(), 4);
     for (file, sha) in sources {
         let line = format!("//   {file} {}", sha.as_str().unwrap());
         assert!(
