@@ -1,0 +1,26 @@
+[package]
+name = "engine-facts"
+version = "0.1.0"
+description = "The facts noevia-core still supplies to the Rust front, computed natively (track R11): the provider lookup with its effective capabilities and request headers, the external verdict's projection, and what core answers on POST /internal/code/engine for one Code start (the engine, the Code role's machine, the role endpoint and the project's shared context), replayed byte for byte on recorded Node output. Pure: the caller reads the environment, files and registry and passes them in."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# The JS string helpers (UTF-16 lengths and cuts, white space, StringToNumber) the front already builds.
+chat-turn = { path = "../chat-turn" }
+# shared-context.cjs's frameUntrusted.
+prompt-framing = { path = "../prompt-framing" }
+# isExternalProvider's rules (the port core runs in dav-parse.wasm).
+provider-egress = { path = "../provider-egress" }
+# providers.cjs legacyPresetCapabilities and provider-egress.cjs withoutUserinfo (WHATWG URL). MIT OR Apache-2.0;
+# already in Cargo.lock.
+url = "2"
+
+[dev-dependencies]
+serde_json = "1"
