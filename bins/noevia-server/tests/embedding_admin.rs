@@ -176,9 +176,28 @@ fn file(model: &str) -> String {
     format!("qa/{model}.gguf")
 }
 
+/// How the scripted model manager answers the embedding service PUT.
+#[derive(Clone, Copy, PartialEq)]
+enum Put {
+    Serve,
+    /// 500 with a `detail`.
+    Refuse,
+    /// Answers only after the front's PUT deadline.
+    Hang,
+}
+
+/// The data root, once the world is made.
+type Slot = Arc<Mutex<Option<std::path::PathBuf>>>;
+
 /// A model manager: the embedding service it runs (`loads`: whether a newly served model ever
 /// reports loaded) and its installed models.
 async fn loader(loads: bool) -> (String, Seen) {
+    loader_with(loads, Put::Serve, Slot::default(), Seen::default()).await
+}
+
+/// [`loader`] answering the PUT as `put`; during each PUT it keeps the service intent file as it
+/// is on disk in `intents` (`missing` when there is none).
+async fn loader_with(loads: bool, put: Put, root: Slot, intents: Seen) -> (String, Seen) {
     let served = Arc::new(Mutex::new(vec!["qa-embed-a".to_string()]));
     let loaded = Arc::new(Mutex::new(vec!["qa-embed-a".to_string()]));
     stub(move |req| {
@@ -190,6 +209,20 @@ async fn loader(loads: bool) -> (String, Seen) {
             json!({"managed": true, "enabled": !served.is_empty(), "models": models, "previous": [], "running": {"loaded": loaded}}).to_string()
         };
         if req.starts_with("PUT /api/v1/embedding-service ") {
+            let dir = root.lock().unwrap().clone();
+            let on_disk = dir
+                .and_then(|d| std::fs::read_to_string(d.join("embedding-service-intent.json")).ok());
+            intents
+                .lock()
+                .unwrap()
+                .push(on_disk.unwrap_or_else(|| "missing".into()));
+            match put {
+                Put::Serve => {}
+                Put::Refuse => return (500, json!({"detail": "qa refused"}).to_string()),
+                Put::Hang => {
+                    tokio::task::block_in_place(|| std::thread::sleep(Duration::from_secs(4)));
+                }
+            }
             let wanted: Vec<String> = body_of(req)["models"]
                 .as_array()
                 .unwrap()
@@ -274,6 +307,7 @@ async fn world(on: bool, extra: &[(&str, String)]) -> World {
     let mut config = Config::from_lookup(|k| env.get(k).cloned()).unwrap();
     config.embedding_admin.wait_ms = 400;
     config.embedding_admin.poll_ms = 20;
+    config.embedding_admin.put_ms = 2_000;
     tokio::spawn(serve(
         listener,
         App::new(config),
@@ -630,6 +664,8 @@ async fn clear_next_and_rollback_drop_the_abandoned_vectors_after_the_hold() {
         Some((2, 2)),
         "the active slot stays"
     );
+    // The worker is kicked once the drops ran (their order: the lib test of `Deferred`).
+    assert!(w.kicked().is_some());
     assert!(w.lock_free());
 
     // A rollback drops the next it abandons too, and keeps both the targets it swaps.
@@ -772,7 +808,15 @@ async fn the_diary_half_goes_to_the_sidecar_and_an_unreachable_diary_is_a_207() 
 
 /// A world whose active model is on the embedding service the model manager runs.
 async fn service_world(loads: bool, diary_on: bool) -> (World, Seen) {
-    let (loader_base, loader_seen) = loader(loads).await;
+    let (w, loader_seen, _) = service_world_with(loads, diary_on, Put::Serve).await;
+    (w, loader_seen)
+}
+
+/// [`service_world`] whose model manager answers the PUT as `put`; also the intent files it saw.
+async fn service_world_with(loads: bool, diary_on: bool, put: Put) -> (World, Seen, Seen) {
+    let (root, intents) = (Slot::default(), Seen::default());
+    let (loader_base, loader_seen) =
+        loader_with(loads, put, Arc::clone(&root), Arc::clone(&intents)).await;
     let (embed, _) = embeddings(json!([0.25, 0.5, 0.75])).await;
     let mut extra = vec![
         ("MODEL_LOADER_URL", loader_base),
@@ -785,7 +829,8 @@ async fn service_world(loads: bool, diary_on: bool) -> (World, Seen) {
     let mut w = world(true, &extra).await;
     w.embed = embed;
     w.worker_status(Some(json!({"managed": true, "enabled": true, "models": [{"model": "qa-embed-a", "file": file("qa-embed-a")}], "previous": [], "running": {"loaded": ["qa-embed-a"]}})));
-    (w, loader_seen)
+    *root.lock().unwrap() = Some(w.dir.path().to_path_buf());
+    (w, loader_seen, intents)
 }
 
 fn puts(seen: &Seen) -> Vec<Value> {
@@ -908,5 +953,306 @@ async fn service_off_stops_the_service_and_refuses_what_core_refuses() {
     std::fs::remove_file(w.path("embedding-worker-status.json")).unwrap();
     let a = post(w.addr, json!({"action": "service-off"})).await;
     assert_eq!((a.status, &a.body["code"]), (409, &json!("notManaged")));
+    assert!(w.lock_free());
+}
+
+fn intent(w: &World) -> Value {
+    serde_json::from_slice(&std::fs::read(w.path("embedding-service-intent.json")).unwrap()).unwrap()
+}
+
+/// The intent files the model manager saw during its PUTs, parsed.
+fn intents_seen(intents: &Seen) -> Vec<Value> {
+    intents
+        .lock()
+        .unwrap()
+        .iter()
+        .map(|t| serde_json::from_str(t).unwrap_or(Value::Null))
+        .collect()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn every_service_change_is_announced_before_the_put_and_closed_after_it() {
+    let (w, loader_seen, intents) = service_world_with(true, true, Put::Serve).await;
+    let before = now();
+    let a = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-b"}),
+    )
+    .await;
+    assert_eq!(a.status, 200, "{}", a.body);
+    let asked = puts(&loader_seen);
+    let during = intents_seen(&intents);
+    assert_eq!(during.len(), asked.len());
+    // While the model manager handled the PUT: exactly the models it was asked for, not done.
+    let open = &during[0];
+    assert_eq!(open["protocol"], "rust-embedding-service-intent-v1");
+    assert_eq!(open["start"], START);
+    assert_eq!(open["models"], asked[0]["models"]);
+    assert_eq!(open["done"], false);
+    assert!(open["at"].as_u64().unwrap() >= before);
+    // Once it returned: done, with a fresh time.
+    let closed = intent(&w);
+    assert_eq!(closed["done"], true);
+    assert_eq!(closed["models"], asked.last().unwrap()["models"]);
+    assert!(closed["at"].as_u64().unwrap() >= open["at"].as_u64().unwrap());
+    use std::os::unix::fs::PermissionsExt;
+    let mode = std::fs::metadata(w.path("embedding-service-intent.json"))
+        .unwrap()
+        .permissions()
+        .mode();
+    assert_eq!(mode & 0o777, 0o600);
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_refused_or_timed_out_put_still_closes_the_intent() {
+    let (w, loader_seen, intents) = service_world_with(true, true, Put::Refuse).await;
+    let a = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-b"}),
+    )
+    .await;
+    assert_eq!(
+        (a.status, a.body),
+        (
+            502,
+            json!({"error": "The embedding service could not be changed: qa refused", "code": "serviceRefused"})
+        )
+    );
+    assert_eq!(puts(&loader_seen).len(), 1);
+    assert_eq!(intents_seen(&intents)[0]["done"], false);
+    assert_eq!(intent(&w)["done"], true);
+    assert_eq!(w.saved(), None);
+
+    let (w, loader_seen, intents) = service_world_with(true, true, Put::Hang).await;
+    let a = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-b"}),
+    )
+    .await;
+    assert_eq!(
+        (a.status, a.body),
+        (502, json!({"error": "This operation was aborted"}))
+    );
+    assert_eq!(puts(&loader_seen).len(), 1);
+    assert_eq!(intents_seen(&intents)[0]["done"], false);
+    let closed = intent(&w);
+    assert_eq!(closed["done"], true);
+    assert_eq!(closed["models"], puts(&loader_seen)[0]["models"]);
+    assert_eq!(w.saved(), None);
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn an_intent_that_cannot_be_written_sends_no_put() {
+    let (w, loader_seen, intents) = service_world_with(true, true, Put::Serve).await;
+    // A directory where the file belongs: the rename fails (also as root).
+    std::fs::create_dir(w.path("embedding-service-intent.json")).unwrap();
+    let a = post(
+        w.addr,
+        json!({"action": "service-switch", "model": "qa-embed-b"}),
+    )
+    .await;
+    assert_eq!(
+        (a.status, a.body),
+        (
+            503,
+            json!({"error": "The embedding service could not be changed: the change could not be recorded.", "code": "serviceRefused"})
+        )
+    );
+    assert!(puts(&loader_seen).is_empty());
+    assert!(intents.lock().unwrap().is_empty());
+    let off = post(w.addr, json!({"action": "service-off"})).await;
+    assert_eq!(
+        (off.status, &off.body["code"]),
+        (503, &json!("serviceRefused"))
+    );
+    assert!(puts(&loader_seen).is_empty());
+    assert!(w.audits("embedding.service-off").is_empty());
+    assert_eq!(w.saved(), None);
+    assert!(w.path("embedding-service-intent.json").is_dir());
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_config_file_that_cannot_be_read_is_damaged_not_missing() {
+    let w = world(true, &[]).await;
+    // A directory where the file belongs exists but cannot be read (also as root).
+    std::fs::create_dir(w.path("embedding-config.json")).unwrap();
+    for change in [
+        json!({"action": "clear-next", "scope": "projects"}),
+        json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-b"}}),
+    ] {
+        let a = post(w.addr, change.clone()).await;
+        assert_eq!(a.status, 409, "{change} {}", a.body);
+        assert_eq!(a.body["projects"]["code"], "badState", "{change}");
+        assert!(a.body["projects"]["error"]
+            .as_str()
+            .unwrap()
+            .contains("cannot be read ("));
+    }
+    let status = call(w.addr, "GET", "/api/embedding", ADMIN, "").await;
+    assert_eq!(status.body["projects"]["active"]["profile"], "unavailable");
+    assert!(status.body["projects"]["damaged"]
+        .as_str()
+        .unwrap()
+        .contains("cannot be read ("));
+    // The file is left alone: still the empty directory, nothing written in its place.
+    assert!(w.path("embedding-config.json").is_dir());
+    assert_eq!(
+        std::fs::read_dir(w.path("embedding-config.json"))
+            .unwrap()
+            .count(),
+        0
+    );
+    assert_eq!(w.kicked(), None);
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_file_changed_under_the_change_refuses_it_and_stays_as_written() {
+    let root = Slot::default();
+    let written = json!({"version": 1, "active": {"baseUrl": "http://127.0.0.1:9", "model": "qa-embed-z", "profile": "nomic-v1"}, "next": null, "previous": null}).to_string();
+    let (moving, _) = {
+        let (root, written) = (Arc::clone(&root), written.clone());
+        stub(move |req| {
+            if req.starts_with("GET /v1/models ") {
+                // Someone else writes the configuration between the read and the hold.
+                let dir = root.lock().unwrap().clone().unwrap();
+                std::fs::write(dir.join("embedding-config.json"), &written).unwrap();
+                return (200, json!({"data": [{"id": "qa-embed-b"}]}).to_string());
+            }
+            (404, "{}".into())
+        })
+        .await
+    };
+    let w = world(true, &[]).await;
+    *root.lock().unwrap() = Some(w.dir.path().to_path_buf());
+    let a = post(w.addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": moving, "model": "qa-embed-b"}})).await;
+    assert_eq!(a.status, 500, "{}", a.body);
+    assert_eq!(
+        a.body["projects"],
+        json!({"error": "The embedding configuration changed while this change was being checked. Nothing was changed.", "status": 500})
+    );
+    assert_eq!(
+        std::fs::read_to_string(w.path("embedding-config.json")).unwrap(),
+        written
+    );
+    assert_eq!(w.kicked(), None);
+    assert!(w
+        .audits("embedding.set-next")
+        .iter()
+        .all(|(_, _, detail)| detail["projects"] != "ok"));
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_parity_embed_says_the_worker_s_label() {
+    // Both list the model; one refuses every embed, the other gives no vectors.
+    let lists = || json!({"data": [{"id": "qa-embed-a"}]}).to_string();
+    let (refusing, _) = stub(move |req| {
+        if req.starts_with("GET /v1/models ") {
+            return (200, lists());
+        }
+        (500, json!({"error": "qa down"}).to_string())
+    })
+    .await;
+    let (empty, _) = stub(move |req| {
+        if req.starts_with("GET /v1/models ") {
+            return (200, lists());
+        }
+        (200, json!({"data": []}).to_string())
+    })
+    .await;
+    let w = world(true, &[]).await;
+    for (next, label) in [
+        (refusing, "embedding HTTP unavailable"),
+        (empty, "embeddings returned no vector"),
+    ] {
+        // Same model and profile at another address: the vectors must agree.
+        let state = json!({"version": 1, "active": w.target("qa-embed-a"), "next": {"baseUrl": next, "model": "qa-embed-a", "profile": "nomic-v1"}, "previous": null});
+        std::fs::write(w.path("embedding-config.json"), state.to_string()).unwrap();
+        let a = post(w.addr, json!({"action": "switch", "scope": "projects"})).await;
+        assert_eq!(a.status, 409, "{}", a.body);
+        assert_eq!(a.body["projects"]["code"], "parityFailed");
+        assert_eq!(
+            a.body["projects"]["parity"],
+            json!({"ok": false, "error": label})
+        );
+        assert_eq!(w.saved().unwrap(), state, "nothing switched");
+    }
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_failed_audit_write_leaves_the_answer_standing() {
+    let w = world(true, &[]).await;
+    w.db.execute_batch(
+        "CREATE TRIGGER qa_audit_refused BEFORE INSERT ON audit_events BEGIN SELECT RAISE(ABORT, 'qa audit refused'); END",
+    )
+    .unwrap();
+    let set = post(w.addr, json!({"action": "set-next", "scope": "projects", "target": {"baseUrl": w.embed, "model": "qa-embed-b"}})).await;
+    assert_eq!(set.status, 200, "{}", set.body);
+    assert_eq!(w.saved().unwrap()["next"], w.target("qa-embed-b"));
+    assert!(w.audits("embedding.set-next").is_empty());
+    assert!(w.kicked().is_some());
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_body_too_deep_to_hold_is_invalid_json_and_changes_nothing() {
+    let w = world(true, &[]).await;
+    // JS parses this; the port's parser stops at 128 levels.
+    let deep = format!(
+        "{{\"action\":\"clear-next\",\"qa\":{}{}}}",
+        "[".repeat(200),
+        "]".repeat(200)
+    );
+    let a = call(w.addr, "POST", "/api/embedding", ADMIN, &deep).await;
+    assert_eq!((a.status, a.body), (400, json!({"error": "invalid JSON"})));
+    assert_eq!(w.saved(), None);
+    assert_eq!(w.kicked(), None);
+    assert!(w.lock_free());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_inference_key_never_reaches_an_explicit_embeddings_address() {
+    const KEY: &str = "qa-inference-key-0123456789";
+    let vector = json!([0.25, 0.5, 0.75]);
+    let (inference, inference_seen) = embeddings(vector.clone()).await;
+    let (one, one_seen) = embeddings(vector.clone()).await;
+    let (two, two_seen) = embeddings(vector).await;
+    let w = world(
+        true,
+        &[("INFERENCE_BASE_URL", inference), ("INFERENCE_API_KEY", KEY.into())],
+    )
+    .await;
+    let at = |base: &str| json!({"baseUrl": base, "model": "qa-embed-a", "profile": "nomic-v1"});
+    let state = json!({"version": 1, "active": at(&one), "next": at(&two), "previous": null});
+    std::fs::write(w.path("embedding-config.json"), state.to_string()).unwrap();
+    // The served check and the parity embeds go to both explicit addresses.
+    let a = post(w.addr, json!({"action": "switch", "scope": "projects"})).await;
+    assert_eq!(a.status, 200, "{}", a.body);
+    let explicit: Vec<String> = [one_seen, two_seen]
+        .iter()
+        .flat_map(|s| s.lock().unwrap().clone())
+        .collect();
+    assert!(explicit.iter().any(|r| r.starts_with("POST /v1/embeddings ")));
+    assert!(explicit.iter().any(|r| r.starts_with("GET /v1/models ")));
+    for r in &explicit {
+        let lower = r.to_ascii_lowercase();
+        assert!(!lower.contains("authorization") && !r.contains(KEY), "{r}");
+    }
+    // A target without an address is the engine's, which does get it.
+    let set = post(
+        w.addr,
+        json!({"action": "set-next", "scope": "projects", "target": {"model": "qa-embed-b"}}),
+    )
+    .await;
+    assert_eq!(set.status, 200, "{}", set.body);
+    let engine = inference_seen.lock().unwrap().clone();
+    assert!(engine
+        .iter()
+        .any(|r| r.contains(&format!("Bearer {KEY}")) || r.contains(&format!("bearer {KEY}"))));
     assert!(w.lock_free());
 }

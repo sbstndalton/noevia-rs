@@ -32,12 +32,24 @@
 //! - A failed audit write is logged and the answer stands (core's throw answered 500 after the
 //!   change was made).
 //! - A request body this port cannot hold as JS would is answered as invalid JSON.
+//! - A configuration file that exists but cannot be read is damaged (core's lenient read takes it
+//!   as missing): embedding is off, the GET says so and every change that writes refuses with 409
+//!   `badState`, so the environment's seed is never written over saved state.
+//! - The vector slots a change drops run before the worker is kicked (a drop that fails is tried
+//!   once more), so the worker the kick wakes does not take the config lock first.
+//! - The start-up address guard's verdict for a seeded address is kept for [`VERDICT_TTL`] (the
+//!   check may ask DNS); the active and next addresses are checked together.
+//! - Around every model manager PUT the front writes the service intent file
+//!   (`embedding-service-intent.json`, protocol `rust-embedding-service-intent-v1`): the models
+//!   asked for, `done: false` before the PUT, `done: true` once it returned, whatever it answered.
+//!   Core's delete guard protects those models meanwhile (the worker's snapshot is up to 10 s old).
+//!   When the first write fails, nothing is asked: the change is refused (503 `serviceRefused`).
 
 use crate::{identity, reply, App};
 use axum::body::{Body, Bytes};
 use axum::http::{Method, Request, Response, StatusCode};
 use axum::response::IntoResponse;
-use embedding_migration::config::{read_state, write_atomic};
+use embedding_migration::config::{read_state_strict, write_atomic};
 use embedding_migration::routes::{diary_url, DIARY_TIMEOUT_MS};
 use embedding_migration::target::PROFILES;
 use embedding_migration::{
@@ -48,12 +60,13 @@ use embedding_worker::{http::Http, runtime, sqlite::SqlStore, Index};
 use js_json::{to_js_string, wtf16, JValue};
 use project_retrieval::policy::{current_snapshot, same_address};
 use prompt_framing::embedding_input::{frame, Kind, Profile};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
+use std::future::Future;
 use std::net::{IpAddr, Ipv4Addr};
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 /// The switch.
 pub const SWITCH: &str = "NOEVIA_RUST_EMBEDDING_ADMIN";
@@ -72,6 +85,13 @@ const FETCH_FAILED: &str = "fetch failed";
 const LOCK_UNAVAILABLE: &str = "Embedding config lock unavailable";
 const CHANGED: &str =
     "The embedding configuration changed while this change was being checked. Nothing was changed.";
+/// The service intent file core's delete guard reads while a service change of the front's runs.
+pub const INTENT_FILE: &str = "embedding-service-intent.json";
+pub const INTENT_PROTOCOL: &str = "rust-embedding-service-intent-v1";
+const NOT_RECORDED: &str =
+    "The embedding service could not be changed: the change could not be recorded.";
+/// How long the start-up address guard's verdict on a seeded address is kept.
+pub const VERDICT_TTL: Duration = Duration::from_secs(60);
 
 /// The environment the answers read (core reads `process.env`).
 const ENV: [&str; 17] = [
@@ -102,6 +122,8 @@ pub struct Settings {
     /// `waitTimeoutMs` (180 s) and `POLL_MS` (2 s) of `service-switch`; tests shorten them.
     pub wait_ms: u64,
     pub poll_ms: u64,
+    /// The model manager PUT's deadline (`serve`'s 60 s); tests shorten it.
+    pub put_ms: u64,
 }
 
 impl Default for Settings {
@@ -111,6 +133,7 @@ impl Default for Settings {
             env: BTreeMap::new(),
             wait_ms: embedding_migration::routes::WAIT_TIMEOUT_MS,
             poll_ms: 2_000,
+            put_ms: 60_000,
         }
     }
 }
@@ -165,12 +188,90 @@ impl Settings {
 }
 
 /// What the route keeps between requests: the turn every POST takes (core's single event loop and
-/// `serialized`), the embedding service as last seen (embedding-service.cjs), the kick sequence.
+/// `serialized`), the embedding service as last seen (embedding-service.cjs), the kick sequence,
+/// the seeded addresses' verdicts.
 #[derive(Default)]
 pub struct State {
     turn: Arc<tokio::sync::Mutex<()>>,
     service: Mutex<Service>,
     sequence: AtomicU64,
+    verdicts: Verdicts,
+}
+
+/// `checkEmbeddingAddress`'s verdict: `Err((reason, transient))`.
+pub type Verdict = Result<(), (String, bool)>;
+
+/// The start-up address guard's verdicts by URL, each kept for [`VERDICT_TTL`].
+#[derive(Default)]
+pub struct Verdicts(Mutex<HashMap<String, (Instant, Verdict)>>);
+
+impl Verdicts {
+    fn map(&self) -> MutexGuard<'_, HashMap<String, (Instant, Verdict)>> {
+        match self.0.lock() {
+            Ok(g) => g,
+            Err(p) => p.into_inner(),
+        }
+    }
+
+    /// The verdict on `url` as of `at`: a kept one younger than [`VERDICT_TTL`], else `check`'s
+    /// (then kept, and every expired one forgotten).
+    pub async fn verdict<F, Fut>(&self, url: &str, at: Instant, check: F) -> Verdict
+    where
+        F: FnOnce(String) -> Fut,
+        Fut: Future<Output = Verdict>,
+    {
+        let fresh = |when: &Instant| at.saturating_duration_since(*when) < VERDICT_TTL;
+        if let Some((_, v)) = self.map().get(url).filter(|(when, _)| fresh(when)) {
+            return v.clone();
+        }
+        let v = check(url.to_string()).await;
+        let mut map = self.map();
+        map.retain(|_, (when, _)| fresh(when));
+        map.insert(url.to_string(), (at, v.clone()));
+        v
+    }
+}
+
+/// The refusal of a seeded address, `(url, (reason, transient))`, or `None` when it may be used.
+async fn seeded_refusal(
+    verdicts: &Verdicts,
+    url: Option<String>,
+    at: Instant,
+) -> Option<(String, (String, bool))> {
+    let url = url?;
+    let refused = verdicts
+        .verdict(&url, at, |u| async move { check_address(&u).await })
+        .await
+        .err()?;
+    Some((url, refused))
+}
+
+/// What a change leaves for after its config hold: the vector slots it dropped (the worker's
+/// `drop_slot` takes the config lock itself) and the worker's kick.
+#[derive(Default)]
+struct Deferred {
+    drops: Vec<(Index, embedding_worker::Target)>,
+    kick: bool,
+}
+
+impl Deferred {
+    /// Every drop, a failed one once more (the store's errors are one fixed label: a busy lock
+    /// cannot be told from anything else), then the kick, so the worker it wakes does not take the
+    /// config lock before the drops.
+    fn run(
+        &mut self,
+        mut drop: impl FnMut(&Index, &embedding_worker::Target) -> Result<(), String>,
+        kick: impl FnOnce(),
+    ) {
+        for (index, target) in std::mem::take(&mut self.drops) {
+            if drop(&index, &target).is_err() && drop(&index, &target).is_err() {
+                eprintln!("[embedding] a vector slot could not be dropped");
+            }
+        }
+        if std::mem::take(&mut self.kick) {
+            kick();
+        }
+    }
 }
 
 /// embedding-service.cjs's state with a `nativeOwner` (`protection` is the delete guard's, not
@@ -275,7 +376,7 @@ struct Front {
     /// The configuration file as read for this request; a hold refuses when it is not that.
     expected: Option<Targets>,
     held: Option<server_projects::lock::FileLock>,
-    drops: Vec<(Index, embedding_worker::Target)>,
+    deferred: Deferred,
     store: SqlStore,
     http: Option<Http>,
 }
@@ -316,7 +417,7 @@ impl Front {
             root,
             expected: None,
             held: None,
-            drops: Vec::new(),
+            deferred: Deferred::default(),
             app,
         }
     }
@@ -330,18 +431,29 @@ impl Front {
     fn embedding(&mut self) -> Embedding {
         let s = self.settings().clone();
         let env = |k: &str| s.get(k);
-        let (mut config, _) = Saved::load(self.root.join(CONFIG_FILE), &env);
+        let (mut config, _) = Saved::load_strict(self.root.join(CONFIG_FILE), &env);
         self.expected = (config.source() == Source::Saved).then(|| config.state().clone());
         if config.source() == Source::Environment && config.damaged().is_none() {
-            let reason = |name: &str, t: Option<&Target>| {
-                let url = t?.base_url.clone()?;
-                let refused = self.rt.block_on(check_address(&url)).err()?;
-                let how = if refused.1 { "not used yet" } else { "refused" };
-                Some(format!("{name} {url} {how}: {}", refused.0))
+            let url_of = |t: Option<&Target>| t?.base_url.clone().filter(|u| !u.is_empty());
+            let (active, next) = (url_of(Some(config.active())), url_of(config.next()));
+            let (verdicts, at) = (&self.app.embedding_admin.verdicts, Instant::now());
+            let (active, next) = self.rt.block_on(async {
+                tokio::join!(
+                    seeded_refusal(verdicts, active, at),
+                    seeded_refusal(verdicts, next, at)
+                )
+            });
+            let reason = |name: &str, refused: Option<(String, (String, bool))>| {
+                let (url, (why, transient)) = refused?;
+                let how = if transient { "not used yet" } else { "refused" };
+                Some((format!("{name} {url} {how}: {why}"), transient))
             };
-            let active = reason("EMBEDDING_BASE_URL", Some(config.active()));
-            let next = reason("EMBEDDING_NEXT_BASE_URL", config.next());
-            config.refuse_seeded(active.as_deref(), next.as_deref());
+            if let Some((why, transient)) = reason("EMBEDDING_BASE_URL", active) {
+                config.refuse_seeded_as(Some(&why), None, transient);
+            }
+            if let Some((why, transient)) = reason("EMBEDDING_NEXT_BASE_URL", next) {
+                config.refuse_seeded_as(None, Some(&why), transient);
+            }
         }
         let mut embedding = Embedding::new(
             Migration::new(config, Pacing::from_env(&env)),
@@ -422,38 +534,8 @@ impl Front {
             || self.service_is_at(&t.base_url.clone().into())
     }
 
-    fn flush_drops(&mut self) {
-        for (index, target) in std::mem::take(&mut self.drops) {
-            if self.store.drop_slot(&index, &target).is_err() {
-                eprintln!("[embedding] a vector slot could not be dropped");
-            }
-        }
-    }
-}
-
-impl Host for Front {
-    type Index = Index;
-
-    fn lock(&mut self) -> Result<(), String> {
-        let file = self.root.join(CONFIG_FILE);
-        let _ = std::fs::create_dir_all(&self.root);
-        let held = server_projects::lock::acquire(&file).map_err(|_| LOCK_UNAVAILABLE)?;
-        if read_state(&file) != Ok(self.expected.clone()) {
-            return Err(CHANGED.into());
-        }
-        self.held = Some(held);
-        Ok(())
-    }
-
-    fn unlock(&mut self) {
-        if self.held.take().is_some() {
-            self.expected = read_state(&self.root.join(CONFIG_FILE)).ok().flatten();
-        }
-        self.flush_drops();
-    }
-
     /// `nativeOwner.kick()`: the request file the worker polls.
-    fn kick(&mut self) {
+    fn send_kick(&self) {
         let start = self.app.config.start_id.clone().unwrap_or_default();
         let clock = now() as u64;
         let sequence = &self.app.embedding_admin.sequence;
@@ -465,6 +547,57 @@ impl Host for Front {
             &self.root.join("embedding-worker-request.json"),
             text.as_bytes(),
         );
+    }
+
+    /// The service intent: the models a model manager PUT asks for, `done` once it returned.
+    fn write_intent(&self, models: &[JValue], done: bool) -> Result<(), ()> {
+        let start = self.app.config.start_id.clone().unwrap_or_default();
+        let intent = JValue::obj([
+            ("protocol", INTENT_PROTOCOL.into()),
+            ("start", start.into()),
+            ("at", JValue::Num(now())),
+            ("models", JValue::Arr(models.to_vec())),
+            ("done", JValue::Bool(done)),
+        ]);
+        let text = wtf16::stringify(&intent).ok_or(())?;
+        write_atomic(&self.root.join(INTENT_FILE), text.as_bytes()).map_err(|_| ())
+    }
+}
+
+impl Host for Front {
+    type Index = Index;
+
+    fn lock(&mut self) -> Result<(), String> {
+        let file = self.root.join(CONFIG_FILE);
+        let _ = std::fs::create_dir_all(&self.root);
+        let held = server_projects::lock::acquire(&file).map_err(|_| LOCK_UNAVAILABLE)?;
+        if read_state_strict(&file) != Ok(self.expected.clone()) {
+            return Err(CHANGED.into());
+        }
+        self.held = Some(held);
+        Ok(())
+    }
+
+    fn unlock(&mut self) {
+        if self.held.take().is_some() {
+            self.expected = read_state_strict(&self.root.join(CONFIG_FILE))
+                .ok()
+                .flatten();
+        }
+        let mut deferred = std::mem::take(&mut self.deferred);
+        let store = &self.store;
+        deferred.run(|index, target| store.drop_slot(index, target), || {
+            self.send_kick()
+        });
+    }
+
+    /// `nativeOwner.kick()`; inside a hold it is sent once the hold's drops have run.
+    fn kick(&mut self) {
+        if self.held.is_some() || !self.deferred.drops.is_empty() {
+            self.deferred.kick = true;
+        } else {
+            self.send_kick();
+        }
     }
 
     fn snapshot(&mut self) -> Option<JValue> {
@@ -484,7 +617,9 @@ impl Host for Front {
     }
 
     fn drop_slot(&mut self, index: &Index, target: &Target) -> Result<(), String> {
-        self.drops.push((index.clone(), worker_target(target)));
+        self.deferred
+            .drops
+            .push((index.clone(), worker_target(target)));
         Ok(())
     }
 
@@ -646,6 +781,15 @@ impl Host for Front {
             });
         }
         self.observe();
+        // Core's delete guard protects what is asked for from before the PUT until it returned.
+        if self.write_intent(models, false).is_err() {
+            eprintln!("[embedding] the service intent could not be written; nothing was asked");
+            return Err(ServeError {
+                status: Some(503),
+                message: NOT_RECORDED.into(),
+                code: Some("serviceRefused".into()),
+            });
+        }
         {
             let mut sv = self.service();
             sv.generation += 1;
@@ -654,7 +798,10 @@ impl Host for Front {
         let body = wtf16::stringify(&JValue::obj([("models", JValue::Arr(models.to_vec()))]));
         let r = self
             .rt
-            .block_on(loader(&s, Method::PUT, SERVICE_PATH, body, 60_000));
+            .block_on(loader(&s, Method::PUT, SERVICE_PATH, body, s.put_ms));
+        if self.write_intent(models, true).is_err() {
+            eprintln!("[embedding] the service intent could not be marked done");
+        }
         {
             let mut sv = self.service();
             sv.mutations = sv.mutations.saturating_sub(1);
@@ -938,6 +1085,106 @@ pub async fn check_address(raw: &str) -> Result<(), (String, bool)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn deferred_drops_run_before_the_kick_and_a_failed_one_is_tried_again() {
+        use std::cell::RefCell;
+        let index = |p: &str| Index {
+            user: None,
+            project: p.into(),
+        };
+        let target = |m: &str| embedding_worker::Target {
+            profile: "nomic-v1".into(),
+            model: m.into(),
+            base_url: None,
+        };
+        let mut d = Deferred::default();
+        d.drops.push((index("qa-one"), target("qa-embed-a")));
+        d.drops.push((index("qa-two"), target("qa-embed-b")));
+        d.kick = true;
+        let log = RefCell::new(Vec::<String>::new());
+        let tries = RefCell::new(HashMap::<String, u32>::new());
+        d.run(
+            |i, t| {
+                log.borrow_mut().push(format!("drop {} {}", i.project, t.model));
+                let mut tries = tries.borrow_mut();
+                let n = tries.entry(i.project.clone()).or_default();
+                *n += 1;
+                // qa-one's lock is busy once; qa-two's stays busy.
+                if (i.project == "qa-one" && *n == 1) || i.project == "qa-two" {
+                    Err("embedding index unavailable".into())
+                } else {
+                    Ok(())
+                }
+            },
+            || log.borrow_mut().push("kick".into()),
+        );
+        assert_eq!(
+            log.into_inner(),
+            [
+                "drop qa-one qa-embed-a",
+                "drop qa-one qa-embed-a",
+                "drop qa-two qa-embed-b",
+                "drop qa-two qa-embed-b",
+                "kick"
+            ]
+        );
+        assert!(d.drops.is_empty() && !d.kick);
+        // Nothing queued: no kick.
+        let mut kicked = false;
+        Deferred::default().run(|_, _| Ok(()), || kicked = true);
+        assert!(!kicked);
+    }
+
+    #[test]
+    fn a_seeded_address_verdict_is_kept_for_a_minute_and_checks_run_together() {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap_or_else(|_| unreachable!());
+        let v = Verdicts::default();
+        let calls = AtomicU64::new(0);
+        let check = |answer: Verdict| {
+            let calls = &calls;
+            move |_url: String| {
+                calls.fetch_add(1, Ordering::SeqCst);
+                async move { answer }
+            }
+        };
+        let (url, at) = ("http://qa-embed.invalid:8080", Instant::now());
+        let refused: Verdict = Err(("the name does not resolve (ENOTFOUND)".into(), true));
+        assert_eq!(
+            rt.block_on(v.verdict(url, at, check(refused.clone()))),
+            refused
+        );
+        // Within the minute the kept verdict stands and nothing is asked.
+        let later = at + Duration::from_secs(59);
+        assert_eq!(rt.block_on(v.verdict(url, later, check(Ok(())))), refused);
+        assert_eq!(calls.load(Ordering::SeqCst), 1);
+        // Another address is its own.
+        let other = "http://127.0.0.1:8080";
+        assert_eq!(rt.block_on(v.verdict(other, at, check(Ok(())))), Ok(()));
+        assert_eq!(calls.load(Ordering::SeqCst), 2);
+        // After the minute it is asked again.
+        let expired = at + VERDICT_TTL;
+        assert_eq!(rt.block_on(v.verdict(url, expired, check(Ok(())))), Ok(()));
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        // Two checks are not run one after the other (no lock is held while one waits).
+        let slow = |_url: String| async {
+            tokio::time::sleep(Duration::from_millis(400)).await;
+            Ok(())
+        };
+        let fresh = Verdicts::default();
+        let started = Instant::now();
+        let both = rt.block_on(async {
+            tokio::join!(
+                fresh.verdict("http://10.0.0.1", started, slow),
+                fresh.verdict("http://10.0.0.2", started, slow)
+            )
+        });
+        assert_eq!(both, (Ok(()), Ok(())));
+        assert!(started.elapsed() < Duration::from_millis(790));
+    }
 
     #[test]
     fn the_switch_is_off_unless_named_and_covers_the_exact_path() {

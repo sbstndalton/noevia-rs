@@ -90,13 +90,31 @@ pub fn read_state(file: &Path) -> Result<Option<State>, String> {
     let Ok(bytes) = std::fs::read(file) else {
         return Ok(None);
     };
-    let parsed = parse_state(&String::from_utf8_lossy(&bytes));
-    parsed.map(Some).map_err(|why| {
-        format!(
-            "The saved embedding configuration {} cannot be read ({why}). Fix or delete it.",
-            file.display()
-        )
-    })
+    parsed_state(file, &bytes)
+}
+
+fn damaged_message(file: &Path, why: &str) -> String {
+    format!(
+        "The saved embedding configuration {} cannot be read ({why}). Fix or delete it.",
+        file.display()
+    )
+}
+
+fn parsed_state(file: &Path, bytes: &[u8]) -> Result<Option<State>, String> {
+    let parsed = parse_state(&String::from_utf8_lossy(bytes));
+    parsed.map(Some).map_err(|why| damaged_message(file, &why))
+}
+
+/// [`read_state`] that only takes a missing file as none: a file that exists but cannot be read
+/// (a directory in its place, no permission, an I/O error) is damaged, as the native worker's
+/// `load_config` holds it, so a change never writes the environment's seed over saved state.
+/// The reason is the I/O error's kind, never the file's content.
+pub fn read_state_strict(file: &Path) -> Result<Option<State>, String> {
+    match std::fs::read(file) {
+        Ok(bytes) => parsed_state(file, &bytes),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(e) => Err(damaged_message(file, &e.kind().to_string())),
+    }
 }
 
 fn parse_state(raw: &str) -> Result<State, String> {
@@ -145,7 +163,32 @@ impl Config {
     /// A damaged file gives the stand-in (embedding off: profile `unavailable`, nothing saved,
     /// set-next refused) with [`Config::damaged`] set. Also returns the lines Node logs.
     pub fn load(file: PathBuf, env: &dyn Fn(&str) -> Option<String>) -> (Config, Vec<String>) {
-        match read_state(&file) {
+        let read = read_state(&file);
+        Config::load_read(file, read, env)
+    }
+
+    /// [`Config::load`] over [`read_state_strict`]: a file that exists but cannot be read is
+    /// damaged, not missing. Its stand-in also refuses every change that writes (409 `badState`
+    /// with the damaged-file message), where Node's in-memory stand-in takes them: a host that
+    /// reads the file on every request must not answer a change it cannot keep.
+    pub fn load_strict(
+        file: PathBuf,
+        env: &dyn Fn(&str) -> Option<String>,
+    ) -> (Config, Vec<String>) {
+        let read = read_state_strict(&file);
+        let (mut config, warnings) = Config::load_read(file, read, env);
+        if config.off {
+            config.locked = config.damaged.clone();
+        }
+        (config, warnings)
+    }
+
+    fn load_read(
+        file: PathBuf,
+        read: Result<Option<State>, String>,
+        env: &dyn Fn(&str) -> Option<String>,
+    ) -> (Config, Vec<String>) {
+        match read {
             Ok(Some(state)) => (Config::new(state, Some(file), true), Vec::new()),
             Ok(None) => {
                 let (state, warnings) = seed_from_env(env);
@@ -380,4 +423,49 @@ pub(crate) fn no_previous(what: &str) -> Failure {
         "noPrevious",
         format!("There is no previous embedding model to {what}."),
     )
+}
+
+#[cfg(test)]
+#[allow(clippy::unwrap_used, clippy::panic)]
+mod tests {
+    use super::*;
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "qa-embedding-config-{}-{name}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn strict_reading_takes_only_a_missing_file_as_none() {
+        let dir = scratch("strict");
+        let file = dir.join("embedding-config.json");
+        assert_eq!(read_state_strict(&file), Ok(None));
+        // A directory where the file belongs exists but cannot be read (also as root).
+        std::fs::create_dir(&file).unwrap();
+        assert_eq!(read_state(&file), Ok(None), "Node's readState: missing");
+        let Err(why) = read_state_strict(&file) else {
+            panic!("a file that cannot be read is damaged");
+        };
+        assert!(why.contains("cannot be read (") && why.ends_with("Fix or delete it."));
+        let none = |_: &str| None;
+        let (config, warnings) = Config::load_strict(file.clone(), &none);
+        assert_eq!(config.damaged(), Some(why.as_str()));
+        assert_eq!(config.source(), Source::Environment);
+        assert_eq!(warnings.len(), 1);
+        let mut config = config;
+        let refused = config.clear_next().err().map(|f| (f.status, f.code, f.message));
+        assert_eq!(refused, Some((Some(409), Some("badState"), why.clone())));
+        let (lenient, _) = Config::load(file.clone(), &none);
+        assert_eq!(lenient.damaged(), None);
+        // A damaged text reads the same either way.
+        std::fs::remove_dir(&file).unwrap();
+        std::fs::write(&file, "{qa damaged").unwrap();
+        assert_eq!(read_state_strict(&file), read_state(&file));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

@@ -70,7 +70,16 @@ fn headers(token: Option<&str>, name: &str) -> Result<HeaderMap, String> {
     }
     Ok(headers)
 }
+/// The cloud metadata addresses inside ranges `allowed` otherwise takes as this network (the
+/// shared address space and unique local); the route's own address check refuses them too.
+const METADATA: [IpAddr; 2] = [
+    IpAddr::V4(std::net::Ipv4Addr::new(100, 100, 100, 200)),
+    IpAddr::V6(std::net::Ipv6Addr::new(0xfd00, 0xec2, 0, 0, 0, 0, 0, 0x254)),
+];
 fn allowed(ip: IpAddr) -> bool {
+    if METADATA.contains(&ip) {
+        return false;
+    }
     match ip {
         IpAddr::V4(ip) => {
             ip.is_loopback()
@@ -630,5 +639,41 @@ impl Embed for Http {
                 result
             }
         })
+    }
+}
+
+#[cfg(test)]
+mod address_tests {
+    use super::allowed;
+    use std::net::IpAddr;
+
+    fn ip(text: &str) -> IpAddr {
+        text.parse().unwrap_or(IpAddr::from([0, 0, 0, 0]))
+    }
+
+    #[test]
+    fn cloud_metadata_addresses_are_not_this_network() {
+        for refused in [
+            "100.100.100.200",
+            "fd00:ec2::254",
+            "::ffff:100.100.100.200",
+            "169.254.169.254",
+            "0.0.0.0",
+            "8.8.8.8",
+        ] {
+            assert!(!allowed(ip(refused)), "{refused}");
+        }
+        for kept in [
+            "127.0.0.1",
+            "10.1.2.3",
+            "100.100.100.201",
+            "100.64.0.1",
+            "fd00:ec2::253",
+            "fd12::1",
+            "::1",
+            "::ffff:192.168.1.2",
+        ] {
+            assert!(allowed(ip(kept)), "{kept}");
+        }
     }
 }
