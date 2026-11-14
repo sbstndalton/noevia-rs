@@ -145,6 +145,9 @@ struct Cursor {
     clock: f64,
     streams: usize,
     pending: Vec<(usize, tokio::task::JoinHandle<Result<JValue, Fail>>)>,
+    /// The ms of the error-body deadline the calibrator set last (`tick` with another interval than
+    /// the memory watch's).
+    deadline_ms: Option<f64>,
 }
 
 struct Replay {
@@ -153,7 +156,21 @@ struct Replay {
     changed: Condvar,
     ctx: OnceLock<Ctx>,
     memory: Memory,
+    /// `timeouts.memoryPoll`: the memory watch's `tick` interval; any other `tick` is the error-body
+    /// deadline.
+    memory_poll: f64,
+    /// Fired when Node's error-body deadline cut a read (a `tick` event).
+    deadline: tokio::sync::Notify,
     rt: tokio::runtime::Handle,
+}
+
+/// The `ms` of the error-body deadline when it cut this `stream.read` in Node: its `during` is that
+/// one `tick` event (the read then answered only because the deadline cancelled it).
+fn cut_by_deadline(e: &JValue) -> Option<f64> {
+    match js::items(e.get("during")) {
+        [t] if t.get("dep").as_str() == Some("tick") => t.get("ms").as_num(),
+        _ => None,
+    }
 }
 
 impl Replay {
@@ -199,6 +216,25 @@ impl Replay {
                 let at = c.pos;
                 c.pos += 1;
                 self.changed.notify_all();
+                // A read Node's error-body deadline cut: the deadline fires instead of the read
+                // answering (the calibrator must have set one, with the same ms).
+                if what == "stream.read" {
+                    if let Some(ms) = cut_by_deadline(&head.v) {
+                        if c.deadline_ms != Some(ms) {
+                            let why = format!(
+                                "event {at} stream.read: Node's error-body deadline ({ms} ms) cut it; rust set {:?}",
+                                c.deadline_ms
+                            );
+                            self.fail(&mut c, why);
+                            return None;
+                        }
+                        c.pos = self.events[at].end;
+                        c.deadline_ms = None;
+                        self.changed.notify_all();
+                        self.deadline.notify_one();
+                        return Some(self.events[at].v.clone());
+                    }
+                }
                 // Wait for the events recorded during this call.
                 let end = self.events[at].end;
                 while c.pos < end && c.mismatch.is_none() {
@@ -244,6 +280,14 @@ impl Replay {
             let Some(head) = self.events.get(c.pos).cloned() else {
                 return;
             };
+            // Wall time that passed while the engine produced a chunk (scenario traces): Node's
+            // clock moved on before the read answered.
+            if head.v.get("dep").as_str() == Some("clock") {
+                c.clock += head_ms(&head.v);
+                c.pos += 1;
+                self.changed.notify_all();
+                continue;
+            }
             if head.v.get("dep").as_str() != Some("driver") {
                 let (g, _) = self.changed.wait_timeout(c, WAIT).unwrap();
                 c = g;
@@ -415,6 +459,10 @@ impl Body for ReplayBody {
             .r
             .take("stream.read", &[("stream", JValue::Num(self.id as f64))]);
         async move {
+            // Cut by the error-body deadline in Node: this read never answers by itself.
+            if e.as_ref().and_then(cut_by_deadline).is_some() {
+                std::future::pending::<()>().await;
+            }
             let v = later(e).await?;
             if v.get("done").truthy() {
                 return Ok(None);
@@ -540,8 +588,21 @@ impl Engine for ReplayEngine {
             let _ = later(e).await;
         }
     }
-    fn tick(&self, _ms: f64) -> impl Future<Output = ()> + Send {
-        std::future::pending()
+    fn tick(&self, ms: f64) -> impl Future<Output = ()> + Send {
+        // The memory watch's interval never fires (its reads are constant or recorded per call);
+        // the error-body deadline fires where Node's cut a read.
+        let r = Arc::clone(&self.0);
+        let deadline = ms != r.memory_poll;
+        if deadline {
+            r.cur.lock().unwrap().deadline_ms = Some(ms);
+        }
+        async move {
+            if deadline {
+                r.deadline.notified().await;
+            } else {
+                std::future::pending::<()>().await;
+            }
+        }
     }
     fn random_int(&self, min: u32, max: u32) -> u32 {
         let v = answer(self.0.take(
@@ -611,6 +672,7 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
             clock: T0,
             streams: 0,
             pending: Vec::new(),
+            deadline_ms: None,
         }),
         changed: Condvar::new(),
         ctx: OnceLock::new(),
@@ -618,11 +680,18 @@ fn replay(path: &std::path::Path) -> Result<(), String> {
             JValue::Str(s) if s == "calls" => Memory::Calls,
             v => Memory::Constant(v.as_num()),
         },
+        memory_poll: Limits::from_timeouts(config.get("timeouts")).memory_poll,
+        deadline: tokio::sync::Notify::new(),
         rt: rt.handle().clone(),
     });
     let fill = t.get("kind").as_str() == Some("fill");
     let floor = config.get("memoryFloorGib").as_num().unwrap_or(2.0);
     let limits = Limits::from_timeouts(config.get("timeouts"));
+    // A deadline and the memory watch are told apart by their interval.
+    assert!(
+        limits.memory_poll != 2000.0,
+        "timeouts.memoryPoll 2000 cannot be told from the error-body deadline"
+    );
     // The calibrator is made on the runtime (its creation reads the models.ini revision).
     let ctx = {
         let (e, h) = (
@@ -720,7 +789,7 @@ fn every_recorded_private_calibrator_replays() {
         "the trace set is missing"
     );
     assert!(
-        scenarios >= 30 || only.is_some(),
+        scenarios >= 50 || only.is_some(),
         "the scenario (S*) traces are missing"
     );
     assert!(
