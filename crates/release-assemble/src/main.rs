@@ -18,7 +18,9 @@
 //!                                                 feature, model-reads, project-reads, project-lifecycle,
 //!                                                 project-files, project-config, code-egress,
 //!                                                 calibration-cancel, calibration-routes, research
-//!                                                 task-reads, model-scan, or one of the facts
+//!                                                 task-reads, model-scan, document-pages,
+//!                                                 conversation-import, project-documents,
+//!                                                 public-pages, plugin-directory, or one of the facts
 //!                                                 pairings (facts::ALL: autotune-settings,
 //!                                                 idle-unload-read, model-assignments, preset-read,
 //!                                                 autotune-clear, autotune-resume, autotune-cancel,
@@ -202,6 +204,18 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                     guard::project_files_pairing(t, guard::project_storage_rs_owner(t))?
                 }
                 "project-config" => guard::project_config_pairing(t)?,
+                "document-pages" => {
+                    guard::namespace_pairing(t, &guard::PROJECT_DOCUMENT_PAGES_OWNERSHIP)?
+                }
+                // The create/delete pair runs first in the script, so its front half is its verdict.
+                "conversation-import" => {
+                    guard::conversation_import_pairing(t, guard::project_lifecycle_rs_owner(t))?
+                }
+                "project-documents" => guard::project_documents_pairing(t)?,
+                "public-pages" => guard::namespace_pairing(t, &guard::PUBLIC_PAGES_OWNERSHIP)?,
+                "plugin-directory" => {
+                    guard::namespace_pairing(t, &guard::PLUGIN_DIRECTORY_OWNERSHIP)?
+                }
                 "code-egress" => bridged::code_egress_pairing(t)?,
                 "research" => bridged::research_pairing(t)?,
                 "task-reads" => bridged::task_reads_pairing(t)?,

@@ -909,7 +909,8 @@ pub enum Methods<'a> {
     /// No `switch` and `methods` naming exactly `GET` (Node keeps every other method).
     OnlyGet,
     /// No `switch` and `methods` naming exactly the comma-separated set at the same index as the path in
-    /// [`NamespacePairing::paths`], each method once (Node keeps every other method).
+    /// [`NamespacePairing::paths`], each method once (Node keeps every other method); a set of `-` is
+    /// every method (no `methods` key).
     Each(&'a [&'a str]),
 }
 
@@ -919,7 +920,9 @@ impl Methods<'_> {
         let want: &str = match self {
             Methods::All => return methods == b"-",
             Methods::OnlyGet => "GET",
+            // `-` in a set: that path is Rust's for every method (`$4 == "-"`, the public pages' /device).
             Methods::Each(sets) => match sets.get(index).copied() {
+                Some("-") => return methods == b"-",
                 Some(w) => w,
                 None => return false,
             },
@@ -1174,4 +1177,103 @@ pub fn project_config_pairing(tree: &Path) -> Result<(), String> {
         ));
     }
     Ok(())
+}
+
+/// The project document page reader (`rust-project-document-pages.cjs` + the front's
+/// `rust-project-document-pages`): exactly GET of the pages route.
+pub const PROJECT_DOCUMENT_PAGES_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "project document page reader ownership pairing",
+    core_marker: "require('./rust-project-document-pages.cjs')",
+    rs_feature: "rust-project-document-pages",
+    paths: &["/api/projects/{id}/documents/pages"],
+    methods: Methods::Each(&["GET"]),
+    rule_text: "exactly GET /api/projects/{id}/documents/pages must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// The conversation import (#2191 round 4): exactly POST of `/api/import/conversations`. It creates
+/// projects through the front's create, so it needs the project create/delete pair.
+pub const CONVERSATION_IMPORT_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "conversation import ownership pairing",
+    core_marker: "require('./rust-conversation-import.cjs')",
+    rs_feature: "rust-conversation-import",
+    paths: &["/api/import/conversations"],
+    methods: Methods::Each(&["POST"]),
+    rule_text: "exactly POST /api/import/conversations must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// The project document upload (#2191 round 5): exactly POST of `/api/projects/{id}/documents`, on the
+/// front's extraction pipeline (`rust-document-extraction`).
+pub const PROJECT_DOCUMENTS_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "project document upload ownership pairing",
+    core_marker: "require('./rust-project-documents.cjs')",
+    rs_feature: "rust-project-documents",
+    paths: &["/api/projects/{id}/documents"],
+    methods: Methods::Each(&["POST"]),
+    rule_text: "exactly POST /api/projects/{id}/documents must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// The public pages (#2190): GET and HEAD of `/about` and `/privacy`, every method of `/device`.
+pub const PUBLIC_PAGES_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "public page ownership pairing",
+    core_marker: "require('./rust-public-pages.cjs')",
+    rs_feature: "rust-public-pages",
+    paths: &["/about", "/privacy", "/device"],
+    methods: Methods::Each(&["GET,HEAD", "GET,HEAD", "-"]),
+    rule_text: "GET and HEAD of the pages and every method of /device must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// The plugin directory (#2190): every method of the route.
+pub const PLUGIN_DIRECTORY_OWNERSHIP: NamespacePairing<'static> = NamespacePairing {
+    label: "plugin directory ownership pairing",
+    core_marker: "require('./rust-plugin-directory.cjs')",
+    rs_feature: "rust-plugin-directory",
+    paths: &["/api/plugins/directory"],
+    methods: Methods::All,
+    rule_text: "all methods must belong to Rust",
+    incomplete_text: "incomplete route ownership",
+};
+
+/// The conversation import pairing. `lifecycle_rs_owner` is the project create/delete pair's verdict,
+/// which runs first in the script (Core and the front agree by then).
+pub fn conversation_import_pairing(tree: &Path, lifecycle_rs_owner: bool) -> Result<(), String> {
+    let p = &CONVERSATION_IMPORT_OWNERSHIP;
+    if !pairing_owner(tree, p)? {
+        return Ok(());
+    }
+    if !lifecycle_rs_owner {
+        return Err(format!("{}: needs the project create/delete pair", p.label));
+    }
+    pairing_routes(tree, p)
+}
+
+/// The front half of the project create/delete pair (its `FEATURES` names `rust-project-lifecycle`).
+pub fn project_lifecycle_rs_owner(tree: &Path) -> bool {
+    move_capability(
+        read_file(&tree.join("rs/bins/noevia-server/src/lib.rs")).as_deref(),
+        "FEATURES",
+        PROJECT_LIFECYCLE_OWNERSHIP.rs_feature,
+        MoveKind::Features,
+    )
+}
+
+/// The project document upload pairing: the moved pair also needs the front's extraction pipeline.
+pub fn project_documents_pairing(tree: &Path) -> Result<(), String> {
+    let p = &PROJECT_DOCUMENTS_OWNERSHIP;
+    if !pairing_owner(tree, p)? {
+        return Ok(());
+    }
+    let extraction = move_capability(
+        read_file(&tree.join("rs/bins/noevia-server/src/lib.rs")).as_deref(),
+        "FEATURES",
+        "rust-document-extraction",
+        MoveKind::Features,
+    );
+    if !extraction {
+        return Err(format!("{}: needs the rust-document-extraction pipeline", p.label));
+    }
+    pairing_routes(tree, p)
 }

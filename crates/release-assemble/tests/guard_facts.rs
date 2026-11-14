@@ -192,7 +192,10 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
         },
     };
     if let Some(t) = text {
-        write(&root.join(module), &format!("'use strict';\n{t}module.exports = {{ OWNED_ROUTES }};\n"));
+        write(
+            &root.join(module),
+            &format!("'use strict';\n{t}module.exports = {{ OWNED_ROUTES }};\n"),
+        );
     }
     // The checks: an old handler or policy left live (or only commented out), a kept primitive missing.
     for check in p.checks {
@@ -239,7 +242,9 @@ fn gen_facts(r: &mut Rng, root: &Path, p: &FactsPairing) {
         1 => index.push_str(
             "// const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || '');\n",
         ),
-        2 => index.push_str("const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN);\n"),
+        2 => index.push_str(
+            "const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN);\n",
+        ),
         _ => index.push_str(
             "  const FRONT_SECRET = String(process.env.NOEVIA_PROJECT_STORE_TOKEN || ''); // before clientFromEnv\n",
         ),

@@ -116,7 +116,10 @@ fn gen_tree(r: &mut Rng, root: &Path, p: &NamespacePairing) {
             let methods = match p.methods {
                 guard::Methods::All => None,
                 guard::Methods::OnlyGet => Some("[\"GET\"]".to_string()),
-                guard::Methods::Each(sets) => sets.get(i).map(|w| methods_array(w, r.chance(30))),
+                guard::Methods::Each(sets) => sets
+                    .get(i)
+                    .filter(|w| **w != "-")
+                    .map(|w| methods_array(w, r.chance(30))),
             };
             if let Some(m) = methods {
                 toml.push_str(&format!("methods = {m}\n"));
@@ -164,6 +167,7 @@ fn gen_tree(r: &mut Rng, root: &Path, p: &NamespacePairing) {
             (guard::Methods::OnlyGet, None) if r.chance(85) => Some("[\"GET\"]".to_string()),
             (guard::Methods::Each(sets), None) if r.chance(85) => index
                 .and_then(|i| sets.get(i))
+                .filter(|w| **w != "-")
                 .map(|w| methods_array(w, r.chance(20))),
             (_, m) => m.map(str::to_string),
         };
@@ -308,10 +312,11 @@ fn compare_with(
     for _ in 0..n {
         gen_tree(&mut r, &tree, p);
         let flag = extra(&mut r, &tree);
-        let prefix = format!(
-            "project_storage_rs_owner={}\n",
-            if flag { "rust" } else { "\"\"" }
-        );
+        // The earlier pairings' verdicts a block reads (project_files: storage; conversation_import:
+        // create/delete); the others read neither.
+        let owner = if flag { "rust" } else { "\"\"" };
+        let prefix =
+            format!("project_storage_rs_owner={owner}\nproject_lifecycle_rs_owner={owner}\n");
         let want = shell_verdict(dir.path(), &format!("{prefix}{block}"), &tree);
         let got = verdict(rust(&tree, flag));
         assert_eq!(got, want, "{name} pairing over the generated tree");
@@ -382,6 +387,83 @@ fn project_config_pairing_matches_the_shell() {
     );
 }
 
+#[test]
+fn project_document_pages_pairing_matches_the_shell() {
+    compare(
+        "document_pages",
+        &guard::PROJECT_DOCUMENT_PAGES_OWNERSHIP,
+        0x5EED_0000_0000_0005,
+    );
+}
+
+#[test]
+fn conversation_import_pairing_matches_the_shell() {
+    // PASS, move together, needs the create/delete pair, missing contract, rule, incomplete.
+    compare_with(
+        "conversation_import",
+        &guard::CONVERSATION_IMPORT_OWNERSHIP,
+        0x5EED_0000_0000_0006,
+        6,
+        &|r, _| r.chance(80),
+        &guard::conversation_import_pairing,
+    );
+}
+
+#[test]
+fn project_documents_pairing_matches_the_shell() {
+    // PASS, move together, needs the extraction pipeline, missing contract, rule, incomplete.
+    compare_with(
+        "project_documents",
+        &guard::PROJECT_DOCUMENTS_OWNERSHIP,
+        0x5EED_0000_0000_0007,
+        6,
+        &|r, t| {
+            if r.chance(80) {
+                add_extraction(t);
+            }
+            false
+        },
+        &|t, _| guard::project_documents_pairing(t),
+    );
+}
+
+#[test]
+fn public_pages_pairing_matches_the_shell() {
+    compare(
+        "public_pages",
+        &guard::PUBLIC_PAGES_OWNERSHIP,
+        0x5EED_0000_0000_0008,
+    );
+}
+
+#[test]
+fn plugin_directory_pairing_matches_the_shell() {
+    compare(
+        "plugin_directory",
+        &guard::PLUGIN_DIRECTORY_OWNERSHIP,
+        0x5EED_0000_0000_0009,
+    );
+}
+
+/// Adds `rust-document-extraction` to the front's FEATURES list `gen_tree` wrote (both of its list
+/// layouts), so the upload pairing's pipeline check is passed or failed by the generator.
+fn add_extraction(tree: &Path) {
+    let lib = tree.join("rs/bins/noevia-server/src/lib.rs");
+    let Ok(text) = fs::read_to_string(&lib) else {
+        return;
+    };
+    let text = text
+        .replace(
+            "    \"rust-auth\",\n",
+            "    \"rust-auth\",\n    \"rust-document-extraction\",\n",
+        )
+        .replace(
+            "&[\"rust-auth\"];",
+            "&[\"rust-auth\", \"rust-document-extraction\"];",
+        );
+    write(&lib, &text);
+}
+
 /// The pairings excerpt's sections must still be contiguous blocks of the real script (when
 /// `ASSEMBLE_RELEASE_SH` names it).
 #[test]
@@ -412,6 +494,11 @@ fn pairings_excerpt_is_verbatim() {
         "autotune_resume",
         "autotune_cancel",
         "autotune_untuned",
+        "document_pages",
+        "conversation_import",
+        "project_documents",
+        "public_pages",
+        "plugin_directory",
     ];
     for name in names {
         let block = section(name);
