@@ -6082,10 +6082,15 @@ mod tests {
                 })
                 .collect()
         };
-        tx.send(bytes::Bytes::from(event(100) + &event(200))).unwrap();
+        tx.send(bytes::Bytes::from(event(100) + &event(200)))
+            .unwrap();
         w.launch("synthetic", plan(16_384.0, 30.0)).await.unwrap();
         delta_wait(|| !saved(&w).is_empty()).await;
-        assert_eq!(saved(&w), vec![1.0], "saved at the 1 % event, not after the chunk");
+        assert_eq!(
+            saved(&w),
+            vec![1.0],
+            "saved at the 1 % event, not after the chunk"
+        );
         // The engine takes 46 s for the next chunk: past 1.5x the 30 s budget.
         w.clock_skew.store(46_000, Ordering::Release);
         tx.send(bytes::Bytes::from(event(5_000))).unwrap();
@@ -6512,7 +6517,8 @@ mod tests {
             );
             hold.release().await;
         }
-        // The lease ends between the commit and its re-read.
+        // The lease ends between the commit and its re-read (a lease asked for 600 s covers the
+        // write's 150 s step).
         let d = tempfile::tempdir().unwrap();
         let ini = d.path().join("models.ini");
         std::fs::write(&ini, INI).unwrap();
@@ -6523,7 +6529,7 @@ mod tests {
         let w = worker_with(d.path(), port, Some(lease));
         let hold = w
             .maint
-            .acquire_for_run("synthetic apply", Duration::from_secs(30))
+            .acquire_for_run("synthetic apply", Duration::from_secs(600))
             .await
             .unwrap();
         let end = Arc::clone(&ended);
@@ -6595,15 +6601,18 @@ mod tests {
             !w.recovery.load(Ordering::Acquire),
             "no recovery owed: nothing was written"
         );
-        assert_eq!(std::fs::read_to_string(&ini).unwrap(), INI, "nothing written");
-        let engine = engine.lock().unwrap();
+        assert_eq!(
+            std::fs::read_to_string(&ini).unwrap(),
+            INI,
+            "nothing written"
+        );
+        let asked: Vec<String> = engine.lock().unwrap().clone();
         assert!(
-            !engine
+            !asked
                 .iter()
                 .any(|r| r.contains("reload") || r.contains("/models/load")),
-            "nothing re-read or loaded: {engine:?}"
+            "nothing re-read or loaded: {asked:?}"
         );
-        drop(engine);
         readmitted(&w).await;
         assert!(!w.lease_lost());
     }

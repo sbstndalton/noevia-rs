@@ -316,7 +316,12 @@ async fn writes_drop_cores_model_reads_then_past_the_admin_check_its_scan() {
     assert_eq!(write(f.addr, "PUT", PATH, ADMIN, "").await.0, 405);
     assert_eq!(calls(), (3, 1));
     let before = up.seen().len();
-    assert_eq!(write(f.addr, "POST", PATH, ADMIN, r#"{"confirmPause":true}"#).await.0, 202);
+    assert_eq!(
+        write(f.addr, "POST", PATH, ADMIN, r#"{"confirmPause":true}"#)
+            .await
+            .0,
+        202
+    );
     assert_eq!(calls(), (4, 2));
     let paths: Vec<String> = up.seen()[before..].iter().map(|r| r.path.clone()).collect();
     assert_eq!(&paths[..3], [INVALIDATE, SCAN_CLEAR, FACTS], "{paths:?}");
