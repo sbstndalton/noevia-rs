@@ -167,11 +167,7 @@ pub enum Start {
 }
 
 /// Everything before the launch: the refusal (exit 2) or the plan.
-pub fn prepare(
-    env: &mut Env,
-    cwd: &Path,
-    warn: &mut dyn FnMut(String),
-) -> Result<Start, Refusal> {
+pub fn prepare(env: &mut Env, cwd: &Path, warn: &mut dyn FnMut(String)) -> Result<Start, Refusal> {
     for w in env.scrub() {
         warn(w);
     }

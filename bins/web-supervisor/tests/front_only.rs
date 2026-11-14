@@ -107,7 +107,10 @@ fn check_prints_the_front_alone_without_secrets_and_starts_nothing() {
         "{stdout} {}",
         String::from_utf8_lossy(&out.stderr)
     );
-    assert!(stdout.starts_with("web-supervisor: front only (no Core)\n"), "{stdout}");
+    assert!(
+        stdout.starts_with("web-supervisor: front only (no Core)\n"),
+        "{stdout}"
+    );
     assert!(!stdout.contains("\nnode "), "no Core child: {stdout}");
     assert!(stdout.contains("NOEVIA_FRONT_ONLY=1"), "{stdout}");
     assert!(stdout.contains("NOEVIA_LEGACY_UPSTREAM=http://127.0.0.1:9021"));
@@ -193,10 +196,16 @@ fn the_fronts_exit_ends_the_container_non_zero() {
         let (code, stderr) = finish(child);
         assert_eq!(code, Some(want), "{file}: {stderr}");
         assert!(
-            stderr.contains(&format!("noevia-server exited ({})", if want == 1 { 0 } else { want })),
+            stderr.contains(&format!(
+                "noevia-server exited ({})",
+                if want == 1 { 0 } else { want }
+            )),
             "{file}: {stderr}"
         );
-        assert!(!log(w.path()).contains("front TERM"), "{file}: already gone");
+        assert!(
+            !log(w.path()).contains("front TERM"),
+            "{file}: already gone"
+        );
     }
 }
 
@@ -213,7 +222,10 @@ fn a_front_without_the_capabilities_is_refused_before_anything_starts() {
             .unwrap_or_else(|e| unreachable!("{e}"));
         let stderr = String::from_utf8_lossy(&out.stderr);
         assert_eq!(out.status.code(), Some(2), "{stderr}");
-        assert!(stderr.contains(&format!("does not advertise {missing}")), "{stderr}");
+        assert!(
+            stderr.contains(&format!("does not advertise {missing}")),
+            "{stderr}"
+        );
         assert_eq!(log(w.path()), "", "{features}: nothing started");
     }
 }
@@ -229,7 +241,10 @@ fn a_failed_preparation_step_starts_nothing() {
     assert_eq!(out.status.code(), Some(2), "{stderr}");
     assert!(stderr.contains("--ensure-schema failed"), "{stderr}");
     let log = log(w.path());
-    assert!(log.contains("ensure-secrets-key") && log.contains("ensure-schema"), "{log}");
+    assert!(
+        log.contains("ensure-secrets-key") && log.contains("ensure-schema"),
+        "{log}"
+    );
     assert!(!log.contains("front serve"), "{log}");
 }
 
@@ -241,7 +256,9 @@ fn the_pair_refusals_before_the_mode_still_apply() {
         .output()
         .unwrap_or_else(|e| unreachable!("{e}"));
     assert_eq!(out.status.code(), Some(2));
-    assert!(String::from_utf8_lossy(&out.stderr).contains("NOEVIA_FRONT=node is no longer supported"));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("NOEVIA_FRONT=node is no longer supported")
+    );
     let out = supervisor(w.path())
         .env("UI_PORT", "64000")
         .output()

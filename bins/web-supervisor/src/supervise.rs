@@ -110,10 +110,7 @@ pub fn supervise(env: &Env, data: &Path, cwd: &Path, launch: &Launch) -> i32 {
     runtime.block_on(run_pair(env, cwd, launch))
 }
 
-type Listeners = (
-    tokio::signal::unix::Signal,
-    tokio::signal::unix::Signal,
-);
+type Listeners = (tokio::signal::unix::Signal, tokio::signal::unix::Signal);
 
 /// The stop signals, taken before any child exists (the script's trap came first too).
 fn listeners() -> Option<Listeners> {
@@ -148,14 +145,8 @@ async fn prepare_front(
         }
     };
     tokio::pin!(stop);
-    let prepared = crate::ensure::run(
-        steps,
-        env,
-        cwd,
-        crate::ensure::STEP_TIMEOUT,
-        stop.as_mut(),
-    )
-    .await;
+    let prepared =
+        crate::ensure::run(steps, env, cwd, crate::ensure::STEP_TIMEOUT, stop.as_mut()).await;
     match prepared {
         Ok(crate::ensure::Outcome::Done) => None,
         Ok(crate::ensure::Outcome::Stopped) => Some(0),

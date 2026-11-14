@@ -102,7 +102,10 @@ pub fn plan(
         ));
     }
     let set = vec![
-        ("NOEVIA_PROJECT_STORE_PORT".to_owned(), store_port.to_string()),
+        (
+            "NOEVIA_PROJECT_STORE_PORT".to_owned(),
+            store_port.to_string(),
+        ),
         ("NOEVIA_PROJECT_STORE_TOKEN".to_owned(), token),
         ("NOEVIA_START_ID".to_owned(), start),
         (
@@ -165,7 +168,10 @@ mod tests {
         assert_eq!(s.front.program, "/bin/front");
         assert!(s.front.args.is_empty());
         assert_eq!(get(&s.front.set, FRONT_FLAG), Some("1"));
-        assert_eq!(get(&s.front.set, "NOEVIA_PROJECT_STORE_PORT"), Some("10021"));
+        assert_eq!(
+            get(&s.front.set, "NOEVIA_PROJECT_STORE_PORT"),
+            Some("10021")
+        );
         assert_eq!(
             get(&s.front.set, "NOEVIA_PROJECT_STORE_TOKEN").map(str::len),
             Some(64)
@@ -182,7 +188,12 @@ mod tests {
         assert_eq!(s.legacy_port, 9021);
         assert_eq!(s.store_port, 10021);
         // Nothing Node-only reaches the front.
-        for node_only in ["UI_HOST", "UI_PORT", "NOEVIA_FRONT_CLIENT_IP", "NOEVIA_LEGACY_CLAIM_BIN"] {
+        for node_only in [
+            "UI_HOST",
+            "UI_PORT",
+            "NOEVIA_FRONT_CLIENT_IP",
+            "NOEVIA_LEGACY_CLAIM_BIN",
+        ] {
             assert_eq!(get(&s.front.set, node_only), None, "{node_only}");
         }
         assert!(s.warnings.is_empty());
@@ -193,7 +204,11 @@ mod tests {
         for ensure in ["", "0", "1"] {
             let s = solo(&Env::from_pairs([("NOEVIA_SUPERVISOR_ENSURE", ensure)]));
             let args: Vec<_> = s.ensure.iter().map(|c| c.args.join(" ")).collect();
-            assert_eq!(args, ["--ensure-secrets-key", "--ensure-schema"], "{ensure:?}");
+            assert_eq!(
+                args,
+                ["--ensure-secrets-key", "--ensure-schema"],
+                "{ensure:?}"
+            );
             for step in &s.ensure {
                 assert_eq!(step.program, "/bin/front");
                 assert_eq!(get(&step.set, "UI_DATA_DIR"), Some("/data"));
@@ -221,7 +236,10 @@ mod tests {
             .err()
             .map(|r| r.0)
             .unwrap_or_default();
-            assert!(err.contains(&format!("does not advertise {missing}")), "{lines:?}: {err}");
+            assert!(
+                err.contains(&format!("does not advertise {missing}")),
+                "{lines:?}: {err}"
+            );
             assert!(err.contains(SWITCH), "{err}");
         }
     }
