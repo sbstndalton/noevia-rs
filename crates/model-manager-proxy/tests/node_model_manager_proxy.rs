@@ -90,10 +90,18 @@ struct Fake {
     name: String,
     calls: VecDeque<JValue>,
     now: f64,
+    /// The route judges a parsed body and forwards it written again.
+    normalise: bool,
+    /// A named difference: no recorded calls to follow; it must not reach the model manager.
+    permissive: bool,
 }
 
 impl Fake {
     fn next(&mut self, call: &str) -> JValue {
+        if self.permissive {
+            assert_ne!(call, "fetch", "{}: a named difference forwarded", self.name);
+            return JValue::Undefined;
+        }
         let c = self
             .calls
             .pop_front()
@@ -109,11 +117,21 @@ impl Fake {
     }
 
     fn same(&self, what: &str, ours: &JValue, node: &JValue) {
+        if self.permissive {
+            return;
+        }
         assert_eq!(show(ours), show(node), "{}: {what}", self.name);
     }
 }
 
 impl Host for Fake {
+    fn reranker_settings(&mut self) -> Result<(), Thrown> {
+        let c = self.next("rerankerSettings");
+        if !c.get("threw").is_nullish() {
+            return Err(thrown(c.get("threw")));
+        }
+        Ok(())
+    }
     fn invalidate_model_reads(&mut self) {
         self.next("invalidateModelReads");
     }
@@ -230,7 +248,12 @@ impl Host for Fake {
             .body
             .as_deref()
             .map_or(JValue::Undefined, JValue::from);
-        self.same("fetch body", &body, c.get("body"));
+        let node_body = match (self.normalise, c.get("body")) {
+            (true, JValue::Str(raw)) if raw.is_empty() => JValue::from("{}"),
+            (true, JValue::Str(raw)) => JValue::Str(show(&wtf16::parse(raw).unwrap())),
+            (_, other) => other.clone(),
+        };
+        self.same("fetch body", &body, &node_body);
         self.same(
             "fetch timeout",
             &JValue::Num(request.timeout_ms as f64),
@@ -335,7 +358,7 @@ fn every_recorded_request_answers_as_core() {
     let f = fixture();
     let defaults = f.get("defaults");
     let mut answered = 0;
-    let mut to_core = 0;
+    let mut differences = 0;
     for c in list(&f, "cases") {
         let name = text(c.get("name"));
         let e = c.get("expect");
@@ -348,7 +371,23 @@ fn every_recorded_request_answers_as_core() {
             JValue::Arr(items) => items.iter().cloned().collect(),
             _ => VecDeque::new(),
         };
+        let difference = c.get("difference");
+        let guarded = path
+            .strip_prefix(model_manager_proxy::PREFIX)
+            .and_then(model_manager_proxy::manager_path)
+            .is_some_and(|rest| {
+                (method == "POST"
+                    && matches!(
+                        rest.as_str(),
+                        "benchmark/start" | "benchmark/sweep" | "models/delete"
+                    ))
+                    || (method == "PUT"
+                        && model_manager_proxy::section_name(&rest).is_some()
+                        && !model_manager_proxy::section_rename(&rest))
+            });
         let mut host = Fake {
+            normalise: guarded,
+            permissive: !matches!(difference, JValue::Undefined),
             name: name.clone(),
             calls,
             now: c
@@ -381,10 +420,19 @@ fn every_recorded_request_answers_as_core() {
                     "{name}: calls left"
                 );
             }
-            Outcome::Core => {
-                // Only a body JSON.parse reads and the port cannot hold.
-                assert!(name.contains("goes to core"), "{name}: sent to core");
-                to_core += 1;
+            Outcome::Core => panic!("{name}: sent to core"),
+            Outcome::Answer(a) if !matches!(difference, JValue::Undefined) => {
+                assert_eq!(
+                    Some(f64::from(a.status)),
+                    difference.get("status").as_num(),
+                    "{name}: the named difference's status"
+                );
+                assert_eq!(
+                    wtf16::stringify(&a.body).as_deref(),
+                    difference.get("bodyJson").as_str(),
+                    "{name}: the named difference's body"
+                );
+                differences += 1;
             }
             Outcome::Answer(a) => {
                 assert_eq!(
@@ -417,7 +465,7 @@ fn every_recorded_request_answers_as_core() {
         }
     }
     assert!(answered > 900, "{answered} answered");
-    assert_eq!(to_core, 2, "the requests sent to core");
+    assert!(differences > 40, "{differences} named differences");
 }
 
 #[test]

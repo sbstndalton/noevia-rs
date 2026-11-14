@@ -5,8 +5,6 @@
 //! server; this crate decides, in core's order, what to ask and what to answer.
 //!
 //! [`handle`] runs one request. The server, before calling it:
-//! - runs it under the reranker-settings lock when [`protected_action`] says so (core's
-//!   `rerank-settings.cjs withSettings`, so a delete's sidecar protection cannot change under it);
 //! - reads the body only for a method that carries one ([`carries_body`]), at most [`BODY_LIMIT`]
 //!   bytes (`None` when more arrived);
 //! - passes `path` and `search` as WHATWG `URL` gives `url.pathname` and `url.search`;
@@ -14,14 +12,41 @@
 //!   block, #2304).
 //!
 //! The answer is [`Outcome::Answer`] (status, JSON body to write with `wtf16::stringify`, and
-//! whether `Cache-Control: no-store` was set), [`Outcome::Pass`] for a path outside the block, or
-//! [`Outcome::Core`] for a body the port cannot hold (a number past the f64 range, nesting deeper
-//! than 128, text in U+10F800..U+10FFFF) on a route that parses it: the request then goes to core
-//! unchanged, before anything but the reads fence ([`Host::invalidate_model_reads`]) was asked.
+//! whether `Cache-Control: no-store` was set) or [`Outcome::Pass`] for a path outside the block.
+//! ([`Outcome::Core`] is no longer produced: a body the port cannot hold is refused, below.)
 //!
-//! Core's behaviour is kept where it is wrong; each is in the recording:
-//! - a JSON `null` body is a TypeError (500 `Internal error`) on `benchmark/start`,
-//!   `benchmark/sweep`, `models/delete`, and a section PUT when `presetRefusal` exists;
+//! An administrator's write ([`protected_action`]) runs, in core, inside a reranker-settings
+//! snapshot (`rerank-settings.cjs withSettings`: `run(fn)` first reads the settings from the
+//! native owner and runs the handler on that snapshot; it is not a lock). The crate asks for that
+//! snapshot first ([`Host::reranker_settings`]); when it cannot be read, core's 503 `Internal
+//! error` is the answer before anything else (no reads fence, no scan, no forward). The host
+//! answers the sidecar and reranker questions of that request from the same snapshot.
+//!
+//! Where core is unsafe, the port departs from it and fails closed; each is a named difference,
+//! recorded (Node's own answer is in the fixture beside the port's) and replayed:
+//! - **Control characters**: a decoded path segment holding a character below U+0020 or U+007F is
+//!   400 `Invalid path`. Core passes `models/delete%0A` on unguarded (no route matches it) while
+//!   the model manager strips the final newline and acts on it as the delete; the same holds for the
+//!   sweep, the benchmark start, a section rename or autoconfig (the client's `budget_gib` kept) and
+//!   the preset writes (no hold).
+//! - **The judged payload is the forwarded one**: on `benchmark/start`, `benchmark/sweep`,
+//!   `models/delete` and a section PUT, a non-empty body that does not parse to a JSON object (core
+//!   reads it as `{}` and forwards the raw bytes, which the model manager may read differently:
+//!   `NaN`, a dictionary of `models`), a body the port cannot hold, or an `aliases`/`models` that is
+//!   present but not an array is 400; otherwise the body forwarded is the parsed value written
+//!   again (`wtf16::stringify`; an empty body is `{}`), so the model manager sees exactly what was
+//!   judged. (This also answers core's `null`-body TypeError with that 400.)
+//! - **Methods**: a method Node's HTTP parser does not accept ([`NODE_METHODS`]; hyper accepts any
+//!   token, `delete` included) is 400 `Invalid method`, before anything.
+//! - **A section named `rename`**: `PUT sections/rename` is a section write (core's
+//!   `endsWith('/rename')` skipped its path checks and `presetRefusal`); a rename is decided by
+//!   the segment count.
+//!
+//! Named, not changed: a non-empty scan cache that lacks a key lets that key through unchecked
+//! (core scans fresh only when the cache is empty); the sweep guard's start-up `adopt()` is not
+//! part of this contract (the front relays `POST benchmark/sweep` to core, which keeps its guard).
+//!
+//! Core's behaviour is kept where it is wrong but harmless; each is in the recording:
 //! - `PATH_OPTION_ALIASES` is a plain object, so a section PUT whose `values` has a non-string
 //!   under an inherited name (`constructor`, `toString`, `__proto__`, …) is refused as
 //!   `Not saved: function Object() { [native code] } must be a text path` (or `[object Object]`);
@@ -37,6 +62,44 @@ pub mod sections;
 
 use js::{prop, strict_eq, string, string_or_empty, to_number, trim};
 use js_json::{wtf16, JValue};
+
+/// The methods Node's HTTP parser accepts (`http.METHODS`).
+pub const NODE_METHODS: [&str; 34] = [
+    "ACL",
+    "BIND",
+    "CHECKOUT",
+    "CONNECT",
+    "COPY",
+    "DELETE",
+    "GET",
+    "HEAD",
+    "LINK",
+    "LOCK",
+    "M-SEARCH",
+    "MERGE",
+    "MKACTIVITY",
+    "MKCALENDAR",
+    "MKCOL",
+    "MOVE",
+    "NOTIFY",
+    "OPTIONS",
+    "PATCH",
+    "POST",
+    "PROPFIND",
+    "PROPPATCH",
+    "PURGE",
+    "PUT",
+    "QUERY",
+    "REBIND",
+    "REPORT",
+    "SEARCH",
+    "SOURCE",
+    "SUBSCRIBE",
+    "TRACE",
+    "UNBIND",
+    "UNLINK",
+    "UNLOCK",
+];
 
 /// The block's prefix.
 pub const PREFIX: &str = "/api/model-manager/";
@@ -222,6 +285,10 @@ pub enum PresetHoldError {
 
 /// What the server asks or does, in core's order. Every method is called only when core would.
 pub trait Host {
+    /// The reranker-settings snapshot an administrator's write runs on (core `withSettings`),
+    /// read before anything else; a failure is core's throw (503). The sidecar and reranker
+    /// questions of the request are answered from it.
+    fn reranker_settings(&mut self) -> Result<(), Thrown>;
     /// `service.invalidateModelReads()`: before a write (any method but GET and HEAD) and again
     /// once it settled.
     fn invalidate_model_reads(&mut self);
@@ -259,7 +326,9 @@ pub trait Host {
     fn sizing_budget_gib(&mut self) -> JValue;
     /// `fetchJson(...)`; `None` when it threw (no answer, a timeout, a redirect).
     fn fetch(&mut self, request: &Fetch) -> Option<Reply>;
-    /// `writePresets`: take the preset hold.
+    /// `writePresets`: take the preset hold. On `Err` nothing is held: a hold taken and then found
+    /// unable to cover the write is released by the host before it answers (as model_maint's
+    /// `preset_hold` does); [`Host::preset_release`] follows only an `Ok`.
     fn preset_hold(&mut self) -> Result<(), PresetHoldError>;
     /// `writePresets`: the router's reload under the hold (only when the write asks for it). Its
     /// result is not read; a throw (the lease lost) is the route's.
@@ -326,10 +395,15 @@ pub fn manager_path(raw_rest: &str) -> Option<String> {
     for s in raw_rest.split('/') {
         segments.push(js::decode_uri_component(s)?);
     }
-    if segments
-        .iter()
-        .any(|s| s == "." || s == ".." || s.contains('/') || s.contains('\\'))
-    {
+    // Named difference: a control character in a decoded segment (core lets `models/delete%0A`
+    // past every guard; the model manager strips the final newline).
+    if segments.iter().any(|s| {
+        s == "."
+            || s == ".."
+            || s.contains('/')
+            || s.contains('\\')
+            || s.chars().any(|c| c < '\u{20}' || c == '\u{7f}')
+    }) {
         return None;
     }
     Some(segments.join("/"))
@@ -359,6 +433,12 @@ fn section_with(rest: &str, tails: &[&str]) -> bool {
         };
         name.is_some_and(|n| !n.is_empty() && !n.contains('/'))
     })
+}
+
+/// `sections/<name>/rename`, by its segments (a section named `rename` is not a rename).
+pub fn section_rename(rest: &str) -> bool {
+    let parts: Vec<&str> = rest.split('/').collect();
+    matches!(parts.as_slice(), ["sections", name, "rename"] if !name.is_empty())
 }
 
 /// Whether the forwarded request writes models.ini (#2276), so it runs under the preset hold.
@@ -399,18 +479,26 @@ pub fn autoconfig_search(search: &str, budget: &JValue) -> Result<String, Thrown
     })
 }
 
-/// `JSON.parse(body || '{}')`, `{}` when it throws; `None` where the port cannot hold what
-/// `JSON.parse` would read.
-fn payload(body: Option<&str>) -> Option<JValue> {
-    let text = match body {
-        Some(s) if !s.is_empty() => s,
-        _ => "{}",
-    };
-    match wtf16::parse(text) {
-        Ok(v) => Some(v),
-        Err(wtf16::Refusal::Invalid) => Some(JValue::Obj(Vec::new())),
-        Err(wtf16::Refusal::Unsupported) => None,
+/// The refusal of a body that is not a JSON object.
+pub const NOT_AN_OBJECT: &str = "The request body must be a JSON object.";
+
+/// A guarded route's body (named difference, fail closed): `{}` when empty, else it must parse
+/// (as the port holds it) to an object whose `field`, when present, is an array.
+pub fn strict_payload(body: Option<&str>, field: Option<&str>) -> Result<JValue, String> {
+    let text = body.unwrap_or("");
+    if text.is_empty() {
+        return Ok(JValue::Obj(Vec::new()));
     }
+    let value = match wtf16::parse(text) {
+        Ok(v @ JValue::Obj(_)) => v,
+        _ => return Err(NOT_AN_OBJECT.to_string()),
+    };
+    if let Some(f) = field {
+        if !matches!(value.get(f), JValue::Undefined | JValue::Arr(_)) {
+            return Err(format!("{f} must be an array."));
+        }
+    }
+    Ok(value)
 }
 
 fn error(message: &str) -> JValue {
@@ -536,6 +624,20 @@ pub fn handle(req: &Request<'_>, cfg: &Config, host: &mut impl Host) -> Outcome 
     if !req.path.starts_with(PREFIX) {
         return Outcome::Pass;
     }
+    if !NODE_METHODS.contains(&req.method) {
+        return answer(400, error("Invalid method"), false);
+    }
+    if protected_action(req.method, req.path, req.role) {
+        if let Err(thrown) = host.reranker_settings() {
+            let (status, body) = thrown.answer();
+            return Outcome::Answer(Answer {
+                status,
+                body,
+                no_store: false,
+                thrown: true,
+            });
+        }
+    }
     let write = !matches!(req.method, "GET" | "HEAD");
     if write {
         host.invalidate_model_reads();
@@ -597,7 +699,7 @@ fn route(
         None
     };
     let section = section_name(rest);
-    let section_put = method == "PUT" && section.is_some() && !rest.ends_with("/rename");
+    let section_put = method == "PUT" && section.is_some() && !section_rename(rest);
     let parses = (method == "POST"
         && matches!(
             rest,
@@ -605,12 +707,23 @@ fn route(
         ))
         || section_put;
     let parsed = if parses {
-        match payload(body.as_deref()) {
-            Some(v) => v,
-            None => return Ok(Outcome::Core),
+        let field = match rest {
+            "benchmark/start" | "benchmark/sweep" => Some("aliases"),
+            "models/delete" => Some("models"),
+            _ => None,
+        };
+        match strict_payload(body.as_deref(), field) {
+            Ok(v) => v,
+            Err(message) => return Ok(answer(400, error(&message), false)),
         }
     } else {
         JValue::Undefined
+    };
+    // The model manager is sent what was judged.
+    let body = if parses {
+        Some(wtf16::stringify(&parsed).unwrap_or_else(|| "{}".to_string()))
+    } else {
+        body
     };
     let headers = {
         let mut h = vec![("Content-Type".to_string(), "application/json".to_string())];
