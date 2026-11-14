@@ -240,7 +240,12 @@ impl Prepared {
                 _ => names(frame, "onceTools")?,
             },
             route_note: opt_text(frame, "routeNote").unwrap_or_default(),
-            provenance: flag(frame, "provenance"),
+            // Present only as `true`; any other value refuses the frame (never read as off).
+            provenance: match frame.get("provenance") {
+                JValue::Undefined => false,
+                JValue::Bool(true) => true,
+                _ => return Err(Unreadable("prepared.provenance is not true".into())),
+            },
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),

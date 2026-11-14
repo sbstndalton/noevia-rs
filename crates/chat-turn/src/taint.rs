@@ -17,7 +17,7 @@
 
 use js_json::JValue;
 use prompt_framing::provenance::{self, Store};
-use prompt_framing::{json::push_str, store_json, MAX_PROVENANCE_BYTES};
+use prompt_framing::{store_json, MAX_PROVENANCE_BYTES};
 
 use crate::js;
 
@@ -73,6 +73,8 @@ pub fn audit_details(tool: &str, hits: &[Hit]) -> JValue {
 pub struct Taint {
     /// `None` once broken (chat.cjs `taintBroken`).
     store: Option<Store>,
+    /// The bytes of the store's JSON (it changes only on an ingest).
+    state_len: usize,
 }
 
 impl Default for Taint {
@@ -84,8 +86,10 @@ impl Default for Taint {
 impl Taint {
     /// `createTaintStore()` with its default bound.
     pub fn new() -> Self {
+        let store = Store::new(provenance::DEFAULT_MAX_CHARS);
         Taint {
-            store: Some(Store::new(provenance::DEFAULT_MAX_CHARS)),
+            state_len: state_len(&store),
+            store: Some(store),
         }
     }
 
@@ -103,13 +107,7 @@ impl Taint {
         if contents.is_empty() {
             return;
         }
-        // `{"op":"ingest","state":…,"contents":[…]}`, as JSON.stringify writes it.
-        let mut len = request_len(store, br#"{"op":"ingest","state":"#);
-        len += br#","contents":["#.len() + b"]}".len() + contents.len().saturating_sub(1);
-        for c in &contents {
-            len = len.saturating_add(json_len(c));
-        }
-        if len > MAX_PROVENANCE_BYTES {
+        if ingest_len(self.state_len, &contents) > MAX_PROVENANCE_BYTES {
             self.store = None;
             return;
         }
@@ -117,7 +115,9 @@ impl Taint {
         // dav-parse-wasm.cjs `validStore` on the reply.
         if store.check().is_err() {
             self.store = None;
+            return;
         }
+        self.state_len = state_len(store);
     }
 
     /// `checkWrite(taint, args)` for a write whose arguments are the text `args` (or, broken,
@@ -127,12 +127,7 @@ impl Taint {
             return vec![Hit::Unchecked];
         };
         let units = js::to_units(args);
-        // `{"op":"check","state":…,"args":…,"object":false}`.
-        let len = request_len(store, br#"{"op":"check","state":"#)
-            .saturating_add(br#","args":"#.len())
-            .saturating_add(json_len(&units))
-            .saturating_add(br#","object":false}"#.len());
-        if len > MAX_PROVENANCE_BYTES {
+        if check_len(self.state_len, &units) > MAX_PROVENANCE_BYTES {
             return vec![Hit::Unchecked];
         }
         let found = provenance::parse_args(&units, false)
@@ -159,18 +154,57 @@ impl Taint {
     }
 }
 
-/// The request's bytes up to and including the store's JSON.
-fn request_len(store: &Store, head: &[u8]) -> usize {
+/// The bytes of a store's JSON (the reply's `state`, as core sends it back).
+fn state_len(store: &Store) -> usize {
     let mut state = Vec::new();
     store_json(&mut state, store);
-    head.len().saturating_add(state.len())
+    state.len()
 }
 
-/// The UTF-8 length of `units` as a JSON string literal (JSON.stringify).
+/// `{"op":"ingest","state":…,"contents":[…]}`, as JSON.stringify writes it, in bytes.
+fn ingest_len(state_len: usize, contents: &[Vec<u16>]) -> usize {
+    let mut len = br#"{"op":"ingest","state":"#.len().saturating_add(state_len);
+    len = len
+        .saturating_add(br#","contents":["#.len() + b"]}".len() + contents.len().saturating_sub(1));
+    for c in contents {
+        len = len.saturating_add(json_len(c));
+    }
+    len
+}
+
+/// `{"op":"check","state":…,"args":…,"object":false}` in bytes.
+fn check_len(state_len: usize, args: &[u16]) -> usize {
+    br#"{"op":"check","state":"#
+        .len()
+        .saturating_add(state_len)
+        .saturating_add(br#","args":"#.len())
+        .saturating_add(json_len(args))
+        .saturating_add(br#","object":false}"#.len())
+}
+
+/// The UTF-8 length of `units` as a JSON string literal, as JSON.stringify (and prompt-framing's
+/// writer) escapes it: `"` `\` and `\b\f\n\r\t` in two bytes, other controls and lone surrogates in six,
+/// a surrogate pair in four, the rest as UTF-8. Counted without building the text.
 fn json_len(units: &[u16]) -> usize {
-    let mut out = Vec::new();
-    push_str(&mut out, units);
-    out.len()
+    let mut n: usize = 2;
+    let mut i = 0;
+    while let Some(&c) = units.get(i) {
+        let add = match c {
+            0x22 | 0x5c | 0x08 | 0x0c | 0x0a | 0x0d | 0x09 => 2,
+            0..=0x1f => 6,
+            0x20..=0x7f => 1,
+            0x80..=0x7ff => 2,
+            0xd800..=0xdbff if matches!(units.get(i + 1), Some(0xdc00..=0xdfff)) => {
+                i += 1;
+                4
+            }
+            0xd800..=0xdfff => 6,
+            _ => 3,
+        };
+        n = n.saturating_add(add);
+        i += 1;
+    }
+    n
 }
 
 /// provenance-policy.cjs `contentParts`: each message's string content, or the string `text` of
@@ -291,11 +325,65 @@ mod tests {
         assert!(ok.check("{}").is_empty());
     }
 
+    /// What prompt-framing's writer (JSON.stringify's escaping) writes for `units`.
+    fn written(units: &[u16]) -> usize {
+        let mut out = Vec::new();
+        prompt_framing::json::push_str(&mut out, units);
+        out.len()
+    }
+
     #[test]
-    fn the_request_length_is_json_stringify_s() {
-        // A lone surrogate is six bytes (\udxxx), as JSON.stringify writes it; a BMP letter its UTF-8.
+    fn the_counted_length_is_the_written_one() {
         assert_eq!(json_len(&[0xd800]), 8);
         assert_eq!(json_len(&js::to_units("é")), 4);
         assert_eq!(json_len(&js::to_units("a\"\n")), 7);
+        // Every unit of the first planes alone, every surrogate alone and paired either way round.
+        for u in (0u16..0x0900).chain(0xd7f0..0xe010).chain(0xfff0..=0xffff) {
+            assert_eq!(json_len(&[u]), written(&[u]), "{u:#x}");
+            assert_eq!(json_len(&[u, 0xdc00]), written(&[u, 0xdc00]), "{u:#x} dc00");
+            assert_eq!(json_len(&[0xd83d, u]), written(&[0xd83d, u]), "d83d {u:#x}");
+        }
+        let mixed = js::to_units("QA \u{1}\t\"x\\ é ✓ 😀 \u{2028}");
+        assert_eq!(json_len(&mixed), written(&mixed));
+    }
+
+    #[test]
+    fn the_request_lengths_are_those_of_the_whole_requests() {
+        // A store whose sources and texts hold quotes, controls, non-ASCII and a lone surrogate.
+        let mut t = Taint::new();
+        let odd = format!(
+            "say \"hi\"\n\tto qa-ünïcode@example.invalid {} end",
+            '\u{10F800}'
+        );
+        let block = framed("tool result", "qa \"odd\" ✓", &odd);
+        t.ingest(&[msg(js::s(block.clone()))]);
+        let store = t.store.clone().unwrap();
+        assert!(!store.texts.is_empty());
+        let mut state = Vec::new();
+        store_json(&mut state, &store);
+        let state = js_json::wtf16::parse(std::str::from_utf8(&state).unwrap()).unwrap();
+        assert_eq!(t.state_len, js::stringify(&state).len());
+        let contents = vec![js::s(block.clone()), js::s("x <untrusted \u{1}")];
+        let units: Vec<Vec<u16>> = contents
+            .iter()
+            .map(|c| js::to_units(c.as_str().unwrap()))
+            .collect();
+        let whole = js::obj([
+            ("op", js::s("ingest")),
+            ("state", state.clone()),
+            ("contents", JValue::Arr(contents)),
+        ]);
+        assert_eq!(ingest_len(t.state_len, &units), js::stringify(&whole).len());
+        let args = format!("{{\"to\":\"é{}\\n\"}}", '\u{10F801}');
+        let whole = js::obj([
+            ("op", js::s("check")),
+            ("state", state),
+            ("args", js::s(args.clone())),
+            ("object", JValue::Bool(false)),
+        ]);
+        assert_eq!(
+            check_len(t.state_len, &js::to_units(&args)),
+            js::stringify(&whole).len()
+        );
     }
 }
