@@ -22,7 +22,7 @@ fn work() -> tempfile::TempDir {
         r#"#!/usr/bin/env bash
 case "${{1:-}}" in --ensure-*) echo "front ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; exit 0;; esac
 if [ "${{1:-}}" = --features ]; then printf '%s\n' ${{STUB_FEATURES-rust-auth front-only-v1 boot-ensure-v1}}; exit 0; fi
-echo "front serve ONLY=${{NOEVIA_FRONT_ONLY-unset}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} CLAIM=${{NOEVIA_LEGACY_CLAIM_BIN-unset}}" >> "{log}"
+echo "front serve DATA=${{UI_DATA_DIR:-}} ONLY=${{NOEVIA_FRONT_ONLY-unset}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} CLAIM=${{NOEVIA_LEGACY_CLAIM_BIN-unset}}" >> "{log}"
 trap 'echo "front TERM" >> "{log}"; exit 0' TERM
 for _ in $(seq 1 400); do [ -f "{die}" ] && exit 3; [ -f "{die0}" ] && exit 0; sleep 0.05; done
 "#,
@@ -152,12 +152,33 @@ fn the_front_is_prepared_then_started_alone_and_docker_stop_exits_0() {
         [
             format!("front ensure-secrets-key UI_DATA_DIR={d} ONLY=unset"),
             format!("front ensure-schema UI_DATA_DIR={d} ONLY=unset"),
-            "front serve ONLY=1 UPSTREAM=http://127.0.0.1:9021 SPORT=10021 TOK=64 START=32 KCONF=unset CLAIM=unset".to_owned(),
+            format!("front serve DATA={d} ONLY=1 UPSTREAM=http://127.0.0.1:9021 SPORT=10021 TOK=64 START=32 KCONF=unset CLAIM=unset"),
             "front TERM".to_owned(),
         ],
         "{stderr}"
     );
     assert!(data.join("embedding-pair.lock").exists());
+}
+
+#[test]
+fn without_ui_data_dir_the_front_and_its_preparation_share_the_fallback() {
+    let w = work();
+    let child = supervisor(w.path())
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(wait_for(w.path(), "front serve"), "{}", log(w.path()));
+    term(&child);
+    let (code, stderr) = finish(child);
+    assert_eq!(code, Some(0), "{stderr}");
+    let fallback = w.path().join("server/ui-data");
+    let want = format!("UI_DATA_DIR={}", fallback.display());
+    let log = log(w.path());
+    assert_eq!(log.matches(&want).count(), 2, "both steps: {log}");
+    assert!(
+        log.contains(&format!("front serve DATA={} ", fallback.display())),
+        "{log}"
+    );
+    assert!(fallback.join("embedding-pair.lock").exists());
 }
 
 #[test]

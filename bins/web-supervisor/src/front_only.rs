@@ -88,6 +88,10 @@ pub fn plan(
         ));
     }
     let ensure = crate::ensure::steps(bin, data)?;
+    // Valid UTF-8 by now (`steps` refused otherwise). The front gets the directory its preparation
+    // used: without Core there is no `server/ui-data` fallback of Node's, and the front itself
+    // requires UI_DATA_DIR.
+    let data = data.to_str().unwrap_or_default().to_owned();
     let mut warnings = Vec::new();
     let dav = env.get("COWORK_DAV_PORT");
     if !dav.is_empty() && dav != "0" {
@@ -105,6 +109,7 @@ pub fn plan(
             "NOEVIA_LEGACY_UPSTREAM".to_owned(),
             format!("http://127.0.0.1:{legacy}"),
         ),
+        ("UI_DATA_DIR".to_owned(), data),
         (FRONT_FLAG.to_owned(), "1".to_owned()),
     ];
     Ok(Solo {
@@ -173,6 +178,7 @@ mod tests {
             get(&s.front.set, "NOEVIA_LEGACY_UPSTREAM"),
             Some("http://127.0.0.1:9021")
         );
+        assert_eq!(get(&s.front.set, "UI_DATA_DIR"), Some("/data"));
         assert_eq!(s.legacy_port, 9021);
         assert_eq!(s.store_port, 10021);
         // Nothing Node-only reaches the front.
