@@ -20,6 +20,7 @@
 use crate::gguf;
 use crate::js;
 use js_json::{wtf16, JValue};
+use std::sync::{Mutex, MutexGuard, PoisonError};
 
 /// How long a definite answer is reused.
 pub const CACHE_MS: f64 = 300_000.0;
@@ -129,6 +130,10 @@ pub fn validate(repo: &str, files: &JValue) -> Result<Key, &'static str> {
     let JValue::Arr(items) = files else {
         return Err(INVALID_FILES);
     };
+    // The length first, as core: no per-item work on a long list.
+    if items.is_empty() || items.len() > 4 {
+        return Err(INVALID_FILES);
+    }
     let mut names = Vec::with_capacity(items.len());
     for f in items {
         let Some(f) = f.as_str() else {
@@ -145,9 +150,6 @@ pub fn validate(repo: &str, files: &JValue) -> Result<Key, &'static str> {
             return Err(INVALID_FILES);
         }
         names.push(f);
-    }
-    if names.is_empty() || names.len() > 4 {
-        return Err(INVALID_FILES);
     }
     Ok(Key {
         repo: repo.to_string(),
@@ -246,6 +248,94 @@ impl Artifacts {
                 let ran = run(&key, host);
                 Some(self.finish(&key, ran, host.now_ms()))
             }
+        }
+    }
+}
+
+impl Artifacts {
+    /// Ends a run without an answer (it panicked or was cancelled): the check no longer counts
+    /// as running, and nothing is cached.
+    pub fn abandon(&mut self, key: &Key) {
+        self.running.retain(|k| k != key);
+    }
+}
+
+/// What a check over shared state gave.
+#[derive(Debug, Clone, PartialEq)]
+pub enum Checked {
+    Answer(JValue),
+    /// The same check is running in another request: its answer is this one's.
+    Join(Key),
+}
+
+fn lock(artifacts: &Mutex<Artifacts>) -> MutexGuard<'_, Artifacts> {
+    artifacts.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+/// A check this request runs, outside the lock. Dropping it without [`Running::finish`] (a
+/// panic, a cancelled future) abandons it, so it never stays counted as running.
+#[derive(Debug)]
+pub struct Running<'a> {
+    artifacts: &'a Mutex<Artifacts>,
+    key: Option<Key>,
+}
+
+impl Running<'_> {
+    pub fn key(&self) -> Option<&Key> {
+        self.key.as_ref()
+    }
+
+    /// The run's answer, cached when definite (the lock taken for this step only).
+    pub fn finish(mut self, ran: Ran, now: i64) -> JValue {
+        match self.key.take() {
+            Some(key) => lock(self.artifacts).finish(&key, ran, now),
+            None => ran.answer,
+        }
+    }
+}
+
+impl Drop for Running<'_> {
+    fn drop(&mut self) {
+        if let Some(key) = self.key.take() {
+            lock(self.artifacts).abandon(&key);
+        }
+    }
+}
+
+/// `check`'s synchronous part over shared state (the lock held for this step only): the answer
+/// at once, or the run this request must do.
+pub fn begin<'a>(
+    artifacts: &'a Mutex<Artifacts>,
+    repo: &str,
+    files: &JValue,
+    now: i64,
+) -> Result<Running<'a>, Checked> {
+    match lock(artifacts).start(repo, files, now) {
+        Start::Done(answer) => Err(Checked::Answer(answer)),
+        Start::Join(key) => Err(Checked::Join(key)),
+        Start::Run(key) => Ok(Running {
+            artifacts,
+            key: Some(key),
+        }),
+    }
+}
+
+/// `check(repo, files)` over shared state: the lock is taken to start and to finish, never
+/// while the fetches run.
+pub fn check_shared(
+    artifacts: &Mutex<Artifacts>,
+    repo: &str,
+    files: &JValue,
+    host: &mut impl Fetcher,
+) -> Checked {
+    match begin(artifacts, repo, files, host.now_ms()) {
+        Err(checked) => checked,
+        Ok(running) => {
+            let ran = match running.key() {
+                Some(key) => run(key, host),
+                None => return Checked::Answer(JValue::Null),
+            };
+            Checked::Answer(running.finish(ran, host.now_ms()))
         }
     }
 }
