@@ -389,7 +389,11 @@ fn replay(sc: &JValue) -> usize {
                         }
                     }
                 }
-                assert_eq!(show(&answer.body), expected(&want, &json_error), "{at} body (#2696)");
+                assert_eq!(
+                    show(&answer.body),
+                    expected(&want, &json_error),
+                    "{at} body (#2696)"
+                );
             } else {
                 assert_eq!(
                     f64::from(answer.status),
