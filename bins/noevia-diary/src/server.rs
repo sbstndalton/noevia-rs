@@ -89,6 +89,10 @@ pub struct App {
     pub llm_main: health::ClientConfig,
     /// R9: the configured external source paths (None: the route is Python's).
     pub external_sources: Option<Vec<String>>,
+    /// R9 main mode (front.rs): how long a native write waits for the tenant's writer slot (the
+    /// Python child may hold it as a lease) before answering 503 BUSY, as Python's forwarder did.
+    /// None (Python as the main process): without limit, as before.
+    pub write_wait: Option<std::time::Duration>,
 }
 
 impl App {
@@ -118,6 +122,7 @@ impl App {
             answer: cfg.answer,
             llm_main: cfg.llm.main,
             external_sources: cfg.external_sources,
+            write_wait: None,
         }
     }
 }
@@ -489,6 +494,11 @@ pub async fn handle(app: Arc<App>, req: Request<Body>) -> Response<Body> {
         if parts.method == Method::POST && path == "/internal/reindex" {
             return crate::reindex::internal(app, &query, &headers, body).await;
         }
+        if let Some(resp) =
+            crate::lease::internal(&app, &parts.method, &path, &query, &headers).await
+        {
+            return resp;
+        }
         return control(&app, &parts.method, &path, &headers);
     }
     // Only Python's forwarder knows the secret; everything else is refused before any work.
@@ -600,6 +610,20 @@ pub(crate) async fn serve_native(
     serve(app, Some(r), false, query, headers, None, asserted).await
 }
 
+/// R9 S3 (front.rs): a writer tenant's write (or the managed backup) for the main process, with
+/// the writer header set by the parent and the whole body.
+pub(crate) async fn serve_native_write(
+    app: Arc<App>,
+    r: Option<Route>,
+    backup: bool,
+    query: Vec<u8>,
+    headers: HeaderMap,
+    bytes: axum::body::Bytes,
+    asserted: bool,
+) -> Response<Body> {
+    serve(app, r, backup, query, headers, Some(bytes), asserted).await
+}
+
 async fn serve(
     app: Arc<App>,
     r: Option<Route>,
@@ -642,15 +666,17 @@ async fn serve(
         let app2 = app.clone();
         // Dropping the HTTP future detaches this task; its locks remain until all effects settle.
         return tokio::task::spawn_blocking(move || {
-            app2.writers
-                .with_lock(&uid, |_| {
-                    crate::backup::run(
-                        &app2.data_root.join("users").join(&uid),
-                        &uid,
-                        storage.as_ref(),
-                    )
-                })
-                .unwrap_or_else(|| detail(410, "tenant deleted"))
+            match app2.writers.with_lock_as(&uid, None, app2.write_wait, |_| {
+                crate::backup::run(
+                    &app2.data_root.join("users").join(&uid),
+                    &uid,
+                    storage.as_ref(),
+                )
+            }) {
+                Ok(resp) => resp,
+                Err(crate::write::Refused::Busy) => reply(Reply::Busy),
+                Err(crate::write::Refused::Fenced) => detail(410, "tenant deleted"),
+            }
         })
         .await
         .unwrap_or_else(|_| internal_error());
@@ -842,7 +868,7 @@ async fn serve_write(
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
         app2.writers
-            .with_lock(&uid, |held| {
+            .with_lock_as(&uid, None, app2.write_wait, |held| {
                 if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
                     return workspace::Reply::Json(503, b"{\"detail\":\"Diary backup settlement is uncertain. Saving and deletion remain paused.\"}".to_vec());
                 }
@@ -889,7 +915,10 @@ async fn serve_write(
                     Op::Edit(req) => writes::edit(&ctx, req),
                 }
             })
-            .unwrap_or(Reply::Decline)
+            .unwrap_or_else(|refused| match refused {
+                crate::write::Refused::Busy => Reply::Busy,
+                crate::write::Refused::Fenced => Reply::Decline,
+            })
     });
     match task.await {
         Ok(r) => reply(r),
@@ -922,7 +951,8 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
             .unwrap_or_default();
     }
     let app2 = app.clone();
-    match tokio::task::spawn_blocking(move || app2.writers.fence(&uid)).await {
+    let lease = crate::lease::lease_of(headers);
+    match tokio::task::spawn_blocking(move || app2.writers.fence_as(&uid, lease)).await {
         Ok(()) => {
             let uid = py::query_get(query, "tenant")
                 .unwrap_or_default()

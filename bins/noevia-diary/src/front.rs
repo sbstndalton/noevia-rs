@@ -50,6 +50,12 @@ pub const RECOVERED_TTL: Duration = Duration::from_secs(600);
 /// How long the child gets after SIGTERM.
 pub const STOP_GRACE: Duration = Duration::from_secs(8);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+/// S3: how long a native write waits for the tenant's writer slot (Python's tenant_writer.DEADLINE_S).
+pub const WRITE_WAIT: Duration = Duration::from_secs(30);
+/// S3: how long a writer tenant's write body may take to arrive (Python's FORWARD_DEADLINE_S).
+const BODY_DEADLINE: Duration = Duration::from_secs(30);
+const TOO_LARGE: &[u8] = br#"{"detail":"request body too large"}"#;
+const BODY_TIMEOUT: &[u8] = br#"{"detail":"The request body did not arrive in time."}"#;
 pub const STARTING: &[u8] = br#"{"detail":"The Diary is starting. Try again in a moment."}"#;
 pub const CHILD_DOWN: &[u8] = br#"{"detail":"The Diary did not answer. Try again in a moment."}"#;
 const HOP: &[&str] = &[
@@ -115,6 +121,7 @@ pub struct Front {
     pub child_port: u16,
     app: OnceLock<Arc<App>>,
     native_routes: OnceLock<Vec<String>>,
+    native_writers: OnceLock<Vec<String>>,
     recovered: Mutex<HashMap<String, Instant>>,
     http: reqwest::Client,
 }
@@ -134,6 +141,7 @@ impl Front {
             child_port,
             app: OnceLock::new(),
             native_routes: OnceLock::new(),
+            native_writers: OnceLock::new(),
             recovered: Mutex::new(HashMap::new()),
             http,
         }
@@ -156,12 +164,23 @@ impl Front {
             return Err("start-up config does not carry this process's secrets");
         }
         let routes = cfg.native_routes.clone();
+        let writers = cfg.native_writers.clone();
+        let mut app = App::new(cfg);
+        app.write_wait = Some(WRITE_WAIT);
         self.app
-            .set(Arc::new(App::new(cfg)))
+            .set(Arc::new(app))
             .map_err(|_| "start-up config already installed")?;
+        let _ = self.native_writers.set(writers);
         self.native_routes
             .set(routes)
             .map_err(|_| "start-up config already installed")
+    }
+
+    /// S3: is this process the tenant's writer (the child's DIARY_RUST_WRITES: UUIDs or `*`)?
+    fn is_writer(&self, uid: &str) -> bool {
+        self.native_writers
+            .get()
+            .is_some_and(|w| w.iter().any(|w| w == "*" || w == uid))
     }
 
     fn is_recovered(&self, uid: &str) -> bool {
@@ -208,6 +227,26 @@ fn declares_body(headers: &HeaderMap) -> bool {
             .get("content-length")
             .and_then(|v| v.to_str().ok())
             .is_some_and(|v| v.trim() != "0")
+}
+
+/// Python's `_json_media`: no Content-Type, or `application/json` (parameters ignored).
+fn json_media(headers: &HeaderMap) -> bool {
+    headers.get("content-type").is_none_or(|v| {
+        crate::py::latin1(v.as_bytes())
+            .split(';')
+            .next()
+            .unwrap_or("")
+            .trim()
+            .eq_ignore_ascii_case("application/json")
+    })
+}
+
+/// Content-Length as declared (None: absent or not a number).
+fn declared_length(headers: &HeaderMap) -> Option<u64> {
+    headers
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.trim().parse::<u64>().ok())
 }
 
 fn is_decline(resp: &Response<Body>) -> bool {
@@ -302,6 +341,47 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
                 return resp;
             }
         }
+    }
+    // S3: a writer tenant's write is served here, under its writer slot (the child's lock is a
+    // lease on the same slot), unless it declines; the child then serves it with the same bytes.
+    let backup = parts.method == Method::POST && path == "/api/storage-backup";
+    let write = server::route(&parts.method, &path).filter(|r| r.write());
+    let writer = stamp_tenant(&parts.headers)
+        .filter(|uid| front.is_writer(uid) && !app.writers.is_fenced(uid));
+    if (write.is_some() || backup)
+        && writer.is_some()
+        && json_media(&parts.headers)
+        && declared_length(&parts.headers).is_none_or(|n| n <= server::MAX_BODY as u64)
+    {
+        let bytes = match (buffered.take(), stream.take()) {
+            (Some(b), _) => b,
+            (None, Some(s)) => {
+                match tokio::time::timeout(BODY_DEADLINE, axum::body::to_bytes(s, server::MAX_BODY))
+                    .await
+                {
+                    Ok(Ok(b)) => b,
+                    Ok(Err(_)) => return raw(413, TOO_LARGE),
+                    Err(_) => return raw(408, BODY_TIMEOUT),
+                }
+            }
+            (None, None) => axum::body::Bytes::new(),
+        };
+        let mut headers = parts.headers.clone();
+        headers.insert(server::WRITER_HEADER, HeaderValue::from_static("1"));
+        let resp = server::serve_native_write(
+            app.clone(),
+            write,
+            backup,
+            query.clone(),
+            headers,
+            bytes.clone(),
+            asserted,
+        )
+        .await;
+        if !is_decline(&resp) {
+            return resp;
+        }
+        buffered = Some(bytes);
     }
     let body = match (buffered, stream) {
         (Some(b), _) => reqwest::Body::from(b),
@@ -606,8 +686,7 @@ mod tests {
 
     #[test]
     fn args_defaults_and_overrides() {
-        let a = parse_args(&s(&["--main", "--", "uvicorn", "agent.app:app"]))
-            .unwrap();
+        let a = parse_args(&s(&["--main", "--", "uvicorn", "agent.app:app"])).unwrap();
         assert_eq!(
             (a.host.as_str(), a.port, a.control_port, a.child_port),
             ("0.0.0.0", 8010, 8011, 8012)

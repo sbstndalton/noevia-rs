@@ -60,7 +60,12 @@ fn managed_tenant(root: &Path, files: &[(&str, &str)]) {
 
 /// The start-up config the child POSTs (rust_forward.server_config's shape).
 fn child_config(root: &Path, key: &str) -> String {
+    child_config_with(root, key, &[])
+}
+
+fn child_config_with(root: &Path, key: &str, writers: &[&str]) -> String {
     serde_json::json!({
+        "native_writers": writers,
         "port": 0, "control_token": CTL, "forward_secret": SECRET, "auth_token": TOKEN, "tenant_key": key,
         "data_root": root.to_str().unwrap(), "legacy_user_id": "", "native_routes": ["/api/months"],
         "corpus": {"entry_layout": "daily", "entries_prefix": "Entries", "index_enabled": false,
@@ -167,6 +172,10 @@ struct Started {
 }
 
 async fn start(root: &Path, key: &str, install: bool) -> Started {
+    start_with(root, key, install, &[]).await
+}
+
+async fn start_with(root: &Path, key: &str, install: bool, writers: &[&str]) -> Started {
     let (child_port, log) = stub_child().await;
     let f = Arc::new(Front::new(CTL.into(), SECRET.into(), child_port));
     let public = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -182,7 +191,7 @@ async fn start(root: &Path, key: &str, install: bool) -> Started {
         let r = reqwest::Client::new()
             .post(format!("http://{}/internal/child/config", s.control))
             .header("x-noevia-diary-control", CTL)
-            .body(child_config(root, key))
+            .body(child_config_with(root, key, writers))
             .send()
             .await
             .unwrap();
@@ -595,4 +604,164 @@ async fn the_process_exits_non_zero_when_its_child_dies() {
     let (mut p, port, _) = spawn_main(dir.path(), 1.0);
     assert_eq!(wait_child(port).await, "child");
     assert_eq!(wait_exit(&mut p), Some(1));
+}
+
+// ---------------------------------------------------------------- S3: the lease lock
+
+fn lease(c: &reqwest::Client, s: &Started, q: &str) -> reqwest::RequestBuilder {
+    c.post(format!("http://{}/internal/lease?{q}", s.control))
+        .header("x-noevia-diary-control", CTL)
+}
+
+#[tokio::test]
+async fn the_child_leases_the_writer_slot_and_native_writes_wait_for_it() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let s = start_with(dir.path(), KEY, true, &[UID]).await;
+    let c = reqwest::Client::new();
+    // The control token is required.
+    let r = c
+        .post(format!("http://{}/internal/lease?tenant={UID}", s.control))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 403);
+    let r = lease(&c, &s, "tenant=not-a-uuid").send().await.unwrap();
+    assert_eq!(r.status(), 400);
+    // A lease, then a second one waits and is refused at its deadline.
+    let r = lease(&c, &s, &format!("tenant={UID}&wait_ms=0"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let id: String = serde_json::from_str::<serde_json::Value>(&r.text().await.unwrap()).unwrap()["lease"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let t = std::time::Instant::now();
+    let r = lease(&c, &s, &format!("tenant={UID}&wait_ms=300"))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 503);
+    assert!(t.elapsed() >= std::time::Duration::from_millis(250));
+    let r = c
+        .get(format!("http://{}/internal/leases", s.control))
+        .header("x-noevia-diary-control", CTL)
+        .send()
+        .await
+        .unwrap();
+    let report: serde_json::Value = serde_json::from_str(&r.text().await.unwrap()).unwrap();
+    assert_eq!(report["leases"][0]["tenant"], UID);
+    // A native write of the writer tenant waits for the lease; released, it is served here.
+    let body = br###"{"path":"Entries/2030/January/January 7, 2030.md","content":"## Monday, January 7, 2030\n","version":null}"###;
+    let put = {
+        let c = c.clone();
+        let url = format!("http://{}/api/file", s.public);
+        tokio::spawn(async move {
+            c.put(url)
+                .header("authorization", format!("Bearer {TOKEN}"))
+                .header("x-cowork-user-id", UID)
+                .header(
+                    "x-cowork-tenant-assertion",
+                    sign("PUT", "/api/file", "", body),
+                )
+                .header("content-type", "application/json")
+                .body(body.to_vec())
+                .send()
+                .await
+                .unwrap()
+        })
+    };
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert!(!put.is_finished());
+    let r = c
+        .delete(format!("http://{}/internal/lease?lease={id}", s.control))
+        .header("x-noevia-diary-control", CTL)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let r = put.await.unwrap();
+    let status = r.status();
+    let text = r.text().await.unwrap();
+    assert_eq!(status, 200, "{text}");
+    assert!(text.contains("\"version\""), "{text}");
+    // Served natively: the child saw nothing.
+    assert!(s.log.lock().unwrap().is_empty());
+    // A released lease is gone.
+    let r = c
+        .delete(format!("http://{}/internal/lease?lease={id}", s.control))
+        .header("x-noevia-diary-control", CTL)
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 404);
+    // Another tenant's write is not this process's: forwarded.
+    let r = c
+        .put(format!("http://{}/api/file", s.public))
+        .header("authorization", format!("Bearer {TOKEN}"))
+        .header("x-cowork-user-id", "1c6f7d2f-4b3e-4d9f-8a21-2b3c4d5e6f70")
+        .header("content-type", "application/json")
+        .body("{}")
+        .send()
+        .await
+        .unwrap();
+    // (unsigned: refused here before anything else)
+    assert_eq!(r.status(), 401);
+    assert!(s.log.lock().unwrap().is_empty());
+}
+
+#[test]
+fn leases_joins_and_fences_share_one_slot() {
+    use noevia_diary::write::{Refused, Writers};
+    use std::time::Duration;
+    let w = Arc::new(Writers::default());
+    let id = w.lease_acquire(UID, Duration::ZERO).unwrap();
+    // Native work waits for the lease (bounded here), or joins it when it names it.
+    assert_eq!(
+        w.with_lock_as(UID, None, Some(Duration::from_millis(50)), |_| ())
+            .err(),
+        Some(Refused::Busy)
+    );
+    assert_eq!(
+        w.with_lock_as(UID, Some(id), Some(Duration::ZERO), |g| g.uid().to_string()),
+        Ok(UID.to_string())
+    );
+    // The joined guard released nothing: the lease still holds the slot.
+    assert!(w.lease_acquire(UID, Duration::from_millis(20)).is_err());
+    // A wrong or foreign lease id does not join.
+    assert!(w
+        .with_lock_as(UID, Some(id + 1000), Some(Duration::ZERO), |_| ())
+        .is_err());
+    // Another tenant is independent.
+    assert!(w
+        .with_lock_as("1c6f7d2f-4b3e-4d9f-8a21-2b3c4d5e6f70", None, Some(Duration::ZERO), |_| ())
+        .is_ok());
+    // Python deletes under its lease: the fence does not wait for its own caller.
+    w.fence_as(UID, Some(id));
+    assert!(w.is_fenced(UID));
+    // A fence without the lease waits until it is released.
+    let w2 = w.clone();
+    let other = "2d708e30-5c4f-4ea0-9b32-3c4d5e6f7081";
+    let id2 = w.lease_acquire(other, Duration::ZERO).unwrap();
+    let t = std::thread::spawn(move || {
+        w2.fence(other);
+        std::time::Instant::now()
+    });
+    std::thread::sleep(Duration::from_millis(100));
+    let released = std::time::Instant::now();
+    assert!(w.lease_release(id2));
+    assert!(t.join().unwrap() >= released);
+    // Fenced: native work refuses, a lease is still granted (Python's own deletion and 410s).
+    assert!(w.lease_release(id));
+    assert_eq!(
+        w.with_lock_as(UID, None, Some(Duration::ZERO), |_| ()).err(),
+        Some(Refused::Fenced)
+    );
+    assert!(w.with_lock(UID, |_| ()).is_none());
+    let id3 = w.lease_acquire(UID, Duration::ZERO).unwrap();
+    assert!(w.lease_release(id3));
+    assert!(!w.lease_release(id3));
+    assert!(w.lease_report().is_empty());
 }

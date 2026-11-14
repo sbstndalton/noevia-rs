@@ -63,6 +63,10 @@ pub struct Config {
     /// the front serves only these natively and forwards every other request. Unused otherwise.
     #[serde(default)]
     pub native_routes: Vec<String>,
+    /// R9 main mode, S3: the child's DIARY_RUST_WRITES (lower-case UUIDs, or `*`): the tenants whose
+    /// writes the front serves natively under the writer slot the child leases.
+    #[serde(default)]
+    pub native_writers: Vec<String>,
 }
 
 pub fn parse(line: &str) -> Result<Config, String> {

@@ -10,6 +10,7 @@ pub mod config;
 pub mod corpus;
 pub mod front;
 pub mod health;
+pub mod lease;
 pub mod managed;
 pub mod py;
 pub mod recovery;
