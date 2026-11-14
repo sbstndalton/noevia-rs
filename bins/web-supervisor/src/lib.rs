@@ -120,10 +120,11 @@ fn random(n: usize) -> Vec<u8> {
 }
 
 /// Everything before the launch: the refusal (exit 2) or the plan.
-pub fn prepare(env: &mut Env, cwd: &Path, warn: &mut dyn FnMut(String)) -> Result<(plan::Launch, String), Refusal> {
+pub fn prepare(env: &mut Env, cwd: &Path, warn: &mut dyn FnMut(String)) -> Result<plan::Launch, Refusal> {
     for w in env.scrub() {
         warn(w);
     }
+    let env: &Env = env;
     // Rust is the only front (#1071, #2094): unset or empty means rust.
     match env.get_or("NOEVIA_FRONT", "rust") {
         "rust" => {}
@@ -143,7 +144,7 @@ pub fn prepare(env: &mut Env, cwd: &Path, warn: &mut dyn FnMut(String)) -> Resul
     for w in &launch.warnings {
         warn(w.clone());
     }
-    Ok((launch, bin))
+    Ok(launch)
 }
 
 /// The entrypoint: the exit code the container ends with.
@@ -155,7 +156,7 @@ pub fn run() -> i32 {
     };
     let mut warn = |w: String| eprintln!("{w}");
     let launch = match prepare(&mut env, &cwd, &mut warn) {
-        Ok((launch, _)) => launch,
+        Ok(launch) => launch,
         Err(Refusal(msg)) => {
             eprintln!("{msg}");
             return 2;

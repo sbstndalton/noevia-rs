@@ -395,18 +395,18 @@ pub fn check(
         "diary backup worker ownership",
     )?;
     let mut budget_front = "";
-    for (cap, generation) in [("rust-budget-watch", "v1"), ("rust-budget-watch-v2", "v2"), ("rust-budget-watch-v3", "v3")] {
+    for (cap, level) in [("rust-budget-watch", "v1"), ("rust-budget-watch-v2", "v2"), ("rust-budget-watch-v3", "v3")] {
         if features.has(cap) {
-            budget_front = generation;
+            budget_front = level;
         }
     }
     if budget_front != probe(core, BUDGET_WATCH_PROBE) {
         return refuse(mismatch("budget watch ownership"));
     }
     let mut calibration_front = "";
-    for (cap, generation) in [("rust-calibration-worker", "v1"), ("rust-calibration-worker-v2", "v2")] {
+    for (cap, level) in [("rust-calibration-worker", "v1"), ("rust-calibration-worker-v2", "v2")] {
         if features.has(cap) {
-            calibration_front = generation;
+            calibration_front = level;
         }
     }
     if calibration_front != probe(core, CALIBRATION_PROBE) {
@@ -480,7 +480,7 @@ mod tests {
     #[derive(Default)]
     struct Fake {
         files: HashMap<String, String>,
-        probes: HashMap<&'static str, NodeOut>,
+        probes: HashMap<String, NodeOut>,
     }
 
     impl Fake {
@@ -488,8 +488,8 @@ mod tests {
             self.files.insert(rel.to_owned(), text.to_owned());
             self
         }
-        fn probe(mut self, module: &'static str, out: &str) -> Self {
-            self.probes.insert(module, NodeOut { ok: true, stdout: out.to_owned() });
+        fn probe(mut self, module: &str, out: &str) -> Self {
+            self.probes.insert(module.to_owned(), NodeOut { ok: true, stdout: out.to_owned() });
             self
         }
     }
@@ -506,7 +506,7 @@ mod tests {
         }
         fn node(&self, script: &str, args: &[String]) -> NodeOut {
             let haystack = format!("{script} {}", args.join(" "));
-            self.probes.iter().find(|(m, _)| haystack.contains(*m)).map(|(_, o)| o.clone()).unwrap_or_default()
+            self.probes.iter().find(|(m, _)| haystack.contains(m.as_str())).map(|(_, o)| o.clone()).unwrap_or_default()
         }
         fn has_node(&self) -> bool {
             true
@@ -651,7 +651,7 @@ mod tests {
         assert_eq!(p.dav_listener_core, "v1");
         assert!(refusal(&core, &features("")).contains("DAV listener ownership mismatch"));
         let mut failed = Fake::default().file("server/rust-source-startup.cjs", "x");
-        failed.probes.insert("rust-source-startup.cjs", NodeOut { ok: false, stdout: "v1".to_owned() });
+        failed.probes.insert("rust-source-startup.cjs".to_owned(), NodeOut { ok: false, stdout: "v1".to_owned() });
         assert!(refusal(&failed, &features("rust-source-startup-v1")).contains("source startup ownership mismatch"));
     }
 
