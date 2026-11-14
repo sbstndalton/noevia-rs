@@ -973,6 +973,18 @@ async fn handle(
             native = Some(routes::Native::Projects);
         }
     }
+    // Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the front answers PUT /api/routing-default
+    // (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs);
+    // unset, both stay Node's, as the routes file says.
+    if native.is_none() && app.config.settings_routes {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if req.method() == axum::http::Method::PUT && at == routing_default_routes::ROUTE {
+            native = Some(routes::Native::RoutingDefault);
+        }
+        if req.method() == axum::http::Method::GET && at == reasoning_settings_routes::ROUTE {
+            native = Some(routes::Native::ReasoningSettings);
+        }
+    }
     let served_bundle = match native {
         Some(routes::Native::Ready) => true,
         Some(routes::Native::Static) => static_files::canonical(&path),
