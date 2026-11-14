@@ -581,9 +581,8 @@ mod tests {
         });
         tokio::spawn(async move { axum::serve(listener, app).await });
         let url = format!("http://localhost:{port}");
-        let advisor = LoadAdvisor::from_lookup(&|k: &str| {
-            (k == "COWORK_DECISION_URL").then(|| url.clone())
-        });
+        let advisor =
+            LoadAdvisor::from_lookup(&|k: &str| (k == "COWORK_DECISION_URL").then(|| url.clone()));
         let request = js_json::wtf16::parse(
             r#"{"cause":"load","evidence":{"status":500,"exitCode":1,"text":"qa-engine stopped: unexpected state 42 in worker qa-1","crash":false}}"#,
         )
