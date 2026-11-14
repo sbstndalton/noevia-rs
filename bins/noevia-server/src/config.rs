@@ -987,6 +987,78 @@ mod export_tests {
         assert!(lookup(&[UP, DATA, (FRONT_ONLY, "1")]).unwrap().front_only);
     }
 
+    /// A stand-in Node on a free loopback port: counts the connections it is offered and drops each.
+    async fn stand_in_node() -> (String, std::sync::Arc<std::sync::atomic::AtomicUsize>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let base = format!("http://{}", listener.local_addr().unwrap());
+        let hits = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let seen = std::sync::Arc::clone(&hits);
+        tokio::spawn(async move {
+            while let Ok((stream, _)) = listener.accept().await {
+                seen.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                drop(stream);
+            }
+        });
+        (base, hits)
+    }
+
+    #[tokio::test]
+    async fn a_front_alone_sends_nothing_to_node_and_the_pair_does() {
+        if !FRONT_ROUTE_FEATURES.iter().all(|(_, on)| *on) {
+            return;
+        }
+        let (base, hits) = stand_in_node().await;
+        let count = || hits.load(std::sync::atomic::Ordering::SeqCst);
+        let up = (crate::node_link::BASE, base.as_str());
+        let wait = std::time::Duration::from_secs(2);
+        let body = serde_json::json!({});
+
+        // Alone: the per-start secret is set, the stand-in listens on the configured address, and no
+        // client of Node reaches it (node_link.rs).
+        let alone = lookup(&[up, DATA, STORE_TOKEN, (FRONT_ONLY, "1")]).unwrap();
+        assert!(alone.front_only);
+        assert_eq!(alone.research.front_token(), None);
+        assert!(alone
+            .research
+            .node_call("/internal/tasks/facts", &body, wait)
+            .await
+            .is_none());
+        assert!(alone
+            .research
+            .node_open("/internal/model-downloads-read/facts", &body, wait)
+            .await
+            .is_none());
+        assert!(alone
+            .research
+            .admission()
+            .enter_gate(crate::chat_admission::Gate::Chat)
+            .await
+            .is_err());
+        assert!(alone.approval_revocation.ack("user-1", None).await.is_err());
+        assert!(matches!(
+            alone.maint.node.load_refusal("model-a").await,
+            crate::model_maint::node_lease::LoadDecision::Unavailable
+        ));
+        assert_eq!(count(), 0, "a front alone dialled Node");
+
+        // The pair, on the same stand-in: the bridge and the leases dial it, so the zero above is not a
+        // listener nobody could reach.
+        let pair = lookup(&[up, DATA, STORE_TOKEN]).unwrap();
+        assert!(!pair.front_only);
+        assert_eq!(pair.research.front_token(), Some(STORE_TOKEN.1));
+        let _ = pair
+            .research
+            .node_call("/internal/tasks/facts", &body, wait)
+            .await;
+        let bridge = count();
+        assert!(bridge >= 1, "the pair's bridge never reached the stand-in");
+        let _ = pair.maint.node.load_refusal("model-a").await;
+        assert!(
+            count() > bridge,
+            "the pair's leases never reached the stand-in"
+        );
+    }
+
     #[test]
     fn project_store_runs_with_a_port_and_never_reads_the_retired_switch() {
         // No port: no store, whatever the retired switch says.
