@@ -539,11 +539,7 @@ mod tests {
                 .unwrap();
             let reply = service.forward(address, request).await;
             assert_eq!(reply.status(), StatusCode::NOT_IMPLEMENTED, "{path}");
-            assert_eq!(
-                reply.headers().get("x-noevia-api").is_some(),
-                api,
-                "{path}"
-            );
+            assert_eq!(reply.headers().get("x-noevia-api").is_some(), api, "{path}");
             let body = http_body_util::BodyExt::collect(reply.into_body())
                 .await
                 .unwrap()
