@@ -384,9 +384,9 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
     assert!(frames.iter().any(|p| p.get("auto") == &JValue::Bool(true)
         && p.get("role").as_str() == Some("fast")
         && p.get("effort").as_str() == Some("low")));
-    assert!(frames.iter().any(
-        |p| p.get("auto") == &JValue::Bool(true) && p.get("role").as_str() == Some("smart")
-    ));
+    assert!(frames
+        .iter()
+        .any(|p| p.get("auto") == &JValue::Bool(true) && p.get("role").as_str() == Some("smart")));
     // The same write twice, and once with its arguments in another key order: one fingerprint.
     let dedupe = items(&f, "turns")
         .iter()
