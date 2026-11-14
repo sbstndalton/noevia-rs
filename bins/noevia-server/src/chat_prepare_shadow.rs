@@ -6,7 +6,7 @@
 //! a blocking thread after the turn has started, at most [`MAX_RUNNING`] at a time, the rest skipped).
 //!
 //! The line holds no text of the turn: `chat prepare shadow: match`, `skip <reason>`,
-//! `failed <reason>` or `diff message=<i> unit=<u> ours=<n> core=<n>` (see `chat_prepare::shadow`).
+//! `failed <reason>` or `diff field=<messages|chat|turn> message=<i> unit=<u> ours=<n> core=<n>` (see `chat_prepare::shadow`).
 //!
 //! Switch: `NOEVIA_CHAT_PREPARE` (config.rs): unset, empty or `node` is off (the default);
 //! `shadow` every account the executor runs; `shadow:<account id>,...` those. It only matters for
@@ -152,6 +152,8 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags:
         chat_framing: flags.chat_framing,
         brain_context: flags.brain_context,
         history_cap: HISTORY_CAP,
+        titles: true,
+        workspace: true,
         catalogue: None,
     })
 }

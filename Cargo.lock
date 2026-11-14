@@ -447,6 +447,7 @@ dependencies = [
 name = "chat-prepare"
 version = "0.1.0"
 dependencies = [
+ "chat-turn",
  "chrono",
  "chrono-tz",
  "icu_properties",

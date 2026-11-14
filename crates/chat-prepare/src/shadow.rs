@@ -1,6 +1,7 @@
-//! The native preparation beside core's, in shadow (track R8, slice P7a): for a turn core handed to
-//! the native executor, the front builds the frame's `messages` itself from the same request and
-//! the account's own files, and says whether they are core's, byte for byte. Nothing uses the
+//! The native preparation beside core's, in shadow (track R8, slices P7a and P7b): for a turn core
+//! handed to the native executor, the front builds the frame's `messages`, `chat` and `turn` itself
+//! from the same request and the account's own files, and says whether they are core's, byte for
+//! byte. Nothing uses the
 //! native messages yet; the verdict is only logged (the front's `NOEVIA_CHAT_PREPARE` switch).
 //!
 //! Covered: a free-chat turn (no project, so the system message is the account, time and memory
@@ -50,6 +51,10 @@ pub struct ShadowTurn<'a> {
     pub brain_context: Option<bool>,
     /// `HISTORY_CAP`.
     pub history_cap: usize,
+    /// `!!chatTitles` (the chat title store is wired) and `!!chatWorkspace` (the turn has the
+    /// account's workspace): both true on a server.
+    pub titles: bool,
+    pub workspace: bool,
     /// The history replay's `knownTool` and `carryOrphanTool` over the server's toolboxes, when the
     /// caller has them; without them a history that asks either is skipped.
     pub catalogue: Option<Catalogue<'a>>,
@@ -64,10 +69,13 @@ pub struct Catalogue<'a> {
     pub carry_orphan_tool: ToolQuestion<'a>,
 }
 
-/// Where the native messages first differ from core's.
+/// Where the native frame first differs from core's.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Diff {
-    /// The message index (`messages.len()` of the shorter list when one is a prefix of the other).
+    /// The frame field: `messages`, `chat` or `turn`.
+    pub field: &'static str,
+    /// The message index (`messages.len()` of the shorter list when one is a prefix of the other;
+    /// 0 for `chat` and `turn`).
     pub message: usize,
     /// The first UTF-16 unit at which the two messages' JSON texts differ.
     pub unit: usize,
@@ -89,15 +97,16 @@ pub enum Verdict {
 }
 
 impl Verdict {
-    /// The log words: `match`, `skip <reason>`, `failed <reason>`, `diff message=<i> unit=<u> ours=<n> core=<n>`.
+    /// The log words: `match`, `skip <reason>`, `failed <reason>`,
+    /// `diff field=<messages|chat|turn> message=<i> unit=<u> ours=<n> core=<n>`.
     pub fn line(&self) -> String {
         match self {
             Verdict::Match => "match".into(),
             Verdict::Skip(r) => format!("skip {r}"),
             Verdict::Failed(r) => format!("failed {r}"),
             Verdict::Diff(d) => format!(
-                "diff message={} unit={} ours={} core={}",
-                d.message, d.unit, d.ours, d.core
+                "diff field={} message={} unit={} ours={} core={}",
+                d.field, d.message, d.unit, d.ours, d.core
             ),
         }
     }
@@ -127,6 +136,10 @@ fn covered(t: &ShadowTurn<'_>) -> Result<Option<(PartKind, String)>, &'static st
     let space = body.get("spaceId");
     if space.as_str().is_some_and(|s| s.starts_with("diary")) {
         return Err("diary");
+    }
+    // `spaceId?.startsWith(...)` throws for a truthy value that is not text (core refuses it first).
+    if !space.is_nullish() && space.as_str().is_none() {
+        return Err("space");
     }
     let Some(message) = body.get("message").as_str() else {
         return Err("message");
@@ -218,6 +231,7 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
         let (a, b) = (text(a), text(b));
         if a != b {
             return Verdict::Diff(Diff {
+                field: "messages",
                 message: i,
                 unit: first_difference(&a, &b),
                 ours: ours.len(),
@@ -225,8 +239,24 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
             });
         }
     }
+    if ours.len() == core.len() {
+        let (chat, turn) = chat_and_turn(t);
+        for (field, ours) in [("chat", chat), ("turn", turn)] {
+            let (a, b) = (text(&ours), text(t.frame.get(field)));
+            if a != b {
+                return Verdict::Diff(Diff {
+                    field,
+                    message: 0,
+                    unit: first_difference(&a, &b),
+                    ours: 1,
+                    core: 1,
+                });
+            }
+        }
+    }
     if ours.len() != core.len() {
         return Verdict::Diff(Diff {
+            field: "messages",
             message: ours.len().min(core.len()),
             unit: 0,
             ours: ours.len(),
@@ -235,3 +265,101 @@ pub fn compare(t: &ShadowTurn<'_>) -> Verdict {
     }
     Verdict::Match
 }
+
+fn obj(pairs: Vec<(&str, JValue)>) -> JValue {
+    JValue::Obj(pairs.into_iter().map(|(k, v)| (k.to_string(), v)).collect())
+}
+
+/// `a || b` of two JSON values.
+fn or<'v>(a: &'v JValue, b: &'v JValue) -> &'v JValue {
+    if a.truthy() {
+        a
+    } else {
+        b
+    }
+}
+
+/// rust-chat-native.cjs `preparedTurn`'s `chat` and `turn` of a covered free-chat turn, from what
+/// chat.cjs passes it: `chatId = body.chatId || null`, `contextId` and `key` `chatId || spaceId`,
+/// the free space's grant scope and holder, the fingerprints of the history's applied writes
+/// (recent-writes.cjs, in first-seen order), the title facts (chat-title.cjs), and the turn's
+/// message, space, record flag (#679), idle limit (createChatHandler's default 120 s) and its
+/// empty sources (no retrieval without a project).
+fn chat_and_turn(t: &ShadowTurn<'_>) -> (JValue, JValue) {
+    let body = t.body;
+    let null = JValue::Null;
+    let chat_id = or(body.get("chatId"), &null);
+    let space = body.get("spaceId");
+    let space_text = space.as_str().filter(|s| !s.is_empty());
+    let mut writes: Vec<JValue> = Vec::new();
+    for h in crate::history::map_history(body.get("history"), t.history_cap) {
+        if h.applied {
+            let fp = chat_turn::gate::fingerprint(
+                h.name.as_deref().unwrap_or(""),
+                h.target.as_deref(),
+                h.args.as_deref().unwrap_or(""),
+            );
+            let fp = JValue::from(fp);
+            if !writes.contains(&fp) {
+                writes.push(fp);
+            }
+        }
+    }
+    let message = body.get("message").as_str().unwrap_or_default();
+    let history = body.get("history");
+    let diary = space.as_str().is_some_and(|s| s.starts_with("diary"));
+    let chat = obj(vec![
+        ("id", chat_id.clone()),
+        ("contextId", or(or(chat_id, space), &null).clone()),
+        ("key", or(or(chat_id, space), &null).clone()),
+        (
+            "grantScope",
+            JValue::from(format!("space:{}", space_text.unwrap_or("free"))),
+        ),
+        ("grantHolder", obj(vec![("kind", JValue::from("free"))])),
+        ("recentWrites", JValue::Arr(writes)),
+        (
+            "title",
+            obj(vec![
+                (
+                    "chatId",
+                    JValue::from(body.get("chatId").as_str().unwrap_or("")),
+                ),
+                ("listId", JValue::Null),
+                (
+                    "firstMessage",
+                    JValue::from(chat_turn::title::first_user_message(history, message)),
+                ),
+                (
+                    "firstReply",
+                    JValue::Bool(chat_turn::title::first_reply(history)),
+                ),
+                ("enabled", JValue::Bool(t.titles)),
+            ]),
+        ),
+    ]);
+    let record = body.get("chatId").as_str().is_some_and(|c| !c.is_empty())
+        && !diary
+        && !body.get("compactOnly").truthy()
+        && t.workspace;
+    let turn = obj(vec![
+        ("message", JValue::from(message)),
+        ("spaceId", or(space, &null).clone()),
+        ("projectId", JValue::Null),
+        ("declineEndsReply", JValue::Bool(!diary)),
+        ("record", JValue::Bool(record)),
+        ("streamIdleMs", JValue::Num(STREAM_IDLE_MS)),
+        ("compactOnly", JValue::Bool(false)),
+        (
+            "sources",
+            obj(vec![
+                ("reply", JValue::Arr(Vec::new())),
+                ("injected", JValue::Arr(Vec::new())),
+            ]),
+        ),
+    ]);
+    (chat, turn)
+}
+
+/// chat.cjs `createChatHandler`'s `streamIdleMs` default (index.cjs passes none).
+const STREAM_IDLE_MS: f64 = 120_000.0;

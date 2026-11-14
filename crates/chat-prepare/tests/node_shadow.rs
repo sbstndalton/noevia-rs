@@ -107,6 +107,8 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
                 history_cap: cap,
+                titles: true,
+                workspace: true,
                 catalogue,
             })
         };
@@ -232,6 +234,8 @@ fn a_difference_is_located_without_its_text() {
             chat_framing: Some(false),
             brain_context: Some(false),
             history_cap: f.get("historyCap").as_num().unwrap() as usize,
+            titles: true,
+            workspace: true,
             catalogue: None,
         })
     };
@@ -275,6 +279,21 @@ fn a_difference_is_located_without_its_text() {
         other => panic!("{other:?}"),
     }
     assert!(!check(&frame).line().contains(&content));
+    // A `chat` or `turn` field that is not the native one is named by its field.
+    for (field, key) in [("chat", "key"), ("turn", "streamIdleMs")] {
+        let JValue::Obj(mut items) = frame.clone() else {
+            panic!()
+        };
+        let JValue::Obj(mut inner) = frame.get(field).clone() else {
+            panic!()
+        };
+        wtf16::set(&mut inner, key, JValue::from("qa-other"));
+        wtf16::set(&mut items, field, JValue::Obj(inner));
+        match check(&JValue::Obj(items)) {
+            Verdict::Diff(d) => assert_eq!((d.field, d.message), (field, 0)),
+            other => panic!("{field}: {other:?}"),
+        }
+    }
 }
 
 /// What the recording cannot show: an Automatic turn routed to the Code role (chat.cjs adds its route
@@ -300,6 +319,8 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             chat_framing: framing,
             brain_context: Some(false),
             history_cap: 1000,
+            titles: true,
+            workspace: true,
             catalogue: None,
         })
     };
