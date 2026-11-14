@@ -74,7 +74,8 @@ fn node(scan: Scan) -> Handler {
 
 /// The router lists two unloaded models, reloads and unloads; the gate grants the hold.
 fn gate_and_router() -> Handler {
-    Arc::new(|req: &Req| match (req.method.as_str(), req.target.as_str()) {
+    Arc::new(|req: &Req| {
+        match (req.method.as_str(), req.target.as_str()) {
         ("POST", "/gate/v1/maintenance") => {
             Answer::Reply(201, json!({"hold": HOLD, "idle_ttl_ms": 600_000}).to_string())
         }
@@ -90,6 +91,7 @@ fn gate_and_router() -> Handler {
         ("GET", "/models?reload=1") => Answer::Reply(200, r#"{"success":true}"#.into()),
         ("POST", "/models/unload") => Answer::Reply(200, r#"{"success":true}"#.into()),
         _ => Answer::Reply(404, "{}".into()),
+    }
     })
 }
 
@@ -210,7 +212,15 @@ async fn switch_unset_every_method_is_relayed_to_node() {
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn switch_on_the_sweep_start_is_relayed_and_the_scan_get_stays_the_scan_route() {
-    let r = rig(true, vec![("GET /api/v1/models", Answer::Reply(200, r#"{"models":[]}"#.into()))], true).await;
+    let r = rig(
+        true,
+        vec![(
+            "GET /api/v1/models",
+            Answer::Reply(200, r#"{"models":[]}"#.into()),
+        )],
+        true,
+    )
+    .await;
     for path in [
         "/api/model-manager/benchmark/sweep",
         "/api/model-manager/benchmark/sw%65ep",
@@ -257,11 +267,18 @@ async fn path_role_and_configuration_checks() {
         "/api/model-manager/a..b",
     ] {
         let (status, _, body) = call(r.addr, "GET", path, Some(ADMIN), b"").await;
-        assert_eq!((status, j(&body)), (400, json!({"error": "Invalid path"})), "{path}");
+        assert_eq!(
+            (status, j(&body)),
+            (400, json!({"error": "Invalid path"})),
+            "{path}"
+        );
     }
     let (status, _, body) = call(r.addr, "POST", "/api/model-manager/x", Some(MEMBER), b"{}").await;
     assert_eq!(status, 403);
-    assert_eq!(j(&body)["error"], "Administrator required for model management");
+    assert_eq!(
+        j(&body)["error"],
+        "Administrator required for model management"
+    );
     let (status, _, _) = call(r.addr, "GET", "/api/model-manager/x", None, b"").await;
     assert_eq!(status, 401);
     assert!(targets(&r.loader).is_empty());
@@ -276,7 +293,10 @@ async fn path_role_and_configuration_checks() {
     let r = rig(true, vec![], false).await;
     let (status, _, body) = call(r.addr, "GET", "/api/model-manager/x", Some(ADMIN), b"").await;
     assert_eq!(status, 404);
-    assert_eq!(j(&body)["error"], "Model management service is not configured");
+    assert_eq!(
+        j(&body)["error"],
+        "Model management service is not configured"
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -327,7 +347,10 @@ async fn benchmark_start_refuses_non_chat_and_over_budget_models() {
         b"null",
     )
     .await;
-    assert_eq!((status, j(&body)), (500, json!({"error": "Internal error"})));
+    assert_eq!(
+        (status, j(&body)),
+        (500, json!({"error": "Internal error"}))
+    );
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -389,16 +412,24 @@ async fn a_folder_scan_delete_is_guarded_then_cleaned_up() {
     assert_eq!(loader_seen[0].target, "/api/v1/models/delete");
     assert_eq!(loader_seen[0].body, r#"{"models":["k-chat"]}"#);
     assert_eq!(
-        loader_seen[0].headers.get("x-model-loader-token").map(String::as_str),
+        loader_seen[0]
+            .headers
+            .get("x-model-loader-token")
+            .map(String::as_str),
         Some(LOADER_TOKEN)
     );
     let engine = targets(&r.engine);
-    assert!(engine.contains(&"POST /models/unload".to_string()), "{engine:?}");
+    assert!(
+        engine.contains(&"POST /models/unload".to_string()),
+        "{engine:?}"
+    );
     let node: Vec<Req> = r.node.lock().unwrap().clone();
     assert!(node
         .iter()
         .any(|q| q.target == "/internal/model-state/forget" && q.body.contains("qa-chat")));
-    assert!(node.iter().any(|q| q.target == "/internal/model-manager-scan/clear"));
+    assert!(node
+        .iter()
+        .any(|q| q.target == "/internal/model-manager-scan/clear"));
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
@@ -461,7 +492,10 @@ async fn a_models_ini_write_and_its_reload_run_under_one_hold() {
             .position(|c| c == t)
             .unwrap_or_else(|| panic!("{t}: {engine:?}"))
     };
-    assert!(at("POST /gate/v1/maintenance") < at("GET /models?reload=1"), "{engine:?}");
+    assert!(
+        at("POST /gate/v1/maintenance") < at("GET /models?reload=1"),
+        "{engine:?}"
+    );
     assert!(
         at("GET /models?reload=1") < at(&format!("DELETE /gate/v1/maintenance/{HOLD}")),
         "{engine:?}"
@@ -498,7 +532,10 @@ async fn the_forward_carries_the_token_and_the_sizing_budget() {
         "/api/v1/sections/qa-model/autoconfig?ctx=8192&budget_gib=12"
     );
     assert_eq!(
-        seen[0].headers.get("x-model-loader-token").map(String::as_str),
+        seen[0]
+            .headers
+            .get("x-model-loader-token")
+            .map(String::as_str),
         Some(LOADER_TOKEN)
     );
     assert_eq!(
@@ -524,14 +561,27 @@ async fn no_answer_is_502_and_a_refusal_keeps_its_detail() {
         true,
     )
     .await;
-    let (status, _, body) = call(r.addr, "GET", "/api/model-manager/status", Some(ADMIN), b"").await;
+    let (status, _, body) =
+        call(r.addr, "GET", "/api/model-manager/status", Some(ADMIN), b"").await;
     assert_eq!(
         (status, j(&body)),
-        (502, json!({"error": "The model management service is not responding."}))
+        (
+            502,
+            json!({"error": "The model management service is not responding."})
+        )
     );
-    let (status, _, body) =
-        call(r.addr, "POST", "/api/model-manager/qa", Some(ADMIN), br#"{"x":1}"#).await;
-    assert_eq!((status, j(&body)), (422, json!({"error": "qa: bad request"})));
+    let (status, _, body) = call(
+        r.addr,
+        "POST",
+        "/api/model-manager/qa",
+        Some(ADMIN),
+        br#"{"x":1}"#,
+    )
+    .await;
+    assert_eq!(
+        (status, j(&body)),
+        (422, json!({"error": "qa: bad request"}))
+    );
     let seen = r.loader.lock().unwrap().clone();
     assert_eq!(seen[1].body, r#"{"x":1}"#);
 }
