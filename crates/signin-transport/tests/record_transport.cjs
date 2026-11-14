@@ -2,6 +2,7 @@
 // Records core's own transport (server/chatgpt-oauth.cjs on the core checkout in $CORE) over QA
 // inputs, for tests/node_replay.rs. Usage (on the N5 builder, never on MS02):
 //   CORE=/path/to/core-ref node crates/signin-transport/tests/record_transport.cjs [--check]
+//   Recorded against the noevia-core commit in tests/fixtures/core-ref (check out that commit as $CORE).
 // Product and vendor names in core's output are replaced by neutral words of the same length
 // (so core's 300/200/80-unit cuts fall at the same places); the replay configures those words.
 const fs = require('node:fs');

@@ -1,0 +1,3616 @@
+[
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:2213",
+    "source": "pub const AUTOTUNE_STATE_STORE_MARKER: &str = \"noevia-autotune-state-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-autotune-state-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:3576",
+    "source": "pub const FILE: &str = \"storage-latch.db\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:3577",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:3642",
+    "source": "pub const FILE: &str = \"other-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:3645",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/autotune-state-k:deploy/tools/test-assemble-release.sh:3693",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-assemble-release.sh:3475",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:22",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:24",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:25",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:27",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-dav-listener-v1\", \"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:28",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-dav-listener-v1\", \"rust-dav-listener-\\x761\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:29",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:30",
+    "source": "#[cfg(any())] mod hidden { pub const FEATURES: &[&str] = &[\"rust-dav-listener-v1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:31",
+    "source": "#![cfg(any())] pub const FEATURES: &[&str] = &[\"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:32",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:33",
+    "source": "pub const FEATURES: &[&str] = &[r\"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:34",
+    "source": "pub const FEATURES: &[&str] = &[b\"rust-dav-listener-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-dav-listener-pairing.sh:35",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"rust-dav-listener-v1\")];",
+    "declaration": "FEATURES",
+    "capability": "rust-dav-listener-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:22",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:24",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:25",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:27",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-source-startup-v1\", \"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:28",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-source-startup-v1\", \"rust-source-startup-\\x761\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:29",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:30",
+    "source": "#[cfg(any())] mod hidden { pub const FEATURES: &[&str] = &[\"rust-source-startup-v1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:31",
+    "source": "#![cfg(any())] pub const FEATURES: &[&str] = &[\"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:32",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:33",
+    "source": "pub const FEATURES: &[&str] = &[r\"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:34",
+    "source": "pub const FEATURES: &[&str] = &[b\"rust-source-startup-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/dav-startup:deploy/tools/test-source-startup-pairing.sh:35",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"rust-source-startup-v1\")];",
+    "declaration": "FEATURES",
+    "capability": "rust-source-startup-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:536",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:745",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:764",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:764",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:816",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:821",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:824",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:832",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:1055",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:1075",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:1080",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/discovery-status-t:deploy/tools/test-assemble-release.sh:3510",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:3525",
+    "source": "pub const FILE: &str = \"storage-latch.db\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:3526",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:3591",
+    "source": "pub const FILE: &str = \"other-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:3594",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-admission-h:deploy/tools/test-assemble-release.sh:3642",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-assemble-release.sh:3475",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:8",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:12",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:20",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:20",
+    "source": "#[cfg(any())] mod inner { pub const FEATURES: &[&str] = &[\"rust-inference-machines\"]; }",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:24",
+    "source": "pub static FEATURES: &[&str] = &[\"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:28",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"rust-inference-\", \"machines\")];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/inference-machines-b:deploy/tools/test-machines-pairing.sh:28",
+    "source": "const CAP: &str = concat!(\"rust-inference-\", \"machines\"); pub const FEATURES: &[&str] = &[CAP];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:3475",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-assemble-release.sh:3826",
+    "source": "pub const MARKER: &str = \"noevia-chat-mirror-scheduler/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-mirror-scheduler/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/journal-mirror:deploy/tools/test-chat-mirror-pairing.sh:45",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-chat-mirror-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-chat-mirror-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:3537",
+    "source": "pub const FILE: &str = \"storage-latch.db\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:3538",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:3603",
+    "source": "pub const FILE: &str = \"other-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:3606",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/maintenance-lease:deploy/tools/test-assemble-release.sh:3654",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", \"noevia-source-jobs-store/1\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:1063",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:1078",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:1083",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/media-backfill-u2:deploy/tools/test-assemble-release.sh:3480",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:3475",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:3826",
+    "source": "pub const MARKER: &str = \"noevia-chat-mirror-scheduler/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-mirror-scheduler/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-assemble-release.sh:3906",
+    "source": "pub const MARKER: &str = \"noevia-chat-mirror-exec/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-mirror-exec/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/mirror-brain-exec:deploy/tools/test-chat-mirror-pairing.sh:45",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-chat-mirror-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-chat-mirror-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1167",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1170",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1173",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:1204",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-load-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-authority/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-assemble-release.sh:3606",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:12",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:14",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:14",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:14",
+    "source": "mod hidden { pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:14",
+    "source": "#![cfg(any())]\n pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:15",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\", \"noevia-model-load-settlement\\x2f1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:15",
+    "source": "pub const FEATURES: &[&str] = &[r#\"noevia-model-load-settlement/1\"#];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:15",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"noevia-model-load-\", \"settlement/1\")];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:15",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/2\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/2",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-load-ac:deploy/tools/test-model-load-gate-pairing.sh:18",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-load-settlement/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-settlement/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:3544",
+    "source": "pub const FILE: &str = \"storage-latch.db\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:3545",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:3610",
+    "source": "pub const FILE: &str = \"other-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:3613",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-assemble-release.sh:3661",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-model-manager-read-pairing.sh:17",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-manager-read-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-manager-read-authority/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-manager-c:deploy/tools/test-model-manager-read-pairing.sh:27",
+    "source": "#[cfg(any())] mod disabled { pub const FEATURES: &[&str] = &[\"noevia-model-load-authority/1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-load-authority/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:3514",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4799",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-mutations/1\"];\n",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4804",
+    "source": "pub const FEATURES: &[&str] = &[\"legacy\"];\n",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4809",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-mutations/1\", \"noevia-model-mutations/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4810",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-mutations/1\", \"noevia-model-mutations\\x2f1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4811",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"noevia-model-mutations/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4812",
+    "source": "#[cfg(any())] mod hidden { pub const FEATURES: &[&str] = &[\"noevia-model-mutations/1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4813",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"noevia-model-mutations/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4814",
+    "source": "pub const FEATURES: &[&str] = &[r\"noevia-model-mutations/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4815",
+    "source": "pub const FEATURES: &[&str] = &[b\"noevia-model-mutations/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4816",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"noevia-model-mutations/\", \"1\")];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/model-pull-delete:deploy/tools/test-assemble-release.sh:4817",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-mutations/1\", OTHER];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-mutations/1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:3612",
+    "source": "pub const FILE: &str = \"storage-latch.db\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:3613",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:3678",
+    "source": "pub const FILE: &str = \"other-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:3681",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/preset-editor-d2:deploy/tools/test-assemble-release.sh:3729",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-assemble-release.sh:3475",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:11",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];\n",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:18",
+    "source": "#![allow(dead_code)] #![warn(missing_docs)] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:19",
+    "source": "#![allow(dead_code)] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:20",
+    "source": "mod unrelated { #![cfg(test)] fn helper() {} } pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:29",
+    "source": "#![cfg_attr(any(), allow(dead_code))] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:30",
+    "source": "#![allow(dead_code)] #[cfg(any())] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:31",
+    "source": "#![allow(dead_code)] #[doc(hidden)] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:32",
+    "source": "mod inner { pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:34",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\",\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:35",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\",\"reranker-settings-\\x76\\x31\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:36",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:37",
+    "source": "#[cfg(any())] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:38",
+    "source": "#[cfg(any())] mod hidden { pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:39",
+    "source": "pub const FEATURES: &[&str] = &[r\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:40",
+    "source": "pub const FEATURES: &[&str] = &[b\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:41",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"reranker-settings-\",\"v1\")];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/reranker-settings:deploy/tools/test-reranker-pairing.sh:42",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"reranker\",\"-settings-v1\")];",
+    "declaration": "FEATURES",
+    "capability": "-settings-v1",
+    "origin": "branch",
+    "expected": "invalid"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:534",
+    "source": "pub const CHAT_DELETE_STORE_MARKER: &str = \"noevia-chat-delete-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-chat-delete-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:743",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const OTHER: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:762",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:814",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:819",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:822",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\", \"rust-web-address-write\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:830",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-web-address-read\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-web-address-read",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:1051",
+    "source": "pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\";",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:1053",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\", server_projects::source_jobs::SOURCE_JOBS_STORE_MARKER];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:1073",
+    "source": "/* pub const SOURCE_JOBS_STORE_MARKER: &str = \"noevia-source-jobs-store/1\"; */",
+    "declaration": "FEATURES",
+    "capability": "noevia-source-jobs-store/1",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:1078",
+    "source": "pub const FEATURES: &[&str] = &[\"start-id\"];",
+    "declaration": "FEATURES",
+    "capability": "start-id",
+    "origin": "branch",
+    "expected": "v1"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:3600",
+    "source": "pub const FILE: &str = \"storage-latch.db\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:3601",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:3666",
+    "source": "pub const FILE: &str = \"other-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:3669",
+    "source": "pub const FILE: &str = \"source-file-ops.json\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "move/research-execution-l:deploy/tools/test-assemble-release.sh:3717",
+    "source": "pub const LARGE_LOCK_FILE: &str = \"large-document.lock\";",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "origin": "branch",
+    "expected": "legacy"
+  },
+  {
+    "name": "review:J:plain",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:J:closed_module",
+    "source": "mod unrelated { #![cfg(test)] fn helper() {} }\npub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:J:following_module",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\"];\nmod unrelated { #![cfg(test)] fn helper() {} }",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:J:crate_cfg",
+    "source": "#![cfg(any())]\npub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:J:outer_cfg",
+    "source": "#[cfg(any())]\npub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:J:enclosing",
+    "source": "mod gated { #![cfg(test)] pub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:J:element_cfg",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"noevia-maintenance-lease-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:J:alias",
+    "source": "const ALIAS: &str = \"noevia-maintenance-lease-authority/1\";\npub const FEATURES: &[&str] = &[ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "legacy"
+  },
+  {
+    "name": "review:J:duplicate_alias",
+    "source": "const ALIAS: &str = \"noevia-maintenance-lease-authority/1\";\npub const FEATURES: &[&str] = &[\"noevia-maintenance-lease-authority/1\", ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "noevia-maintenance-lease-authority/1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2:plain",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2:closed_module",
+    "source": "mod unrelated { #![cfg(test)] fn helper() {} }\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2:following_module",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];\nmod unrelated { #![cfg(test)] fn helper() {} }",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2:crate_cfg",
+    "source": "#![cfg(any())]\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2:outer_cfg",
+    "source": "#[cfg(any())]\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2:enclosing",
+    "source": "mod gated { #![cfg(test)] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2:element_cfg",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2:alias",
+    "source": "const ALIAS: &str = \"reranker-settings-v1\";\npub const FEATURES: &[&str] = &[ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "legacy"
+  },
+  {
+    "name": "review:E2:duplicate_alias",
+    "source": "const ALIAS: &str = \"reranker-settings-v1\";\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\", ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2-round1:plain",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2-round1:closed_module",
+    "source": "mod unrelated { #![cfg(test)] fn helper() {} }\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2-round1:following_module",
+    "source": "pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];\nmod unrelated { #![cfg(test)] fn helper() {} }",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "review:E2-round1:crate_cfg",
+    "source": "#![cfg(any())]\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2-round1:outer_cfg",
+    "source": "#[cfg(any())]\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2-round1:enclosing",
+    "source": "mod gated { #![cfg(test)] pub const FEATURES: &[&str] = &[\"reranker-settings-v1\"]; }",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2-round1:element_cfg",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"reranker-settings-v1\"];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "invalid"
+  },
+  {
+    "name": "review:E2-round1:alias",
+    "source": "const ALIAS: &str = \"reranker-settings-v1\";\npub const FEATURES: &[&str] = &[ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "legacy"
+  },
+  {
+    "name": "review:E2-round1:duplicate_alias",
+    "source": "const ALIAS: &str = \"reranker-settings-v1\";\npub const FEATURES: &[&str] = &[\"reranker-settings-v1\", ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "reranker-settings-v1",
+    "origin": "review",
+    "expected": "v1"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:0",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-inference-machines\", \"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:1",
+    "source": "pub const FEATURES: &[&str] = &[\"rust-inference-machines\", \"rust-inference-\\x6dachines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:2",
+    "source": "pub const FEATURES: &[&str] = &[r\"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:3",
+    "source": "pub const FEATURES: &[&str] = &[b\"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:4",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"rust-inference-machines\")];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:5",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"rust-inference-machines\"];",
+    "declaration": "FEATURES",
+    "capability": "rust-inference-machines",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_inference-machines-b__test-machines-pairing.sh:element:912:6",
+    "source": "pub const FEATURES: &[&str] = &[OTHER];",
+    "declaration": "FEATURES",
+    "capability": "test-capability",
+    "expected": "legacy",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_model-manager-c__test-model-manager-read-pairing.sh:element:1333:0",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"noevia-model-manager-read-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-manager-read-authority/1",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_model-manager-c__test-model-manager-read-pairing.sh:element:1333:1",
+    "source": "pub const FEATURES: &[&str] = &[b\"noevia-model-manager-read-authority/1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-manager-read-authority/1",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_model-manager-c__test-model-manager-read-pairing.sh:element:1333:2",
+    "source": "pub const FEATURES: &[&str] = &[r#\"noevia-model-manager-read-authority/1\"#];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-manager-read-authority/1",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_model-manager-c__test-model-manager-read-pairing.sh:element:1333:3",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"noevia-\", \"model-manager-read-authority/1\")];",
+    "declaration": "FEATURES",
+    "capability": "noevia-",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "move_model-manager-c__test-model-manager-read-pairing.sh:element:1333:4",
+    "source": "pub const FEATURES: &[&str] = &[\"noevia-model-manager-read-authority/1\", \"noevia-model-manager-read-authority\\x2f1\"];",
+    "declaration": "FEATURES",
+    "capability": "noevia-model-manager-read-authority/1",
+    "expected": "invalid",
+    "origin": "branch-expanded"
+  },
+  {
+    "name": "new:plain",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:static",
+    "source": "pub static FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:static-lifetime",
+    "source": "pub const FEATURES: &'static [&'static str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:empty",
+    "source": "pub const FEATURES: &[&str] = &[];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "new"
+  },
+  {
+    "name": "new:absent",
+    "source": "",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "new"
+  },
+  {
+    "name": "new:different",
+    "source": "pub const FEATURES: &[&str] = &[\"other\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "new"
+  },
+  {
+    "name": "new:doc",
+    "source": "#[doc(hidden)] pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:allow",
+    "source": "#![allow(dead_code)] #[allow(dead_code)] pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:before",
+    "source": "mod unrelated { #![cfg(test)] fn helper() {} } pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:after",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"]; mod unrelated { #![cfg(test)] fn helper() {} }",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:outer-unrelated",
+    "source": "#[cfg(test)] mod unrelated {} pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:raw-unrelated",
+    "source": "const TEXT: &str = r###\"#![cfg(test)] { FEATURES }\"###; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:byte-unrelated",
+    "source": "const TEXT: &[u8] = b\"FEATURES {\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:char-lifetime",
+    "source": "fn f<'a>(v: &'a str) { let c = '}'; let q = '\\''; let u = '\ud83e\udd80'; } pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:nested-comments",
+    "source": "/* outer /* #![cfg(test)] */ */ pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:doc-comment",
+    "source": "/// (`/v1/*`)\npub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:double",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"];pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:private",
+    "source": "const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:restricted",
+    "source": "pub(crate) const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:mutable",
+    "source": "pub static mut FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:nested",
+    "source": "mod inner { pub const FEATURES: &[&str] = &[\"cap\"]; }",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:nested-cfg",
+    "source": "#[cfg(test)] mod inner { pub const FEATURES: &[&str] = &[\"cap\"]; }",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:inner-gated",
+    "source": "mod inner { #![cfg(test)] pub const FEATURES: &[&str] = &[\"cap\"]; }",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:crate-cfg",
+    "source": "#![cfg(test)] pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:decl-cfg",
+    "source": "#[cfg(test)] pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:attr-macro",
+    "source": "#[unknown] pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:cfg-attr",
+    "source": "#![cfg_attr(test, allow(dead_code))] pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:macro",
+    "source": "macro_rules! hidden { () => { pub const FEATURES: &[&str] = &[\"cap\"]; }; }",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:alias",
+    "source": "const ALIAS: &str = \"cap\"; pub const FEATURES: &[&str] = &[ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "new"
+  },
+  {
+    "name": "new:alias-duplicate",
+    "source": "const ALIAS: &str = \"cap\"; pub const FEATURES: &[&str] = &[\"cap\", ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:path",
+    "source": "pub const FEATURES: &[&str] = &[unresolved::CAP];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "new"
+  },
+  {
+    "name": "new:unknown",
+    "source": "pub const FEATURES: &[&str] = &[UNKNOWN_ALIAS];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "new"
+  },
+  {
+    "name": "new:unbalanced",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"];{",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:comment",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"];/*",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:raw",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"];r##\"unterminated",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:str",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\"];\"unterminated",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:bad-escape",
+    "source": "pub const FEATURES: &[&str] = &[\"\\q\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:#[cfg(test)] \"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(test)] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:#[cfg_attr(test, allow(dead_code))] \"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg_attr(test, allow(dead_code))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:r\"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[r\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:r##\"cap\"##",
+    "source": "pub const FEATURES: &[&str] = &[r##\"cap\"##];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:b\"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[b\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:br#\"cap\"#",
+    "source": "pub const FEATURES: &[&str] = &[br#\"cap\"#];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:c\"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[c\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:cr\"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[cr\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:'c'",
+    "source": "pub const FEATURES: &[&str] = &['c'];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:concat!(\"c\", \"ap\")",
+    "source": "pub const FEATURES: &[&str] = &[concat!(\"c\", \"ap\")];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:\"cap\", \"cap\"",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:\"cap\", \"c\\x61p\"",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", \"c\\x61p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:\"cap\", \"c\\u{61}p\"",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", \"c\\u{61}p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:\"cap\", OTHER",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", OTHER];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:\"cap\",,",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\",,];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:element:\"cap\" \"other\"",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\" \"other\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-str{",
+    "source": "const TEXT: &str = \"{\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-str[",
+    "source": "const TEXT: &str = \"[\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-strconst",
+    "source": "const TEXT: &str = \"const\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-strstatic",
+    "source": "const TEXT: &str = \"static\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-strFEATURES",
+    "source": "const TEXT: &str = \"FEATURES\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-str;",
+    "source": "const TEXT: &str = \";\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-str#",
+    "source": "const TEXT: &str = \"#\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-raw{",
+    "source": "const TEXT: &str = r#\"{\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-raw[",
+    "source": "const TEXT: &str = r#\"[\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-rawconst",
+    "source": "const TEXT: &str = r#\"const\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-rawstatic",
+    "source": "const TEXT: &str = r#\"static\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-rawFEATURES",
+    "source": "const TEXT: &str = r#\"FEATURES\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-raw;",
+    "source": "const TEXT: &str = r#\";\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-raw#",
+    "source": "const TEXT: &str = r#\"#\"#; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-byte{",
+    "source": "const TEXT: &str = b\"{\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-byte[",
+    "source": "const TEXT: &str = b\"[\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-byteconst",
+    "source": "const TEXT: &str = b\"const\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-bytestatic",
+    "source": "const TEXT: &str = b\"static\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-byteFEATURES",
+    "source": "const TEXT: &str = b\"FEATURES\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-byte;",
+    "source": "const TEXT: &str = b\";\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:inert-byte#",
+    "source": "const TEXT: &str = b\"#\"; pub const FEATURES: &[&str] = &[\"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "new:element-doc",
+    "source": "pub const FEATURES: &[&str] = &[#[doc(hidden)] #[allow(dead_code)] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "new"
+  },
+  {
+    "name": "ruling:ignored-duplicates",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", \"other\", \"other\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:ignored-cfg",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any())] \"other\", \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:ignored-path-attributes",
+    "source": "pub const FEATURES: &[&str] = &[#[unknown] #[cfg(not(target_os = \"x\"))] SOME::PATH, \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:queried-only-duplicate",
+    "source": "pub const FEATURES: &[&str] = &[\"cap\", #[cfg(feature = \"off\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:escaped-query",
+    "source": "pub const FEATURES: &[&str] = &[\"c\\x61p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:unknown-query-attr",
+    "source": "pub const FEATURES: &[&str] = &[#[unknown] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\":None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\":[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\":['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:not(feature = \"on\"):None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(not(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:not(feature = \"on\"):[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(not(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:not(feature = \"on\"):['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(not(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:any(feature = \"on\"):None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:any(feature = \"on\"):[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:any(feature = \"on\"):['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(any(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:all(feature = \"on\"):None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(all(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:all(feature = \"on\"):[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(all(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:all(feature = \"on\"):['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(all(feature = \"on\"))] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:target_os = \"linux\":None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(target_os = \"linux\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:target_os = \"linux\":[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(target_os = \"linux\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:target_os = \"linux\":['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(target_os = \"linux\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\")] #[cfg(feature = \"on\":None",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] #[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": null,
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\")] #[cfg(feature = \"on\":[]",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] #[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [],
+    "origin": "ruling"
+  },
+  {
+    "name": "ruling:cfg:feature = \"on\")] #[cfg(feature = \"on\":['on']",
+    "source": "pub const FEATURES: &[&str] = &[#[cfg(feature = \"on\")] #[cfg(feature = \"on\")] \"cap\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "features": [
+      "on"
+    ],
+    "origin": "ruling"
+  },
+  {
+    "name": "review-fix:ascii-continuation",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n \t p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:nbsp-does-not-vanish",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\u00a0p\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:nbsp-preserved",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\u00a0p\"];",
+    "declaration": "FEATURES",
+    "capability": "ca\u00a0p",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:formfeed-preserved",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\fp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:verticaltab-preserved",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\n\u000bp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "legacy",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:crlf-continuation",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\r\n \tp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:crlf-normalized",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\r\np\"];",
+    "declaration": "FEATURES",
+    "capability": "ca\np",
+    "expected": "v1",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:lone-cr-escape",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\\\rp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "review-fix"
+  },
+  {
+    "name": "review-fix:lone-cr",
+    "source": "pub const FEATURES: &[&str] = &[\"ca\rp\"];",
+    "declaration": "FEATURES",
+    "capability": "cap",
+    "expected": "invalid",
+    "origin": "review-fix"
+  }
+]
