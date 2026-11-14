@@ -368,6 +368,16 @@ fn take(f: &Front) -> Vec<String> {
     s
 }
 
+/// As `take`, after waiting (at most 5 s) for `n` steps: a refused ticket is given back by a spawned
+/// task (engine-admission), so its DELETE can reach the scripted core after the answer.
+async fn take_at_least(f: &Front, n: usize) -> Vec<String> {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while steps(f).len() < n && std::time::Instant::now() < deadline {
+        tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+    }
+    take(f)
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn switch_unset_the_pull_is_relayed() {
     let f = front(false, Some("llamacpp")).await;
@@ -728,7 +738,7 @@ async fn a_lease_core_refuses_is_an_internal_error_without_tracker_or_router() {
             JValue::obj([("error", JValue::from("Internal error"))])
         )
     );
-    let steps = take(&f);
+    let steps = take_at_least(&f, 5).await;
     assert!(
         !steps
             .iter()
