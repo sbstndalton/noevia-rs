@@ -1571,13 +1571,17 @@ impl Handle for CdpHandle {
         self.run(js::SUBMIT, Vec::new(), CALL_TIMEOUT).map(|_| ())
     }
 
+    /// Playwright's release: the protocol's answer is ignored (an object whose page navigated away
+    /// is already gone: "Cannot find context with specified id"); only a closed page is an error.
     fn dispose(&self) -> Result<()> {
-        self.page
-            .call(
-                "Runtime.releaseObject",
-                JValue::obj([("objectId", s(&self.object))]),
-                CALL_TIMEOUT,
-            )
-            .map(|_| ())
+        if self.page.is_closed() {
+            return Err(closed());
+        }
+        let _ = self.page.call(
+            "Runtime.releaseObject",
+            JValue::obj([("objectId", s(&self.object))]),
+            CALL_TIMEOUT,
+        );
+        Ok(())
     }
 }
