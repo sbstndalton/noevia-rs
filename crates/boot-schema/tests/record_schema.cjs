@@ -103,7 +103,7 @@ const EARLY = `
   INSERT INTO user_features VALUES('${A}',0,1);
   INSERT INTO passkeys VALUES('pk-qa-1','${A}','QA key',x'00','wa-qa-1',0,'singleDevice',0,'[]',1,NULL);
   INSERT INTO storage_connections(user_id,kind,updated_at) VALUES('${A}','webdav',1);
-  INSERT INTO directory_mcp_servers VALUES('qa-dir','qa/registry','QA dir','https://mcp.qa.test',NULL,1);
+  INSERT INTO directory_mcp_servers(id,registry_name,title,url,added_by,added_at) VALUES('qa-dir','qa/registry','QA dir','https://mcp.qa.test',NULL,1);
 `;
 
 const cases = [

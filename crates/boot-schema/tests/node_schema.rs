@@ -30,7 +30,11 @@ fn value(v: ValueRef<'_>) -> Value {
 
 fn rows(db: &Connection, sql: &str) -> Vec<Value> {
     let mut stmt = db.prepare(sql).unwrap();
-    let names: Vec<String> = stmt.column_names().iter().map(|s| (*s).to_string()).collect();
+    let names: Vec<String> = stmt
+        .column_names()
+        .iter()
+        .map(|s| (*s).to_string())
+        .collect();
     let mut out = Vec::new();
     let mut q = stmt.query([]).unwrap();
     while let Some(row) = q.next().unwrap() {
@@ -45,15 +49,23 @@ fn rows(db: &Connection, sql: &str) -> Vec<Value> {
 
 fn dump(dir: &Path) -> Value {
     let db = Connection::open(dir.join("cowork.db")).unwrap();
-    let journal: String = db.query_row("PRAGMA journal_mode", [], |r| r.get(0)).unwrap();
-    let versions: Vec<Value> = rows(&db, "SELECT version FROM schema_migrations ORDER BY version")
-        .into_iter()
-        .map(|r| r["version"].clone())
-        .collect();
+    let journal: String = db
+        .query_row("PRAGMA journal_mode", [], |r| r.get(0))
+        .unwrap();
+    let versions: Vec<Value> = rows(
+        &db,
+        "SELECT version FROM schema_migrations ORDER BY version",
+    )
+    .into_iter()
+    .map(|r| r["version"].clone())
+    .collect();
     let settings: Vec<Value> = rows(&db, "SELECT key, value FROM settings ORDER BY key")
         .into_iter()
         .map(|r| {
-            let (k, v) = (r["key"].as_str().unwrap().to_string(), r["value"].as_str().unwrap().to_string());
+            let (k, v) = (
+                r["key"].as_str().unwrap().to_string(),
+                r["value"].as_str().unwrap().to_string(),
+            );
             let uuid = v.len() == 36 && v.as_bytes()[14] == b'4' && v.split('-').count() == 5;
             if k == "instance_id" && uuid {
                 json!([k, "<uuid>"])
@@ -67,14 +79,21 @@ fn dump(dir: &Path) -> Value {
     let features: Vec<Value> = rows(&db, "SELECT * FROM user_features ORDER BY user_id")
         .into_iter()
         .map(|mut r| {
-            if r["updated_at"].as_i64().is_some_and(|t| t > 1_000_000_000_000) {
+            if r["updated_at"]
+                .as_i64()
+                .is_some_and(|t| t > 1_000_000_000_000)
+            {
                 r["updated_at"] = json!("<now>");
             }
             r
         })
         .collect();
     let hash: Option<String> = db
-        .query_row("SELECT value FROM settings WHERE key='setup_code_hash'", [], |r| r.get(0))
+        .query_row(
+            "SELECT value FROM settings WHERE key='setup_code_hash'",
+            [],
+            |r| r.get(0),
+        )
         .ok();
     let file = dir.join("first-run-setup-code");
     let setup = std::fs::read_to_string(&file).ok().map(|text| {
@@ -115,16 +134,26 @@ fn recorded_node_boots() {
     assert!(cases.len() >= 15, "corpus shrank to {}", cases.len());
     for case in cases {
         let name = case["name"].as_str().unwrap();
-        assert_eq!(case["idempotent"], true, "{name}: Node's second start changed something");
+        assert_eq!(
+            case["idempotent"], true,
+            "{name}: Node's second start changed something"
+        );
         let temp = tempfile::tempdir().unwrap();
         let dir = temp.path().join("ui-data");
         std::fs::create_dir(&dir).unwrap();
         if let Some(seed) = case["seed"].as_str() {
-            Connection::open(dir.join("cowork.db")).unwrap().execute_batch(seed).unwrap();
+            Connection::open(dir.join("cowork.db"))
+                .unwrap()
+                .execute_batch(seed)
+                .unwrap();
         }
         if case["keepSetupFile"] == true {
             std::fs::write(dir.join("first-run-setup-code"), "qa-kept\n").unwrap();
-            std::fs::set_permissions(dir.join("first-run-setup-code"), std::fs::Permissions::from_mode(0o600)).unwrap();
+            std::fs::set_permissions(
+                dir.join("first-run-setup-code"),
+                std::fs::Permissions::from_mode(0o600),
+            )
+            .unwrap();
         }
         let env = case["env"].clone();
         let ctx = Context::from_lookup(|k| env[k].as_str().map(str::to_owned));
@@ -136,7 +165,11 @@ fn recorded_node_boots() {
             }
         };
         let first = ensure(&dir, &ctx, &mut random).unwrap();
-        assert_eq!(u64::from(first.setup_code.is_some()), case["warned"].as_u64().unwrap(), "{name}: setup code");
+        assert_eq!(
+            u64::from(first.setup_code.is_some()),
+            case["warned"].as_u64().unwrap(),
+            "{name}: setup code"
+        );
         let got = dump(&dir);
         assert_eq!(got, case["expected"], "{name}");
         let second = ensure(&dir, &ctx, &mut random).unwrap();

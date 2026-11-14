@@ -128,11 +128,20 @@ fn rp_for(origin: &str, rp_id: &str) -> Result<String, Error> {
 }
 
 /// `crypto.randomUUID()` from 16 random bytes.
-fn uuid_v4(mut b: [u8; 16]) -> String {
-    b[6] = (b[6] & 0x0f) | 0x40;
-    b[8] = (b[8] & 0x3f) | 0x80;
-    let h: String = b.iter().map(|x| format!("{x:02x}")).collect();
-    format!("{}-{}-{}-{}-{}", &h[0..8], &h[8..12], &h[12..16], &h[16..20], &h[20..32])
+fn uuid_v4(bytes: [u8; 16]) -> String {
+    let mut out = String::with_capacity(36);
+    for (i, b) in bytes.iter().enumerate() {
+        let b = match i {
+            6 => (b & 0x0f) | 0x40,
+            8 => (b & 0x3f) | 0x80,
+            _ => *b,
+        };
+        if matches!(i, 4 | 6 | 8 | 10) {
+            out.push('-');
+        }
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
 }
 
 /// `Buffer#toString('base64url')`.
@@ -145,8 +154,10 @@ fn base64url(bytes: &[u8]) -> String {
             .enumerate()
             .fold(0u32, |acc, (i, b)| acc | (u32::from(*b) << (16 - 8 * i)));
         for i in 0..=chunk.len() {
-            let index = (n >> (18 - 6 * i)) & 63;
-            out.push(char::from(ALPHABET[index as usize]));
+            let index = ((n >> (18 - 6 * i)) & 63) as usize;
+            if let Some(c) = ALPHABET.get(index) {
+                out.push(char::from(*c));
+            }
         }
     }
     out
@@ -180,12 +191,16 @@ pub fn ensure(
         )?;
     }
     if !has_column(&db, "storage_connections", "bucket")? {
-        db.execute_batch("ALTER TABLE storage_connections ADD COLUMN bucket TEXT NOT NULL DEFAULT ''")?;
+        db.execute_batch(
+            "ALTER TABLE storage_connections ADD COLUMN bucket TEXT NOT NULL DEFAULT ''",
+        )?;
     }
     version(&db, 4)?;
     // v5
     if !has_column(&db, "user_features", "insights_badge")? {
-        db.execute_batch("ALTER TABLE user_features ADD COLUMN insights_badge INTEGER NOT NULL DEFAULT 0")?;
+        db.execute_batch(
+            "ALTER TABLE user_features ADD COLUMN insights_badge INTEGER NOT NULL DEFAULT 0",
+        )?;
     }
     if !has_column(&db, "user_features", "insights_seen_at")? {
         db.execute_batch("ALTER TABLE user_features ADD COLUMN insights_seen_at INTEGER")?;
@@ -197,7 +212,9 @@ pub fn ensure(
         db.execute_batch("ALTER TABLE device_tokens ADD COLUMN replaced_by TEXT")?;
     }
     if !has_column(&db, "users", "credential_epoch")? {
-        db.execute_batch("ALTER TABLE users ADD COLUMN credential_epoch INTEGER NOT NULL DEFAULT 0")?;
+        db.execute_batch(
+            "ALTER TABLE users ADD COLUMN credential_epoch INTEGER NOT NULL DEFAULT 0",
+        )?;
     }
     // The relying party a passkey made before rp_id was recorded belongs to.
     let origin = setting(&db, "public_origin_admin")?
@@ -209,7 +226,10 @@ pub fn ensure(
         db.execute_batch("ALTER TABLE passkeys ADD COLUMN rp_id TEXT")?;
     }
     let backfill = setting(&db, "passkey_rp_id")?.unwrap_or(relying_party);
-    db.execute("UPDATE passkeys SET rp_id=? WHERE rp_id IS NULL", [backfill])?;
+    db.execute(
+        "UPDATE passkeys SET rp_id=? WHERE rp_id IS NULL",
+        [backfill],
+    )?;
     db.execute("DELETE FROM settings WHERE key='passkey_rp_id'", [])?;
     if setting(&db, "instance_id")?.is_none() {
         let mut b = [0u8; 16];
@@ -263,7 +283,9 @@ pub fn ensure(
         db.execute_batch("ALTER TABLE directory_mcp_servers ADD COLUMN headers_enc TEXT")?;
     }
     if !directory_column("oauth")? {
-        db.execute_batch("ALTER TABLE directory_mcp_servers ADD COLUMN oauth INTEGER NOT NULL DEFAULT 0")?;
+        db.execute_batch(
+            "ALTER TABLE directory_mcp_servers ADD COLUMN oauth INTEGER NOT NULL DEFAULT 0",
+        )?;
     }
     if !directory_column("personal")? {
         db.execute_batch("ALTER TABLE directory_mcp_servers ADD COLUMN personal INTEGER NOT NULL DEFAULT 0; ALTER TABLE directory_mcp_servers ADD COLUMN declared_json TEXT NOT NULL DEFAULT '[]'")?;
@@ -287,7 +309,10 @@ mod tests {
         assert_eq!(id, "ffffffff-ffff-4fff-bfff-ffffffffffff");
         assert_eq!(rp_for("", "").unwrap(), "localhost");
         assert_eq!(rp_for("https://app.qa.test", "qa.test").unwrap(), "qa.test");
-        assert_eq!(rp_for("https://app.qa.test", "other.test").unwrap(), "app.qa.test");
+        assert_eq!(
+            rp_for("https://app.qa.test", "other.test").unwrap(),
+            "app.qa.test"
+        );
         assert_eq!(rp_for("http://[::1]:3000", "").unwrap(), "[::1]");
         assert!(rp_for("not a url", "").is_err());
     }
