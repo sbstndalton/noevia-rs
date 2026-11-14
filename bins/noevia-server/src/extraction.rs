@@ -265,17 +265,13 @@ async fn fetch_with(
     let Some(bytes) = body else {
         return fetch(req, cap).await;
     };
-    let (mut tx, chan) = http_body_util::channel::Channel::<::bytes::Bytes>::new(1);
+    let (tx, rx) = tokio::sync::mpsc::channel::<::bytes::Bytes>(1);
     let req = req
         .header(reqwest::header::CONTENT_LENGTH, bytes.len())
-        .body(reqwest::Body::wrap(chan));
+        .body(reqwest::Body::wrap(Slices(rx)));
     let feed = async move {
         for slice in bytes.chunks(BODY_SLICE) {
-            if tx
-                .send_data(::bytes::Bytes::copy_from_slice(slice))
-                .await
-                .is_err()
-            {
+            if tx.send(::bytes::Bytes::copy_from_slice(slice)).await.is_err() {
                 return;
             }
         }
@@ -285,6 +281,24 @@ async fn fetch_with(
     tokio::select! {
         done = &mut work => done,
         () = feed => work.await,
+    }
+}
+
+/// The request body of [`fetch_with`]: the slices as they are sent. A tokio channel hands over every
+/// slice it holds before it reports its end, so the last one is never lost to the sender's drop.
+struct Slices(tokio::sync::mpsc::Receiver<::bytes::Bytes>);
+
+impl http_body::Body for Slices {
+    type Data = ::bytes::Bytes;
+    type Error = std::convert::Infallible;
+
+    fn poll_frame(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Option<Result<http_body::Frame<Self::Data>, Self::Error>>> {
+        self.0
+            .poll_recv(cx)
+            .map(|slice| slice.map(|s| Ok(http_body::Frame::data(s))))
     }
 }
 

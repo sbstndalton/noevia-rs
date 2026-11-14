@@ -177,3 +177,42 @@ async fn every_document_request_is_sized_and_carries_exactly_the_document() {
     }
     assert_eq!(seen, expected);
 }
+
+/// Review of noevia#2615 item 3: a body channel that could report its end with the last slice still
+/// queued made a multi-slice request end short of its Content-Length now and then ("fetch failed").
+/// Many multi-slice requests in a row all arrive whole.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn many_multi_slice_documents_in_a_row_all_arrive_whole() {
+    let _env = ENV.lock().await;
+    let seen = Arc::new(Mutex::new(Vec::new()));
+    let url = service(seen.clone()).await;
+    std::env::set_var("DOCLING_BASE_URL", &url);
+    let doc = document(3 * 1024 * 1024 + 1);
+    let engine = HttpEngine::new(tokio::runtime::Handle::current(), None)
+        .unwrap()
+        .with_liveness(Duration::from_secs(30), 3);
+    let run = doc.clone();
+    let outcomes = tokio::time::timeout(
+        Duration::from_secs(120),
+        tokio::task::spawn_blocking(move || {
+            (0..40)
+                .map(|_| {
+                    engine
+                        .docling("a.pdf", &run, false, None)
+                        .map(|_| ())
+                        .map_err(|e| e.message)
+                })
+                .collect::<Vec<_>>()
+        }),
+    )
+    .await
+    .expect("the requests must end within 120 s")
+    .unwrap();
+    std::env::remove_var("DOCLING_BASE_URL");
+    assert!(outcomes.iter().all(Result::is_ok), "{outcomes:?}");
+    let seen = seen.lock().unwrap().clone();
+    assert_eq!(seen.len(), 40);
+    assert!(seen
+        .iter()
+        .all(|s| s.length == Some(doc.len()) && !s.chunked && s.digest == digest(&doc)));
+}
