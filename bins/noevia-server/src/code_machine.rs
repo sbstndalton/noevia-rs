@@ -975,6 +975,15 @@ impl FrontMachines {
         &self,
         req: &role_engine::Request,
     ) -> Result<reqwest::Response, role_engine::TransportError> {
+        self.role_fetch_within(req, ROLE_HEADERS_TIMEOUT).await
+    }
+
+    /// [`FrontMachines::role_fetch`] with the headers limit given (tests use a short one).
+    async fn role_fetch_within(
+        &self,
+        req: &role_engine::Request,
+        headers_limit: Duration,
+    ) -> Result<reqwest::Response, role_engine::TransportError> {
         let fail = |tag: &str| role_engine::TransportError {
             detail: tag.to_string(),
         };
@@ -999,7 +1008,7 @@ impl FrontMachines {
         if let Some(ms) = req.timeout_ms {
             b = b.timeout(Duration::from_millis(ms));
         }
-        let Ok(sent) = tokio::time::timeout(ROLE_HEADERS_TIMEOUT, b.send()).await else {
+        let Ok(sent) = tokio::time::timeout(headers_limit, b.send()).await else {
             return Err(fail(TAG_TIMEOUT));
         };
         let sent = sent.map_err(|e| {
@@ -1408,5 +1417,41 @@ mod tests {
         );
         let refused = machines::connect_error(&t, true, false);
         assert!(refused.contains("its address is not on this network"));
+    }
+
+    /// noevia#2733 item 3: a machine that takes the connection and never answers is a timeout
+    /// (Node's `fetch` gives up at undici's `headersTimeout`), read back as the #1840 timeout text.
+    #[tokio::test(flavor = "multi_thread")]
+    async fn a_role_call_that_gets_no_headers_times_out_with_the_1840_text() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        // Accept and hold the socket open without a byte back.
+        let held = std::thread::spawn(move || listener.accept().map(|(sock, _)| sock));
+        let m = FrontMachines::with_client(reqwest::Client::new());
+        let req = role_engine::Request {
+            url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+            method: "POST",
+            headers: vec![("content-type".into(), "application/json".into())],
+            body: Some("{}".into()),
+            timeout_ms: None,
+        };
+        let started = Instant::now();
+        let err = m
+            .role_fetch_within(&req, Duration::from_millis(300))
+            .await
+            .unwrap_err();
+        assert_eq!(err.detail, TAG_TIMEOUT);
+        assert!(started.elapsed() < Duration::from_secs(10));
+        let t = qa_target();
+        assert_eq!(
+            m.role_connect_error(&target_value(&t), &err),
+            unreachable_text(&t, "no answer in time")
+        );
+        drop(held.join().unwrap());
+    }
+
+    #[test]
+    fn the_role_headers_limit_is_undicis_default() {
+        assert_eq!(ROLE_HEADERS_TIMEOUT, Duration::from_secs(300));
     }
 }
