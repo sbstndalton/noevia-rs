@@ -221,7 +221,9 @@ pub(crate) fn reindex_held(
         let text = match store.get_text(&document) {
             Ok(t) => t,
             Err(_) => {
-                out.push(json!({"document": document, "embedded": 0, "pending": true, "error": "read"}));
+                out.push(
+                    json!({"document": document, "embedded": 0, "pending": true, "error": "read"}),
+                );
                 continue;
             }
         };
@@ -249,7 +251,9 @@ pub(crate) fn after_save(
     embedder: Arc<HttpEmbedder>,
 ) {
     match reindex_held(root, uid, held, &embedder) {
-        None => eprintln!("noevia-diary: edit reindex pending: the index cannot be re-indexed here"),
+        None => {
+            eprintln!("noevia-diary: edit reindex pending: the index cannot be re-indexed here")
+        }
         Some(out) => {
             for d in out.iter().filter(|d| !d["error"].is_null()) {
                 eprintln!(

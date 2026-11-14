@@ -427,7 +427,8 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         let bounded = recovered
             && (buffered.is_some()
                 || json_media(&parts.headers)
-                    && declared_length(&parts.headers).is_some_and(|n| n <= server::MAX_BODY as u64)
+                    && declared_length(&parts.headers)
+                        .is_some_and(|n| n <= server::MAX_BODY as u64)
                     && !parts.headers.contains_key("transfer-encoding"));
         if (reads_body && bounded) || (!reads_body && !declares_body(&parts.headers)) {
             let body = if reads_body {
