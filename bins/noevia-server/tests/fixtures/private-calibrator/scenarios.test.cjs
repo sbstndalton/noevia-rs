@@ -518,3 +518,103 @@ test('engine: a listing that stops answering after a crash fails the run as the 
   const { job } = await stage(f, f.contextHooks());
   assert.equal(job.status, 'failed'); assert.match(job.error, /did not come back/);
 });
+
+// ── 8. R6 shift 3: the error-body deadline and the 1.5x wall-clock stop ────────────────────────
+// A body read chunk by chunk: each read gets the next of `chunks` (after `elapse[i]` ms of wall time
+// passed, when given), then the body ends (`end`) or stalls: the next read never answers by itself.
+function pacedBody(chunks, { end = false, elapse = [], wall = null } = {}) {
+  let i = 0;
+  return new ReadableStream({
+    pull(c) {
+      if (i < chunks.length) {
+        if (elapse[i]) wall.elapse(elapse[i]);
+        c.enqueue(new TextEncoder().encode(chunks[i++]));
+        return undefined;
+      }
+      if (end) { c.close(); return undefined; }
+      return new Promise(() => {});
+    },
+  }, { highWaterMark: 0 });
+}
+// Wall time for a paced stream: the recorder's clock when recording (`clock` events), else a fake `now`
+// handed to the calibrator (the baseline run has no recorder).
+function wallClock() {
+  const hook = globalThis.__privateCalibratorElapse;
+  if (hook) return { calibration: {}, elapse: hook };
+  let t = 1700000000000;
+  return { calibration: { now: () => t }, elapse: ms => { t += ms; } };
+}
+const progress = processed => sse({ prompt_progress: { total: 100000, processed, cache: 0, time_ms: 10 } });
+
+// errorBody (ERROR_BODY_MS 2000): the read is cancelled at the deadline and what arrived is kept.
+test('error body: a rejected prompt whose body stalls after a partial chunk keeps that chunk at the deadline', async t => {
+  const f = fixture(t, { engine: { stream: () => new Response(pacedBody(['{"error":{"message":"qa engine is still writ']), { status: 500 }) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.evidence?.status, 500); assert.equal(r.evidence?.text, '{"error":{"message":"qa engine is still writ');
+});
+
+test('error body: a body over the byte cap stops being read at the cap and keeps 2048 units', async t => {
+  // 1 + 3 x 4000 bytes: the third read passes 8192 bytes. 8192 bytes are kept and 2048 UTF-16 units
+  // of them: 'x', 1023 pairs and the high half of the next one.
+  const emoji = '\u{1F600}'.repeat(1000);
+  const f = fixture(t, { engine: { stream: () => new Response(pacedBody(['x' + emoji, emoji, emoji]), { status: 503 }) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.evidence?.text.length, 2048); assert.equal(r.evidence?.text.slice(0, 3), 'x\u{1F600}');
+});
+
+test('error body: a body that ends normally in several chunks is kept whole', async t => {
+  const f = fixture(t, { engine: { stream: () => new Response(pacedBody(['{"error":', '{"message":"qa prompt', ' too long"}}'], { end: true }), { status: 400 }) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.evidence?.text, '{"error":{"message":"qa prompt too long"}}');
+});
+
+// streamLong: `now() - startedAt > budgetMs * 1.5` stops the read (overBudget, predicted false). The
+// budget is 120 s, so the stop is past 180000 ms.
+test('wall clock: progress that keeps arriving past 1.5x the budget stops the long prompt on time', async t => {
+  const wall = wallClock();
+  const f = fixture(t, { calibration: wall.calibration, engine: { stream: () => new Response(pacedBody(
+    [progress(1000), progress(2000), progress(3000), sse({ choices: [{ delta: { content: 'late' } }] }), 'data: [DONE]\n\n'],
+    { end: true, elapse: [60000, 60000, 60001], wall })) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'time');
+});
+
+test('wall clock: a context stage whose first long prompt streams past 1.5x the budget fails that size on time', async t => {
+  const wall = wallClock();
+  let first = true;
+  const f = fixture(t, { calibration: wall.calibration, engine: { stream: () => {
+    if (!first) return undefined;
+    first = false;
+    return new Response(pacedBody([sse({ choices: [{ delta: { content: 'x' } }] }), sse({ choices: [{ delta: { content: 'y' } }] }), 'data: [DONE]\n\n'],
+      { end: true, elapse: [100000, 80001], wall }));
+  } } });
+  await f.hold();
+  const { job } = await stage(f, f.contextHooks());
+  assert.ok(job.steps.some(s => s.kind === 'long' && /took 181 s/.test(s.reason || '')), JSON.stringify(job.steps));
+});
+
+test('wall clock: a long prompt at exactly 1.5x the budget is read to its end and judged by the engine time', async t => {
+  const wall = wallClock();
+  const f = fixture(t, { calibration: wall.calibration, engine: { stream: b => {
+    const text = b.messages[0].content;
+    return new Response(pacedBody([progress(1000), progress(2000),
+      sse({ choices: [{ delta: { content: markerOf(text) } }], timings: { prompt_n: Math.floor(text.length / 5), prompt_ms: 100, prompt_per_second: 100000 } }), 'data: [DONE]\n\n'],
+    { end: true, elapse: [90000, 90000], wall }));
+  } } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts({ evidence: false }));
+  assert.equal(r.passed, true);
+});
+
+test('wall clock: a long prompt at exactly 1.5x without engine timings is over the budget once it ends', async t => {
+  const wall = wallClock();
+  const f = fixture(t, { calibration: wall.calibration, engine: { stream: b => new Response(pacedBody(
+    [sse({ choices: [{ delta: { content: markerOf(b.messages[0].content) } }] }), 'data: [DONE]\n\n'], { end: true, elapse: [180000], wall })) } });
+  await f.hold();
+  const r = await f.factory(f.fillHooks()).probe('qa-model', f.probeOpts());
+  assert.equal(r.passed, false); assert.equal(r.cause, 'time');
+});
