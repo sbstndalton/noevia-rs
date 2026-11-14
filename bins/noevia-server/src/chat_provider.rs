@@ -3,8 +3,11 @@
 //! `crates/chat-upstream`'s [`ProviderHost`] around the front's own host.
 //!
 //! Inert: core hands a provider-row turn off only to a front whose hand-off caps name [`CAPS_TOKEN`], and this
-//! front names it only with [`SWITCH`] set to `1` (unset in every deployment; no core understands the token yet).
-//! Without it chat_native.rs runs every frame as before.
+//! front names it only with [`SWITCH`] set to `1` (unset in every deployment) in a build with the provider store
+//! (`rust-storage-reads`). Core main refuses every non-default row; the core half (noevia-core
+//! council/p8-3-core-provider-rows, rust-chat-native.cjs `plainProviderRow`) lifts that for a plain direct keyed
+//! row only (no machine, external row, sign-in provider or route target) and writes the frame facts [`plan`]
+//! checks. Without the token chat_native.rs runs every frame as before.
 //!
 //! What a provider-row turn gets here, as chat.cjs does for a non-default row:
 //! - [`plan`] at the cut: the row looked up as the signed-in user now (the merged view, exact id), the target
@@ -36,7 +39,7 @@ use server_auth::secrets::SecretKeys;
 use crate::provider_files::CHATGPT_KIND;
 use crate::App;
 
-/// The hand-off capability that says this front runs provider-row turns (core rust-chat-native.cjs, to come).
+/// The hand-off capability that says this front runs provider-row turns (core rust-chat-native.cjs `plainProviderRow`).
 pub const CAPS_TOKEN: &str = "providers";
 /// The front's switch for offering [`CAPS_TOKEN`]: `1` offers it; unset or anything else does not.
 pub const SWITCH: &str = "NOEVIA_RUST_CHAT_PROVIDERS";
