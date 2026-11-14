@@ -1250,6 +1250,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "engine-facts"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+ "prompt-framing",
+ "provider-egress",
+ "serde_json",
+ "url",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3613,16 +3625,19 @@ dependencies = [
 name = "server-reasoning-settings"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "serde_json",
  "server-store",
  "tempfile",
+ "url",
 ]
 
 [[package]]
 name = "server-routing-default"
 version = "0.1.0"
 dependencies = [
+ "js-json",
  "proptest",
  "rustix",
  "serde_json",
