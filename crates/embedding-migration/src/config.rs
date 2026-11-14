@@ -158,6 +158,9 @@ pub fn write_atomic(file: &Path, bytes: &[u8]) -> std::io::Result<()> {
     renamed
 }
 
+/// The refusal of a change made outside the config lock (`embedding-config.cjs` `change()`).
+pub const PUBLICATION_LOCK: &str = "Embedding configuration requires the publication lock";
+
 impl Config {
     /// `loadEmbeddingConfig({ env, stateFile })`: the saved file, else the environment's targets.
     /// A damaged file gives the stand-in (embedding off: profile `unavailable`, nothing saved,
@@ -252,13 +255,15 @@ impl Config {
     }
 
     fn change(&mut self, next: State) -> Result<(), Failure> {
-        if self.file.is_some() && !self.in_hold {
-            return Err(Failure::plain(
-                "Embedding configuration requires the publication lock",
-            ));
-        }
+        // Named difference (sbstndalton/noevia#2696): a locked configuration (a seeded active address
+        // refused at start-up) refuses with its own 409 badState before the publication-lock check.
+        // Core checks the lock first, so set-next's refusal shortcut, which runs outside the hold,
+        // answered 500 with this internal text; clear-next (inside the hold) already said badState.
         if let Some(reason) = &self.locked {
             return Err(bad_state(reason));
+        }
+        if self.file.is_some() && !self.in_hold {
+            return Err(Failure::plain(PUBLICATION_LOCK));
         }
         if let Some(file) = &self.file {
             write_atomic(file, next.file_text().as_bytes())

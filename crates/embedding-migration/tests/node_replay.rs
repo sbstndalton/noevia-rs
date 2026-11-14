@@ -366,16 +366,38 @@ fn replay(sc: &JValue) -> usize {
             };
             let body = wtf16::parse(step.get("post").as_str().unwrap_or("")).map_err(|_| ());
             let answer = api.handle(&mut host, method, user, body.as_ref().map_err(|_| ()));
-            assert_eq!(
-                f64::from(answer.status),
-                rec.get("status").as_num().unwrap(),
-                "{at} status"
-            );
-            assert_eq!(
-                show(&answer.body),
-                expected(rec.get("body"), &json_error),
-                "{at} body"
-            );
+            let lock_quirk = rec.get("status").as_num() == Some(500.0)
+                && rec.get("body").get("projects").get("error").as_str()
+                    == Some(embedding_migration::config::PUBLICATION_LOCK);
+            if lock_quirk {
+                // Named difference (sbstndalton/noevia#2696): core answers 500 with its internal
+                // publication-lock text where the port refuses with the lock's own 409 badState;
+                // the host calls and the file are the same (checked below).
+                assert_eq!(answer.status, 409, "{at} status (#2696)");
+                let p = answer.body.get("projects");
+                assert_eq!(
+                    p.get("code").as_str(),
+                    Some("badState"),
+                    "{at} code (#2696)"
+                );
+                assert_eq!(p.get("status").as_num(), Some(409.0), "{at} (#2696)");
+                let e = p.get("error").as_str().unwrap_or("");
+                assert!(
+                    !e.is_empty() && e != embedding_migration::config::PUBLICATION_LOCK,
+                    "{at} error (#2696)"
+                );
+            } else {
+                assert_eq!(
+                    f64::from(answer.status),
+                    rec.get("status").as_num().unwrap(),
+                    "{at} status"
+                );
+                assert_eq!(
+                    show(&answer.body),
+                    expected(rec.get("body"), &json_error),
+                    "{at} body"
+                );
+            }
         }
         let calls = arr(host.calls.drain(..));
         assert_eq!(show(&calls), show(rec.get("calls")), "{at} calls");
