@@ -82,7 +82,14 @@ async fn create_and_configuration_use_the_fronts_catalogue_not_the_file() {
         json!(["qa-curated", "core"])
     );
     // No selection: the facts' defaults, not the file's.
-    let (s, v) = write(f.addr, "POST", "/api/projects", ADMIN, r#"{"name":"QA plain"}"#).await;
+    let (s, v) = write(
+        f.addr,
+        "POST",
+        "/api/projects",
+        ADMIN,
+        r#"{"name":"QA plain"}"#,
+    )
+    .await;
     assert_eq!(s, 200, "{v}");
     let plain = by_name(d.path(), "QA plain");
     assert_eq!(plain["toolboxes"], json!(["core"]));
@@ -102,7 +109,14 @@ async fn create_and_configuration_use_the_fronts_catalogue_not_the_file() {
         by_name(d.path(), "QA plain")["toolboxes"],
         json!(["qa-curated"])
     );
-    let (s, _) = write(f.addr, "POST", &config, ADMIN, r#"{"icon":"qa-decoy-icon"}"#).await;
+    let (s, _) = write(
+        f.addr,
+        "POST",
+        &config,
+        ADMIN,
+        r#"{"icon":"qa-decoy-icon"}"#,
+    )
+    .await;
     assert_eq!(s, 400);
     let (s, v) = write(f.addr, "POST", &config, ADMIN, r#"{"icon":"book"}"#).await;
     assert_eq!(s, 200, "{v}");
@@ -114,31 +128,62 @@ async fn not_ready_is_not_published_even_with_a_file_present() {
     let (d, f) = rig(false).await;
     // A create waits its 10 s for the native catalogue, then refuses; the decoy file is not used.
     let started = std::time::Instant::now();
-    let (s, _) = write(f.addr, "POST", "/api/projects", ADMIN, r#"{"name":"QA wait"}"#).await;
+    let (s, _) = write(
+        f.addr,
+        "POST",
+        "/api/projects",
+        ADMIN,
+        r#"{"name":"QA wait"}"#,
+    )
+    .await;
     assert_eq!(s, 503);
     let took = started.elapsed();
     assert!(took >= std::time::Duration::from_secs(9), "{took:?}");
     assert!(took < std::time::Duration::from_secs(14), "{took:?}");
-    assert!(!d.path().join("users").join(A).join("projects.json").exists());
-    // Ready while a create waits: that create is served.
+    assert!(!d
+        .path()
+        .join("users")
+        .join(A)
+        .join("projects.json")
+        .exists());
+    // Ready while a create waits: that create is served (and did wait).
+    let started = std::time::Instant::now();
     let waiting = tokio::spawn({
         let addr = f.addr;
-        async move { write(addr, "POST", "/api/projects", ADMIN, r#"{"name":"QA late"}"#).await }
+        async move {
+            write(
+                addr,
+                "POST",
+                "/api/projects",
+                ADMIN,
+                r#"{"name":"QA late"}"#,
+            )
+            .await
+        }
     });
     tokio::time::sleep(std::time::Duration::from_millis(500)).await;
     write_snapshot(&f, d.path(), facts());
     let (s, v) = waiting.await.unwrap();
     assert_eq!(s, 200, "{v}");
-    let id = by_name(d.path(), "QA late")["id"].as_str().unwrap().to_owned();
+    assert!(started.elapsed() >= std::time::Duration::from_millis(400));
+    let id = by_name(d.path(), "QA late")["id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
     let config = format!("/api/projects/{id}/config");
     // Not ready again (the facts gone): a patch that reads the catalogue refuses, one that does not is
     // answered without composing it.
     std::fs::remove_file(d.path().join("toolbox-chat-facts.json")).unwrap();
     let (s, _) = write(f.addr, "POST", &config, ADMIN, r#"{"icon":"book"}"#).await;
     assert_eq!(s, 503);
+    // Composing would touch the demand marker (and wait for a fresh facts file): without the marker,
+    // a patch that does not read the catalogue leaves it absent.
+    let marker = d.path().join("snapshot-demand");
+    std::fs::remove_file(&marker).unwrap();
     let started = std::time::Instant::now();
     let (s, v) = write(f.addr, "POST", &config, ADMIN, r#"{"goal":"QA goal"}"#).await;
     assert_eq!(s, 200, "{v}");
     assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    assert!(!marker.exists());
     assert_eq!(by_name(d.path(), "QA late")["goal"], json!("QA goal"));
 }

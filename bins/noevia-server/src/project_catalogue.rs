@@ -15,10 +15,15 @@
 //! answers as it answers a missing file today (a create waits up to its 10 s, then 503 "has not
 //! published"). The file is never consulted while the switch is on, so a stale file cannot hide a
 //! fault of the native composition. The readers that write a project (create, import, uploads, sync,
-//! a research report) wait up to 10 s for it, as a create waited for the file: a first upload made
+//! a research report's save, once before its first file) wait up to 10 s for it, as a create waited
+//! for the file: a first upload made
 //! without a catalogue would never get the project documents default. A request that does not read
 //! the catalogue (a configuration patch without `icon`/`toolboxes`, a report's target lookup) does
 //! not compose it ([`Source::unread`]).
+//!
+//! A named difference: while the front's discovery cannot answer, core still publishes a catalogue of
+//! its built-in boxes only (a project's MCP selection is then silently dropped on create or
+//! configuration); the native catalogue is not ready instead, and those writes are refused 503.
 //!
 //! Composing touches core's demand marker (`snapshot-demand`), as every reader of the chat facts in
 //! this process does: core then publishes its snapshots (chat facts, RAG status, auto roles) for the
@@ -76,6 +81,7 @@ pub fn of(cat: &mcp_discovery::Catalogue) -> Catalogue {
 }
 
 /// Where a request's catalogue comes from, settled before its blocking work starts.
+#[derive(Clone)]
 pub enum Source {
     /// core's published `project-catalogue.json` (switch unset).
     File,
