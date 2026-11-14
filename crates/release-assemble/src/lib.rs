@@ -36,12 +36,17 @@
 //!   sign-in, MCP credentials and views, Google Drive, off-site backup, model sizing, state reads,
 //!   maintenance and recheck) as one table-driven shape plus their extra checks.
 //!
+//! - [`features_reader`] (council p15): the ten strict FEATURES readers over the front's lib.rs (MCP discovery,
+//!   auto-roles write, maintenance lease, inference admission, chat mirror, residual fallbacks, source startup,
+//!   DAV listener, index outbox, media background) without node, one tokenizer and one element splitter.
+//!
 //! Nothing in the release path calls this crate yet.
 
 pub mod bridged;
 pub mod core_requires;
 pub mod digest;
 pub mod facts;
+pub mod features_reader;
 pub mod guard;
 pub mod lock;
 pub mod model_pairings;

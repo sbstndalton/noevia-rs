@@ -16,6 +16,9 @@
 //! release-assemble project-routes-core FILE [NAME] a Core module's OWNED_ROUTES (project_routes_core)
 //! release-assemble core-requires FILE MODULE     yes, no or invalid: does the Core module call
 //!                                                 require(MODULE) (core_requires, without node)
+//! release-assemble features-version READER FILE none, invalid or the version a strict FEATURES reader gives
+//!                                                 for the front's lib.rs (features_reader::ALL by CLI or
+//!                                                 shell function name, e.g. discovery, lease_rs_version)
 //! release-assemble code-body FILE                 the code lines a pairing reads, as "$(code_body FILE)"
 //!                                                 gives them (trailing blank lines dropped) plus one newline
 //! release-assemble pairing NAME TREE              one ownership pairing over an assembled tree; NAME is
@@ -49,12 +52,13 @@ use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
 use release_assemble::{
-    bridged, core_requires, digest, facts, model_pairings, route_pairings, tar, tree,
+    bridged, core_requires, digest, facts, features_reader, model_pairings, route_pairings, tar,
+    tree,
 };
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | core-requires FILE MODULE | code-body FILE | pairing NAME TREE [VERDICTS]";
+const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | core-requires FILE MODULE | features-version READER FILE | code-body FILE | pairing NAME TREE [VERDICTS]";
 
 fn write_out(bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
@@ -211,6 +215,13 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
         ["core-requires", file, module] => {
             let verdict = core_requires::core_requires_file(Path::new(file), module);
             write_out(verdict.word().as_bytes())?;
+            Ok(ExitCode::SUCCESS)
+        }
+        ["features-version", reader, file] => {
+            let Some(reader) = features_reader::Reader::by_name(reader) else {
+                return Ok(usage());
+            };
+            write_out(features_reader::read(reader, Path::new(file)).as_bytes())?;
             Ok(ExitCode::SUCCESS)
         }
         ["code-body", file] => {
