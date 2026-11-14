@@ -134,13 +134,14 @@ async fn run_pair(env: &Env, launch: &Launch) -> i32 {
     let mut front = match command(&launch.front, env).spawn() {
         Ok(child) => child,
         Err(e) => {
+            let code = spawn_failure_code(&e);
             eprintln!("web-supervisor: cannot start {}: {e}", launch.front.program);
-            eprintln!("web-supervisor: noevia-server exited (126); stopping the other");
+            eprintln!("web-supervisor: noevia-server exited ({code}); stopping the other");
             if let Some(pid) = pid_of(&node) {
                 signal(pid, Signal::SIGTERM);
             }
             let _ = node.wait().await;
-            return 126;
+            return code;
         }
     };
     // Whichever exits first (or a signal) ends the wait.
@@ -199,5 +200,35 @@ mod tests {
         use std::os::unix::process::ExitStatusExt;
         assert_eq!(status_code(ExitStatus::from_raw(3 << 8)), 3);
         assert_eq!(status_code(ExitStatus::from_raw(15)), 143);
+    }
+}
+
+/// The exit status bash gives a command it could not start: 127 when the file is not there, 126
+/// when it is there but cannot be executed (noevia#2702).
+pub fn spawn_failure_code(e: &std::io::Error) -> i32 {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        127
+    } else {
+        126
+    }
+}
+
+#[cfg(test)]
+mod spawn_failure_tests {
+    use super::spawn_failure_code;
+
+    #[test]
+    fn a_missing_file_is_127_anything_else_126() {
+        let missing = std::process::Command::new("/nonexistent/qa-web-supervisor-front")
+            .spawn()
+            .err();
+        assert_eq!(missing.as_ref().map(spawn_failure_code), Some(127));
+        let dir = std::env::temp_dir().join(format!("qa-web-supervisor-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+        let not_executable = dir.join("qa-front");
+        let _ = std::fs::write(&not_executable, "not a program");
+        let denied = std::process::Command::new(&not_executable).spawn().err();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(denied.as_ref().map(spawn_failure_code), Some(126));
     }
 }
