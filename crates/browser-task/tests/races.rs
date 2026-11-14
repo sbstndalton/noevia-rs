@@ -193,6 +193,16 @@ fn rig(close_timeout: Duration) -> Rig {
     }
 }
 
+/// `h.join()` once the thread has finished, within a deadline (a hang fails the test).
+fn joined<T>(h: std::thread::JoinHandle<T>) -> T {
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !h.is_finished() {
+        assert!(Instant::now() < deadline, "a thread never answered");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    h.join().unwrap()
+}
+
 fn obj(text: &str) -> JValue {
     js_json::parse(text).unwrap()
 }
@@ -287,7 +297,7 @@ fn a_cancel_ends_the_task_even_when_an_engine_call_never_returns() {
         std::thread::sleep(Duration::from_millis(10));
     }
     r.service.cancel(&r.base, PROJECT, &t).unwrap();
-    let answer = acting.join().unwrap();
+    let answer = joined(acting);
     assert!(
         matches!(&answer, Err(f) if f.status == Some(499)),
         "{answer:?}"
@@ -381,9 +391,88 @@ fn a_card_cannot_be_answered_after_the_cancel() {
         matches!(&late, Err(f) if f.status == Some(409) && f.message == "That approval is no longer waiting."),
         "{late:?}"
     );
-    let answer = acting.join().unwrap();
+    let answer = joined(acting);
     let declined = matches!(&answer, Ok(v) if v.get("reason").as_str() == Some("Declined."));
     let cancelled = matches!(&answer, Err(f) if f.status == Some(499));
     assert!(declined || cancelled, "{answer:?}");
     r.until(&t, "cancelled");
+}
+
+/// sbstndalton/noevia#2698: at most QUEUE_CAP actions wait behind a running one (each waiter holds a
+/// thread here); the next is refused and runs nothing; a finish is still taken; a cancel answers all.
+#[test]
+fn a_full_queue_refuses_more_actions_but_takes_a_finish() {
+    use browser_task::service::QUEUE_CAP;
+    let r = rig(Duration::from_millis(300));
+    let t = r.start();
+    r.knobs.hang_click.store(true, Ordering::SeqCst);
+    let click = obj(r#"{"type":"click","selector":".more"}"#);
+    let spawn = |r: &Rig| {
+        let (service, base, task, click) =
+            (r.service.clone(), r.base.clone(), t.clone(), click.clone());
+        std::thread::spawn(move || service.act(&base, PROJECT, &task, &click))
+    };
+    let first = spawn(&r);
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while !r.knobs.clicking.load(Ordering::SeqCst) {
+        assert!(Instant::now() < deadline, "the click never started");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let extra = 3;
+    let waiting: Vec<_> = (0..QUEUE_CAP + extra).map(|_| spawn(&r)).collect();
+    // The refused ones answer at once; the queued ones wait for the cancel.
+    let deadline = Instant::now() + Duration::from_secs(10);
+    while waiting.iter().filter(|h| h.is_finished()).count() < extra {
+        assert!(Instant::now() < deadline, "no action was refused");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    std::thread::sleep(Duration::from_millis(100));
+    assert_eq!(waiting.iter().filter(|h| h.is_finished()).count(), extra);
+    assert!(r
+        .service
+        .finish(&r.base, PROJECT, &t, &JValue::Null)
+        .is_ok());
+    r.service.cancel(&r.base, PROJECT, &t).unwrap();
+    // Every waiter answers soon after the cancel (a hang fails the test instead of stalling it).
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while !(first.is_finished() && waiting.iter().all(std::thread::JoinHandle::is_finished)) {
+        assert!(Instant::now() < deadline, "a waiting action was never answered");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    let mut refused = 0;
+    for h in waiting {
+        match h.join().unwrap() {
+            Err(f) if f.message.starts_with("Too many actions") => {
+                assert_eq!(f.status, Some(409));
+                refused += 1;
+            }
+            Err(f) => assert!(matches!(f.status, Some(409 | 499)), "{f:?}"),
+            Ok(v) => panic!("a queued action ran after the cancel: {v:?}"),
+        }
+    }
+    assert_eq!(refused, extra);
+    assert!(joined(first).is_err());
+    r.until(&t, "cancelled");
+    r.knobs.hang_click.store(false, Ordering::SeqCst);
+}
+
+/// has_live answers for the caller's own open workspace only, and never opens one.
+#[test]
+fn has_live_is_the_open_workspaces_own_task() {
+    let r = rig(Duration::from_secs(5));
+    let other = tempfile::tempdir().unwrap();
+    let other = other.path().canonicalize().unwrap();
+    assert!(!r.service.has_live(&r.base, "0123abcd-0123-4abc-8def-0123456789ab"));
+    let t = r.start();
+    assert!(r.service.has_live(&r.base, &t));
+    // Another workspace: never opened here, and not its task.
+    assert!(!r.service.has_live(&other, &t));
+    assert!(!other.join("jobs").exists(), "nothing opened or recovered");
+    r.service.cancel(&r.base, PROJECT, &t).unwrap();
+    r.until(&t, "cancelled");
+    let deadline = Instant::now() + Duration::from_secs(20);
+    while r.service.has_live(&r.base, &t) {
+        assert!(Instant::now() < deadline, "the run never ended");
+        std::thread::sleep(Duration::from_millis(10));
+    }
 }

@@ -28,6 +28,8 @@ use std::time::{Duration, Instant};
 pub const APPROVAL_TIMEOUT: Duration = Duration::from_millis(5 * 60 * 1000);
 /// `IDLE_TIMEOUT_MS`: no action (act or finish) for this long and the task is timed out.
 pub const IDLE_TIMEOUT: Duration = Duration::from_millis(10 * 60 * 1000);
+/// The most actions that wait in one task's queue (a named difference: core has no cap).
+pub const QUEUE_CAP: usize = 16;
 pub const TIMEOUT_REASON: &str = "This browser task made no progress and timed out.";
 /// The executor's close is waited for this long before it counts as unconfirmed.
 pub const CLOSE_TIMEOUT: Duration = Duration::from_millis(5000);
@@ -1092,7 +1094,21 @@ impl Service {
         matches!(job.status.as_str(), Some("running" | "waiting_approval"))
     }
 
-    /// The live task's queue, open for actions; core's 409 otherwise.
+    /// Whether this process runs the task now for the workspace at `dir`: its thread is live and its
+    /// journal is that workspace's, whose store this process already opened (so the answer never
+    /// opens or recovers a workspace).
+    pub fn has_live(&self, dir: &Path, task_id: &str) -> bool {
+        let Some(tenant) = lock(&self.stores).get(dir).cloned() else {
+            return false;
+        };
+        lock(&self.live)
+            .get(task_id)
+            .is_some_and(|run| Arc::ptr_eq(&run.store, &tenant.store))
+    }
+
+    /// The live task's queue, open for actions; core's 409 otherwise. A named difference: at most
+    /// [`QUEUE_CAP`] actions wait (each waiter holds a thread here; core holds a promise and has no
+    /// cap), the next one is refused with 409 and runs nothing; a finish is always queued.
     fn enqueue(&self, task_id: &str, item: Item) -> Result<(), Fail> {
         let run = lock(&self.live).get(task_id).cloned();
         let not_open = || Fail::public(409, "This task is not open for actions.");
@@ -1100,6 +1116,17 @@ impl Service {
         let mut queue = lock(&run.queue);
         if !queue.open {
             return Err(not_open());
+        }
+        let acts = queue
+            .items
+            .iter()
+            .filter(|i| matches!(i, Item::Act { .. }))
+            .count();
+        if matches!(item, Item::Act { .. }) && acts >= QUEUE_CAP {
+            return Err(Fail::public(
+                409,
+                "Too many actions are waiting for this task; try again when one has finished.",
+            ));
         }
         queue.items.push_back(item);
         run.wake.notify_all();
