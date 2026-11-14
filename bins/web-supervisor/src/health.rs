@@ -20,7 +20,7 @@
 //!   current URL (absolute, scheme-relative, absolute-path, query-only and relative references,
 //!   dot segments removed); a 3xx without a Location is final (not ok);
 //! - interim 1xx answers (except 101) are skipped; a 101, a broken or missing status line, a
-//!   head over 64 KiB, a reset or an early close are failures (exit 1).
+//!   head over 16 KiB (Node's default header limit), a reset or an early close are failures (exit 1).
 //!
 //! Known differences, all ending in exit 1 where Node might have reached a healthy answer:
 //! - a redirect to `https:` (no TLS here; the front never sends one, it answers itself);
@@ -40,8 +40,8 @@ pub const PATH: &str = "/api/setup/status";
 pub const DEADLINE: Duration = Duration::from_secs(5);
 /// Fetch's redirect limit: the 21st redirect is a network error.
 pub const MAX_REDIRECTS: usize = 20;
-/// Largest response head read before giving up.
-pub const MAX_HEAD_BYTES: usize = 64 * 1024;
+/// Largest response head accepted: Node's default HTTP header limit (16 KiB).
+pub const MAX_HEAD_BYTES: usize = 16 * 1024;
 
 /// One HTTP request target: where to connect and what to ask.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -218,6 +218,9 @@ pub fn exchange(target: &Target, deadline: Instant) -> Result<Head, Failure> {
     let mut chunk = [0u8; 4096];
     loop {
         while let Some((len, end)) = head_end(&buf) {
+            if len > MAX_HEAD_BYTES {
+                return Err(Failure::BadResponse);
+            }
             let head = parse_head(buf.get(..len).unwrap_or_default())?;
             if head.status == 101 {
                 return Err(Failure::BadResponse);
