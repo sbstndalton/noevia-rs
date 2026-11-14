@@ -55,6 +55,10 @@ pub const VERIFIED_HEADER: &str = "x-noevia-diary-verified";
 /// "1" when Python holds a recovered managed state for this tenant (journal replayed, dirty
 /// documents reindexed once), so a read here skips nothing Python would have done.
 pub const RECOVERED_HEADER: &str = "x-noevia-diary-recovered";
+/// Shift 4, step 4: "1" when this process itself recovered the tenant (recovery::recover_for_reads,
+/// main mode only): its reads then serve with dirty documents or an undrained outbox, as Python's
+/// do once its state is recovered (a pending journal row still declines).
+pub const RECOVERED_HERE_HEADER: &str = "x-noevia-diary-recovered-here";
 /// "1" when this process is the tenant's writer: set by Python only on the D5 write routes of a
 /// tenant whose writes all go here.
 pub const WRITER_HEADER: &str = "x-noevia-diary-writer";
@@ -434,6 +438,8 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
                     return Plan::Decline;
                 }
                 managed::ready_for_write(&root, &uid, false)
+            } else if flag(headers, RECOVERED_HERE_HEADER) {
+                managed::ready_for_write(&root, &uid, true)
             } else {
                 managed::ready(&root, &uid)
             };
@@ -1056,7 +1062,16 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
     }
     let app2 = app.clone();
     let lease = crate::lease::lease_of(headers);
-    match tokio::task::spawn_blocking(move || app2.writers.fence_as(&uid, lease)).await {
+    match tokio::task::spawn_blocking(move || {
+        app2.writers.fence_as(&uid, lease);
+        // A tenant created again under this id is recovered again (and swept) by this process.
+        app2.recovered
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&uid);
+    })
+    .await
+    {
         Ok(()) => {
             let uid = py::query_get(query, "tenant")
                 .unwrap_or_default()

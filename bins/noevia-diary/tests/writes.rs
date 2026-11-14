@@ -2215,3 +2215,148 @@ async fn the_background_run_applies_only_the_text_it_embedded() {
     assert!(bodies[0].contains("kite flight"), "{bodies:?}");
     assert!(dirty(dir.path()).is_empty());
 }
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_writer_tenant_is_recovered_here_for_its_reads() {
+    // Python's _recover_state in this process (DIARY_RUST_RECOVERY=on): the journal replay, the
+    // outbox drain, the once-per-process sweep and the dirty re-index, under the writer slot.
+    let doc = "Entries/2031/March/March 4, 2031.md";
+    let text = "## Tuesday, March 4, 2031\n\n### 18:00 \u{2014} Kites\n\n**Me:** Synthetic QA kite at the quay.\n";
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(
+        dir.path(),
+        &[(doc, text), ("AI Memory/notes.md", "QA memory.\n")],
+    );
+    let primary =
+        rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+    primary
+        .execute(
+            "INSERT INTO workspace_index_outbox (path) VALUES ('AI Memory/notes.md')",
+            [],
+        )
+        .unwrap();
+    let row = serde_json::json!({"day": "2031-03-05", "xid": "abcdef79", "sub_header": "09:15 | Synthetic",
+        "body": diary_corpus_write::render_exchange("QA synthetic canal walk.", "", "abcdef79")});
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-row','2031',?,?)",
+            rusqlite::params!["exchange", row.to_string()],
+        )
+        .unwrap();
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (engine, _received, _answered) = stub_embeddings(hold).await;
+    let (addr, app) = start_owner(dir.path(), &engine).await;
+    let reader = without(writer(), "x-noevia-diary-writer");
+
+    // Not recovered yet: a pending journal row declines the read, even with the child's stamp.
+    let (s, declined, _) = send_raw(addr, "GET", "/api/months", &reader, b"").await;
+    assert!(declined, "{s}");
+
+    let a = app.clone();
+    let recovered =
+        tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
+            .await
+            .unwrap();
+    assert!(recovered);
+    let applied: i64 = index(dir.path())
+        .query_row("SELECT applied FROM journal WHERE id='qa-row'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(applied, 1, "the journal row is replayed");
+    let outbox: i64 = primary
+        .query_row("SELECT COUNT(*) FROM workspace_index_outbox", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(outbox, 0, "the outbox is drained");
+    assert!(dirty(dir.path()).is_empty(), "{:?}", dirty(dir.path()));
+    assert_eq!(
+        chunk_bodies(dir.path(), doc).len(),
+        1,
+        "the swept document is indexed"
+    );
+
+    // A later dirty mark: the child's stamp alone declines (Python's ready check); a tenant
+    // recovered here is read as Python reads a recovered state.
+    index(dir.path())
+        .execute("INSERT INTO dirty_documents (document) VALUES (?)", [doc])
+        .unwrap();
+    let (s, declined, _) = send_raw(addr, "GET", "/api/months", &reader, b"").await;
+    assert!(declined, "{s}");
+    let mut here = reader.clone();
+    here.push(("x-noevia-diary-recovered-here", "1".to_string()));
+    let (s, declined, body) = send_raw(addr, "GET", "/api/months", &here, b"").await;
+    assert_eq!((s, declined), (200, false), "{body}");
+    assert!(body.contains("2031-03"), "{body}");
+    // Recovered once per process: the next call takes no slot and re-indexes nothing.
+    let a = app.clone();
+    assert!(
+        tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
+            .await
+            .unwrap()
+    );
+    assert_eq!(dirty(dir.path()), vec![doc.to_string()]);
+    // A pending journal row still declines a read recovered here.
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-row-2','2031',?,?)",
+            rusqlite::params!["exchange", row.to_string()],
+        )
+        .unwrap();
+    let (s, declined, _) = send_raw(addr, "GET", "/api/months", &here, b"").await;
+    assert!(declined, "{s}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_tenant_recovery_cannot_run_here_stays_with_the_child() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[("a.md", "a")]);
+    // A journal payload the reference applier must handle (not an object).
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-odd','2031','exchange','[]')",
+            [],
+        )
+        .unwrap();
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (engine, _received, _answered) = stub_embeddings(hold).await;
+    let (_addr, app) = start_owner(dir.path(), &engine).await;
+    let a = app.clone();
+    let recovered =
+        tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
+            .await
+            .unwrap();
+    assert!(!recovered);
+    let applied: i64 = index(dir.path())
+        .query_row("SELECT applied FROM journal WHERE id='qa-odd'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(applied, 0, "nothing replayed here");
+    // Without the embedding owner nothing is recovered here at all.
+    let plain = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(
+            &serde_json::json!({
+                "port": 0, "control_token": "ctl", "forward_secret": SECRET, "auth_token": TOKEN,
+                "tenant_key": "k", "data_root": dir.path().to_str().unwrap(), "legacy_user_id": "",
+                "corpus": {"entry_layout": "daily", "entries_prefix": "Entries", "index_enabled": false,
+                           "month_file_template": "{year}-{month02}.md", "monthly_prefix": "", "index_file": "INDEX.md"},
+                "llm": {"main": {"base_url": "http://127.0.0.1:9/v1", "chat_model": "chat-a", "setting_key": "LLM_CHAT_MODEL",
+                                  "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"},
+                        "aux": {"base_url": "http://127.0.0.1:9/v1", "chat_model": "aux-a", "setting_key": "LLM_AUX_MODEL",
+                                 "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"},
+                        "aux_prefers_main": true, "configured": "chat-a"}
+            })
+            .to_string(),
+        )
+        .unwrap(),
+    ));
+    assert!(
+        !tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(
+            &plain, UID
+        ))
+        .await
+        .unwrap()
+    );
+}

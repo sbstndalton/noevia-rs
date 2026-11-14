@@ -143,6 +143,9 @@ pub struct Front {
     /// Shift 4, step 3 (DIARY_RUST_CONFIG=shadow): this process's own resolution of the start-up
     /// config, compared with the child's when it arrives (Err: why it could not be resolved).
     own_config: OnceLock<Result<serde_json::Value, String>>,
+    /// Shift 4, step 4 (DIARY_RUST_RECOVERY=on): a writer tenant's reads without a fresh stamp
+    /// recover the tenant here (recovery::recover_for_reads) instead of waiting for the child.
+    recovery_here: bool,
     http: Client<HttpConnector, Body>,
 }
 
@@ -168,8 +171,16 @@ impl Front {
             embedding_epoch: random_hex(16).unwrap_or_default(),
             owner: OnceLock::new(),
             own_config: OnceLock::new(),
+            recovery_here: false,
             http,
         }
+    }
+
+    /// DIARY_RUST_RECOVERY=on (needs the embedding owner here: DIARY_RUST_EMBEDDING=on in the
+    /// child; only the tenants this process writes, DIARY_RUST_WRITES).
+    pub fn with_recovery_here(mut self, on: bool) -> Self {
+        self.recovery_here = on;
+        self
     }
 
     /// DIARY_RUST_CONFIG=shadow: keep this process's own resolution for the comparison.
@@ -428,10 +439,27 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         // verified) or declares a bounded length; anything else goes to the child untouched.
         let reads_body = r == server::Route::ReadFile;
         // A tenant the child deleted (its fence) is the child's to answer (410), never native.
-        let recovered = stamp_tenant(&parts.headers).is_some_and(|uid| {
-            !app.writers.is_fenced(&uid)
-                && front.is_recovered(&uid, app.writers.native_writes(&uid).0)
-        });
+        let tenant = stamp_tenant(&parts.headers).filter(|uid| !app.writers.is_fenced(uid));
+        let stamped = tenant
+            .as_ref()
+            .is_some_and(|uid| front.is_recovered(uid, app.writers.native_writes(uid).0));
+        // Shift 4, step 4: without a fresh stamp, a writer tenant of this process is recovered
+        // here (under its writer slot, as Python's first request would) and read without one.
+        let here = match tenant {
+            Some(uid)
+                if !stamped
+                    && front.recovery_here
+                    && front.is_writer(&uid)
+                    && app.save_embedder.get().is_some() =>
+            {
+                let app2 = app.clone();
+                tokio::task::spawn_blocking(move || crate::recovery::recover_for_reads(&app2, &uid))
+                    .await
+                    .unwrap_or(false)
+            }
+            _ => false,
+        };
+        let recovered = stamped || here;
         // Only a body that can be served here is read here (JSON, bounded, a recovered tenant).
         let bounded = recovered
             && (buffered.is_some()
@@ -463,6 +491,9 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             let mut headers = parts.headers.clone();
             if recovered {
                 headers.insert(RECOVERED_HEADER, HeaderValue::from_static("1"));
+            }
+            if here {
+                headers.insert(server::RECOVERED_HERE_HEADER, HeaderValue::from_static("1"));
             }
             let resp =
                 server::serve_native(app.clone(), r, query.clone(), headers, asserted, body).await;
@@ -822,7 +853,11 @@ pub async fn run(args: Args) -> u8 {
             return 2;
         }
     };
-    let front = Arc::new(Front::new(token, secret, args.child_port));
+    let recovery_here = std::env::var("DIARY_RUST_RECOVERY")
+        .map(|v| v.trim().eq_ignore_ascii_case("on"))
+        .unwrap_or(false);
+    let front =
+        Arc::new(Front::new(token, secret, args.child_port).with_recovery_here(recovery_here));
     let public_l = match tokio::net::TcpListener::bind((args.host.as_str(), args.port)).await {
         Ok(l) => l,
         Err(e) => {

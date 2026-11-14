@@ -14,6 +14,95 @@ use std::time::{Duration, Instant};
 pub struct State {
     pub recovered: bool,
     transient_until: Option<Instant>,
+    /// Shift 4, step 4: this process ran Python's whole `_recover_state` for the tenant (replay,
+    /// outbox, the once-per-process sweep and the dirty re-index): its reads need no stamp.
+    pub serving: bool,
+    /// After a failed attempt, reads leave recovery to the child until then.
+    retry_reads_at: Option<Instant>,
+}
+
+/// How long reads leave a tenant to the child after its recovery here failed.
+const READS_RETRY: Duration = Duration::from_secs(5);
+
+/// Shift 4, step 4 (DIARY_RUST_RECOVERY=on in main mode, the embedding owner here, a writer
+/// tenant of this process): Python's `_recover_state` for the tenant's reads, in this process.
+/// Under the tenant's writer slot (Python takes the writer lock before its recover lock): the
+/// journal replay, the outbox drain and the once-per-process sweep (`recover`), then
+/// `_reindex_dirty` (`reindex::reindex_held`). As in Python the state counts as recovered even
+/// when some document's re-index failed ("edit reindex pending", the mark stays); it does not
+/// when the pass cannot run here at all (no index, no vector extension, an unsupported journal
+/// row, an unsettled backup): the child then recovers and serves as before. True when the
+/// tenant's reads may be served without the child's stamp.
+pub fn recover_for_reads(app: &crate::server::App, uid: &str) -> bool {
+    let Some(embedder) = app.save_embedder.get().cloned() else {
+        return false;
+    };
+    let state = app
+        .recovered
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(uid.to_owned())
+        .or_default()
+        .clone();
+    {
+        let s = state.lock().unwrap_or_else(|e| e.into_inner());
+        if s.serving {
+            return true;
+        }
+        if s.retry_reads_at.is_some_and(|at| Instant::now() < at) {
+            return false;
+        }
+    }
+    let root = app.data_root.join("users").join(uid);
+    let done = app
+        .writers
+        .with_lock_as(uid, None, app.write_wait, |held| {
+            if crate::backup::pending(&root) {
+                return false;
+            }
+            let Ok(Some((reader, settings))) = crate::managed::ready_for_write(&root, uid, false)
+            else {
+                return false;
+            };
+            let Some(layout) = crate::corpus::layout(&app.corpus, &settings) else {
+                return false;
+            };
+            let Ok(journal) = write::Journal::open(&root.join("managed-index.db"), held) else {
+                return false;
+            };
+            {
+                let ctx = Ctx {
+                    recovery: &state,
+                    reader: &reader,
+                    store: write::Store::new(reader.db_path()),
+                    journal,
+                    layout: &layout,
+                };
+                if !supported(&ctx) || recover(&ctx).is_err() {
+                    return false;
+                }
+            }
+            match crate::reindex::reindex_held(&root, uid, held, &embedder) {
+                None => false,
+                Some(out) => {
+                    for d in out.iter().filter(|d| !d["error"].is_null()) {
+                        eprintln!(
+                            "noevia-diary: edit reindex pending: {}",
+                            d["error"].as_str().unwrap_or("error")
+                        );
+                    }
+                    true
+                }
+            }
+        })
+        .unwrap_or(false);
+    let mut s = state.lock().unwrap_or_else(|e| e.into_inner());
+    if done {
+        s.serving = true;
+    } else {
+        s.retry_reads_at = Some(Instant::now() + READS_RETRY);
+    }
+    done
 }
 
 fn permanent(s: impl Into<String>) -> WriteFailure {
