@@ -25,7 +25,9 @@
 //!   nothing again, so the lease is that call's one gate count.
 //!
 //! [`machines`]: which machine serves a chat role, read from the settings row Node owns.
+//! [`machine_turn`]: a chat turn on that machine (core chat-machines.cjs + machine-health.cjs); inert, uncalled.
 pub mod authority;
+pub mod machine_turn;
 pub mod machines;
 
 pub use authority::{Authority, Ticket};
