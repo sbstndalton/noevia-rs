@@ -35,12 +35,22 @@
 //!   bridge does not take (not a string of 1 to 512 characters: core's test also passes an array
 //!   that reads as `owner/repo`), is answered 503
 //!   `{"error":"The download could not be recorded."}`: the lease is given back and the router is
-//!   not asked. A `rejected` call that fails is logged only (the router already refused).
+//!   not asked. When core may have recorded the `requested` call all the same (no answer within
+//!   the bridge's deadline, a 200 without `{"ok":true}`, a 5xx), a best-effort `rejected` for the
+//!   same model goes first, still under the lease, so core's tracker does not keep a `requested`
+//!   row (later shown as `unknown`) for a pull nobody asked the router for; its outcome is not
+//!   read. A 4xx is core's bridge refusing before it records anything (a body it does not take,
+//!   no tracker, not the front), so nothing is sent then: a `rejected` row would overwrite the
+//!   model's earlier row. A `rejected` call that fails is logged only (the router already refused).
 //! - `admission-refused`: core's `enter()` refuses only when its own gate is closed (503 with its
 //!   reason, answered `Internal error`). The front's authority may also refuse when core does not
 //!   answer it; that is the same 503 `Internal error`.
 //! - `body-unsupported`: a body core's `JSON.parse` reads but the port cannot hold is passed to core
 //!   unchanged (and so refused by it under the switch: 503), as model_writes_routes.rs does.
+//!
+//! A member's request is answered 403 (after the prelude's invalidations, as core) without its
+//! body being read: core's prelude refuses before `readBody`, and so a member cannot make the
+//! front hold a 1 MiB body.
 use crate::{identity, reply, App};
 use axum::body::Body;
 use axum::http::{Request, Response, StatusCode};
@@ -50,6 +60,7 @@ use js_json::{wtf16, JValue};
 use model_pull::artifact::{self, Artifacts, FetchError, Fetched, Fetcher};
 use model_pull::manager::{self, Reply, Thrown};
 use model_pull::{Answered, Call, Outcome};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -61,6 +72,31 @@ pub const DOWNLOADS_REQUESTED: &str = "/internal/models/downloads/requested";
 pub const DOWNLOADS_REJECTED: &str = "/internal/models/downloads/rejected";
 const NOT_RESPONDING: &str = "The model management service is not responding.";
 const NOT_RECORDED: &str = "The download could not be recorded.";
+
+/// The download tracker bridge's deadline (ms): 5 s, as every trusted core bridge call here.
+static TRACKER_TIMEOUT_MS: AtomicU64 = AtomicU64::new(5_000);
+
+/// Test-only seam: the download tracker bridge's deadline for this process, so an end-to-end test
+/// can show a `requested` call that outlives it without waiting 5 s. Nothing in the binary calls
+/// this.
+#[doc(hidden)]
+pub fn set_tracker_timeout_for_tests(timeout: Duration) {
+    TRACKER_TIMEOUT_MS.store(
+        u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX),
+        Ordering::SeqCst,
+    );
+}
+
+/// What core's download tracker bridge made of one call.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Told {
+    /// 200 `{"ok":true}`: recorded.
+    Recorded,
+    /// A 4xx: the bridge refuses before it records anything.
+    Refused,
+    /// No answer within the deadline, or an answer that confirms nothing (core may have recorded).
+    Unsure,
+}
 
 fn log(entry: &JValue) {
     println!("[models] {}", wtf16::stringify(entry).unwrap_or_default());
@@ -83,35 +119,62 @@ impl Drop for FrontPull {
 }
 
 impl FrontPull {
-    /// One call of a trusted core bridge: the parsed answer of a 200, else `None`.
-    fn node(&self, path: &str, body: &serde_json::Value) -> Option<JValue> {
+    /// One call of a trusted core bridge: its status and body, `None` without an answer.
+    fn node_raw(
+        &self,
+        path: &str,
+        body: &serde_json::Value,
+        timeout: Duration,
+    ) -> Option<(u16, Vec<u8>)> {
         let app = Arc::clone(&self.app);
         let (path, body) = (path.to_string(), body.clone());
-        let (status, bytes) = self.rt.block_on(async move {
-            app.config
-                .research
-                .node_call(&path, &body, Duration::from_secs(5))
-                .await
-        })?;
+        self.rt
+            .block_on(async move { app.config.research.node_call(&path, &body, timeout).await })
+    }
+
+    /// One call of a trusted core bridge: the parsed answer of a 200, else `None`.
+    fn node(&self, path: &str, body: &serde_json::Value) -> Option<JValue> {
+        let (status, bytes) = self.node_raw(path, body, Duration::from_secs(5))?;
         if status != 200 {
             return None;
         }
         wtf16::parse(std::str::from_utf8(&bytes).ok()?).ok()
     }
 
-    fn tracker(&self, path: &str, checkpoint: &JValue) -> bool {
-        // The bridge takes `{"model": "<checkpoint>"}`, a non-empty string of at most 512
-        // characters; anything else (an array core's test reads as a string, a lone surrogate) is
-        // not recorded, which fails the pull closed.
-        let Some(model) = checkpoint.as_str().filter(|m| {
+    /// The model the tracker bridge takes for `checkpoint`: `{"model": "<checkpoint>"}`, a
+    /// non-empty string of at most 512 UTF-16 units (core's `model.length > 512` refusal);
+    /// anything else (an array core's test reads as a string, a lone surrogate) is never sent,
+    /// which fails the pull closed.
+    fn tracked_model(checkpoint: &JValue) -> Option<&str> {
+        checkpoint.as_str().filter(|m| {
             !m.is_empty()
                 && wtf16::len(m) <= 512
                 && !m.chars().any(|c| wtf16::lone_unit(c).is_some())
-        }) else {
-            return false;
+        })
+    }
+
+    fn tell(&self, path: &str, model: &str) -> Told {
+        let timeout = Duration::from_millis(TRACKER_TIMEOUT_MS.load(Ordering::SeqCst));
+        let Some((status, bytes)) =
+            self.node_raw(path, &serde_json::json!({ "model": model }), timeout)
+        else {
+            return Told::Unsure;
         };
-        self.node(path, &serde_json::json!({ "model": model }))
-            .is_some_and(|v| v.get("ok") == &JValue::Bool(true))
+        match status {
+            200 => {
+                let ok = std::str::from_utf8(&bytes)
+                    .ok()
+                    .and_then(|t| wtf16::parse(t).ok())
+                    .is_some_and(|v| v.get("ok") == &JValue::Bool(true));
+                if ok {
+                    Told::Recorded
+                } else {
+                    Told::Unsure
+                }
+            }
+            400..=499 => Told::Refused,
+            _ => Told::Unsure,
+        }
     }
 }
 
@@ -151,8 +214,11 @@ impl model_pull::Host for FrontPull {
     fn send(&mut self, request: &manager::Request) -> Result<Reply, Thrown> {
         let failed = || Thrown::internal("fetch failed");
         let router = self.app.config.maint.router.as_ref().ok_or_else(failed)?;
-        // Only the router's own pull: anything else (a Lemonade request) is not sent.
-        let wanted = format!("{}/models", router.base());
+        // Only the router's own pull: anything else (a Lemonade request) is not sent. The crate
+        // names the URL from the base it was handed (manager_config), so the test is against that
+        // base; the request itself goes to the router client's own base, which is core's
+        // (engine.rs: `.replace(/\/+$/, '').replace(/\/v1$/, '')`, once).
+        let wanted = format!("{}/models", manager_config(&self.app).base());
         if request.target != manager::Target::Manager
             || request.method != "POST"
             || request.url != wanted
@@ -218,13 +284,25 @@ impl model_pull::Host for FrontPull {
     }
 
     fn downloads_requested(&mut self, checkpoint: &JValue) -> Result<(), Answered> {
-        if self.tracker(DOWNLOADS_REQUESTED, checkpoint) {
+        let told = match Self::tracked_model(checkpoint) {
+            Some(model) => {
+                let told = self.tell(DOWNLOADS_REQUESTED, model);
+                // Core may hold a `requested` row for a pull the router is never asked for: the
+                // same model is marked rejected (idempotent on core), its outcome not read.
+                if told == Told::Unsure {
+                    let _ = self.tell(DOWNLOADS_REJECTED, model);
+                }
+                told
+            }
+            None => Told::Refused,
+        };
+        if told == Told::Recorded {
             return Ok(());
         }
-        log(&JValue::obj([(
-            "event",
-            JValue::from("pull.requested_unrecorded"),
-        )]));
+        log(&JValue::obj([
+            ("event", JValue::from("pull.requested_unrecorded")),
+            ("rejectedSent", JValue::Bool(told == Told::Unsure)),
+        ]));
         Err(Answered {
             status: 503,
             message: NOT_RECORDED.into(),
@@ -232,7 +310,8 @@ impl model_pull::Host for FrontPull {
     }
 
     fn downloads_rejected(&mut self, checkpoint: &JValue) {
-        if !self.tracker(DOWNLOADS_REJECTED, checkpoint) {
+        let told = Self::tracked_model(checkpoint).map(|m| self.tell(DOWNLOADS_REJECTED, m));
+        if told != Some(Told::Recorded) {
             log(&JValue::obj([(
                 "event",
                 JValue::from("pull.rejected_unrecorded"),
@@ -288,10 +367,17 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     let admin = id.user.role == server_auth::Role::Admin;
-    // readBody's limit, one byte over to tell "too large" apart.
-    let bytes = axum::body::to_bytes(body, model_pull::BODY_LIMIT + 1)
-        .await
-        .ok();
+    // readBody's limit, one byte over to tell "too large" apart. A member's body is never read:
+    // core's prelude answers 403 before `readBody` (the flow below gives the same 403 with its
+    // invalidations, and reads no body for it).
+    let bytes = if admin {
+        axum::body::to_bytes(body, model_pull::BODY_LIMIT + 1)
+            .await
+            .ok()
+    } else {
+        drop(body);
+        None
+    };
     let config = manager_config(app);
     let (app2, rt) = (Arc::clone(app), tokio::runtime::Handle::current());
     let body = bytes.as_deref().map(<[u8]>::to_vec);

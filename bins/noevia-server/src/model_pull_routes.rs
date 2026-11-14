@@ -33,6 +33,9 @@
 //!   public (ssrf-policy `addresses_public`) and the request is pinned to them. Anything else
 //!   fails the fetch (`fetch failed`, so the check answers `unknown`). The variants lookup follows
 //!   no redirect at all, as core's `fetchJson` (`redirect: 'error'`), and is vetted the same way.
+//!   As fetch, only 301, 302, 303, 307 and 308 are followed ([`fetch_redirect`]); another 3xx is
+//!   the hop's answer (so a non-ok status, and core's reason for it). A followed status without a
+//!   Location is the answer as it is; one whose Location does not parse is `fetch failed`.
 //!
 //! `POST /api/models/pull` is wired in model_pull_post.rs under the same switch (core's download
 //! tracker told over its `/internal/models/downloads/{requested,rejected}` bridge).
@@ -75,6 +78,19 @@ pub fn hub_host_allowed(url: &reqwest::Url) -> bool {
     ["huggingface.co", "hf.co"]
         .iter()
         .any(|zone| host == *zone || host.ends_with(&format!(".{zone}")))
+}
+
+/// fetch's redirect statuses (`redirectStatusSet`): only these are followed. Another 3xx (300,
+/// 304, 305, ...) is a final answer, as any other status.
+pub fn fetch_redirect(status: u16) -> bool {
+    matches!(status, 301 | 302 | 303 | 307 | 308)
+}
+
+/// A Location header's text as fetch reads it: printable ASCII as it is; otherwise its bytes read
+/// as UTF-8 (undici's `normalizeBinaryStringToUtf8` over the header's binary string; a byte that
+/// is not UTF-8 becomes U+FFFD), which the URL parser then percent-encodes.
+pub fn location_text(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
 }
 
 /// Where the public hub is: `https://huggingface.co` in production. Tests point it at a local
@@ -244,18 +260,17 @@ impl State {
                     HopError::Failed
                 }
             })?;
-            if redirects == 0 || !res.status().is_redirection() {
+            if redirects == 0 || !fetch_redirect(res.status().as_u16()) {
                 return Ok(res);
             }
-            // A redirect without a usable Location is fetch's answer as it is.
-            let Some(next) = res
-                .headers()
-                .get(reqwest::header::LOCATION)
-                .and_then(|v| v.to_str().ok())
-                .and_then(|loc| url.join(loc).ok())
-            else {
+            // fetch's `responseLocationURL`: no Location, and the redirect is the answer as it is;
+            // one that does not parse against this hop's URL is a network error (`fetch failed`).
+            let Some(location) = res.headers().get(reqwest::header::LOCATION) else {
                 return Ok(res);
             };
+            let next = url
+                .join(&location_text(location.as_bytes()))
+                .map_err(|_| HopError::Failed)?;
             if followed >= redirects {
                 return Err(HopError::Failed);
             }

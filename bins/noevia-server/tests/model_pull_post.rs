@@ -62,18 +62,34 @@ fn seed(dir: &Path) {
 }
 
 async fn post(addr: SocketAddr, who: &str, body: &[u8]) -> (u16, JValue) {
+    post_at(addr, "/api/models/pull", who, body).await
+}
+
+async fn post_at(addr: SocketAddr, path: &str, who: &str, body: &[u8]) -> (u16, JValue) {
+    send_raw(addr, path, who, body.len(), body, Duration::from_secs(60)).await
+}
+
+/// A POST that declares `length` body bytes and sends `body` (fewer, to show it is not read), the
+/// answer awaited for at most `wait`.
+async fn send_raw(
+    addr: SocketAddr,
+    path: &str,
+    who: &str,
+    length: usize,
+    body: &[u8],
+    wait: Duration,
+) -> (u16, JValue) {
     let mut s = TcpStream::connect(addr).await.unwrap();
     let mut req = format!(
-        "POST /api/models/pull HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n{who}Origin: http://{addr}\r\nX-CSRF-Token: csrf\r\nContent-Type: application/json\r\nContent-Length: {}\r\n\r\n",
-        body.len()
+        "POST {path} HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n{who}Origin: http://{addr}\r\nX-CSRF-Token: csrf\r\nContent-Type: application/json\r\nContent-Length: {length}\r\n\r\n"
     )
     .into_bytes();
     req.extend_from_slice(body);
     s.write_all(&req).await.unwrap();
     let mut bytes = Vec::new();
-    tokio::time::timeout(Duration::from_secs(60), s.read_to_end(&mut bytes))
+    tokio::time::timeout(wait, s.read_to_end(&mut bytes))
         .await
-        .unwrap()
+        .expect("answered in time")
         .unwrap();
     let text = String::from_utf8_lossy(&bytes).into_owned();
     let (h, b) = text.split_once("\r\n\r\n").unwrap();
@@ -93,12 +109,13 @@ struct Seen {
 
 type Log = Arc<Mutex<Vec<Seen>>>;
 
-/// An HTTP/1.1 stub: `route(method, target, body)` answers; every request goes to the shared log
-/// (one log for Node and the router, so their order shows).
+/// An HTTP/1.1 stub: `route(method, target, head, body)` answers (status, body, delay before the
+/// answer in ms); every request goes to the shared log as it arrives (one log for Node and the
+/// router, so their order shows).
 async fn stub(
     who: &'static str,
     log: Log,
-    route: impl Fn(&str, &str, &str, &str) -> (u16, String) + Send + Sync + 'static,
+    route: impl Fn(&str, &str, &str, &str) -> (u16, String, u64) + Send + Sync + 'static,
 ) -> u16 {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
@@ -142,7 +159,9 @@ async fn stub(
                     head: head.to_ascii_lowercase(),
                     body: body.clone(),
                 });
-                let (code, text) = route(&method, &target, &head.to_ascii_lowercase(), &body);
+                let (code, text, delay_ms) =
+                    route(&method, &target, &head.to_ascii_lowercase(), &body);
+                tokio::time::sleep(Duration::from_millis(delay_ms)).await;
                 let out = format!("HTTP/1.1 {code} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{text}", text.len());
                 let _ = c.write_all(out.as_bytes()).await;
             });
@@ -151,13 +170,20 @@ async fn stub(
     port
 }
 
-/// How the scripted Node answers the two bridges that may fail.
+/// How the scripted Node answers the bridges that may fail.
 #[derive(Clone)]
 struct NodeScript {
     cleared: bool,
     /// `None`: core's contract; `Some(status)`: that status for `requested`.
     requested: Option<u16>,
+    /// How long `requested` takes to answer (core records it first, as its bridge does).
+    requested_delay_ms: u64,
+    /// `None`: the lease is granted; `Some(status)`: core's latch refuses it with that status.
+    lease: Option<u16>,
 }
+
+/// The tracker bridge's deadline in these tests (the front's is 5 s): every test runs with it.
+const TRACKER_TIMEOUT: Duration = Duration::from_millis(1500);
 
 /// core's tracker bridge: exactly `{"model": "<1..512 chars>"}`.
 fn tracker_body_ok(body: &str) -> bool {
@@ -182,39 +208,50 @@ async fn node(log: Log, script: Arc<Mutex<NodeScript>>) -> u16 {
             SECRET.to_ascii_lowercase()
         ));
         if method == "PUT" && target.starts_with("/internal/inference-admission/lease/") {
+            if let Some(code) = s.lease {
+                return (
+                    code,
+                    r#"{"error":"QA: model maintenance is in progress"}"#.into(),
+                    0,
+                );
+            }
             let id = target.rsplit('/').next().unwrap_or("").to_owned();
             return (
                 201,
                 format!(
                     r#"{{"lease":"{id}","ttlMs":60000,"headers":{{"x-noevia-lease":"qaLease1"}}}}"#
                 ),
+                0,
             );
         }
         if target.starts_with("/internal/inference-admission/lease/") {
-            return (if method == "DELETE" { 204 } else { 200 }, "{}".into());
+            return (if method == "DELETE" { 204 } else { 200 }, "{}".into(), 0);
         }
         match target {
-            "/internal/auto-roles/invalidate" => (200, "{}".into()),
+            "/internal/auto-roles/invalidate" => (200, "{}".into(), 0),
             "/internal/model-manager-scan/clear" => {
-                (200, format!(r#"{{"cleared":{}}}"#, s.cleared))
+                (200, format!(r#"{{"cleared":{}}}"#, s.cleared), 0)
             }
             "/internal/models/downloads/requested" | "/internal/models/downloads/rejected" => {
                 if !trusted {
-                    return (403, r#"{"error":"forbidden"}"#.into());
+                    return (403, r#"{"error":"forbidden"}"#.into(), 0);
                 }
                 if !tracker_body_ok(body) {
-                    return (400, r#"{"error":"invalid body"}"#.into());
+                    return (400, r#"{"error":"invalid body"}"#.into(), 0);
                 }
-                match s.requested.filter(|_| target.ends_with("/requested")) {
+                let requested = target.ends_with("/requested");
+                let delay = if requested { s.requested_delay_ms } else { 0 };
+                match s.requested.filter(|_| requested) {
                     Some(404) => (
                         404,
                         r#"{"error":"This server has no download tracker."}"#.into(),
+                        delay,
                     ),
-                    Some(code) => (code, r#"{"error":"qa"}"#.into()),
-                    None => (200, r#"{"ok":true}"#.into()),
+                    Some(code) => (code, r#"{"error":"qa"}"#.into(), delay),
+                    None => (200, r#"{"ok":true}"#.into(), delay),
                 }
             }
-            _ => (202, r#"{"relayed":true}"#.into()),
+            _ => (202, r#"{"relayed":true}"#.into(), 0),
         }
     })
     .await
@@ -225,10 +262,12 @@ type RouterScript = Arc<Mutex<(u16, String)>>;
 
 async fn router(log: Log, script: RouterScript) -> u16 {
     stub("router", log, move |method, target, _, _| {
-        if method == "POST" && target == "/models" {
-            return script.lock().unwrap().clone();
+        // `/v1/models`: a router configured at `<base>/v1/v1` (core trims one `/v1`).
+        if method == "POST" && (target == "/models" || target == "/v1/models") {
+            let (code, text) = script.lock().unwrap().clone();
+            return (code, text, 0);
         }
-        (404, "{}".into())
+        (404, "{}".into(), 0)
     })
     .await
 }
@@ -242,6 +281,12 @@ struct Front {
 }
 
 async fn front(on: bool, kind: Option<&str>) -> Front {
+    front_at(on, kind, "/v1").await
+}
+
+/// A front whose router is configured at `http://127.0.0.1:<port><suffix>`.
+async fn front_at(on: bool, kind: Option<&str>, suffix: &str) -> Front {
+    noevia_server::model_pull_post::set_tracker_timeout_for_tests(TRACKER_TIMEOUT);
     let dir = tempfile::tempdir().unwrap();
     seed(dir.path());
     // Row H: a Node start is registered with this process's admission authority before any lease.
@@ -252,6 +297,8 @@ async fn front(on: bool, kind: Option<&str>) -> Front {
     let node_script = Arc::new(Mutex::new(NodeScript {
         cleared: true,
         requested: None,
+        requested_delay_ms: 0,
+        lease: None,
     }));
     let router_script: RouterScript = Arc::new(Mutex::new((200, "{}".into())));
     let node_port = node(Arc::clone(&log), Arc::clone(&node_script)).await;
@@ -268,7 +315,7 @@ async fn front(on: bool, kind: Option<&str>) -> Front {
         ("NOEVIA_PROJECT_STORE_TOKEN", SECRET.to_owned()),
         (
             "MODEL_MANAGER_BASE_URL",
-            format!("http://127.0.0.1:{router_port}/v1"),
+            format!("http://127.0.0.1:{router_port}{suffix}"),
         ),
         ("MODEL_MANAGER_API_KEY", ROUTER_KEY.to_owned()),
     ]
@@ -418,7 +465,9 @@ async fn a_refused_pull_is_recorded_rejected_after_the_router() {
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn a_download_core_does_not_record_is_refused_before_the_router() {
     let f = front(true, Some("llamacpp")).await;
-    for code in [500, 404, 400] {
+    // A 5xx may come after core recorded the request: a `rejected` goes before the lease is given
+    // back. A 4xx is the bridge refusing before it records: nothing more is sent.
+    for (code, rejected) in [(500, true), (502, true), (404, false), (400, false)] {
         f.node.lock().unwrap().requested = Some(code);
         let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
         assert_eq!(
@@ -430,8 +479,20 @@ async fn a_download_core_does_not_record_is_refused_before_the_router() {
             "{code}"
         );
         let steps = take(&f);
-        assert!(!steps.iter().any(|s| s.starts_with("router")), "{steps:?}");
-        assert!(steps.contains(&"node DELETE lease".to_owned()), "{steps:?}");
+        let mut want = vec![
+            "node POST /internal/auto-roles/invalidate",
+            "node POST /internal/model-manager-scan/clear",
+            "node PUT lease",
+            "node POST /internal/models/downloads/requested",
+        ];
+        if rejected {
+            want.push("node POST /internal/models/downloads/rejected");
+        }
+        want.extend([
+            "node DELETE lease",
+            "node POST /internal/auto-roles/invalidate",
+        ]);
+        assert_eq!(steps, want, "{code}");
     }
     // A checkpoint the bridge does not take (core's test reads this array as a string).
     f.node.lock().unwrap().requested = None;
@@ -525,7 +586,6 @@ async fn replay(kind: &str, env_kind: Option<&str>) -> usize {
     };
     let f = front(true, env_kind).await;
     let mut n = 0;
-    let mut seen_status = std::collections::BTreeSet::new();
     for c in cases.iter().filter(|c| replayable(c, kind)) {
         if let JValue::Arr(items) = c.get("script") {
             if let Some(r) = items.first().map(|s| s.get("reply")) {
@@ -593,7 +653,6 @@ async fn replay(kind: &str, env_kind: Option<&str>) -> usize {
             }
             _ => assert_eq!(requested + rejected, 0.0, "{shown}"),
         }
-        seen_status.insert(status);
         n += 1;
     }
     assert!(n > 0);
@@ -612,4 +671,204 @@ async fn recorded_llamacpp_pulls_are_answered_as_core_did() {
 async fn recorded_pulls_without_a_manager_are_answered_as_core_did() {
     let n = replay("none", None).await;
     assert!(n > 20, "{n}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_requested_call_past_its_deadline_is_rejected_and_the_router_not_asked() {
+    let f = front(true, Some("llamacpp")).await;
+    {
+        let mut n = f.node.lock().unwrap();
+        // Core records the request at once and answers after the front's deadline.
+        n.requested_delay_ms = 3 * TRACKER_TIMEOUT.as_millis() as u64;
+    }
+    let started = std::time::Instant::now();
+    let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-slow:Q8_0"}"#).await;
+    assert_eq!(
+        (status, body),
+        (
+            503,
+            JValue::obj([("error", JValue::from("The download could not be recorded."))])
+        )
+    );
+    assert!(
+        started.elapsed() < 2 * TRACKER_TIMEOUT + Duration::from_millis(500),
+        "answered at the deadline, not core's late answer: {:?}",
+        started.elapsed()
+    );
+    let log = f.log.lock().unwrap().clone();
+    let rejected = log
+        .iter()
+        .find(|s| s.line == "node POST /internal/models/downloads/rejected")
+        .expect("a rejected call");
+    assert_eq!(rejected.body, r#"{"model":"qa-org/qa-slow:Q8_0"}"#);
+    assert_eq!(
+        take(&f),
+        [
+            "node POST /internal/auto-roles/invalidate",
+            "node POST /internal/model-manager-scan/clear",
+            "node PUT lease",
+            "node POST /internal/models/downloads/requested",
+            "node POST /internal/models/downloads/rejected",
+            "node DELETE lease",
+            "node POST /internal/auto-roles/invalidate",
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_lease_core_refuses_is_an_internal_error_without_tracker_or_router() {
+    let f = front(true, Some("llamacpp")).await;
+    // Core's maintenance gate closed: its latch answers the lease with 503 and its reason.
+    f.node.lock().unwrap().lease = Some(503);
+    let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
+    assert_eq!(
+        (status, body),
+        (
+            503,
+            JValue::obj([("error", JValue::from("Internal error"))])
+        )
+    );
+    let steps = take(&f);
+    assert!(
+        !steps
+            .iter()
+            .any(|s| s.starts_with("router") || s.contains("downloads")),
+        "{steps:?}"
+    );
+    assert_eq!(
+        steps,
+        [
+            "node POST /internal/auto-roles/invalidate",
+            "node POST /internal/model-manager-scan/clear",
+            "node PUT lease",
+            // The authority gives its refused ticket back (engine-admission's guard).
+            "node DELETE lease",
+            "node POST /internal/auto-roles/invalidate",
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_checkpoint_over_512_units_is_not_recorded_and_512_is() {
+    let f = front(true, Some("llamacpp")).await;
+    *f.router.lock().unwrap() = (200, r#"{"status":"downloading"}"#.into());
+    let at = |units: usize| format!("qa-org/{}", "q".repeat(units - "qa-org/".len()));
+    let long = at(513);
+    let (status, body) = post(
+        f.addr,
+        ADMIN,
+        format!(r#"{{"checkpoint":"{long}"}}"#).as_bytes(),
+    )
+    .await;
+    assert_eq!(
+        (status, body),
+        (
+            503,
+            JValue::obj([("error", JValue::from("The download could not be recorded."))])
+        )
+    );
+    let steps = take(&f);
+    assert!(
+        !steps
+            .iter()
+            .any(|s| s.starts_with("router") || s.contains("downloads")),
+        "{steps:?}"
+    );
+    assert!(steps.contains(&"node DELETE lease".to_owned()), "{steps:?}");
+    let edge = at(512);
+    let (status, body) = post(
+        f.addr,
+        ADMIN,
+        format!(r#"{{"checkpoint":"{edge}"}}"#).as_bytes(),
+    )
+    .await;
+    assert_eq!(status, 200, "{}", wtf16::stringify(&body).unwrap());
+    assert_eq!(body.get("jobId").as_str(), Some(edge.as_str()));
+    let steps = take(&f);
+    assert!(
+        steps.contains(&"router POST /models".to_owned()),
+        "{steps:?}"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_member_s_body_is_never_read() {
+    let f = front(true, Some("llamacpp")).await;
+    // A body declared at the cap and never sent: an answer that waited for it would not come.
+    let (status, body) = send_raw(
+        f.addr,
+        "/api/models/pull",
+        MEMBER,
+        1024 * 1024,
+        b"",
+        Duration::from_secs(10),
+    )
+    .await;
+    assert_eq!(
+        (status, body),
+        (
+            403,
+            JValue::obj([("error", JValue::from("administrator required"))])
+        )
+    );
+    assert_eq!(
+        take(&f),
+        [
+            "node POST /internal/auto-roles/invalidate",
+            "node POST /internal/auto-roles/invalidate",
+        ]
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn dot_segment_spellings_reach_the_front_s_pull() {
+    let f = front(true, Some("llamacpp")).await;
+    *f.router.lock().unwrap() = (200, r#"{"status":"downloading"}"#.into());
+    for path in [
+        "/api/models/x/../pull",
+        "/api/models/x/%2e%2e/pull",
+        "/api/x/../models/./pull",
+    ] {
+        let (status, body) = post_at(
+            f.addr,
+            path,
+            ADMIN,
+            br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#,
+        )
+        .await;
+        assert_eq!(
+            (status, body),
+            (
+                200,
+                JValue::obj([
+                    ("jobId", JValue::from("qa-org/qa-model:Q8_0")),
+                    ("modelName", JValue::from("qa-org/qa-model:Q8_0")),
+                ])
+            ),
+            "{path}"
+        );
+        let steps = take(&f);
+        assert!(
+            !steps.iter().any(|s| s.contains("/api/models")),
+            "not relayed to core: {path} {steps:?}"
+        );
+        assert!(
+            steps.contains(&"router POST /models".to_owned()),
+            "{path} {steps:?}"
+        );
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_router_base_is_trimmed_once_as_core_does() {
+    // core: `.replace(/\/+$/, '').replace(/\/v1$/, '')`: `<base>/v1/v1/` is `<base>/v1`.
+    let f = front_at(true, Some("llamacpp"), "/v1/v1/").await;
+    *f.router.lock().unwrap() = (200, r#"{"status":"downloading"}"#.into());
+    let (status, body) = post(f.addr, ADMIN, br#"{"checkpoint":"qa-org/qa-model:Q8_0"}"#).await;
+    assert_eq!(status, 200, "{}", wtf16::stringify(&body).unwrap());
+    let steps = take(&f);
+    assert!(
+        steps.contains(&"router POST /v1/models".to_owned()),
+        "{steps:?}"
+    );
 }

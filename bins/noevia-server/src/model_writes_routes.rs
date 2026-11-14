@@ -517,6 +517,29 @@ mod tests {
     }
 
     #[test]
+    fn a_dot_segment_spelling_of_the_pull_is_the_pull_on_its_whatwg_pathname() {
+        let on = Settings::from_lookup(&|k: &str| (k == SWITCH).then(|| "rust".to_string()));
+        let pull = crate::model_pull_routes::PULL;
+        for raw in [
+            "/api/models/x/../pull",
+            "/api/models/x/%2e%2e/pull",
+            "/api/models/x/%2E./pull",
+            "/api/x/../models/./pull",
+            "/api/models/pull?qa=1",
+        ] {
+            let uri: axum::http::Uri = raw.parse().unwrap_or_default();
+            // lib.rs dispatches the switched models routes on Node's WHATWG pathname.
+            let at = crate::identity::whatwg_pathname_of(&uri);
+            assert_eq!(at.as_deref(), Some(pull), "{raw}");
+            assert!(at.is_some_and(|p| on.answers(&Method::POST, &p)), "{raw}");
+        }
+        // Not a dot segment: another path, Node's.
+        let uri: axum::http::Uri = "/api/models/x/.../pull".parse().unwrap_or_default();
+        let at = crate::identity::whatwg_pathname_of(&uri).unwrap_or_default();
+        assert!(!on.answers(&Method::POST, &at), "{at}");
+    }
+
+    #[test]
     fn the_loader_token_stays_out_of_debug() {
         let s = Settings::from_lookup(&|k: &str| match k {
             "MODEL_LOADER_TOKEN" => Some("qa-secret-token".into()),

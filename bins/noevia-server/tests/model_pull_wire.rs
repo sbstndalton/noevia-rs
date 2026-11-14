@@ -530,7 +530,37 @@ async fn hub_for(delay_ms: u64, elsewhere: u16) -> (u16, Seen) {
                 delay_ms: 0,
             };
         }
-        if target.contains("qa-present") || target == "/cdn/qa-hop" {
+        // A 300 or 304 with a Location: fetch follows neither, so each is the prefix's answer.
+        for (repo, status) in [("qa-r300-Q8_0", 300), ("qa-r304-Q8_0", 304)] {
+            if target.contains(repo) {
+                return Answer {
+                    status,
+                    headers: vec![("Location".into(), "/cdn/qa-hop".into())],
+                    body: Vec::new(),
+                    delay_ms: 0,
+                };
+            }
+        }
+        // A 302 whose Location does not parse (an unclosed IPv6 host): fetch's network error.
+        if target.contains("qa-badloc-Q8_0") {
+            return Answer {
+                status: 302,
+                headers: vec![("Location".into(), "http://[qa/x".into())],
+                body: Vec::new(),
+                delay_ms: 0,
+            };
+        }
+        // A 302 to a path written in UTF-8: fetch reads it as UTF-8 and the URL parser
+        // percent-encodes it, so the hop goes to /cdn/qa-%C3%A9.
+        if target.contains("qa-utf8-Q8_0") {
+            return Answer {
+                status: 302,
+                headers: vec![("Location".into(), "/cdn/qa-\u{e9}".into())],
+                body: Vec::new(),
+                delay_ms: 0,
+            };
+        }
+        if target.contains("qa-present") || target == "/cdn/qa-hop" || target == "/cdn/qa-%C3%A9" {
             return ranged(gguf(&[
                 "blk.0.attn_q.weight",
                 "blk.40.nextn.eh_proj.weight",
@@ -714,4 +744,52 @@ async fn twenty_redirects_are_followed_and_a_twenty_first_is_refused() {
     assert_eq!(twenty_one.get("reason").as_str(), Some("fetch failed"));
     // 20 more hops reached; the 21st redirect's target (/hop/0) is never asked.
     assert_eq!(hops(&seen), 40);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn only_fetch_s_redirect_statuses_are_followed() {
+    let dir = tempfile::tempdir().unwrap();
+    let (node_port, _) = node().await;
+    let (elsewhere, _) = stub(|_| json(200, "{}")).await;
+    let (hub, seen) = hub_for(0, elsewhere).await;
+    let (addr, _) = front(dir.path(), node_port, hub, true).await;
+    // 300 and 304 are answers, not redirects: core's reason for a prefix that is not ok.
+    for (repo, status) in [("qa-r300", 300), ("qa-r304", 304)] {
+        let (code, body) = call(addr, "GET", &query(repo), ADMIN, "").await;
+        assert_eq!(code, 200);
+        let shown = wtf16::stringify(&body).unwrap();
+        assert_eq!(body.get("status").as_str(), Some("unknown"), "{shown}");
+        let reason = format!("Artifact metadata unavailable ({status}).");
+        assert_eq!(
+            body.get("reason").as_str(),
+            Some(reason.as_str()),
+            "{shown}"
+        );
+    }
+    assert!(
+        !seen
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|h| h.starts_with("GET /cdn/qa-hop ")),
+        "neither Location was asked"
+    );
+    // A followed status whose Location does not parse: fetch failed.
+    let (code, body) = call(addr, "GET", &query("qa-badloc"), ADMIN, "").await;
+    assert_eq!(code, 200);
+    assert_eq!(body.get("status").as_str(), Some("unknown"));
+    assert_eq!(body.get("reason").as_str(), Some("fetch failed"));
+    // A Location in UTF-8 is followed, percent-encoded.
+    let (_, body) = call(addr, "GET", &query("qa-utf8"), ADMIN, "").await;
+    assert_eq!(
+        body.get("status").as_str(),
+        Some("present"),
+        "{}",
+        wtf16::stringify(&body).unwrap()
+    );
+    assert!(seen
+        .lock()
+        .unwrap()
+        .iter()
+        .any(|h| h.starts_with("GET /cdn/qa-%C3%A9 ")));
 }
