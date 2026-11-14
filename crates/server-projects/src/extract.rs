@@ -247,12 +247,18 @@ pub struct Limits {
     pub range_pages: usize,
 }
 
+/// source-limits.cjs `positiveInt(raw, fallback)`: `Number(raw)` (JS StringToNumber: hex, octal and
+/// binary forms, `Infinity`, JS whitespace), a safe integer above 0, else the fallback (noevia#2615).
 fn positive(raw: Option<String>, fallback: usize) -> usize {
     match raw {
-        Some(r) if !r.is_empty() => match r.trim().parse::<f64>() {
-            Ok(n) if n > 0.0 && n.fract() == 0.0 && n <= 9_007_199_254_740_991.0 => n as usize,
-            _ => fallback,
-        },
+        Some(r) if !r.is_empty() => {
+            let n = crate::document_pages::string_to_number(&r);
+            if n.is_finite() && n > 0.0 && n.fract() == 0.0 && n <= 9_007_199_254_740_991.0 {
+                n as usize
+            } else {
+                fallback
+            }
+        }
         _ => fallback,
     }
 }

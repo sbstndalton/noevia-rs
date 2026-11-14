@@ -139,20 +139,36 @@ impl HttpEngine {
         self
     }
 
-    /// document-workers.cjs `resolve(kind)`: (url, from a machine).
-    fn resolve(&self, kind: &str) -> Option<(String, bool)> {
-        if let Some(url) = self.data_dir.as_deref().and_then(|d| machine_url(d, kind)) {
-            return Some((url, true));
+    /// document-workers.cjs `resolve(kind)`: (url, from a machine); `Err` where core throws
+    /// `machinesUnavailable` (the machine store cannot be read: core fails closed and never falls back
+    /// to the environment's worker, noevia#2614).
+    fn route(&self, kind: &str) -> Result<Option<(String, bool)>, ()> {
+        if let Some(url) = match self.data_dir.as_deref() {
+            Some(d) => machine_url(d, kind)?,
+            None => None,
+        } {
+            return Ok(Some((url, true)));
         }
         let env = if kind == "ocr" {
             "OCR_BASE_URL"
         } else {
             "DOCLING_BASE_URL"
         };
-        std::env::var(env)
+        Ok(std::env::var(env)
             .ok()
             .filter(|u| !u.is_empty())
-            .map(|u| (u, false))
+            .map(|u| (u, false)))
+    }
+
+    /// [`Self::route`] where the machine store being unreadable reads as "cannot be asked".
+    fn resolve(&self, kind: &str) -> Option<(String, bool)> {
+        self.route(kind).ok().flatten()
+    }
+
+    /// document-workers.cjs `configured(kind)`: core's throw (the store unreadable) is not "not
+    /// configured" here, so a document is still routed as one and its read fails as busy.
+    fn configured(&self, kind: &str) -> bool {
+        !matches!(self.route(kind), Ok(None))
     }
 
     fn send(
@@ -267,9 +283,22 @@ fn transport(e: reqwest::Error) -> EngineError {
     }
 }
 
+/// native-machines-client.cjs `unavailable()`: what core throws when the machine store cannot be read
+/// (503: a passing failure, so the document is read again later).
+fn machines_unavailable() -> EngineError {
+    EngineError {
+        status: Some(503),
+        ..EngineError::new("Inference machines are unavailable.")
+    }
+}
+
 /// inference-machines.cjs `urlFor(service)` from the saved state.
-fn machine_url(data_dir: &Path, kind: &str) -> Option<String> {
-    let store = server_store::Store::open(data_dir).ok()?;
+/// `Ok(None)`: nothing assigned (or no `cowork.db` yet); `Err`: the store cannot be read.
+fn machine_url(data_dir: &Path, kind: &str) -> Result<Option<String>, ()> {
+    if !data_dir.join(server_store::DB_FILE).is_file() {
+        return Ok(None);
+    }
+    let store = server_store::Store::open(data_dir).map_err(|_| ())?;
     let raw: Option<String> = store
         .read(|r| {
             r.row(
@@ -278,9 +307,13 @@ fn machine_url(data_dir: &Path, kind: &str) -> Option<String> {
                 |row| row.get(0),
             )
         })
-        .ok()
-        .flatten();
-    let state = wtf16::parse(&raw?).ok()?;
+        .map_err(|_| ())?;
+    Ok(raw.and_then(|raw| assigned_url(&raw, kind)))
+}
+
+/// The saved state's address for `kind`, if one is assigned.
+fn assigned_url(raw: &str, kind: &str) -> Option<String> {
+    let state = wtf16::parse(raw).ok()?;
     if state.get("version").as_num() != Some(1.0) {
         return None;
     }
@@ -380,7 +413,7 @@ fn header_safe_name(name: &str) -> reqwest::header::HeaderValue {
 
 impl Engine for HttpEngine {
     fn docling_configured(&self) -> bool {
-        self.resolve("documents").is_some()
+        self.configured("documents")
     }
 
     fn docling(
@@ -390,7 +423,10 @@ impl Engine for HttpEngine {
         figures: bool,
         pages: Option<(u32, u32)>,
     ) -> Result<JValue, EngineError> {
-        let Some((url, machine)) = self.resolve("documents") else {
+        let Some((url, machine)) = self
+            .route("documents")
+            .map_err(|()| machines_unavailable())?
+        else {
             return Err(EngineError::new(server_projects::extract::NOT_CONFIGURED));
         };
         let range = pages.filter(|(a, b)| *a >= 1 && b >= a && b - a < 200);
@@ -498,12 +534,12 @@ impl Engine for HttpEngine {
     }
 
     fn ocr_configured(&self) -> bool {
-        self.resolve("ocr").is_some()
+        self.configured("ocr")
     }
 
     /// docx.cjs `extract(bytes)`: the OCR worker's `/extract-docx` (60 s, a 2 MiB reply).
     fn extract_docx(&self, bytes: &[u8]) -> Result<JValue, EngineError> {
-        let Some((url, machine)) = self.resolve("ocr") else {
+        let Some((url, machine)) = self.route("ocr").map_err(|()| machines_unavailable())? else {
             return Err(EngineError::new(
                 "DOCX reader is unavailable. Re-upload after the document worker is configured.",
             ));
@@ -566,7 +602,7 @@ impl Engine for HttpEngine {
         dpi: Option<u32>,
         timeout_ms: Option<u64>,
     ) -> Result<Vec<JValue>, EngineError> {
-        let Some((url, machine)) = self.resolve("ocr") else {
+        let Some((url, machine)) = self.route("ocr").map_err(|()| machines_unavailable())? else {
             return Ok(Vec::new());
         };
         let list: Vec<String> = pages.iter().take(50).map(u32::to_string).collect();
