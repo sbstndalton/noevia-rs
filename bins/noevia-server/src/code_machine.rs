@@ -55,9 +55,12 @@ const CONTEXT_MAX: f64 = 2_000_000.0;
 /// `CONTEXT_FALLBACK`: a server that does not say its context gets the local engine's floor.
 pub const CONTEXT_FALLBACK: f64 = 8192.0;
 
-/// Whether the switch is on (exactly `1`).
+/// Whether the switch is on (exactly `1`), and only while the front runs Code tasks
+/// (`NOEVIA_CODE_EXECUTOR=rust`): otherwise core runs them and its own relay must keep
+/// `CODE_ENGINE_RELAY_PORT` (noevia#2720).
 pub fn enabled(get: &impl Fn(&str) -> Option<String>) -> bool {
     get(SWITCH).as_deref() == Some("1")
+        && get(crate::code_routes::SWITCH).as_deref() == Some("rust")
 }
 
 /// A chat role on another machine, with the role it was found for (the texts name the role).
@@ -818,8 +821,15 @@ mod tests {
             (Some(""), false),
             (None, false),
         ] {
-            let get = |k: &str| (k == SWITCH).then(|| v.map(str::to_string)).flatten();
+            let get = |k: &str| match k {
+                SWITCH => v.map(str::to_string),
+                crate::code_routes::SWITCH => Some("rust".to_string()),
+                _ => None,
+            };
             assert_eq!(enabled(&get), on, "{v:?}");
+            // Core runs Code tasks: the front never takes the relay port.
+            let core_runs = |k: &str| (k == SWITCH).then(|| v.map(str::to_string)).flatten();
+            assert!(!enabled(&core_runs), "{v:?}");
         }
     }
 

@@ -1579,8 +1579,13 @@ async fn a_machine_code_task_runs_through_the_relay_and_its_lease_ends_with_the_
         assert!(paths.iter().any(|p| p == "/health"), "{paths:?}");
         assert!(paths.iter().any(|p| p == "/v1/models"), "{paths:?}");
         assert!(r.core.lock().unwrap().leases.is_empty(), "no inference lease on a machine");
-        // The run is over: its relay lease is closed.
-        assert_eq!(relay.relay.active(), 0);
+        // The run is over: its relay lease is closed (dropped when the run's thread ends, just after
+        // the final status is written).
+        let deadline = Instant::now() + DEADLINE;
+        while relay.relay.active() != 0 {
+            assert!(Instant::now() < deadline, "the relay lease stayed open after the run");
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
         // A named model the machine does not serve is refused (one task, one model).
         let (status, refused) = r
             .start(json!({"repository": "qa-repo", "prompt": RUN, "model": "qa-other"}))
