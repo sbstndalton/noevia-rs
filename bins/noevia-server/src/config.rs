@@ -111,6 +111,13 @@ pub struct Config {
     pub code: crate::code_routes::Settings,
     /// Track R11: the inference budget and idle unload PUTs (`NOEVIA_RUST_MODEL_WRITES`).
     pub model_writes: crate::model_writes_routes::Settings,
+    /// Track R12, NOEVIA_RUST_SETTINGS_ROUTES=1: the front answers PUT /api/routing-default
+    /// (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs)
+    /// itself. Unset (anything but `1`): those methods stay Node's.
+    pub settings_routes: bool,
+    /// The default provider row and engine variables GET /api/reasoning-settings reads, from the
+    /// same environment core index.cjs and reasoning-effort.cjs read.
+    pub reasoning_defaults: server_reasoning_settings::read::Defaults,
     /// NOEVIA_START_ID: the id the web supervisor makes for this container start (32 lowercase
     /// hex) and hands Node too, which writes it into a running reply's partial file
     /// (`running: { start }`, core chat-partial.cjs; sbstndalton/noevia#1071). A partial whose
@@ -485,6 +492,8 @@ impl Config {
             code_egress: crate::code_egress::Settings::from_lookup(&get)?,
             code: crate::code_routes::Settings::from_lookup(&get),
             model_writes: crate::model_writes_routes::Settings::from_lookup(&get),
+            settings_routes: get(SETTINGS_ROUTES).as_deref() == Some("1"),
+            reasoning_defaults: server_reasoning_settings::read::Defaults::from_lookup(&get),
             start_id,
             rust_chatgpt_status,
             #[cfg(feature = "rust-chatgpt-status")]
@@ -502,6 +511,9 @@ impl Config {
         })
     }
 }
+
+/// Track R12's switch for the settings routes Node still answers (see `Config::settings_routes`).
+pub const SETTINGS_ROUTES: &str = "NOEVIA_RUST_SETTINGS_ROUTES";
 
 /// The deployment switches retired by sbstndalton/noevia#1071: the routes they moved are always
 /// the front's. A leftover value only earns a warning.

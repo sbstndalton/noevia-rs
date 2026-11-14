@@ -104,6 +104,25 @@ struct Script {
     down: Vec<&'static str>,
     /// With `skills-revoked` down: how many revocation checks are still answered first.
     revoked_answers: Mutex<usize>,
+    /// The engine's busy signal yields once before it answers (two turns interleaved: noevia#2591).
+    busy_yields: bool,
+    /// The model the model manager reports loaded, when not the case's (an empty model: noevia#2591).
+    serving: Option<String>,
+}
+
+/// One `Pending` before `Ready`: an await point a second turn can run in.
+struct YieldOnce(bool);
+
+impl Future for YieldOnce {
+    type Output = ();
+    fn poll(mut self: std::pin::Pin<&mut Self>, _: &mut Context<'_>) -> Poll<()> {
+        if self.0 {
+            Poll::Ready(())
+        } else {
+            self.0 = true;
+            Poll::Pending
+        }
+    }
 }
 
 /// The per-start id the recording's grant contexts carry (record_turns.cjs NOEVIA_START_ID).
@@ -199,6 +218,8 @@ impl Script {
             clock: Mutex::new(0.0),
             down: Vec::new(),
             revoked_answers: Mutex::new(0),
+            busy_yields: false,
+            serving: None,
         }
     }
 
@@ -309,14 +330,15 @@ impl Host for Script {
 
     async fn health(&self) -> Option<JValue> {
         let ctx = self.case.get("input").get("ctxSize").clone();
-        let model = self
-            .case
-            .get("input")
-            .get("project")
-            .get("model")
-            .as_str()
-            .unwrap_or("qa-model")
-            .to_string();
+        let model = self.serving.clone().unwrap_or_else(|| {
+            self.case
+                .get("input")
+                .get("project")
+                .get("model")
+                .as_str()
+                .unwrap_or("qa-model")
+                .to_string()
+        });
         let rows = if *self.loaded.lock().unwrap() {
             vec![js::obj([
                 ("model_name", js::s(model)),
@@ -446,6 +468,9 @@ impl Host for Script {
     }
 
     async fn engine_busy(&self) -> bool {
+        if self.busy_yields {
+            YieldOnce(false).await;
+        }
         self.answer("inferenceBusy", &[("n", js::n(1.0))]) == JValue::Bool(true)
     }
 
@@ -1395,6 +1420,110 @@ fn a_skills_bridge_without_an_answer_ends_the_turn_with_the_failure_text() {
     assert_eq!(ended, Ended::Error);
     assert_eq!(last(&plain), failed);
     assert!(plain.requests.lock().unwrap().is_empty());
+}
+
+/// noevia#2591: chat-title.cjs `generateTitle` asks nothing with an empty model (the attempt still counts, as
+/// in Node), and two turns of one chat that reach the title at its last allowed attempt make one title request,
+/// not two: Node checks and records the attempt with no await between them, the native turn awaits the engine's
+/// busy signal in between, so it re-checks under the counter's lock.
+#[test]
+fn a_title_needs_a_model_and_its_attempts_hold_across_turns_of_one_chat() {
+    let f = fixture();
+    let JValue::Arr(cases) = f.get("cases") else {
+        panic!()
+    };
+    let case = cases
+        .iter()
+        .find(|c| c.get("name").as_str() == Some("title"))
+        .unwrap();
+    let helpers = Helpers {
+        clean_search_args: &|n, a| chat_turn::helpers::clean_search_args(n, a).into_owned(),
+        announces_tool_action: &chat_turn::helpers::announces_tool_action,
+        announced_note: chat_turn::helpers::ANNOUNCED_NOTE,
+        reduce_tool_result: &|text, cap| chat_turn::reduce::reduce_tool_result(text, cap).text,
+        source_links: &chat_turn::helpers::source_links,
+        fallback_text: &|s| chat_turn::helpers::fallback_text(s),
+        final_answer_note: chat_turn::helpers::FINAL_ANSWER_NOTE,
+        tool_result_cap: 8000,
+    };
+    let prepared = Prepared::read(case.get("handoff").get("prepared")).unwrap();
+    let titles = |script: &Script| {
+        script
+            .requests
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|r| !r.stream)
+            .count()
+    };
+    let named = |script: &Script| {
+        script
+            .events
+            .lock()
+            .unwrap()
+            .iter()
+            .any(|e| wtf16::parse(e).unwrap().get("type").as_str() == Some("title"))
+    };
+
+    // An empty model: the turn ends with `done` and no title request.
+    let mut unnamed = prepared.clone();
+    unnamed.model = String::new();
+    let unnamed_turn = || {
+        let mut script = Script::new(case.clone());
+        script.serving = Some(String::new());
+        script
+    };
+    let script = unnamed_turn();
+    let ended = block_on(native::run(
+        &script,
+        &Process::default(),
+        &helpers,
+        &unnamed,
+    ));
+    assert_eq!(ended, Ended::Done, "{:?}", script.events.lock().unwrap());
+    assert_eq!(titles(&script), 0, "no title request without a model");
+    assert!(!named(&script));
+
+    // Two attempts made, one by an unnamed turn (it still counts), then two turns of the chat at once.
+    let process = Process::default();
+    let script = unnamed_turn();
+    block_on(native::run(&script, &process, &helpers, &unnamed));
+    let script = Script::new(case.clone());
+    block_on(native::run(&script, &process, &helpers, &prepared));
+    assert_eq!(titles(&script), 1);
+    let mut a = Script::new(case.clone());
+    a.busy_yields = true;
+    let mut b = Script::new(case.clone());
+    b.busy_yields = true;
+    let (mut ta, mut tb) = (
+        pin!(native::run(&a, &process, &helpers, &prepared)),
+        pin!(native::run(&b, &process, &helpers, &prepared)),
+    );
+    let mut cx = Context::from_waker(Waker::noop());
+    let (mut ea, mut eb) = (None, None);
+    while ea.is_none() || eb.is_none() {
+        if ea.is_none() {
+            if let Poll::Ready(e) = ta.as_mut().poll(&mut cx) {
+                ea = Some(e);
+            }
+        }
+        if eb.is_none() {
+            if let Poll::Ready(e) = tb.as_mut().poll(&mut cx) {
+                eb = Some(e);
+            }
+        }
+    }
+    assert_eq!((ea, eb), (Some(Ended::Done), Some(Ended::Done)));
+    assert_eq!(
+        titles(&a) + titles(&b),
+        1,
+        "the third attempt is the last (title::MAX_ATTEMPTS)"
+    );
+    assert!(named(&a) != named(&b));
+    // And none after it.
+    let script = Script::new(case.clone());
+    block_on(native::run(&script, &process, &helpers, &prepared));
+    assert_eq!(titles(&script), 0);
 }
 
 /// Core keeps a turn whose prepared frame is longer than its cap in Node (rust-chat-native.cjs
