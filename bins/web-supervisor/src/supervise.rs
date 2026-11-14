@@ -96,11 +96,6 @@ pub fn supervise(env: &Env, data: &Path, cwd: &Path, launch: &Launch) -> i32 {
         eprintln!("{msg}");
         return 2;
     }
-    // Under the lock, before either child: the front's start-up preparation (off by default).
-    if let Err(msg) = crate::ensure::run(&launch.ensure, env, cwd, crate::ensure::STEP_TIMEOUT) {
-        eprintln!("{msg}");
-        return 2;
-    }
     let runtime = match tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -111,10 +106,10 @@ pub fn supervise(env: &Env, data: &Path, cwd: &Path, launch: &Launch) -> i32 {
             return 2;
         }
     };
-    runtime.block_on(run_pair(env, launch))
+    runtime.block_on(run_pair(env, cwd, launch))
 }
 
-async fn run_pair(env: &Env, launch: &Launch) -> i32 {
+async fn run_pair(env: &Env, cwd: &Path, launch: &Launch) -> i32 {
     use tokio::signal::unix::{signal as listen, SignalKind};
     // The stop signals are taken before either child exists (the script's trap came first too).
     let (mut term, mut int) = match (
@@ -127,6 +122,33 @@ async fn run_pair(env: &Env, launch: &Launch) -> i32 {
             return 2;
         }
     };
+    // Under the lock and the stop listeners, before either child: the front's start-up
+    // preparation (off by default; ensure.rs). A stop signal there ends the start with 0.
+    if !launch.ensure.is_empty() {
+        let stop = async {
+            tokio::select! {
+                _ = term.recv() => {}
+                _ = int.recv() => {}
+            }
+        };
+        tokio::pin!(stop);
+        let prepared = crate::ensure::run(
+            &launch.ensure,
+            env,
+            cwd,
+            crate::ensure::STEP_TIMEOUT,
+            stop.as_mut(),
+        )
+        .await;
+        match prepared {
+            Ok(crate::ensure::Outcome::Done) => {}
+            Ok(crate::ensure::Outcome::Stopped) => return 0,
+            Err(msg) => {
+                eprintln!("{msg}");
+                return 2;
+            }
+        }
+    }
     let mut node = match command(&launch.node, env).spawn() {
         Ok(child) => child,
         Err(e) => {
@@ -184,6 +206,16 @@ async fn run_pair(env: &Env, launch: &Launch) -> i32 {
     }
 }
 
+/// The exit status bash gives a command it could not start: 127 when the file is not there, 126
+/// when it is there but cannot be executed (noevia#2702).
+pub fn spawn_failure_code(e: &std::io::Error) -> i32 {
+    if e.kind() == std::io::ErrorKind::NotFound {
+        127
+    } else {
+        126
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
@@ -205,16 +237,6 @@ mod tests {
         use std::os::unix::process::ExitStatusExt;
         assert_eq!(status_code(ExitStatus::from_raw(3 << 8)), 3);
         assert_eq!(status_code(ExitStatus::from_raw(15)), 143);
-    }
-}
-
-/// The exit status bash gives a command it could not start: 127 when the file is not there, 126
-/// when it is there but cannot be executed (noevia#2702).
-pub fn spawn_failure_code(e: &std::io::Error) -> i32 {
-    if e.kind() == std::io::ErrorKind::NotFound {
-        127
-    } else {
-        126
     }
 }
 

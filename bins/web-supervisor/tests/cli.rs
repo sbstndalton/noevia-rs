@@ -25,7 +25,7 @@ fn work() -> tempfile::TempDir {
         format!(
             r#"#!/usr/bin/env bash
 [ "${{1:-}}" = -e ] && exit 0
-case "${{1:-}}" in --ensure-*) echo "{name} ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; exit 0;; esac
+case "${{1:-}}" in --ensure-*) echo "{name} ${{1#--}} UI_DATA_DIR=${{UI_DATA_DIR:-}}" >> "{log}"; [ "${{1:-}}" = "${{STUB_ENSURE_FAIL:-}}" ] && exit 4; if [ "${{1:-}}" = "${{STUB_ENSURE_SLOW:-}}" ]; then trap 'echo "{name} ensure TERM" >> "{log}"; exit 0' TERM; for _ in $(seq 1 400); do sleep 0.05; done; fi; exit 0;; esac
 if [ "${{1:-}}" = --features ]; then printf '%s\n' ${{STUB_FEATURES-{FEATURES}}}; exit 0; fi
 echo "{name} UI_HOST=${{UI_HOST:-}} UI_PORT=${{UI_PORT:-}} UPSTREAM=${{NOEVIA_LEGACY_UPSTREAM:-}} SPORT=${{NOEVIA_PROJECT_STORE_PORT:-}} TOK=${{#NOEVIA_PROJECT_STORE_TOKEN}} START=${{#NOEVIA_START_ID}} KCONF=${{NOEVIA_FRONT_CLIENT_IP-unset}} RETIRED=${{NOEVIA_RUST_AUTH-unset}}" >> "{log}"
 trap 'echo "{name} TERM" >> "{log}"; exit 0' TERM
@@ -263,7 +263,7 @@ fn ensure_is_off_by_default_and_runs_key_then_schema_before_the_pair_when_on() {
         key.is_some() && key < schema && schema < node,
         "key, then schema, then the pair: {l}"
     );
-    assert!(data.join("embedding-pair.lock").exists(), "steps ran under the lock");
+    assert!(data.join("embedding-pair.lock").exists(), "the lock file is in the data directory the steps were given");
 
     // --check names the steps and runs none.
     fs::write(w.path().join("log"), "").unwrap_or_else(|e| unreachable!("{e}"));
@@ -358,4 +358,26 @@ fn the_children_keep_the_pair_lock_after_the_supervisor_is_killed() {
         free = try_lock();
     }
     assert!(free, "the lock is released once both children exit");
+}
+
+#[test]
+fn a_stop_signal_during_preparation_stops_the_step_and_starts_nothing() {
+    let w = work();
+    let mut child = supervisor(w.path())
+        .env("NOEVIA_SUPERVISOR_ENSURE", "1")
+        .env("STUB_FEATURES", format!("{FEATURES} boot-ensure-v1"))
+        .env("STUB_ENSURE_SLOW", "--ensure-schema")
+        .spawn()
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    assert!(wait_for(w.path(), "front ensure-schema"), "{}", log(w.path()));
+    let started = Instant::now();
+    let pid = nix::unistd::Pid::from_raw(i32::try_from(child.id()).unwrap_or_default());
+    nix::sys::signal::kill(pid, nix::sys::signal::Signal::SIGTERM)
+        .unwrap_or_else(|e| unreachable!("{e}"));
+    let status = child.wait().unwrap_or_else(|e| unreachable!("{e}"));
+    let l = log(w.path());
+    assert_eq!(status.code(), Some(0), "{l}");
+    assert!(started.elapsed() < Duration::from_secs(10), "{l}");
+    assert!(wait_for(w.path(), "front ensure TERM"), "the step got the TERM: {l}");
+    assert!(!log(w.path()).contains("UI_HOST"), "nothing started: {l}");
 }

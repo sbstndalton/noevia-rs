@@ -185,8 +185,16 @@ mod tests {
         ];
         let mut seen = 0;
         for src in sources {
-            let code = src.split("#[cfg(test)]").next().unwrap();
-            for call in ["env.get(\"", "env.get_or(\"", "env.is_set(\""] {
+            // Non-test code only, with whitespace dropped so a call rustfmt splits across lines
+            // (`env` then `.get_or("…"` on the next line) is still one call.
+            let code: String = src
+                .split("#[cfg(test)]")
+                .next()
+                .unwrap()
+                .chars()
+                .filter(|c| !c.is_whitespace())
+                .collect();
+            for call in [".get(\"", ".get_or(\"", ".is_set(\""] {
                 for (at, _) in code.match_indices(call) {
                     let rest = &code[at + call.len()..];
                     let name = &rest[..rest.find('"').unwrap()];
@@ -196,7 +204,7 @@ mod tests {
             }
         }
         assert!(
-            seen >= 9,
+            seen >= 10,
             "only {seen} reads found: the scan no longer matches the code"
         );
     }

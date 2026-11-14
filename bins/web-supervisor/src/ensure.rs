@@ -11,9 +11,11 @@
 //! The steps run only when the front advertises [`CAPABILITY`] in `--features`: an older
 //! noevia-server does not know these arguments and would start serving instead of preparing.
 
+use std::future::Future;
 use std::path::Path;
+use std::pin::Pin;
 use std::process::{Command, Stdio};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use crate::env::Env;
 use crate::pairing::{Features, Refusal};
@@ -54,7 +56,13 @@ pub fn plan(
             "web-supervisor: {SWITCH}=1 but this noevia-server does not advertise {CAPABILITY} (an older front would start serving instead of preparing); unset {SWITCH} or update the image"
         )));
     }
-    let data = data.to_string_lossy().into_owned();
+    // The children get the directory's own bytes; a lossy copy would prepare another one.
+    let Some(data) = data.to_str().map(str::to_owned) else {
+        return Err(Refusal(format!(
+            "web-supervisor: {SWITCH}=1 but the data directory {} is not valid UTF-8; set UI_DATA_DIR to a plain path",
+            data.display()
+        )));
+    };
     Ok(STEPS
         .iter()
         .map(|step| ChildSpec {
@@ -65,21 +73,46 @@ pub fn plan(
         .collect())
 }
 
+/// How the preparation ended when it did not fail.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Outcome {
+    /// Every step succeeded: start the pair.
+    Done,
+    /// A stop signal arrived during a step: the step was stopped and nothing else starts (exit 0,
+    /// as a docker stop of the pair).
+    Stopped,
+}
+
 /// Runs the steps in order, stdout and stderr passed through (the key notice and the first-run
 /// setup code belong in the container log, as Node printed them). The first failure is the
-/// refusal message.
-pub fn run(steps: &[ChildSpec], env: &Env, cwd: &Path, limit: Duration) -> Result<(), String> {
+/// refusal message. `stop` resolves on TERM/INT: the running step is stopped (TERM, then KILL
+/// after five seconds) and the rest is skipped.
+pub async fn run<F: Future<Output = ()>>(
+    steps: &[ChildSpec],
+    env: &Env,
+    cwd: &Path,
+    limit: Duration,
+    mut stop: Pin<&mut F>,
+) -> Result<Outcome, String> {
     for step in steps {
-        run_step(step, env, cwd, limit)?;
+        if run_step(step, env, cwd, limit, stop.as_mut()).await? == Outcome::Stopped {
+            return Ok(Outcome::Stopped);
+        }
     }
-    Ok(())
+    Ok(Outcome::Done)
 }
 
 fn label(step: &ChildSpec) -> String {
     format!("{} {}", step.program, step.args.join(" "))
 }
 
-fn run_step(step: &ChildSpec, env: &Env, cwd: &Path, limit: Duration) -> Result<(), String> {
+async fn run_step<F: Future<Output = ()>>(
+    step: &ChildSpec,
+    env: &Env,
+    cwd: &Path,
+    limit: Duration,
+    stop: Pin<&mut F>,
+) -> Result<Outcome, String> {
     let mut cmd = Command::new(&step.program);
     cmd.args(&step.args)
         .env_clear()
@@ -87,58 +120,60 @@ fn run_step(step: &ChildSpec, env: &Env, cwd: &Path, limit: Duration) -> Result<
         .envs(step.set.iter().map(|(k, v)| (k, v)))
         .current_dir(cwd)
         .stdin(Stdio::null());
-    let mut child = cmd.spawn().map_err(|e| {
+    let mut child = tokio::process::Command::from(cmd).spawn().map_err(|e| {
         format!(
             "web-supervisor: cannot start {} ({}: {e}); the pair was not started",
             label(step),
             spawn_failure_code(&e)
         )
     })?;
-    let started = Instant::now();
-    let mut termed = false;
-    loop {
-        match child.try_wait() {
-            Ok(Some(status)) if termed => {
-                return Err(format!(
-                    "web-supervisor: {} did not finish within {} s (stopped, {}); the pair was not started",
-                    label(step),
-                    limit.as_secs(),
-                    status_code(status)
-                ))
-            }
-            Ok(Some(status)) if status.success() => return Ok(()),
-            Ok(Some(status)) => {
-                return Err(format!(
+    let stopped = tokio::select! {
+        waited = child.wait() => {
+            return match waited {
+                Ok(status) if status.success() => Ok(Outcome::Done),
+                Ok(status) => Err(format!(
                     "web-supervisor: {} failed ({}); the pair was not started",
                     label(step),
                     status_code(status)
-                ))
-            }
-            Ok(None) => {}
-            Err(e) => {
-                let _ = child.kill();
-                let _ = child.wait();
-                return Err(format!(
+                )),
+                Err(e) => Err(format!(
                     "web-supervisor: cannot wait for {}: {e}; the pair was not started",
                     label(step)
-                ));
-            }
+                )),
+            };
         }
-        let elapsed = started.elapsed();
-        if !termed && elapsed >= limit {
-            signal(child.id(), nix::sys::signal::Signal::SIGTERM);
-            termed = true;
-        } else if termed && elapsed >= limit + KILL_AFTER {
-            let _ = child.kill();
-        }
-        std::thread::sleep(Duration::from_millis(20));
+        () = tokio::time::sleep(limit) => false,
+        () = stop => true,
+    };
+    if let Some(pid) = child.id() {
+        signal(pid, nix::sys::signal::Signal::SIGTERM);
     }
+    let code = match tokio::time::timeout(KILL_AFTER, child.wait()).await {
+        Ok(Ok(status)) => status_code(status),
+        _ => {
+            let _ = child.kill().await;
+            child.wait().await.map(status_code).unwrap_or(137)
+        }
+    };
+    if stopped {
+        eprintln!(
+            "web-supervisor: stop signal during {}; stopped it ({code}); nothing started",
+            label(step)
+        );
+        return Ok(Outcome::Stopped);
+    }
+    Err(format!(
+        "web-supervisor: {} did not finish within {} s (stopped, {code}); the pair was not started",
+        label(step),
+        limit.as_secs()
+    ))
 }
 
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::expect_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     fn features(lines: &str) -> Features {
         Features::parse(lines)
@@ -212,6 +247,18 @@ mod tests {
         }
     }
 
+    fn never() -> Pin<Box<std::future::Pending<()>>> {
+        Box::pin(std::future::pending())
+    }
+
+    fn block<T>(f: impl Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(f)
+    }
+
     #[test]
     fn steps_stop_at_the_first_failure_and_name_it() {
         let dir = tempfile::tempdir().unwrap();
@@ -220,12 +267,14 @@ mod tests {
             sh("[ \"$QA_STEP\" = qa ] && exit 3"),
             sh(&format!("touch '{}'", mark.display())),
         ];
-        let err = run(&steps, &Env::default(), dir.path(), STEP_TIMEOUT).unwrap_err();
+        let err = block(run(&steps, &Env::default(), dir.path(), STEP_TIMEOUT, never().as_mut()))
+            .unwrap_err();
         assert!(err.contains("failed (3)"), "{err}");
         assert!(err.contains("the pair was not started"), "{err}");
         assert!(!mark.exists());
         let ok = [sh("exit 0"), sh(&format!("touch '{}'", mark.display()))];
-        run(&ok, &Env::default(), dir.path(), STEP_TIMEOUT).unwrap();
+        let done = block(run(&ok, &Env::default(), dir.path(), STEP_TIMEOUT, never().as_mut()));
+        assert_eq!(done, Ok(Outcome::Done));
         assert!(mark.exists());
     }
 
@@ -233,12 +282,13 @@ mod tests {
     fn a_hung_step_is_stopped_at_its_limit() {
         let dir = tempfile::tempdir().unwrap();
         let started = Instant::now();
-        let err = run(
+        let err = block(run(
             &[sh("sleep 30")],
             &Env::default(),
             dir.path(),
             Duration::from_millis(300),
-        )
+            never().as_mut(),
+        ))
         .unwrap_err();
         assert!(err.contains("did not finish within 0 s"), "{err}");
         assert!(started.elapsed() < Duration::from_secs(10));
@@ -251,7 +301,33 @@ mod tests {
             args: vec!["--ensure-schema".to_owned()],
             set: Vec::new(),
         };
-        let err = run(&[step], &Env::default(), Path::new("/"), STEP_TIMEOUT).unwrap_err();
+        let err = block(run(
+            &[step],
+            &Env::default(),
+            Path::new("/"),
+            STEP_TIMEOUT,
+            never().as_mut(),
+        ))
+        .unwrap_err();
         assert!(err.contains("(127:"), "{err}");
+    }
+
+    #[test]
+    fn a_stop_signal_stops_the_running_step_and_skips_the_rest() {
+        let dir = tempfile::tempdir().unwrap();
+        let mark = dir.path().join("second-ran");
+        let steps = [
+            sh("sleep 30"),
+            sh(&format!("touch '{}'", mark.display())),
+        ];
+        let started = Instant::now();
+        let outcome = block(async {
+            let stop = tokio::time::sleep(Duration::from_millis(200));
+            tokio::pin!(stop);
+            run(&steps, &Env::default(), dir.path(), STEP_TIMEOUT, stop.as_mut()).await
+        });
+        assert_eq!(outcome, Ok(Outcome::Stopped));
+        assert!(!mark.exists());
+        assert!(started.elapsed() < Duration::from_secs(10));
     }
 }
