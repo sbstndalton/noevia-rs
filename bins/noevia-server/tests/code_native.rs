@@ -306,7 +306,13 @@ fn rpc(id: &Value, result: Value) -> String {
     )
 }
 
-async fn sandbox(mode: Arc<Mutex<Agent>>, state: Arc<Mutex<Sandbox>>) -> SocketAddr {
+/// `on_prompt` runs once, the next time the agent commits (council p14: a test moves the Code role
+/// there, during a direct task's run and before its review).
+async fn sandbox(
+    mode: Arc<Mutex<Agent>>,
+    state: Arc<Mutex<Sandbox>>,
+    on_prompt: Hook,
+) -> SocketAddr {
     let ask = fixture(SERVICE)["scenarios"]["cancel-while-waiting"]["script"]
         .as_array()
         .unwrap()
@@ -324,6 +330,7 @@ async fn sandbox(mode: Arc<Mutex<Agent>>, state: Arc<Mutex<Sandbox>>) -> SocketA
         while let Ok((c, _)) = listener.accept().await {
             state.lock().unwrap().open += 1;
             let (mode, state, ask) = (Arc::clone(&mode), Arc::clone(&state), ask.clone());
+            let on_prompt = Arc::clone(&on_prompt);
             tokio::spawn(async move {
                 let (r, mut w) = c.into_split();
                 let mut lines = BufReader::new(r).lines();
@@ -357,6 +364,10 @@ async fn sandbox(mode: Arc<Mutex<Agent>>, state: Arc<Mutex<Sandbox>>) -> SocketA
                                 })
                                 .await
                                 .unwrap();
+                                let once = on_prompt.lock().unwrap().take();
+                                if let Some(f) = once {
+                                    tokio::task::spawn_blocking(f).await.unwrap();
+                                }
                                 rpc(&m["id"], json!({"stopReason": "end_turn"}))
                             }
                         }
@@ -407,6 +418,8 @@ struct Rig {
     roles: Arc<Mutex<Vec<&'static str>>>,
     verified: Seen,
     on_verify: Hook,
+    /// Run once when the agent next commits (before its turn ends).
+    on_prompt: Hook,
     agent: Arc<Mutex<Agent>>,
     sandbox: Arc<Mutex<Sandbox>>,
     relay: Option<Arc<noevia_server::code_machine::RelayState>>,
@@ -504,7 +517,13 @@ async fn rig(o: Opts) -> Rig {
     let on_verify: Hook = Arc::default();
     let verify_addr = verifier(Arc::clone(&verified), Arc::clone(&on_verify)).await;
     let (agent, sandbox_state) = (Arc::new(Mutex::new(Agent::Commit)), Arc::default());
-    let sandbox_addr = sandbox(Arc::clone(&agent), Arc::clone(&sandbox_state)).await;
+    let on_prompt: Hook = Arc::default();
+    let sandbox_addr = sandbox(
+        Arc::clone(&agent),
+        Arc::clone(&sandbox_state),
+        Arc::clone(&on_prompt),
+    )
+    .await;
 
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
@@ -574,6 +593,7 @@ async fn rig(o: Opts) -> Rig {
         roles,
         verified,
         on_verify,
+        on_prompt,
         agent,
         sandbox: sandbox_state,
         relay,
@@ -1751,8 +1771,16 @@ async fn qa_role_machine() -> (SocketAddr, Seen, Arc<Mutex<Vec<&'static str>>>) 
     let asked = Arc::clone(&roles);
     let handler: Handler = Arc::new(move |_method, path, body| match path.split('?').next() {
         Some("/health") => (200, "application/json", "{}".into()),
-        Some("/v1/models") => (200, "application/json", r#"{"data":[{"id":"qa-code"}]}"#.into()),
-        Some("/props") => (200, "application/json", r#"{"default_generation_settings":{"n_ctx":16384}}"#.into()),
+        Some("/v1/models") => (
+            200,
+            "application/json",
+            r#"{"data":[{"id":"qa-code"}]}"#.into(),
+        ),
+        Some("/props") => (
+            200,
+            "application/json",
+            r#"{"default_generation_settings":{"n_ctx":16384}}"#.into(),
+        ),
         Some("/v1/chat/completions") => {
             let text = body.to_string();
             let role = if text.contains("You are the Auditor.") {
@@ -1966,13 +1994,169 @@ async fn a_code_role_moved_before_the_plan_is_approved_stops_the_agent_with_node
     .await;
 }
 
+// ── council p14 (p11-3 CONTINUE 3): a direct task's review on the Code role's machine ──────
+
+/// Node's card reason for a reviewed change (code-harness.cjs `reviewGate`).
+const REVIEWED_REASON: &str = "The Planner’s verdict is advice. Accepting records this reviewed head as accepted; nothing is merged automatically.";
+
+/// Node's card reason for a change whose review failed (code-harness.cjs `reviewGate`).
+fn unreviewed_reason(reason: &str) -> String {
+    format!("Not reviewed: {reason} Review the change on its branch yourself before accepting it.")
+}
+
+/// The chat completions a machine was asked for, in order.
+fn completions_of(seen: &Seen) -> Vec<Value> {
+    seen.lock()
+        .unwrap()
+        .iter()
+        .filter(|(_, p, _)| p == "/v1/chat/completions")
+        .map(|(_, _, b)| b.clone())
+        .collect()
+}
+
+/// Council p14: a direct task (no pipeline) with features.plannerReview on, its Code role on an
+/// inference machine. Node's flow, read from core: the run goes through the relay; after the run
+/// code-harness.cjs `reviewGate` asks code-review.cjs `review({ state })` with no session, which
+/// pins for this one task (`roleEngine.pinModel({ taskId })`, l.67-77) on the machine
+/// (role-engine.cjs `pinOnMachine`: `ready()`, no admission, residency or budget) and sends the
+/// one review call there with the machine's model and the stream on; the verdict goes on the
+/// `review_change` card with the "advice" reason, and the owner's approve accepts it
+/// (`review: { reviewed: true, verdict, accepted: true, decision: 'approve', headSha }`). This
+/// server's role endpoint is never called and no local inference lease is taken.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_reviewed_direct_task_on_a_machine_is_reviewed_there_and_accepted() {
+    within(async {
+        let (machine, seen, machine_roles) = qa_role_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            review: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let relay = r.relay.clone().unwrap();
+        let (status, started) = r
+            .start(json!({"repository": "qa-repo", "prompt": RUN, "capabilities": ["read_repository", "edit_file"]}))
+            .await;
+        assert_eq!(status, 202, "{started}");
+        let task = started["taskId"].as_str().unwrap().to_string();
+        let branch = started["branch"].as_str().unwrap().to_string();
+
+        let card = r.card(&task, "review_change").await;
+        let head = git(&r.repo, &["rev-parse", &branch]);
+        assert_eq!(r.sandbox.lock().unwrap().prompts, 1, "the agent ran once");
+        assert!(r.verified.lock().unwrap().is_empty(), "a direct task is not measured");
+        assert_eq!(*machine_roles.lock().unwrap(), vec!["reviewer"], "the review alone, on the machine");
+        let calls = completions_of(&seen);
+        assert_eq!(calls.len(), 1, "one review call on the machine");
+        assert_eq!((&calls[0]["model"], &calls[0]["stream"]), (&json!("qa-code"), &json!(true)), "{}", calls[0]);
+        assert!(r.roles.lock().unwrap().is_empty(), "this server's role endpoint was never called");
+        assert!(r.core.lock().unwrap().leases.is_empty(), "no inference lease on a machine");
+        assert_eq!(relay.relay.active(), 0, "the run is over before the review: its relay lease is closed");
+
+        assert_eq!(card["reason"], json!(REVIEWED_REASON), "{card}");
+        assert_eq!(card["review"]["verdict"], "approve", "{card}");
+        assert_eq!(card["arguments"]["headSha"], json!(head));
+        assert_eq!(card["paths"], json!(["src/qa.js"]));
+        let completed = r.last(&task, "review.completed");
+        assert_eq!(completed["headSha"], json!(head), "{completed}");
+        assert!(!r.journal(&task).iter().any(|row| row["type"] == "review.failed"));
+
+        let approve = r.code(&format!("/{task}/approve"));
+        let (status, ok) = r
+            .call(OWNER, "POST", &approve, Some(json!({"decision": "approve", "approvalId": card["id"]})))
+            .await;
+        assert_eq!((status, ok), (200, json!({"ok": true})));
+        let end = r.ended(&task).await;
+        assert_eq!(end["status"], "completed", "{end}");
+        let result = r.last(&task, "job.completed")["result"].clone();
+        assert_eq!(
+            result["review"],
+            json!({"reviewed": true, "verdict": "approve", "accepted": true, "decision": "approve", "headSha": head}),
+            "{result}"
+        );
+        assert_eq!(*machine_roles.lock().unwrap(), vec!["reviewer"], "nothing more was asked");
+        r.quiet().await;
+    })
+    .await;
+}
+
+/// Council p14: a direct task's Code role moves to a second machine while the agent runs, so
+/// before the review. The front refuses the review's pin: the role engine's endpoint is the
+/// start's (code_machine.rs `MachineRole::ready` re-reads where the role is now and answers
+/// `model_mismatch` with the call-time text), code-review's mapping keeps `model_mismatch`, and
+/// the card offers the change unreviewed with that reason; denied, the task completes with
+/// `review: { reviewed: false, verdict: null, accepted: false, decision: 'deny', headSha }`.
+/// Named difference (noevia issue filed by council p14): Node pins a review alone afresh at review
+/// time on wherever `codeRoleEndpoint` points then, so it would send this review to the second
+/// machine, a model other than the one that wrote the change. The review is sent nowhere here.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_code_role_moved_before_a_direct_task_s_review_leaves_the_change_unreviewed() {
+    within(async {
+        let (machine, seen, machine_roles) = qa_role_machine().await;
+        let (other, other_seen) = qa_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            review: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let relay = r.relay.clone().unwrap();
+        let data = r.data.clone();
+        *r.on_prompt.lock().unwrap() = Some(Box::new(move || move_code_role(&data, "qa-m2", other)));
+        let (status, started) = r
+            .start(json!({"repository": "qa-repo", "prompt": RUN, "capabilities": ["read_repository", "edit_file"]}))
+            .await;
+        assert_eq!(status, 202, "{started}");
+        let task = started["taskId"].as_str().unwrap().to_string();
+        let branch = started["branch"].as_str().unwrap().to_string();
+
+        let card = r.card(&task, "review_change").await;
+        let head = git(&r.repo, &["rev-parse", &branch]);
+        let moved = noevia_server::code_machine::ROLE_MOVED;
+        assert_eq!(card["reason"], json!(unreviewed_reason(moved)), "{card}");
+        assert_eq!(card["arguments"]["headSha"], json!(head));
+        let failed = r.last(&task, "review.failed");
+        assert_eq!((&failed["code"], &failed["reason"]), (&json!("model_mismatch"), &json!(moved)), "{failed}");
+        assert_eq!(failed["headSha"], json!(head), "{failed}");
+        assert!(!r.journal(&task).iter().any(|row| row["type"] == "review.completed"), "no verdict was recorded");
+        // The review was sent nowhere: neither machine was asked for a completion and this
+        // server's role endpoint was never called.
+        assert!(machine_roles.lock().unwrap().is_empty());
+        assert!(completions_of(&seen).is_empty());
+        assert!(other_seen.lock().unwrap().iter().all(|(_, p, _)| p != "/v1/chat/completions"));
+        assert!(r.roles.lock().unwrap().is_empty());
+        assert_eq!(relay.relay.active(), 0, "the run is over: its relay lease is closed");
+
+        let approve = r.code(&format!("/{task}/approve"));
+        let (status, ok) = r
+            .call(OWNER, "POST", &approve, Some(json!({"decision": "deny", "approvalId": card["id"]})))
+            .await;
+        assert_eq!((status, ok), (200, json!({"ok": true})));
+        let end = r.ended(&task).await;
+        assert_eq!(end["status"], "completed", "{end}");
+        let result = r.last(&task, "job.completed")["result"].clone();
+        assert_eq!(
+            result["review"],
+            json!({"reviewed": false, "verdict": null, "accepted": false, "decision": "deny", "headSha": head}),
+            "{result}"
+        );
+        r.quiet().await;
+    })
+    .await;
+}
+
 /// Node's `EXPECTED_ARTIFACTS` (code-pipeline.cjs) as crates/code-pipeline/tools/gen-fixtures.cjs
 /// recorded it into code-pipeline.v1.json (`constants.EXPECTED_ARTIFACTS`; noevia#2598 item 2).
 fn node_expected_artifacts() -> Vec<String> {
     let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("../../crates/code-pipeline/tests/fixtures/code-pipeline.v1.json");
     let text = std::fs::read_to_string(&path).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
-    let fixture: Value = serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
+    let fixture: Value =
+        serde_json::from_str(&text).unwrap_or_else(|e| panic!("{}: {e}", path.display()));
     fixture["constants"]["EXPECTED_ARTIFACTS"]
         .as_array()
         .unwrap_or_else(|| panic!("{}: no constants.EXPECTED_ARTIFACTS", path.display()))
