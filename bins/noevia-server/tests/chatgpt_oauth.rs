@@ -1096,9 +1096,10 @@ async fn races_are_won_by_the_disconnect_and_the_cancel() {
     let (addr, u) = (f.store, user.clone());
     let refreshing = tokio::spawn(async move { store(addr, "session", STORE_TOKEN, &u).await });
     up.wait_for("/oauth/token", 1).await;
-    // The refresh's exchange is held open, so a disconnect that waited for it would never return.
+    // The refresh's exchange is held open, so a disconnect that waited for it would only return when
+    // the front gives the exchange up (its 15 s TIMEOUT): the deadline is under that.
     let disconnected = tokio::time::timeout(
-        Duration::from_secs(20),
+        Duration::from_secs(10),
         store(f.store, "disconnect", STORE_TOKEN, &user),
     )
     .await

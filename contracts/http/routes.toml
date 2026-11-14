@@ -715,8 +715,9 @@ path = "/api/models/prune-missing"
 owner = "rust"
 methods = ["POST"]
 
-# The reranker role (noevia-core routes/models.cjs): the front answers GET, PUT and DELETE
-# (bins/noevia-server reranker_routes.rs); other methods get Node's 405 through the residual fallback.
+# The reranker role (noevia-core routes/models.cjs): the front answers every method itself (no
+# `methods`): GET, PUT and DELETE as Node did, and Node's 405 for the others (bins/noevia-server
+# reranker_routes.rs).
 [[route]]
 path = "/api/models/reranker"
 owner = "rust"
