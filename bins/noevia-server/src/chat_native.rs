@@ -438,25 +438,28 @@ async fn drive(
             continue;
         };
         let mut handed = None;
-        let mut pieces = frames.feed(&data).into_iter();
-        while let Some(piece) = pieces.next() {
+        let mut gone = false;
+        for piece in frames.feed(&data) {
+            if gone {
+                // The client left (below): a frame already in this chunk handed a Diary journal over, which is
+                // finished here (track R16).
+                if let Piece::Prepared(p) = piece {
+                    Journal::finish_with(&app, &user, journal_handle(&p), Vec::new());
+                }
+                continue;
+            }
             match piece {
                 Piece::Forward(bytes) => {
                     lines.feed(&bytes);
-                    if !push(&tx, &queued, Bytes::from(bytes)) || !room(&tx, &queued).await {
-                        // The client left: closing core's stream ends its turn, which keeps it (#679). A frame
-                        // already in this chunk handed a Diary journal over: it is finished here (track R16).
-                        for rest in pieces.by_ref() {
-                            if let Piece::Prepared(p) = rest {
-                                Journal::finish_with(&app, &user, journal_handle(&p), Vec::new());
-                            }
-                        }
-                        return;
-                    }
+                    // The client left: closing core's stream ends its turn, which keeps it (#679).
+                    gone = !push(&tx, &queued, Bytes::from(bytes)) || !room(&tx, &queued).await;
                 }
                 Piece::Prepared(p) => handed = Some(Some(p)),
                 Piece::Unreadable => handed = Some(None),
             }
+        }
+        if gone {
+            return;
         }
         if let Some(h) = handed {
             break h;
