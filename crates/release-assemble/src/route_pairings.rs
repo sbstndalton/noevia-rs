@@ -271,12 +271,13 @@ pub fn tool_approval_pairings(tree: &Path) -> Result<(), String> {
     if !tree.join(CONTRACT).is_file() {
         return Ok(());
     }
-    let rows = generation_rows(tree, &["/api/tool-approvals/{approvalId}"], ta, POST1).map_err(|()| {
-        die(
-            TA,
-            "POST alone must be Rust's with the new pair and Node's with the old",
-        )
-    })?;
+    let rows =
+        generation_rows(tree, &["/api/tool-approvals/{approvalId}"], ta, POST1).map_err(|()| {
+            die(
+                TA,
+                "POST alone must be Rust's with the new pair and Node's with the old",
+            )
+        })?;
     if !ta {
         return Ok(());
     }
@@ -294,13 +295,19 @@ pub fn tool_approval_pairings(tree: &Path) -> Result<(), String> {
         return Err(die(TA, "Core still carries the public handler"));
     }
     if ar {
-        if !tree.join("core/server/rust-approval-registry.cjs").is_file() {
+        if !tree
+            .join("core/server/rust-approval-registry.cjs")
+            .is_file()
+        {
             return Err(die(
                 TA,
                 "Core (rust-approval-registry) is missing server/rust-approval-registry.cjs",
             ));
         }
-        if tree.join("core/server/rust-tool-approval-bridge.cjs").exists() {
+        if tree
+            .join("core/server/rust-tool-approval-bridge.cjs")
+            .exists()
+        {
             return Err(die(
                 TA,
                 "Core (rust-approval-registry) still carries the pending state bridge server/rust-tool-approval-bridge.cjs",
@@ -316,7 +323,10 @@ pub fn tool_approval_pairings(tree: &Path) -> Result<(), String> {
             ));
         }
     } else {
-        if !tree.join("core/server/rust-tool-approval-bridge.cjs").is_file() {
+        if !tree
+            .join("core/server/rust-tool-approval-bridge.cjs")
+            .is_file()
+        {
             return Err(die(TA, "missing pending state bridge"));
         }
         if !text_has(&index, r"toolApprovalBridge\(req, res\)") {
@@ -375,7 +385,11 @@ pub fn framing_suggest_pairing(tree: &Path) -> Result<(), String> {
     ) {
         return Err(die(LABEL, "Core must refuse exactly this POST"));
     }
-    if file_has(tree, "core/server/routes/chat-framing.cjs", "framing[.]suggest[(]") {
+    if file_has(
+        tree,
+        "core/server/routes/chat-framing.cjs",
+        "framing[.]suggest[(]",
+    ) {
         return Err(die(
             LABEL,
             "Core still carries the public suggestion handler",
@@ -404,9 +418,8 @@ pub fn toolbox_picker_pairing(tree: &Path, discovery_rs_owner: bool) -> Result<(
     // `tp_rows` stays unset (empty) without a contract.
     let mut rows = Vec::new();
     if tree.join(CONTRACT).is_file() {
-        rows = generation_rows(tree, &["/api/toolboxes"], rs, Want::All).map_err(|()| {
-            die(LABEL, "all methods must belong to the paired owner")
-        })?;
+        rows = generation_rows(tree, &["/api/toolboxes"], rs, Want::All)
+            .map_err(|()| die(LABEL, "all methods must belong to the paired owner"))?;
     }
     if !rs {
         return Ok(());
@@ -429,13 +442,20 @@ pub fn toolbox_picker_pairing(tree: &Path, discovery_rs_owner: bool) -> Result<(
             "Core still carries the public handler or status composition",
         ));
     }
-    if file_has(tree, "core/server/toolboxes.cjs", "function toolboxSummaries") {
+    if file_has(
+        tree,
+        "core/server/toolboxes.cjs",
+        "function toolboxSummaries",
+    ) {
         return Err(die(LABEL, "Core still carries picker summary composition"));
     }
     if discovery_rs_owner {
         return Ok(());
     }
-    if !tree.join("core/server/rust-toolbox-picker-facts.cjs").is_file() {
+    if !tree
+        .join("core/server/rust-toolbox-picker-facts.cjs")
+        .is_file()
+    {
         return Err(die(LABEL, "missing raw facts bridge"));
     }
     let index = code_lines(read_file(&tree.join(INDEX)).as_deref());
@@ -487,7 +507,12 @@ pub fn get_only_pair(
 /// search, chat download), then the chat search's and download's Core checks.
 pub fn close_out_pairings(tree: &Path, auto_roles_write: bool) -> Result<(), String> {
     for (marker, capability, label, route) in [
-        ("rust-health.cjs", "rust-health", "health check", "/api/health"),
+        (
+            "rust-health.cjs",
+            "rust-health",
+            "health check",
+            "/api/health",
+        ),
         (
             "rust-auto-roles.cjs",
             "rust-auto-roles",
@@ -617,7 +642,10 @@ pub const PROVIDER_REGISTRY: RoutePair<'static> = RoutePair {
         ("/api/providers", Want::Exact(&["GET", "POST"])),
         ("/api/providers/{id}", Want::Exact(&["PUT", "DELETE"])),
         ("/api/providers/chatgpt", Want::Exact(&["DELETE", "GET"])),
-        ("/api/providers/test", Want::Exact(&["DELETE", "POST", "PUT"])),
+        (
+            "/api/providers/test",
+            Want::Exact(&["DELETE", "POST", "PUT"]),
+        ),
     ]),
     rule_text: "exactly the registry's methods of the routes must belong to Rust",
     expected: &[
@@ -651,10 +679,7 @@ pub fn provider_pairings(tree: &Path) -> Result<(), String> {
             &tree.join("rs/bins/noevia-server/src/project_store.rs"),
             "\"/v1/providers/reseal\"",
         ) {
-            return Err(die(
-                RESEAL,
-                "the front does not serve /v1/providers/reseal",
-            ));
+            return Err(die(RESEAL, "the front does not serve /v1/providers/reseal"));
         }
         if !grep_fixed(
             &tree.join("core/server/project-store-client.cjs"),
@@ -739,7 +764,11 @@ pub fn mcp_credentials_pairing(tree: &Path) -> Result<(), String> {
     if !route_pair(tree, p)? {
         return Ok(());
     }
-    if !file_has(tree, "rs/bins/noevia-server/src/project_store.rs", "/v1/mcp/") {
+    if !file_has(
+        tree,
+        "rs/bins/noevia-server/src/project_store.rs",
+        "/v1/mcp/",
+    ) {
         return Err(die(p.label, "the front does not serve /v1/mcp/*"));
     }
     for op in ["mcpSession", "mcpKey", "mcpReseal"] {
@@ -756,7 +785,11 @@ pub fn mcp_credentials_pairing(tree: &Path) -> Result<(), String> {
 
 /// `discovery_pair_ok`, with `discovery_rs_owner` the MCP discovery pairing's front verdict (`md_rs_owner`).
 pub fn discovery_pair_ok(tree: &Path, discovery_rs_owner: bool) -> bool {
-    if !file_has(tree, FRONT_LIB, "pub[[:space:]]+mod[[:space:]]+mcp_discovery") {
+    if !file_has(
+        tree,
+        FRONT_LIB,
+        "pub[[:space:]]+mod[[:space:]]+mcp_discovery",
+    ) {
         return false;
     }
     if discovery_rs_owner {
@@ -764,7 +797,9 @@ pub fn discovery_pair_ok(tree: &Path, discovery_rs_owner: bool) -> bool {
             && tree.join("core/server/toolbox-chat-facts.cjs").is_file()
     } else {
         file_has(tree, INDEX, r"createMcpDiscoveryPublisher[[:space:]]*\(")
-            && tree.join("core/server/mcp-discovery-snapshot.cjs").is_file()
+            && tree
+                .join("core/server/mcp-discovery-snapshot.cjs")
+                .is_file()
     }
 }
 
@@ -801,7 +836,8 @@ pub const CONNECTORS: RoutePair<'static> = RoutePair {
         ("/api/connectors", GET1),
         ("/api/connectors/nextcloud/policy", PUT1),
     ]),
-    rule_text: "exactly GET /api/connectors and PUT /api/connectors/nextcloud/policy must belong to Rust",
+    rule_text:
+        "exactly GET /api/connectors and PUT /api/connectors/nextcloud/policy must belong to Rust",
     expected: &["/api/connectors", "/api/connectors/nextcloud/policy"],
 };
 
@@ -1124,10 +1160,7 @@ pub fn model_evidence_pairings(tree: &Path) -> Result<(), String> {
         return Err(die(LABEL, "inference admission must be mounted"));
     }
     if !secret_handed(tree, r"createAdmissionRoutes\(\{") {
-        return Err(die(
-            LABEL,
-            "captured inference admission secret required",
-        ));
+        return Err(die(LABEL, "captured inference admission secret required"));
     }
     Ok(())
 }

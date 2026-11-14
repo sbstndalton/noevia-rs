@@ -382,9 +382,7 @@ fn calls(toks: &[Tok], want: &[u16]) -> bool {
 /// The value of one complete string or template literal (its delimiters included), as node reads it; `Err`
 /// where node throws.
 fn cooked(lit: &[u16]) -> Result<Vec<u16>, ()> {
-    let body = lit
-        .get(1..lit.len().saturating_sub(1))
-        .unwrap_or_default();
+    let body = lit.get(1..lit.len().saturating_sub(1)).unwrap_or_default();
     if !lit.contains(&BACKSLASH) {
         return Ok(body.to_vec());
     }

@@ -196,13 +196,7 @@ fn gen_tree(r: &mut Rng, root: &Path, g: &Group) {
     let moved: Vec<bool> = g
         .pairs
         .iter()
-        .map(|_| {
-            if together {
-                all_moved
-            } else {
-                r.chance(60)
-            }
-        })
+        .map(|_| if together { all_moved } else { r.chance(60) })
         .collect();
 
     // The front: FEATURES and extra lines.
@@ -251,7 +245,8 @@ fn gen_tree(r: &mut Rng, root: &Path, g: &Group) {
 
     // The route contract.
     if !r.chance(6) {
-        let mut toml = String::from("# routes\n[[route]]\npath = \"/api/other\"\nowner = \"node\"\n");
+        let mut toml =
+            String::from("# routes\n[[route]]\npath = \"/api/other\"\nowner = \"node\"\n");
         for (p, m) in g.pairs.iter().zip(&moved) {
             let owner = if *m { "rust" } else { "node" };
             for (path, good) in p.rows {
@@ -370,8 +365,15 @@ fn compare(
         assert_eq!(got, want, "{} round {round} (flag {flag})", g.section);
         *seen.entry(want).or_default() += 1;
     }
-    eprintln!("COUNTS route_pairings {} trees={n} verdicts={seen:?}", g.section);
-    assert!(seen.contains_key("PASS"), "{}: PASS reached ({seen:#?})", g.section);
+    eprintln!(
+        "COUNTS route_pairings {} trees={n} verdicts={seen:?}",
+        g.section
+    );
+    assert!(
+        seen.contains_key("PASS"),
+        "{}: PASS reached ({seen:#?})",
+        g.section
+    );
     assert!(
         seen.len() >= g.min_verdicts,
         "{}: {} verdicts reached ({seen:#?})",
@@ -512,12 +514,7 @@ fn close_out_pairings_match_the_shell() {
         &CLOSE_OUT,
         0xc105_e000_0000_0002,
         false,
-        &|put| {
-            format!(
-                "auto_roles_write_owner={}\n",
-                if put { "rust" } else { "" }
-            )
-        },
+        &|put| format!("auto_roles_write_owner={}\n", if put { "rust" } else { "" }),
         &|t, put| route_pairings::close_out_pairings(t, put),
     );
 }
@@ -766,7 +763,11 @@ fn mcp_views_pairings_match_the_shell() {
                 "",
             ],
         ],
-        lib: &[&["pub mod mcp_discovery;", "// pub mod mcp_discovery;", "pub mod mcp_discoveryx;"]],
+        lib: &[&[
+            "pub mod mcp_discovery;",
+            "// pub mod mcp_discovery;",
+            "pub mod mcp_discoveryx;",
+        ]],
         extras: &[
             (
                 "core/server/toolbox-chat-facts.cjs",
@@ -780,7 +781,9 @@ fn mcp_views_pairings_match_the_shell() {
                 "core/server/directory-mcp.cjs",
                 &[
                     Some("db.prepare('SELECT * FROM directory_mcp_servers');\n"),
-                    Some("db.prepare('INSERT OR REPLACE INTO directory_mcp_servers VALUES (?)');\n"),
+                    Some(
+                        "db.prepare('INSERT OR REPLACE INTO directory_mcp_servers VALUES (?)');\n",
+                    ),
                     Some("db.prepare('UPDATE \"directory_mcp_servers\" SET a = 1');\n"),
                     Some("db.prepare('DELETE FROM directory_mcp_servers');\n"),
                     Some("// db.prepare('DELETE FROM directory_mcp_servers');\n"),
@@ -789,14 +792,20 @@ fn mcp_views_pairings_match_the_shell() {
             ),
             (
                 "core/server/rust-mcp-credentials.cjs",
-                &[Some("const FRONT_TABLES = ['directory_mcp_servers'];\n"), Some("'use strict';\n")],
+                &[
+                    Some("const FRONT_TABLES = ['directory_mcp_servers'];\n"),
+                    Some("'use strict';\n"),
+                ],
             ),
             (
                 "rs/bins/noevia-server/src/mcp_broker.rs",
                 &[Some("const T: &str = \"directory_mcp_servers\";\n"), None],
             ),
         ],
-        near: &["/api/admin/mcp-directory/extra", "/api/admin/mcp-directoryx"],
+        near: &[
+            "/api/admin/mcp-directory/extra",
+            "/api/admin/mcp-directoryx",
+        ],
         min_verdicts: 8,
     };
     compare(
@@ -1156,8 +1165,14 @@ fn toolbox_picker_pairing_matches_the_shell() {
                     None,
                 ],
             ),
-            ("core/server/routes/toolboxes.cjs", &[None, Some("'use strict';\n")]),
-            ("core/server/mcp-status.cjs", &[None, Some("'use strict';\n")]),
+            (
+                "core/server/routes/toolboxes.cjs",
+                &[None, Some("'use strict';\n")],
+            ),
+            (
+                "core/server/mcp-status.cjs",
+                &[None, Some("'use strict';\n")],
+            ),
             (
                 "core/server/toolboxes.cjs",
                 &[
@@ -1278,7 +1293,8 @@ fn an_ere_marker_ignores_comments_and_a_fixed_one_does_not() {
 fn the_probe_widens_with_the_registry() {
     assert!(Want::Counted(&["POST", "PUT", "DELETE"], 3).allow(b"DELETE,POST,PUT"));
     let probe_only = features_lib(&["rust-provider-test"]);
-    let toml_post = "[[route]]\npath = \"/api/providers/test\"\nowner = \"rust\"\nmethods = [\"POST\"]\n";
+    let toml_post =
+        "[[route]]\npath = \"/api/providers/test\"\nowner = \"rust\"\nmethods = [\"POST\"]\n";
     let t = tree_with(&[
         ("rs/bins/noevia-server/src/lib.rs", &probe_only),
         (
@@ -1299,7 +1315,10 @@ fn the_probe_widens_with_the_registry() {
     ]);
     assert_eq!(
         route_pairings::provider_pairings(t.path()),
-        Err("provider test ownership pairing: exactly POST of the path must belong to Rust".to_string())
+        Err(
+            "provider test ownership pairing: exactly POST of the path must belong to Rust"
+                .to_string()
+        )
     );
 }
 
@@ -1325,6 +1344,30 @@ fn a_recheck_without_its_pair_stays_nodes() {
 }
 
 #[test]
+fn auto_roles_read_takes_put_only_with_the_write_pair() {
+    let lib = features_lib(&["rust-auto-roles"]);
+    let t = tree_with(&[
+        ("rs/bins/noevia-server/src/lib.rs", &lib),
+        (
+            "core/server/index.cjs",
+            "const a = require('./rust-auto-roles.cjs');\n",
+        ),
+        (
+            "rs/contracts/http/routes.toml",
+            "[[route]]\npath = \"/api/auto-roles\"\nowner = \"rust\"\nmethods = [\"GET\", \"PUT\"]\n",
+        ),
+    ]);
+    assert_eq!(route_pairings::close_out_pairings(t.path(), true), Ok(()));
+    assert_eq!(
+        route_pairings::close_out_pairings(t.path(), false),
+        Err(
+            "auto-roles read ownership pairing: exactly GET of /api/auto-roles must belong to Rust"
+                .to_string()
+        )
+    );
+}
+
+#[test]
 fn cli_route_pairing_names_and_verdicts() {
     let bin = env!("CARGO_BIN_EXE_release-assemble");
     let tmp = tempfile::tempdir().expect("a temp dir");
@@ -1336,7 +1379,12 @@ fn cli_route_pairing_names_and_verdicts() {
             .expect("the binary runs");
         assert!(out.status.success(), "{name}: {out:?}");
     }
-    for verdicts in ["", "auto-roles-write", "discovery", "auto-roles-write,discovery"] {
+    for verdicts in [
+        "",
+        "auto-roles-write",
+        "discovery",
+        "auto-roles-write,discovery",
+    ] {
         let out = Command::new(bin)
             .args(["pairing", "close-out", dir, verdicts])
             .output()

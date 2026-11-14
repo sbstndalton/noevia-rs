@@ -182,7 +182,13 @@ fn loaded(tree: &Path, module: &str) -> Requires {
 const MW: &str = "model writes pairing";
 
 /// One of the later model write requests: Core refuses it under the switch exactly when the front answers it.
-fn mw_pair(tree: &Path, what: &str, front_answers: bool, list: &str, path: &str) -> Result<(), String> {
+fn mw_pair(
+    tree: &Path,
+    what: &str,
+    front_answers: bool,
+    list: &str,
+    path: &str,
+) -> Result<(), String> {
     let rc = mw_core_has(&core(tree, "rust-model-writes.cjs"), list, path).map_err(|()| {
         format!("{MW}: Core's rust-model-writes.cjs could not be read for {what} (a list not closed before the next declaration)")
     })?;
@@ -233,7 +239,13 @@ pub fn model_writes_pairing(tree: &Path) -> Result<(), String> {
         &code_body(read(&pull_routes).as_deref()),
         "^pub const PULL: &str = ",
     );
-    mw_pair(tree, "PUT /api/models/preset", preset, "OWNED_PATHS", "/api/models/preset")?;
+    mw_pair(
+        tree,
+        "PUT /api/models/preset",
+        preset,
+        "OWNED_PATHS",
+        "/api/models/preset",
+    )?;
     mw_pair(
         tree,
         "GET /api/models/mtp-artifact",
@@ -241,7 +253,13 @@ pub fn model_writes_pairing(tree: &Path) -> Result<(), String> {
         "OWNED_GETS",
         "/api/models/mtp-artifact",
     )?;
-    mw_pair(tree, "POST /api/models/pull", pull, "OWNED_POSTS", "/api/models/pull")
+    mw_pair(
+        tree,
+        "POST /api/models/pull",
+        pull,
+        "OWNED_POSTS",
+        "/api/models/pull",
+    )
 }
 
 const MM: &str = "model manager proxy pairing";
@@ -347,7 +365,10 @@ mod tests {
     fn code_body_cuts_comments_and_the_test_module() {
         let src = b"a\n  // c\n/* x\n y */\nb\n#[cfg(test)]\nfn helper() {}\n#[cfg(test)]\nmod tests {\nz\n";
         assert_eq!(code_body(Some(src)), b"a\nb\nfn helper() {}".to_vec());
-        assert_eq!(code_body(Some(b"#[cfg(test)]\npub(crate) mod t;\nq\n")), Vec::<u8>::new());
+        assert_eq!(
+            code_body(Some(b"#[cfg(test)]\npub(crate) mod t;\nq\n")),
+            Vec::<u8>::new()
+        );
         assert_eq!(code_body(Some(b"x\n\n\n")), b"x".to_vec());
         assert_eq!(code_body(None), Vec::<u8>::new());
     }
@@ -356,7 +377,13 @@ mod tests {
     fn text_matches_lines() {
         assert!(text_has_fixed(b"a\npub const X", "pub const X"));
         assert!(!text_has_fixed(b"", "x"));
-        assert!(text_has(b"z\npub const PRESET: &str = \"p\";", "^pub const PRESET: &str = "));
-        assert!(!text_has(b"  pub const PRESET: &str = ", "^pub const PRESET: &str = "));
+        assert!(text_has(
+            b"z\npub const PRESET: &str = \"p\";",
+            "^pub const PRESET: &str = "
+        ));
+        assert!(!text_has(
+            b"  pub const PRESET: &str = ",
+            "^pub const PRESET: &str = "
+        ));
     }
 }
