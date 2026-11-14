@@ -246,12 +246,17 @@ fn model_handler(roles: Arc<Mutex<Vec<&'static str>>>) -> Handler {
 
 // ── the synthetic verifier ──────────────────────────────────────────────────────────────────
 
-async fn verifier(asked: Seen) -> SocketAddr {
+/// Run once, the next time the verifier is asked (council p11: a test moves the Code role there,
+/// after the agent's run and before the review).
+type Hook = Arc<Mutex<Option<Box<dyn FnOnce() + Send>>>>;
+
+async fn verifier(asked: Seen, hook: Hook) -> SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
     tokio::spawn(async move {
         while let Ok((c, _)) = listener.accept().await {
             let asked = Arc::clone(&asked);
+            let hook = Arc::clone(&hook);
             tokio::spawn(async move {
                 let (r, mut w) = c.into_split();
                 let mut line = String::new();
@@ -259,6 +264,10 @@ async fn verifier(asked: Seen) -> SocketAddr {
                     return;
                 }
                 let q: Value = serde_json::from_str(&line).unwrap();
+                let once = hook.lock().unwrap().take();
+                if let Some(f) = once {
+                    f();
+                }
                 let a = json!({"noevia": "verify-result", "nonce": q["nonce"], "ok": true, "headSha": q["headSha"],
                     "exitCode": 0, "signal": null, "timedOut": false, "tail": "QA ok", "totalBytes": 5});
                 asked
@@ -397,6 +406,7 @@ struct Rig {
     core_seen: Seen,
     roles: Arc<Mutex<Vec<&'static str>>>,
     verified: Seen,
+    on_verify: Hook,
     agent: Arc<Mutex<Agent>>,
     sandbox: Arc<Mutex<Sandbox>>,
     relay: Option<Arc<noevia_server::code_machine::RelayState>>,
@@ -491,7 +501,8 @@ async fn rig(o: Opts) -> Rig {
         role["baseUrl"] = json!(format!("http://{model_addr}/v1"));
     }
     let verified: Seen = Arc::default();
-    let verify_addr = verifier(Arc::clone(&verified)).await;
+    let on_verify: Hook = Arc::default();
+    let verify_addr = verifier(Arc::clone(&verified), Arc::clone(&on_verify)).await;
     let (agent, sandbox_state) = (Arc::new(Mutex::new(Agent::Commit)), Arc::default());
     let sandbox_addr = sandbox(Arc::clone(&agent), Arc::clone(&sandbox_state)).await;
 
@@ -562,6 +573,7 @@ async fn rig(o: Opts) -> Rig {
         core_seen,
         roles,
         verified,
+        on_verify,
         agent,
         sandbox: sandbox_state,
         relay,
@@ -1824,6 +1836,75 @@ async fn a_planner_task_on_a_machine_plans_runs_reviews_and_completes_there() {
         assert_eq!(status, 200);
         let end = r.ended(&task).await;
         assert_eq!(end["status"], "completed", "{end}");
+        assert_eq!(relay.relay.active(), 0, "the run is over: its relay lease is closed");
+        r.quiet().await;
+    })
+    .await;
+}
+
+/// Council p11 (p9-1 CONTINUE 3): the Code role moves to another machine after the agent's run
+/// and before the Planner's review. Node's outcome, read from core (to be pinned by a recording):
+/// role-engine.cjs `call` refuses the review step with `model_mismatch` and its call-time text
+/// (l.353-357), code-review.cjs answers `fail(code, reason)`, and code-pipeline.cjs writes a
+/// `review.failed` row with that code and reason, moves the task to `blocked` with "The Planner’s
+/// review did not finish: <reason>" and fails the job with the same words (l.316-317, 405-409,
+/// 141). The review is never sent to either machine and no review card is offered.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_code_role_moved_before_the_review_blocks_the_task_with_node_s_words() {
+    within(async {
+        let (machine, _seen, machine_roles) = qa_role_machine().await;
+        let (other, other_seen) = qa_machine().await;
+        let r = rig(Opts {
+            executor: true,
+            pipeline: true,
+            relay_machine: Some(machine),
+            relay_port: true,
+            ..Opts::default()
+        })
+        .await;
+        let relay = r.relay.clone().unwrap();
+        let db = server_store::db_path(&r.data);
+        *r.on_verify.lock().unwrap() = Some(Box::new(move || {
+            Connection::open(&db)
+                .unwrap()
+                .execute(
+                    "INSERT OR REPLACE INTO settings(key,value) VALUES('inference:machines',?1)",
+                    [format!(r#"{{"version":1,"machines":[{{"id":"qa-m2","name":"QA machine two","address":"http://{}"}}],"assignments":{{"chatCode":{{"machine":"qa-m2","port":{},"model":"qa-code"}}}}}}"#, other.ip(), other.port())],
+                )
+                .unwrap();
+        }));
+        let (status, started) = r
+            .start(json!({"repository": "qa-repo", "prompt": GREET, "promptPreparation": "planner", "approvePlan": true}))
+            .await;
+        assert_eq!(status, 202, "{started}");
+        let task = started["taskId"].as_str().unwrap().to_string();
+        let card = r.card(&task, "approve_plan").await;
+        let approve = r.code(&format!("/{task}/approve"));
+        let (status, _) = r
+            .call(OWNER, "POST", &approve, Some(json!({"decision": "approve", "approvalId": card["id"]})))
+            .await;
+        assert_eq!(status, 200);
+
+        let end = r.ended(&task).await;
+        let moved = noevia_server::code_machine::ROLE_MOVED;
+        let blocked = format!("The Planner’s review did not finish: {moved}");
+        assert_eq!(end["status"], "failed", "{end}");
+        assert_eq!(end["error"], json!(blocked), "{end}");
+        assert_eq!(r.sandbox.lock().unwrap().prompts, 1, "the agent ran once");
+        assert_eq!(r.verified.lock().unwrap().len(), 1, "the change was measured");
+        let failed = r.last(&task, "review.failed");
+        assert_eq!((&failed["code"], &failed["reason"]), (&json!("model_mismatch"), &json!(moved)), "{failed}");
+        let stage = r.last(&task, "task.stage");
+        assert_eq!((&stage["to"], &stage["reason"]), (&json!("blocked"), &json!(blocked)), "{stage}");
+        assert!(
+            !r.journal(&task).iter().any(|row| row["type"] == "review.completed"),
+            "no verdict was recorded"
+        );
+        // The review was sent nowhere: the first machine planned only, the second was never asked
+        // for a completion, and this server's role endpoint was never called.
+        assert_eq!(*machine_roles.lock().unwrap(), vec!["planner"]);
+        assert!(other_seen.lock().unwrap().iter().all(|(_, p, _)| p != "/v1/chat/completions"));
+        assert!(r.roles.lock().unwrap().is_empty());
         assert_eq!(relay.relay.active(), 0, "the run is over: its relay lease is closed");
         r.quiet().await;
     })
