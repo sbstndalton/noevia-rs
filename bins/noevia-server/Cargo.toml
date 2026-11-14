@@ -63,6 +63,7 @@ chat-turn = { path = "../../crates/chat-turn" }
 chat-prepare = { path = "../../crates/chat-prepare" }
 edit-target-lookup = { path = "../../crates/edit-target-lookup" }
 engine-admission = { path = "../../crates/engine-admission" }
+code-engine-relay = { path = "../../crates/code-engine-relay" }
 model-stream = { path = "../../crates/model-stream" }
 research-core = { path = "../../crates/research-core" }
 project-retrieval = { path = "../../crates/project-retrieval" }

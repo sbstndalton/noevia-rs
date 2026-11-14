@@ -808,7 +808,7 @@ async fn resolve(
         }
     };
     if facts.get("machine").as_bool() == Some(true) {
-        return Err(fail(409, ON_A_MACHINE));
+        return on_a_machine(&app, &user, record, facts).await;
     }
     let e = facts.get("engine");
     let text = |v: &JValue| v.as_str().filter(|s| !s.is_empty()).map(str::to_string);
@@ -830,6 +830,86 @@ async fn resolve(
         context: facts.get("context").as_str().unwrap_or("").to_string(),
         facts: Some(facts),
     })
+}
+
+/// The Code role is on an inference machine (core said `machine: true`). Without the relay
+/// (`NOEVIA_RUST_CODE_RELAY` unset) this is the 409 it always was. With it, the harness is given the
+/// relay (code_machine.rs) for this run: its URL, a token that lives as long as the run (held by
+/// the start's gate, closed when the gate is dropped at the run's end) and the machine's model; no
+/// local inference lease and no tune pause (core: "a task whose Code role is on a machine does not
+/// use this machine's engine"). A relay refusal is the start's answer with its code and text
+/// (Node's `publicMessage`), as core's executor throws it.
+///
+/// The Planner preparation and the review stay refused on a machine (the role engine's machine pin
+/// is not the front's yet): core gives no `role` fact on a machine, so a pipeline start answers
+/// Node's 409 "The Planner pipeline is not set up on this server." and a review its "No reviewer
+/// model is configured on this server." card.
+async fn on_a_machine(
+    app: &Arc<App>,
+    user: &str,
+    record: JValue,
+    facts: JValue,
+) -> Result<Resolved, Fail> {
+    let Some(state) = app.code_relay.get().and_then(Clone::clone) else {
+        return Err(fail(409, ON_A_MACHINE));
+    };
+    let task = record.get("id").as_str().unwrap_or("").to_string();
+    let opened = state
+        .open(user, &task, None)
+        .await
+        .map_err(|r| Fail {
+            status: Some(409),
+            message: r.message.clone(),
+            public_message: Some(r.message),
+            result: JValue::Undefined,
+        })?;
+    let engine = Engine {
+        base_url: Some(opened.base_url.clone()),
+        api_key: Some(opened.token.clone()),
+        model: Some(opened.model.clone()),
+        context_tokens: opened.context_tokens,
+    };
+    let gate = MachineGate {
+        lease: std::sync::Mutex::new(Some(opened)),
+    };
+    Ok(Resolved {
+        engine: Some(engine),
+        inference: Some(Arc::new(gate)),
+        context: facts.get("context").as_str().unwrap_or("").to_string(),
+        facts: Some(facts),
+    })
+}
+
+/// A machine task's gate: no local inference lease and never paused (core's `enter: () => () =>
+/// {}`, `paused: () => false` on a machine). It carries the run's relay lease: [`enter`] hands it
+/// to the executor, which holds it for the run and drops it at the end (closing it, as core's
+/// `finally` closes `relayLease`); a start that never reaches its run closes it with the gate.
+///
+/// [`enter`]: code_harness::service::Inference::enter
+struct MachineGate {
+    lease: std::sync::Mutex<Option<code_engine_relay::Opened>>,
+}
+
+/// The relay lease as the run holds it.
+struct RelayHeld(#[allow(dead_code)] code_engine_relay::Opened);
+
+impl code_harness::executor::Holding for RelayHeld {}
+
+impl code_harness::service::Inference for MachineGate {
+    fn enter(&self) -> Result<Lease, Fail> {
+        let taken = self
+            .lease
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take();
+        Ok(match taken {
+            Some(opened) => Box::new(RelayHeld(opened)),
+            None => Box::new(()),
+        })
+    }
+    fn paused(&self) -> bool {
+        false
+    }
 }
 
 fn fail(status: u16, message: &str) -> Fail {

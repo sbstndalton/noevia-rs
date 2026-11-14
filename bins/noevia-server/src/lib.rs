@@ -32,6 +32,7 @@ pub mod chatgpt_oauth_routes;
 pub mod chatgpt_status_routes;
 pub mod code_egress;
 pub mod code_facts;
+pub mod code_machine;
 pub mod code_net;
 pub mod code_routes;
 pub mod config;
@@ -690,6 +691,9 @@ pub struct App {
     pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// Code tasks, when the front runs them (code_routes.rs, NOEVIA_CODE_EXECUTOR=rust).
     pub code_service: std::sync::OnceLock<Arc<code_harness::service::Service>>,
+    /// The Code engine relay (code_machine.rs, NOEVIA_RUST_CODE_RELAY=1): set once at boot; unset or
+    /// `None`, a Code start whose role is on an inference machine is refused as before.
+    pub code_relay: std::sync::OnceLock<Option<Arc<code_machine::RelayState>>>,
     /// Browser tasks, when the front runs them (browser_routes.rs, NOEVIA_RUST_BROWSER=1).
     pub browser_service: std::sync::OnceLock<Arc<browser_task::service::Service>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
@@ -825,6 +829,7 @@ impl App {
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             code_egress: code_egress::Issuer::new(&config),
             code_service: std::sync::OnceLock::new(),
+            code_relay: std::sync::OnceLock::new(),
             browser_service: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             mcp_discovery: std::sync::OnceLock::new(),

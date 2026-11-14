@@ -304,6 +304,9 @@ async fn server_main() -> ExitCode {
     );
     let app = App::new(config);
     noevia_server::extraction::spawn(&app);
+    // Council p4: the Code engine relay, only with NOEVIA_RUST_CODE_RELAY=1 (code_machine.rs).
+    let relay = noevia_server::code_machine::start(&app, &|k: &str| std::env::var(k).ok()).await;
+    let _ = app.code_relay.set(relay);
     // sbstndalton/noevia#2153: every chat change journal entry carries this start.
     server_projects::journal::set_start_id(app.config.start_id.as_deref().unwrap_or(""));
     app.statics.warm();
