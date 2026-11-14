@@ -274,6 +274,22 @@ pub async fn serve(
 }
 
 const BRIDGE: &str = "/internal/auto-roles/";
+/// Core's `invalidateModelReads` (its installed-list and scan reads, and the auto-roles
+/// republish), which Core ran for every non-GET `/api/models/*` request it served (#2550).
+/// Best effort and bounded ([`CORE_CACHE_LIMIT`]): Core ran it in process, so a slow Core must
+/// not hold the route that asks.
+pub async fn invalidate_model_reads(app: &App) -> bool {
+    tokio::time::timeout(
+        CORE_CACHE_LIMIT,
+        node(app, "invalidate", &serde_json::json!({})),
+    )
+    .await
+    .is_ok_and(|r| r.is_some())
+}
+
+/// The longest a route waits for one of Core's cache drops (#2550, #2618).
+pub const CORE_CACHE_LIMIT: std::time::Duration = std::time::Duration::from_secs(2);
+
 async fn node(app: &App, op: &str, ask: &serde_json::Value) -> Option<JValue> {
     let (status, bytes) = app
         .config

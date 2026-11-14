@@ -11,6 +11,14 @@ use server_projects::autotune_read as policy;
 use std::{sync::Arc, time::Duration};
 pub const PATH: &str = "/api/models/autotune";
 const FACTS: &str = "/internal/autotune-read/facts";
+
+/// Whether `method path` is the auto-tune start's POST while this front runs no native runner:
+/// then it goes to Node exactly as before #2516, through the legacy proxy (#2550).
+pub fn start_is_nodes(method: &str, path: &str, native_runner: bool) -> bool {
+    !native_runner
+        && method == "POST"
+        && crate::routes::route_for(path).is_some_and(|r| r.path == PATH)
+}
 fn unavailable() -> Response<Body> {
     reply::error(
         StatusCode::SERVICE_UNAVAILABLE,
@@ -40,9 +48,15 @@ pub async fn serve(
         Ok(Err(r)) => return r.into_response(),
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
-    // routes/models.cjs's outer gate answers a non-GET of /api/models/* first, in its own words.
-    if native_start && id.user.role != server_auth::Role::Admin {
-        return reply::error(StatusCode::FORBIDDEN, "administrator required", true);
+    // routes/models.cjs ran these for every non-GET of /api/models/* it served (#1461, #2550): the
+    // shared model reads are dropped first (whoever asked), then, past the outer gate (its 403 in
+    // its own words), the cached folder scan. Best effort: the next read refreshes either way.
+    if native_start {
+        crate::auto_roles_routes::invalidate_model_reads(app).await;
+        if id.user.role != server_auth::Role::Admin {
+            return reply::error(StatusCode::FORBIDDEN, "administrator required", true);
+        }
+        crate::model_manager_scan::clear(app).await;
     }
     if id.user.role != server_auth::Role::Admin {
         return reply::error(
@@ -134,4 +148,25 @@ async fn start(app: &Arc<App>, body: Body) -> Response<Body> {
         .headers_mut()
         .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
     response
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn only_the_starts_post_without_a_native_runner_is_nodes() {
+        assert!(start_is_nodes("POST", PATH, false));
+        assert!(!start_is_nodes("POST", PATH, true));
+        for method in ["GET", "HEAD", "PUT", "DELETE", "OPTIONS"] {
+            assert!(!start_is_nodes(method, PATH, false), "{method}");
+        }
+        for path in [
+            "/api/models/autotune/cancel",
+            "/api/models/autotune/resume",
+            "/api/models",
+        ] {
+            assert!(!start_is_nodes("POST", path, false), "{path}");
+        }
+    }
 }

@@ -33,6 +33,8 @@ pub mod ini;
 pub mod model_state;
 // Port contract row J: the one maintenance lease authority (replaces core model-maintenance-lease.cjs).
 pub mod lease;
+// sbstndalton/noevia#2550 item 2: the auto-tune load advisor (core load-advisor.cjs).
+pub mod load_advisor;
 pub mod node_lease;
 pub mod reload;
 pub mod router;
