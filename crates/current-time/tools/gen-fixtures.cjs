@@ -68,7 +68,7 @@ const ODD = [
 ];
 const NOT_A_ZONE = [{}, { timezone: 5 }, { timezone: null }, { timezone: {} }, { timezone: [] }, { timezone: ['UTC'] },
   { timezone: true }, { timezone: false }, { timezone: '' }, { timezone: 'UTC', extra: 1 }, { other: 'Europe/Berlin' }];
-const PROCESS_ZONES = ['UTC', 'Europe/Berlin', 'Asia/Kolkata', 'America/Punta_Arenas', 'Australia/Lord_Howe', 'Europe/Moscow', 'Bogus/Zone'];
+const PROCESS_ZONES = ['UTC', 'America/New_York', 'Europe/Berlin', 'Asia/Kolkata', 'America/Punta_Arenas', 'Australia/Lord_Howe', 'Europe/Moscow', 'Bogus/Zone'];
 // Where chrono-tz's tz release (2025b) and Node's (2026c) differ: Morocco at +00 from 2026-09-20T01:00Z, British
 // Columbia and Alberta keeping daylight time from 2026-11-01. Before, at and after the changes.
 const TZ_CHANGES = ['Africa/Casablanca', 'Africa/El_Aaiun', 'America/Vancouver', 'America/Edmonton', 'Canada/Pacific', 'Canada/Mountain'];
