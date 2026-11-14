@@ -58,6 +58,18 @@ pub const MOVED_BACK: &str = "The Code role moved back to this machine during th
 /// code-machine.cjs `open` with `expect` not the target's key.
 pub const MOVED_ELSEWHERE: &str = "The Code role moved to another machine or model during this task, and one task runs on one model. Start the task again.";
 
+/// code-harness.cjs before an Executor turn: `lease` is the run's relay key (`None`: no relay),
+/// `pinned` the turn's `machine` option (`Undefined`: not given, no check; `null`: pinned here).
+pub fn machine_refusal(lease: Option<&str>, pinned: &JValue) -> Option<&'static str> {
+    match (lease, pinned) {
+        (_, JValue::Undefined) => None,
+        (Some(key), JValue::Str(p)) if p == key => None,
+        (Some(_), _) => Some(MOVED_ELSEWHERE),
+        (None, p) if p.truthy() => Some(MOVED_BACK),
+        (None, _) => None,
+    }
+}
+
 /// code-service.cjs's refusal when the pipeline cannot be built for this start.
 pub const NOT_SET_UP: &str = "The Planner pipeline is not set up on this server.";
 
@@ -365,13 +377,7 @@ impl PipeHarness {
     /// code-harness.cjs before a turn: `relay.open({ expect: machine })` on a machine, else a
     /// pinned machine with the role back here is refused. `opts.machine` absent: no check.
     pub fn machine_refusal(&self, pinned: &JValue) -> Option<&'static str> {
-        match (&self.machine, pinned) {
-            (_, JValue::Undefined) => None,
-            (Some(key), JValue::Str(p)) if p == key => None,
-            (Some(_), _) => Some(MOVED_ELSEWHERE),
-            (None, p) if p.truthy() => Some(MOVED_BACK),
-            (None, _) => None,
-        }
+        machine_refusal(self.machine.as_deref(), pinned)
     }
 
     fn run(&self, h: driver::RunHandle) -> Option<RunHandle> {
@@ -686,5 +692,28 @@ impl<D: role_engine::Deps + 'static> driver::Session for EngineSession<D> {
             Ok(a) => a.to_json(),
             Err(f) => f.to_json(),
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_executor_turn_s_machine_is_code_harness_s_expect() {
+        let key = "qa-m1|http://10.9.0.5:8080|qa-coder";
+        let on = |p: &JValue| machine_refusal(Some(key), p);
+        let here = |p: &JValue| machine_refusal(None, p);
+        // Not given: no check, on a machine or here.
+        assert_eq!(on(&JValue::Undefined), None);
+        assert_eq!(here(&JValue::Undefined), None);
+        // Pinned on the lease's machine: runs.
+        assert_eq!(on(&s(key)), None);
+        // Pinned elsewhere, or here (`null`) while the lease is on a machine: relay.open's refusal.
+        assert_eq!(on(&s("qa-m2|http://10.9.0.6:8080|qa-coder")), Some(MOVED_ELSEWHERE));
+        assert_eq!(on(&JValue::Null), Some(MOVED_ELSEWHERE));
+        // No relay: a pinned machine is "moved back here"; `null` runs.
+        assert_eq!(here(&s(key)), Some(MOVED_BACK));
+        assert_eq!(here(&JValue::Null), None);
     }
 }

@@ -553,14 +553,7 @@ pub fn role_of(
         let (owner, target) = code_machine::front_machine_of(facts)?;
         let state = app.code_relay.get().and_then(Clone::clone)?;
         let endpoint = code_machine::role_endpoint_on(&target);
-        return Some((
-            endpoint,
-            Some(code_machine::MachineRole {
-                state,
-                owner,
-                target,
-            }),
-        ));
+        return Some((endpoint, Some(state.role(&owner, target))));
     }
     Some((role_endpoint(facts)?, None))
 }
@@ -657,6 +650,20 @@ pub struct FrontRoles {
     app: std::sync::Weak<App>,
     client: reqwest::Client,
     machine: Option<code_machine::MachineRole>,
+}
+
+impl FrontRoles {
+    /// A role engine's dependencies on the Code role's machine alone (no App: no keep-list, no
+    /// roles file, no budget check, none of which a machine pin reads). For tests of the machine
+    /// path through the front's own adapters.
+    pub fn on_machine(machine: code_machine::MachineRole) -> FrontRoles {
+        FrontRoles {
+            endpoint: code_machine::role_endpoint_on(&machine.target),
+            app: std::sync::Weak::new(),
+            client: reqwest::Client::new(),
+            machine: Some(machine),
+        }
+    }
 }
 
 /// A response body, chunk by chunk.
@@ -772,7 +779,7 @@ impl role_engine::Deps for FrontRoles {
             return Err(transport("no machine"));
         };
         let sent = tokio::select! {
-            r = m.state.machines.role_fetch(&req) => r?,
+            r = m.machines.role_fetch(&req) => r?,
             () = cancel.cancelled() => return Err(transport("aborted")),
         };
         Ok(role_engine::Response {
@@ -787,7 +794,7 @@ impl role_engine::Deps for FrontRoles {
         error: &role_engine::TransportError,
     ) -> Option<String> {
         let m = self.machine.as_ref()?;
-        Some(m.state.machines.role_connect_error(target, error))
+        Some(m.machines.role_connect_error(target, error))
     }
 
     fn log(&self, entry: JValue) {
