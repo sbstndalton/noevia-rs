@@ -34,7 +34,7 @@
 //!   the audit log, the transcript append and the tombstones, and the approval registry (S9).
 
 use std::collections::VecDeque;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -497,7 +497,7 @@ async fn drive(
         tx,
         queued,
         saving: Mutex::new(Saving::new(TurnRecord::new(crate::identity::now_ms))),
-        partial_ended: Mutex::new(false),
+        partial: PartialGate::default(),
         lease: Mutex::new(None),
         lease_token: Mutex::new(None),
         approvals,
@@ -506,9 +506,15 @@ async fn drive(
     for v in &forwarded {
         host.observe(v, false);
     }
-    let chat = p.record.then(|| p.chat_id.clone()).flatten();
+    // chat.cjs partialId: the chat's safe id; one with nothing left saves no partial.
+    let chat = p
+        .record
+        .then(|| p.chat_id.clone())
+        .flatten()
+        .filter(|c| !chat_turn::after::safe_chat_id(c).is_empty());
     if let Some(c) = &chat {
-        host.end_partial(&chat_turn::after::safe_chat_id(c));
+        // What core's saver left at the cut; the 4 s saver below goes on (noevia#2750: this once ended it).
+        clear_partial(&host.user_dir, &chat_turn::after::safe_chat_id(c));
     }
     let ticks = tokio::spawn(ticks(Arc::clone(&host), chat.clone()));
     // Node's `close` handler gives the lease back the moment the client leaves, before the turn's
@@ -524,7 +530,7 @@ async fn drive(
     let helpers = helpers();
     let ended = native::run(&*host, process, &helpers, &p).await;
     ticks.abort();
-    // A partial write in progress finishes before the turn's end is saved (review F1).
+    // A tick already writing may outlive the abort: the gate holds the turn's end until it is done (review F1).
     let _ = ticks.await;
     watcher.abort();
     let left = matches!(ended, native::Ended::Left) || host.left();
@@ -661,6 +667,80 @@ fn helpers() -> Helpers<'static> {
     }
 }
 
+/// The 4 s partial saver's gate (review F1): its ticks write until the turn's end has kept or cleared the
+/// partial, never after. Only the end closes it; the start of the turn only clears what core left (noevia#2750).
+#[derive(Default)]
+struct PartialGate(Mutex<bool>);
+
+impl PartialGate {
+    /// Runs `write` unless the turn's end came first (under the gate's lock, so the end cannot come between).
+    fn tick(&self, write: impl FnOnce()) {
+        let Ok(ended) = self.0.lock() else {
+            return;
+        };
+        if !*ended {
+            write();
+        }
+    }
+
+    /// The turn's end: `then` runs under the lock, and no tick writes after it.
+    fn end(&self, then: impl FnOnce()) {
+        let mut ended = self.0.lock().unwrap_or_else(|e| e.into_inner());
+        *ended = true;
+        then();
+    }
+}
+
+/// chat-partial.cjs endPartial (sbstndalton/noevia#2146): a finished reply's partial is removed; one that cannot be
+/// removed loses its `running` marker instead, so the history route does not take it for a reply still running here
+/// (now that the 4 s saver writes that marker again, noevia#2750).
+fn end_partial_file(user_dir: &Path, chat: &str) {
+    let path = server_projects::partial::file_for(user_dir, chat);
+    match std::fs::remove_file(&path) {
+        Ok(()) => return,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return,
+        Err(e) => eprintln!(
+            "chat native: could not remove a finished reply's partial; rewriting it without the running marker: {e}"
+        ),
+    }
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return;
+    };
+    let Ok(JValue::Obj(items)) = wtf16::parse(&text) else {
+        return;
+    };
+    if !items.iter().any(|(k, _)| k == "running") {
+        return;
+    }
+    let ended = JValue::Obj(items.into_iter().filter(|(k, _)| k != "running").collect());
+    write_unmarked(&path, &js::stringify(&ended));
+}
+
+/// chat-partial.cjs writeUnmarked: atomically when the folder allows it, else in place. False when neither worked.
+fn write_unmarked(path: &Path, text: &str) -> bool {
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    if crate::gdrive::write_atomic(path, text).is_ok() {
+        return true;
+    }
+    match std::fs::write(path, text) {
+        Ok(()) => true,
+        Err(e) => {
+            eprintln!("chat native: could not rewrite a finished reply's partial either; its running marker stays: {e}");
+            false
+        }
+    }
+}
+
+/// Removes a chat's partial file (chat-partial.cjs clearPartial, at the start of a turn).
+fn clear_partial(user_dir: &Path, chat: &str) {
+    let path = server_projects::partial::file_for(user_dir, chat);
+    if std::fs::remove_file(&path).is_err() && path.exists() {
+        eprintln!("chat native: could not remove a finished reply's partial");
+    }
+}
+
 /// One native turn's side of this process.
 pub(crate) struct FrontHost {
     app: Arc<App>,
@@ -670,8 +750,8 @@ pub(crate) struct FrontHost {
     tx: mpsc::UnboundedSender<Bytes>,
     queued: Arc<Queued>,
     saving: Mutex<Saving>,
-    /// Set by the turn's end under its lock: a partial tick that comes later writes nothing (review F1).
-    partial_ended: Mutex<bool>,
+    /// Closed by the turn's end: a partial tick that comes later writes nothing (review F1).
+    partial: PartialGate,
     lease: Mutex<Option<engine_admission::Lease>>,
     /// The turn's `x-noevia-lease` value, as [`Host::lease`] returned it (the load bridge carries it).
     lease_token: Mutex<Option<String>>,
@@ -701,12 +781,7 @@ impl FrontHost {
 
     /// The 4 s partial save: nothing once the turn's end has kept or cleared the partial.
     fn tick_partial(&self, safe: &str, file: &JValue) {
-        let Ok(ended) = self.partial_ended.lock() else {
-            return;
-        };
-        if !*ended {
-            self.write_partial(safe, file);
-        }
+        self.partial.tick(|| self.write_partial(safe, file));
     }
 
     fn write_partial(&self, safe: &str, file: &JValue) {
@@ -1593,18 +1668,17 @@ impl Keep for FrontHost {
     }
 
     fn keep_partial(&self, chat: &str, file: &JValue) {
-        let mut ended = self.partial_ended.lock().unwrap_or_else(|e| e.into_inner());
-        *ended = true;
-        self.write_partial(chat, file);
+        // chat-partial.cjs finish({ keep }): written without the running marker; if that fails, endPartial.
+        self.partial.end(|| {
+            let path = server_projects::partial::file_for(&self.user_dir, chat);
+            if !write_unmarked(&path, &js::stringify(file)) {
+                end_partial_file(&self.user_dir, chat);
+            }
+        });
     }
 
     fn end_partial(&self, chat: &str) {
-        let mut ended = self.partial_ended.lock().unwrap_or_else(|e| e.into_inner());
-        *ended = true;
-        let path = server_projects::partial::file_for(&self.user_dir, chat);
-        if std::fs::remove_file(&path).is_err() && path.exists() {
-            eprintln!("chat native: could not remove a finished reply's partial");
-        }
+        self.partial.end(|| end_partial_file(&self.user_dir, chat));
     }
 
     fn tombstoned(&self, chat: &str) -> bool {
@@ -1723,6 +1797,59 @@ mod tests {
         let q = question("qa-user", &no_chat).unwrap();
         assert_eq!((q.chat, q.scope, q.binding), (None, None, None));
         assert!(question("qa-user", &js::obj([("once", JValue::Bool(true))])).is_none());
+    }
+
+    #[test]
+    fn the_start_of_a_turn_clears_the_partial_and_the_saver_writes_until_the_end() {
+        // noevia#2750: the start-of-turn clear once closed the gate, so no 4 s tick ever wrote.
+        let dir = tempfile::tempdir().unwrap();
+        let path = server_projects::partial::file_for(dir.path(), "qa-chat-1");
+        let write = || {
+            std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+            std::fs::write(&path, "{}").unwrap();
+        };
+        write();
+        let gate = PartialGate::default();
+        clear_partial(dir.path(), "qa-chat-1");
+        assert!(!path.exists(), "core's partial is cleared at the start");
+        gate.tick(write);
+        assert!(path.exists(), "a tick after the start writes the partial");
+        gate.end(|| clear_partial(dir.path(), "qa-chat-1"));
+        assert!(!path.exists());
+        gate.tick(write);
+        assert!(!path.exists(), "no tick writes after the turn's end");
+        clear_partial(dir.path(), "qa-chat-1");
+    }
+
+    #[test]
+    fn a_partial_that_cannot_be_removed_loses_its_running_marker() {
+        // chat-partial.cjs endPartial (#2146): a folder that refuses the unlink keeps the file, unmarked.
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let path = server_projects::partial::file_for(dir.path(), "qa-chat-2");
+        let folder = path.parent().unwrap().to_path_buf();
+        std::fs::create_dir_all(&folder).unwrap();
+        std::fs::write(
+            &path,
+            r#"{"role":"assistant","content":"QA","running":{"start":"0123456789abcdef0123456789abcdef"},"savedAt":1}"#,
+        )
+        .unwrap();
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o555)).unwrap();
+        let refused = std::fs::File::create(folder.join("probe")).is_err();
+        if refused {
+            // The folder refuses the unlink and the rename: rewritten in place, without the marker.
+            end_partial_file(dir.path(), "qa-chat-2");
+            assert_eq!(
+                std::fs::read_to_string(&path).unwrap(),
+                r#"{"role":"assistant","content":"QA","savedAt":1}"#
+            );
+        }
+        std::fs::set_permissions(&folder, std::fs::Permissions::from_mode(0o755)).unwrap();
+        // An ordinary end removes it; a missing file is nothing to do.
+        end_partial_file(dir.path(), "qa-chat-2");
+        assert!(!path.exists());
+        end_partial_file(dir.path(), "qa-chat-2");
+        assert!(!path.exists());
     }
 
     #[test]
