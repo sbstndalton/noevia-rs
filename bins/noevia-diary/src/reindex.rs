@@ -4,8 +4,9 @@
 //! Python keeps the tenant writer lock: it calls this only while it holds it, and says so with the
 //! writer header (a call without it is refused). This process also takes its own writer slot for
 //! the tenant, as a forwarded write does. The chunk index is written only inside the tenant's
-//! primary reservation (Python's `index_publication`), refused while a backup effect is unsettled
-//! or the index outbox holds paths (draining it stays with Python, which declines here first).
+//! primary reservation (Python's `index_publication`), refused while a backup effect is unsettled.
+//! As `_reindex_dirty`, the index outbox is drained first (shift 4: Python drains it before it
+//! calls, so this finds it empty; without Python it is this pass's own drain).
 //!
 //! For each dirty document (Python's order): its current text is read, `reindex_file` embeds the
 //! new and changed chunks and writes them, and the dirty mark is cleared unless an embedding is
@@ -187,7 +188,7 @@ pub async fn internal(
 }
 
 /// The re-index of a tenant's dirty documents while its writer slot is `held` (Python's
-/// `_reindex_dirty` body after the outbox drain): read each, `reindex_file`, clear the mark unless
+/// `_reindex_dirty`, the outbox drain included): read each, `reindex_file`, clear the mark unless
 /// an embedding is still pending. None: nothing can be re-indexed here (no index file, not ready
 /// for a write, no vector extension), and every mark stays.
 pub(crate) fn reindex_held(
@@ -204,6 +205,9 @@ pub(crate) fn reindex_held(
         return None;
     };
     let journal = Journal::open(&index_path, held).ok()?;
+    // Shift 4, step 2: `_reindex_dirty` drains the index outbox first (under the same lock), so
+    // the pass needs no Python drain before it (the index publication refuses an undrained one).
+    drain_outbox(&journal).ok()?;
     let documents = journal.dirty_documents().ok()?;
     // Adoption allowed: the writer lock is held (Python D5).
     let mut retriever = Retriever::open_existing(
@@ -238,6 +242,151 @@ pub(crate) fn reindex_held(
         }
     }
     Some(out)
+}
+
+/// Python `drain_index_outbox` (workspace_import.py): every outbox path is marked dirty, then its
+/// row removed, inside one primary reservation (recovery's drain is this one).
+pub(crate) fn drain_outbox(journal: &Journal<'_>) -> Result<(), crate::write::Error> {
+    journal.primary_reservation(|r| {
+        for path in r.outbox()? {
+            r.mark_dirty(&path)?;
+            r.transferred(&path)?;
+        }
+        Ok(())
+    })
+}
+
+/// Shift 4, step 1 (main mode, the embedding owner here): Python's `_reindex_today`, started
+/// after a native append that reached the corpus (the 200 reply, not the queued 202), in its own
+/// thread as Python's handler does. The reply never waits for it.
+///
+/// As Python: the document is read and its new and changed chunks embedded without the writer
+/// slot (#858/#859); then, under the slot, the document is read again and the plan applied only
+/// if it still holds the embedded text ("background reindex skipped" otherwise: whichever write
+/// changed it owns its re-index). Failures are logged ("background reindex failed") and leave
+/// the document dirty.
+///
+/// Named differences (D24): the native append marks its document dirty before it writes (D22),
+/// which Python's append does not, so after the plan is applied with nothing pending, for the
+/// target still active, the mark is cleared here (otherwise the tenant's native reads would
+/// decline until the next full pass). The outbox is drained before the apply, because this
+/// process's index publication refuses an undrained outbox where Python's does not. Without the
+/// vector extension, or with an index that still needs its legacy table adopted (a write), the
+/// run gives up before embedding ("background reindex failed", the mark stays) where Python
+/// would go on; `reindex_held` and the plan endpoint decline those cases the same way.
+pub(crate) fn reindex_today(
+    app: Arc<App>,
+    uid: String,
+    document: String,
+    embedder: Arc<HttpEmbedder>,
+) {
+    let spawned = std::thread::Builder::new()
+        .name("diary-reindex-today".into())
+        .spawn(move || {
+            let run = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                today(&app, &uid, &document, &embedder)
+            }));
+            match run {
+                Ok(Ok(Today::Applied | Today::Fenced)) => {}
+                Ok(Ok(Today::Changed)) => eprintln!(
+                    "noevia-diary: background reindex skipped: the document changed while it was being embedded"
+                ),
+                Ok(Err(e)) => eprintln!("noevia-diary: background reindex failed: {e}"),
+                Err(_) => eprintln!("noevia-diary: background reindex failed: panic"),
+            }
+        });
+    if spawned.is_err() {
+        eprintln!("noevia-diary: background reindex failed: no thread");
+    }
+}
+
+/// How one background re-index ended (public for its tests).
+#[derive(Debug, PartialEq, Eq)]
+pub enum Today {
+    /// The plan was written (the mark cleared when nothing is pending).
+    Applied,
+    /// The document no longer holds the embedded text: nothing written.
+    Changed,
+    /// The tenant was deleted meanwhile: nothing written.
+    Fenced,
+}
+
+/// The body of [`reindex_today`], in the calling thread (public for its tests).
+pub fn today(
+    app: &App,
+    uid: &str,
+    document: &str,
+    embedder: &Arc<HttpEmbedder>,
+) -> Result<Today, String> {
+    let root = app.data_root.join("users").join(uid);
+    let index_path = root.join("managed-index.db");
+    let read = || -> Result<Option<String>, String> {
+        // Python reads through the tenant's backend; a pending journal row does not stop it.
+        match managed::ready_for_write(&root, uid, false) {
+            Ok(Some((store, _))) => store.get_text(document).map_err(|e| e.0),
+            Ok(None) => Err("the tenant is not a ready managed Diary".into()),
+            Err(e) => Err(e.0),
+        }
+    };
+    let text = read()?;
+    // Planned and embedded without the slot: nothing is written on this connection.
+    let pending = {
+        let mut retriever = Retriever::open_existing(
+            &index_path,
+            Shared(embedder.clone()),
+            crate::answer::ReadOnly,
+            Options {
+                adopt_on_read: false,
+                ..Options::default()
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        if !retriever.vec_available() {
+            return Err("vector support unavailable".into());
+        }
+        if diary_retrieval::slots::needs_legacy_adoption(
+            retriever.connection(),
+            Some(&embedder.active()),
+        )
+        .unwrap_or(true)
+        {
+            // Adoption is a write: left to the next pass under the slot.
+            return Err("the index needs adoption first".into());
+        }
+        retriever
+            .plan(document, text.as_deref())
+            .map_err(|e| e.to_string())?
+    };
+    let plan = pending.embed(&Shared(embedder.clone()));
+    let outcome = app.writers.with_lock_as(uid, None, app.write_wait, |held| {
+        if crate::backup::pending(&root) {
+            return Err("backup settlement uncertain".to_string());
+        }
+        if read()? != text {
+            return Ok(Today::Changed);
+        }
+        let journal = Journal::open(&index_path, held).map_err(|e| e.into_message())?;
+        drain_outbox(&journal).map_err(|e| e.into_message())?;
+        let mut retriever = Retriever::open_existing(
+            &index_path,
+            Shared(embedder.clone()),
+            Reserved(&journal),
+            Options::default(),
+        )
+        .map_err(|e| e.to_string())?;
+        retriever.apply_reindex(&plan).map_err(|e| e.to_string())?;
+        if !retriever.pending_embeddings() && plan.target.as_ref() == Some(&embedder.active()) {
+            journal
+                .clear_dirty(document)
+                .map_err(|e| e.into_message())?;
+        }
+        Ok(Today::Applied)
+    });
+    match outcome {
+        Ok(result) => result,
+        Err(crate::write::Refused::Fenced) => Ok(Today::Fenced),
+        Err(crate::write::Refused::Busy) => Err("the tenant's writer slot is busy".into()),
+    }
 }
 
 /// S6b (main mode, the embedding owner here): a native PUT /api/file or edit re-indexes the

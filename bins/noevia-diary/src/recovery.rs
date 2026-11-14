@@ -14,6 +14,154 @@ use std::time::{Duration, Instant};
 pub struct State {
     pub recovered: bool,
     transient_until: Option<Instant>,
+    /// Shift 4, step 4: this process ran Python's whole `_recover_state` for the tenant (replay,
+    /// outbox, the once-per-process sweep and the dirty re-index): its reads need no stamp.
+    pub serving: bool,
+    /// After a failed attempt, reads leave recovery to the child until then.
+    retry_reads_at: Option<Instant>,
+}
+
+/// How long reads leave a tenant to the child after its recovery here failed.
+const READS_RETRY: Duration = Duration::from_secs(5);
+/// How long a read waits for the writer slot to recover the tenant (busy: the child serves it).
+const READS_SLOT_WAIT: Duration = Duration::from_secs(2);
+
+/// Has this process recovered the tenant for its reads (and nothing forwarded since undid it)?
+pub fn is_serving(app: &crate::server::App, uid: &str) -> bool {
+    let state = app
+        .recovered
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(uid)
+        .cloned();
+    state.is_some_and(|s| s.lock().unwrap_or_else(|e| e.into_inner()).serving)
+}
+
+/// A request the child serves may change what recovery covers (Python's workspace operations,
+/// trash and import set `recovered = False` on its state): the next read recovers here again.
+/// The once-per-process sweep stays done.
+pub fn unserve(app: &crate::server::App, uid: &str) {
+    let state = app
+        .recovered
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .get(uid)
+        .cloned();
+    if let Some(s) = state {
+        s.lock().unwrap_or_else(|e| e.into_inner()).serving = false;
+    }
+}
+
+/// Shift 4, step 4 (DIARY_RUST_RECOVERY=on in main mode, the embedding owner here, a writer
+/// tenant of this process): Python's `_recover_state` for the tenant's reads, in this process.
+/// Under the tenant's writer slot (Python takes the writer lock before its recover lock): the
+/// journal replay, the outbox drain and the once-per-process sweep (`recover`), then
+/// `_reindex_dirty` (`reindex::reindex_held`). As in Python the state counts as recovered even
+/// when some document's re-index failed ("edit reindex pending", the mark stays); it does not
+/// when the pass cannot run here at all (no index, no vector extension, an unsupported journal
+/// row, an unsettled backup, the slot busy for longer than READS_SLOT_WAIT): the child then
+/// recovers and serves as before. True when the tenant's reads may be served without the
+/// child's stamp. The caller has checked the request's credentials (as Python's handlers do
+/// before `_tenant_state`).
+///
+/// Named difference (D27): the child's own state for the tenant still sweeps every document
+/// once on its first request of the tenant (Python's `dirty_on_recover`), under the lease it
+/// takes on this process's slot: a second re-index pass over unchanged text, nothing else.
+pub fn recover_for_reads(app: &crate::server::App, uid: &str) -> bool {
+    let Some(embedder) = app.save_embedder.get().cloned() else {
+        return false;
+    };
+    let state = app
+        .recovered
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .entry(uid.to_owned())
+        .or_default()
+        .clone();
+    {
+        let s = state.lock().unwrap_or_else(|e| e.into_inner());
+        if s.serving {
+            return true;
+        }
+        if s.retry_reads_at.is_some_and(|at| Instant::now() < at) {
+            return false;
+        }
+    }
+    let root = app.data_root.join("users").join(uid);
+    let retry_later = || {
+        state
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .retry_reads_at = Some(Instant::now() + READS_RETRY);
+        false
+    };
+    // Cheap checks first, without the slot: a tenant that cannot be recovered here (not a ready
+    // managed one, an unsettled backup) goes to the child at once.
+    if crate::backup::pending(&root)
+        || !matches!(
+            crate::managed::ready_for_write(&root, uid, false),
+            Ok(Some(_))
+        )
+    {
+        return retry_later();
+    }
+    let done = app
+        .writers
+        .with_lock_as(uid, None, Some(READS_SLOT_WAIT), |held| {
+            // Python re-checks under its recover lock: a concurrent first read did it already.
+            if state.lock().unwrap_or_else(|e| e.into_inner()).serving {
+                return true;
+            }
+            if crate::backup::pending(&root) {
+                return false;
+            }
+            let Ok(Some((reader, settings))) = crate::managed::ready_for_write(&root, uid, false)
+            else {
+                return false;
+            };
+            let Some(layout) = crate::corpus::layout(&app.corpus, &settings) else {
+                return false;
+            };
+            let Ok(journal) = write::Journal::open(&root.join("managed-index.db"), held) else {
+                return false;
+            };
+            {
+                let ctx = Ctx {
+                    recovery: &state,
+                    reader: &reader,
+                    store: write::Store::new(reader.db_path()),
+                    journal,
+                    layout: &layout,
+                };
+                if !supported(&ctx) || recover(&ctx).is_err() {
+                    return false;
+                }
+            }
+            match crate::reindex::reindex_held(&root, uid, held, &embedder) {
+                None => false,
+                Some(out) => {
+                    for d in out.iter().filter(|d| !d["error"].is_null()) {
+                        eprintln!(
+                            "noevia-diary: edit reindex pending: {}",
+                            d["error"].as_str().unwrap_or("error")
+                        );
+                    }
+                    // Set while the slot is held, so a queued first read finds it done.
+                    state.lock().unwrap_or_else(|e| e.into_inner()).serving = true;
+                    // The replay may have written: the child hears of it as of a native write
+                    // (its state is then recovered again, without a sweep).
+                    app.writers.note_native_write(uid);
+                    eprintln!("noevia-diary: a writer tenant was recovered here for its reads");
+                    true
+                }
+            }
+        })
+        .unwrap_or(false);
+    if done {
+        true
+    } else {
+        retry_later()
+    }
 }
 
 fn permanent(s: impl Into<String>) -> WriteFailure {
@@ -225,13 +373,7 @@ pub fn apply_pending(c: &Ctx<'_>, limit: i64) -> Result<usize, write::Error> {
 /// inside it before anything, and every mark re-checks that the reserved primary is still
 /// the file it holds.
 pub fn drain_index_outbox(c: &Ctx<'_>) -> Result<(), write::Error> {
-    c.journal.primary_reservation(|r| {
-        for path in r.outbox()? {
-            r.mark_dirty(&path)?;
-            r.transferred(&path)?;
-        }
-        Ok(())
-    })
+    crate::reindex::drain_outbox(&c.journal)
 }
 
 /// Native replay recovery; retrieval remains Python-owned. Dirty marks are retained

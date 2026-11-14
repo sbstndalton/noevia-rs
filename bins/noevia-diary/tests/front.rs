@@ -958,3 +958,186 @@ async fn the_child_gets_the_exact_request_target() {
     );
     assert_eq!(seen[0].header("host"), Some("diary"));
 }
+
+/// Bag of hashed words (the retrieval fixtures' fake embedder).
+fn fake_vector(text: &str) -> Vec<f64> {
+    use sha2::Digest;
+    let mut v = vec![0.0; 16];
+    for token in text
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| !t.is_empty())
+    {
+        let h = sha2::Sha256::digest(format!("nomic-v1|{token}").as_bytes());
+        v[usize::from(h[0]) % 16] += 1.0 + f64::from(h[1] % 4) * 0.5;
+    }
+    v[15] += 0.25;
+    v
+}
+
+struct FakeEmbedder;
+
+impl diary_retrieval::index::Embedder for FakeEmbedder {
+    fn active(&self) -> diary_retrieval::Target {
+        diary_retrieval::Target::new(None, "qa-embed-a", "nomic-v1")
+    }
+    fn embed(
+        &self,
+        _t: &diary_retrieval::Target,
+        texts: &[&str],
+        _k: diary_retrieval::index::Kind,
+    ) -> Result<Vec<Vec<f64>>, String> {
+        Ok(texts.iter().map(|t| fake_vector(t)).collect())
+    }
+}
+
+async fn stub_embeddings() -> String {
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let app = axum::Router::new().fallback(|req: Request<Body>| async move {
+        let bytes = axum::body::to_bytes(req.into_body(), 1 << 22)
+            .await
+            .unwrap_or_default();
+        let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
+        let data: Vec<serde_json::Value> = body["input"]
+            .as_array()
+            .map(|a| a.as_slice())
+            .unwrap_or_default()
+            .iter()
+            .enumerate()
+            .map(|(i, t)| serde_json::json!({"index": i, "embedding": fake_vector(t.as_str().unwrap_or(""))}))
+            .collect();
+        Response::builder()
+            .header("content-type", "application/json")
+            .body(Body::from(serde_json::json!({"data": data}).to_string()))
+            .unwrap()
+    });
+    tokio::spawn(async move { axum::serve(listener, app).await });
+    format!("http://{addr}/v1")
+}
+
+fn pending_row(root: &Path, id: &str, day: &str, xid: &str) {
+    let row = serde_json::json!({"day": day, "xid": xid, "sub_header": "09:15 | Synthetic",
+        "body": diary_corpus_write::render_exchange("QA synthetic note.", "", xid)});
+    rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db"))
+        .unwrap()
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES (?,'2030',?,?)",
+            rusqlite::params![id, "exchange", row.to_string()],
+        )
+        .unwrap();
+}
+
+fn applied(root: &Path, id: &str) -> i64 {
+    rusqlite::Connection::open(root.join("users").join(UID).join("managed-index.db"))
+        .unwrap()
+        .query_row("SELECT applied FROM journal WHERE id=?", [id], |r| r.get(0))
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_writer_tenant_is_recovered_here_and_read_without_the_childs_stamp() {
+    // DIARY_RUST_RECOVERY=on: the first read of a writer tenant recovers it here (Python's
+    // _recover_state) instead of going to the child; a request without credentials recovers
+    // nothing; a request the child serves that is not a read undoes the fact.
+    let dir = tempfile::tempdir().unwrap();
+    let day = "## Sunday, January 6, 2030\n\n### 09:15 — walk\n\n**Me:** Walked by the river.\n\n**Assistant:** Noted.\n\n<!-- xid:aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee -->\n";
+    managed_tenant(
+        dir.path(),
+        &[("Entries/2030/January/January 6, 2030.md", day)],
+    );
+    let index = dir.path().join("users").join(UID).join("managed-index.db");
+    drop(
+        diary_retrieval::index::Retriever::open(
+            &index,
+            FakeEmbedder,
+            diary_retrieval::NoGuard,
+            diary_retrieval::index::Options::default(),
+        )
+        .unwrap(),
+    );
+    pending_row(dir.path(), "qa-row-1", "2030-01-07", "abcdef71");
+    let (child_port, log) = stub_child().await;
+    let f = Arc::new(
+        Front::new(CTL.into(), SECRET.into(), child_port)
+            .with_write_wait(std::time::Duration::from_millis(400))
+            .with_recovery_here(true),
+    );
+    let public = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let control = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let (public_addr, control_addr) = (public.local_addr().unwrap(), control.local_addr().unwrap());
+    tokio::spawn(front::serve_with(public, f.clone(), front::public));
+    tokio::spawn(front::serve_with(control, f.clone(), front::control));
+    let client = reqwest::Client::new();
+    let r = client
+        .post(format!("http://{control_addr}/internal/child/config"))
+        .header("x-noevia-diary-control", CTL)
+        .body(child_config_with(dir.path(), KEY, &[UID]))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(r.status(), 200);
+    let engine = diary_answer::model::Config {
+        base_url: stub_embeddings().await,
+        timeout_s: 30.0,
+        max_retries: 1,
+        ..diary_answer::model::Config::default()
+    };
+    let embedder = diary_answer::embedder::HttpEmbedder::fixed(
+        engine,
+        diary_retrieval::Target::new(None, "qa-embed-a", "nomic-v1"),
+        tokio::runtime::Handle::current(),
+    );
+    assert!(f
+        .app()
+        .unwrap()
+        .save_embedder
+        .set(Arc::new(embedder))
+        .is_ok());
+    let get = |token: &'static str| {
+        client
+            .get(format!("http://{public_addr}/api/months"))
+            .header("authorization", format!("Bearer {token}"))
+            .header("x-cowork-user-id", UID)
+            .header(
+                "x-cowork-tenant-assertion",
+                sign("GET", "/api/months", "", b""),
+            )
+            .send()
+    };
+    let nostamp = || {
+        client
+            .post(format!("http://{public_addr}/nostamp"))
+            .header("authorization", format!("Bearer {TOKEN}"))
+            .header("x-cowork-user-id", UID)
+            .header(
+                "x-cowork-tenant-assertion",
+                sign("POST", "/nostamp", "", b""),
+            )
+            .send()
+    };
+    // Without the service token: nothing recovered here, the child answers (and stamps).
+    assert_eq!(get("qa-wrong-token").await.unwrap().status(), 207);
+    assert_eq!(applied(dir.path(), "qa-row-1"), 0);
+    // A reply without a stamp voids it.
+    assert_eq!(nostamp().await.unwrap().status(), 500);
+    let before = log.lock().unwrap().len();
+    // With the token: recovered here (the row replayed), served natively, the child not asked.
+    let r = get(TOKEN).await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert!(r.text().await.unwrap().contains("2030-01"));
+    assert_eq!(applied(dir.path(), "qa-row-1"), 1);
+    assert_eq!(log.lock().unwrap().len(), before);
+    // A pending row while recovered here: the read declines to the child.
+    pending_row(dir.path(), "qa-row-2", "2030-01-08", "abcdef72");
+    assert_eq!(get(TOKEN).await.unwrap().status(), 207);
+    assert_eq!(applied(dir.path(), "qa-row-2"), 0);
+    // A request the child serves that is not a read undoes the fact (and voids the stamp): the
+    // next read recovers here again.
+    assert_eq!(nostamp().await.unwrap().status(), 500);
+    let before = log.lock().unwrap().len();
+    let r = get(TOKEN).await.unwrap();
+    assert_eq!(r.status(), 200);
+    assert_eq!(applied(dir.path(), "qa-row-2"), 1);
+    assert_eq!(log.lock().unwrap().len(), before);
+}

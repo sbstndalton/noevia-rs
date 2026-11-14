@@ -1915,3 +1915,448 @@ async fn an_unrelated_failure_after_the_append_row_commits_stays_500() {
     assert_eq!(append_row(dir.path()), (0, 0, None));
     assert_eq!(markers(dir.path()), 1);
 }
+
+/// Bag of hashed words, as the retrieval fixtures' fake embedder.
+fn fake_vector(text: &str) -> Vec<f64> {
+    use sha2::Digest;
+    let mut v = vec![0.0; 16];
+    for token in text
+        .to_lowercase()
+        .split(|c: char| !c.is_ascii_alphanumeric())
+        .filter(|t| !t.is_empty())
+    {
+        let h = sha2::Sha256::digest(format!("nomic-v1|{token}").as_bytes());
+        v[usize::from(h[0]) % 16] += 1.0 + f64::from(h[1] % 4) * 0.5;
+    }
+    v[15] += 0.25;
+    v
+}
+
+struct FakeEmbedder;
+
+impl diary_retrieval::index::Embedder for FakeEmbedder {
+    fn active(&self) -> diary_retrieval::Target {
+        diary_retrieval::Target::new(None, "qa-embed-a", "nomic-v1")
+    }
+    fn embed(
+        &self,
+        _t: &diary_retrieval::Target,
+        texts: &[&str],
+        _k: diary_retrieval::index::Kind,
+    ) -> Result<Vec<Vec<f64>>, String> {
+        Ok(texts.iter().map(|t| fake_vector(t)).collect())
+    }
+}
+
+/// A stub embeddings server: `/v1/embeddings` answers fake vectors; while `hold` is set the
+/// first request waits until it is cleared. Returns the base URL and the numbers of requests
+/// received and answered.
+async fn stub_embeddings(
+    hold: Arc<std::sync::atomic::AtomicBool>,
+) -> (
+    String,
+    Arc<std::sync::atomic::AtomicUsize>,
+    Arc<std::sync::atomic::AtomicUsize>,
+) {
+    use std::sync::atomic::Ordering;
+    let answered = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let seen = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let received = seen.clone();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let a = answered.clone();
+    let app = axum::Router::new().fallback(move |req: axum::http::Request<axum::body::Body>| {
+        let (hold, answered, seen) = (hold.clone(), a.clone(), seen.clone());
+        async move {
+            let first = seen.fetch_add(1, Ordering::SeqCst) == 0;
+            let bytes = axum::body::to_bytes(req.into_body(), 1 << 22)
+                .await
+                .unwrap_or_default();
+            let body: serde_json::Value = serde_json::from_slice(&bytes).unwrap_or_default();
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+            while first && hold.load(Ordering::SeqCst) && std::time::Instant::now() < deadline {
+                tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+            }
+            let data: Vec<serde_json::Value> = body["input"]
+                .as_array()
+                .map(|a| a.as_slice())
+                .unwrap_or_default()
+                .iter()
+                .enumerate()
+                .map(|(i, t)| serde_json::json!({"index": i, "embedding": fake_vector(t.as_str().unwrap_or(""))}))
+                .collect();
+            answered.fetch_add(1, Ordering::SeqCst);
+            axum::http::Response::builder()
+                .header("content-type", "application/json")
+                .body(axum::body::Body::from(
+                    serde_json::json!({"data": data}).to_string(),
+                ))
+                .unwrap()
+        }
+    });
+    tokio::spawn(async move {
+        let _ = axum::serve(listener, app).await;
+    });
+    (format!("http://{addr}/v1"), received, answered)
+}
+
+/// `start` with this process owning the embedding configuration (main mode with
+/// DIARY_RUST_EMBEDDING=on sets `save_embedder`), the index schema in place.
+async fn start_owner(
+    root: &Path,
+    engine: &str,
+) -> (std::net::SocketAddr, Arc<noevia_diary::server::App>) {
+    let index = tenant_root(root).join("managed-index.db");
+    drop(
+        diary_retrieval::index::Retriever::open(
+            &index,
+            FakeEmbedder,
+            diary_retrieval::NoGuard,
+            diary_retrieval::index::Options::default(),
+        )
+        .unwrap(),
+    );
+    let cfg = serde_json::json!({
+        "port": 0, "control_token": "ctl", "forward_secret": SECRET, "auth_token": TOKEN, "tenant_key": "k",
+        "data_root": root.to_str().unwrap(), "legacy_user_id": "",
+        "corpus": {"entry_layout": "daily", "entries_prefix": "Entries", "index_enabled": false,
+                   "month_file_template": "{year}-{month02}.md", "monthly_prefix": "", "index_file": "INDEX.md"},
+        "llm": {"main": {"base_url": engine, "chat_model": "chat-a", "setting_key": "LLM_CHAT_MODEL",
+                          "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"},
+                "aux": {"base_url": engine, "chat_model": "aux-a", "setting_key": "LLM_AUX_MODEL",
+                         "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"},
+                "aux_prefers_main": true, "configured": "chat-a"},
+        "corpus_write_impl": "rust",
+    })
+    .to_string();
+    let app = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(&cfg).unwrap(),
+    ));
+    let engine = diary_answer::model::Config {
+        base_url: engine.to_string(),
+        timeout_s: 60.0,
+        // The number of attempts (Python's range(max_retries)).
+        max_retries: 1,
+        ..diary_answer::model::Config::default()
+    };
+    let embedder = diary_answer::embedder::HttpEmbedder::fixed(
+        engine,
+        diary_retrieval::Target::new(None, "qa-embed-a", "nomic-v1"),
+        tokio::runtime::Handle::current(),
+    );
+    assert!(app.save_embedder.set(Arc::new(embedder)).is_ok());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(noevia_diary::serve(listener, app.clone()));
+    (addr, app)
+}
+
+fn chunk_bodies(root: &Path, file: &str) -> Vec<String> {
+    let idx = index(root);
+    let mut stmt = idx
+        .prepare("SELECT body FROM chunks WHERE file = ? ORDER BY body")
+        .unwrap();
+    stmt.query_map([file], |r| r.get(0))
+        .unwrap()
+        .map(Result::unwrap)
+        .collect()
+}
+
+async fn wait_until(what: &str, mut done: impl FnMut() -> bool) {
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(20);
+    while !done() {
+        assert!(std::time::Instant::now() < deadline, "timed out: {what}");
+        tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_native_append_reindexes_its_day_in_the_background_as_reindex_today() {
+    // Python's api_entries_append starts `_reindex_today` after the append reached the corpus:
+    // embed without the lock, then apply under it only if the document still holds that text.
+    use std::sync::atomic::Ordering;
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let (engine, received, answered) = stub_embeddings(hold.clone()).await;
+    let (addr, _app) = start_owner(dir.path(), &engine).await;
+    let append = |rid: &str, text: &str| serde_json::json!({"text": text, "title": "walk", "requestId": rid, "entryTime": now_iso()});
+
+    // The first run's embedding call is held: the reply does not wait for it.
+    let (s, _, body) = send(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append(
+            "aaaaaaaa-bbbb-4ccc-8ddd-000000000001",
+            "Synthetic QA canal walk.",
+        ),
+    )
+    .await;
+    assert_eq!(s, 200, "{body}");
+    let document = serde_json::from_str::<serde_json::Value>(&body).unwrap()["document"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(dirty(dir.path()), vec![document.clone()]);
+    wait_until("the first run's embedding call", || {
+        received.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    // A second append while the first run embeds: the writer slot is free meanwhile.
+    let (s, _, body) = send(
+        addr,
+        "POST",
+        "/api/entries/append",
+        &writer(),
+        &append(
+            "aaaaaaaa-bbbb-4ccc-8ddd-000000000002",
+            "Synthetic QA kite flight.",
+        ),
+    )
+    .await;
+    assert_eq!(s, 200, "{body}");
+    // The second run embeds both notes, applies them and clears the append's mark.
+    wait_until("the second run", || {
+        chunk_bodies(dir.path(), &document).len() == 2
+    })
+    .await;
+    wait_until("the mark", || dirty(dir.path()).is_empty()).await;
+    let before = answered.load(Ordering::SeqCst);
+    // The first run now finds a changed document and writes nothing: both notes stay indexed.
+    hold.store(false, Ordering::SeqCst);
+    wait_until("the held call", || answered.load(Ordering::SeqCst) > before).await;
+    tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+    let bodies = chunk_bodies(dir.path(), &document);
+    assert_eq!(bodies.len(), 2, "{bodies:?}");
+    assert!(
+        bodies.iter().any(|b| b.contains("canal walk")),
+        "{bodies:?}"
+    );
+    assert!(
+        bodies.iter().any(|b| b.contains("kite flight")),
+        "{bodies:?}"
+    );
+    assert!(dirty(dir.path()).is_empty());
+    let vectors: i64 = index(dir.path())
+        .query_row("SELECT COUNT(*) FROM chunks", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(vectors, 2);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn without_the_embedding_owner_an_append_leaves_its_mark_for_python() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[]);
+    let addr = start(dir.path(), "rust").await;
+    let b = serde_json::json!({"text": "Synthetic QA note.", "title": "walk",
+        "requestId": "aaaaaaaa-bbbb-4ccc-8ddd-000000000003", "entryTime": now_iso()});
+    let (s, _, body) = send(addr, "POST", "/api/entries/append", &writer(), &b).await;
+    assert_eq!(s, 200, "{body}");
+    let document = serde_json::from_str::<serde_json::Value>(&body).unwrap()["document"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+    assert_eq!(dirty(dir.path()), vec![document]);
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn the_background_run_applies_only_the_text_it_embedded() {
+    // `today` directly: a document rewritten while its chunks were being embedded is skipped
+    // (nothing written, the mark kept for whichever write changed it); an unchanged one is
+    // applied and its mark cleared.
+    use std::sync::atomic::Ordering;
+    let doc = "Entries/2031/March/March 20, 2031.md";
+    let text = "## Thursday, March 20, 2031\n\n### 09:00 \u{2014} Morning\n\n**Me:** Synthetic QA canal walk.\n";
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[(doc, text)]);
+    index(dir.path())
+        .execute("INSERT INTO dirty_documents (document) VALUES (?)", [doc])
+        .unwrap();
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(true));
+    let (engine, received, _answered) = stub_embeddings(hold.clone()).await;
+    let (_addr, app) = start_owner(dir.path(), &engine).await;
+    let embedder = app.save_embedder.get().unwrap().clone();
+    let run = {
+        let (app, embedder) = (app.clone(), embedder.clone());
+        std::thread::spawn(move || noevia_diary::reindex::today(&app, UID, doc, &embedder))
+    };
+    wait_until("the embedding call", || {
+        received.load(Ordering::SeqCst) == 1
+    })
+    .await;
+    // A write meanwhile (its own re-index is its business).
+    let changed = text.replace("canal walk", "kite flight");
+    rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db"))
+        .unwrap()
+        .execute(
+            "UPDATE files SET data=?, version=? WHERE path=?",
+            rusqlite::params![changed.as_bytes(), sha256(changed.as_bytes()), doc],
+        )
+        .unwrap();
+    hold.store(false, Ordering::SeqCst);
+    let outcome = tokio::task::spawn_blocking(move || run.join().unwrap())
+        .await
+        .unwrap();
+    assert_eq!(outcome, Ok(noevia_diary::reindex::Today::Changed));
+    assert!(chunk_bodies(dir.path(), doc).is_empty(), "nothing written");
+    assert_eq!(dirty(dir.path()), vec![doc.to_string()], "the mark stays");
+    // Unchanged now: applied, the mark cleared.
+    let outcome = tokio::task::spawn_blocking(move || {
+        noevia_diary::reindex::today(&app, UID, doc, &embedder)
+    })
+    .await
+    .unwrap();
+    assert_eq!(outcome, Ok(noevia_diary::reindex::Today::Applied));
+    let bodies = chunk_bodies(dir.path(), doc);
+    assert_eq!(bodies.len(), 1, "{bodies:?}");
+    assert!(bodies[0].contains("kite flight"), "{bodies:?}");
+    assert!(dirty(dir.path()).is_empty());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_writer_tenant_is_recovered_here_for_its_reads() {
+    // Python's _recover_state in this process (DIARY_RUST_RECOVERY=on): the journal replay, the
+    // outbox drain, the once-per-process sweep and the dirty re-index, under the writer slot.
+    let doc = "Entries/2031/March/March 4, 2031.md";
+    let text = "## Tuesday, March 4, 2031\n\n### 18:00 \u{2014} Kites\n\n**Me:** Synthetic QA kite at the quay.\n";
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(
+        dir.path(),
+        &[(doc, text), ("AI Memory/notes.md", "QA memory.\n")],
+    );
+    let primary =
+        rusqlite::Connection::open(tenant_root(dir.path()).join("managed-diary.db")).unwrap();
+    primary
+        .execute(
+            "INSERT INTO workspace_index_outbox (path) VALUES ('AI Memory/notes.md')",
+            [],
+        )
+        .unwrap();
+    let row = serde_json::json!({"day": "2031-03-05", "xid": "abcdef79", "sub_header": "09:15 | Synthetic",
+        "body": diary_corpus_write::render_exchange("QA synthetic canal walk.", "", "abcdef79")});
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-row','2031',?,?)",
+            rusqlite::params!["exchange", row.to_string()],
+        )
+        .unwrap();
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (engine, _received, _answered) = stub_embeddings(hold).await;
+    let (addr, app) = start_owner(dir.path(), &engine).await;
+    let reader = without(writer(), "x-noevia-diary-writer");
+
+    // Not recovered yet: a pending journal row declines the read, even with the child's stamp.
+    let (s, declined, _) = send_raw(addr, "GET", "/api/months", &reader, b"").await;
+    assert!(declined, "{s}");
+
+    let a = app.clone();
+    let recovered =
+        tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
+            .await
+            .unwrap();
+    assert!(recovered);
+    let applied: i64 = index(dir.path())
+        .query_row("SELECT applied FROM journal WHERE id='qa-row'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(applied, 1, "the journal row is replayed");
+    let outbox: i64 = primary
+        .query_row("SELECT COUNT(*) FROM workspace_index_outbox", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(outbox, 0, "the outbox is drained");
+    assert!(dirty(dir.path()).is_empty(), "{:?}", dirty(dir.path()));
+    assert_eq!(
+        chunk_bodies(dir.path(), doc).len(),
+        1,
+        "the swept document is indexed"
+    );
+
+    // A later dirty mark: the child's stamp alone declines (Python's ready check); a tenant
+    // recovered here is read as Python reads a recovered state.
+    index(dir.path())
+        .execute("INSERT INTO dirty_documents (document) VALUES (?)", [doc])
+        .unwrap();
+    let (s, declined, _) = send_raw(addr, "GET", "/api/months", &reader, b"").await;
+    assert!(declined, "{s}");
+    let mut here = reader.clone();
+    here.push(("x-noevia-diary-recovered-here", "1".to_string()));
+    let (s, declined, body) = send_raw(addr, "GET", "/api/months", &here, b"").await;
+    assert_eq!((s, declined), (200, false), "{body}");
+    assert!(body.contains("2031-03"), "{body}");
+    // Recovered once: the next call re-indexes nothing.
+    let a = app.clone();
+    assert!(
+        tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
+            .await
+            .unwrap()
+    );
+    assert_eq!(dirty(dir.path()), vec![doc.to_string()]);
+    // A pending journal row still declines a read recovered here.
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-row-2','2031',?,?)",
+            rusqlite::params!["exchange", row.to_string()],
+        )
+        .unwrap();
+    let (s, declined, _) = send_raw(addr, "GET", "/api/months", &here, b"").await;
+    assert!(declined, "{s}");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_tenant_recovery_cannot_run_here_stays_with_the_child() {
+    let dir = tempfile::tempdir().unwrap();
+    managed_tenant(dir.path(), &[("a.md", "a")]);
+    // A journal payload the reference applier must handle (not an object).
+    index(dir.path())
+        .execute(
+            "INSERT INTO journal (id,created_at,kind,payload) VALUES ('qa-odd','2031','exchange','[]')",
+            [],
+        )
+        .unwrap();
+    let hold = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let (engine, _received, _answered) = stub_embeddings(hold).await;
+    let (_addr, app) = start_owner(dir.path(), &engine).await;
+    let a = app.clone();
+    let recovered =
+        tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(&a, UID))
+            .await
+            .unwrap();
+    assert!(!recovered);
+    let applied: i64 = index(dir.path())
+        .query_row("SELECT applied FROM journal WHERE id='qa-odd'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(applied, 0, "nothing replayed here");
+    // Without the embedding owner nothing is recovered here at all.
+    let plain = Arc::new(noevia_diary::server::App::new(
+        noevia_diary::config::parse(
+            &serde_json::json!({
+                "port": 0, "control_token": "ctl", "forward_secret": SECRET, "auth_token": TOKEN,
+                "tenant_key": "k", "data_root": dir.path().to_str().unwrap(), "legacy_user_id": "",
+                "corpus": {"entry_layout": "daily", "entries_prefix": "Entries", "index_enabled": false,
+                           "month_file_template": "{year}-{month02}.md", "monthly_prefix": "", "index_file": "INDEX.md"},
+                "llm": {"main": {"base_url": "http://127.0.0.1:9/v1", "chat_model": "chat-a", "setting_key": "LLM_CHAT_MODEL",
+                                  "fallback_setting_key": "LLM_CHAT_FALLBACK_MODEL"},
+                        "aux": {"base_url": "http://127.0.0.1:9/v1", "chat_model": "aux-a", "setting_key": "LLM_AUX_MODEL",
+                                 "fallback_setting_key": "LLM_AUX_FALLBACK_MODEL"},
+                        "aux_prefers_main": true, "configured": "chat-a"}
+            })
+            .to_string(),
+        )
+        .unwrap(),
+    ));
+    assert!(
+        !tokio::task::spawn_blocking(move || noevia_diary::recovery::recover_for_reads(
+            &plain, UID
+        ))
+        .await
+        .unwrap()
+    );
+}

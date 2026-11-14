@@ -526,7 +526,8 @@ pub fn append(c: &Ctx<'_>, req: &AppendReq) -> Reply {
         ("document", PyVal::Str(&document)),
         ("month_label", PyVal::Str(&label)),
     ]);
-    // The index refresh Python runs in the background is left to Python's next _reindex_dirty.
+    // The index refresh Python runs in the background: reindex::reindex_today in main mode with
+    // the embedding owner (it clears this mark); otherwise Python's next _reindex_dirty.
     // The document is marked dirty BEFORE anything is written (as file_write and edit do), so a
     // process lost at any later point (after the corpus commit, or after the journal row is marked
     // applied) still leaves its retrieval invalidation behind. A failed write leaves one extra

@@ -1,7 +1,7 @@
 //! `POST /internal/reindex` (R9 indexing step 1) over a synthetic managed tenant with a dirty
 //! document and a stub embeddings server: the re-index under the writer role clears the mark and
-//! stores the chunks with their vectors; without the writer header, without the start-up config,
-//! or with an undrained index outbox, nothing is written. Synthetic data only.
+//! stores the chunks with their vectors (the index outbox drained first); without the writer header
+//! or without the start-up config nothing is written. Synthetic data only.
 #![allow(
     clippy::unwrap_used,
     clippy::expect_used,
@@ -264,7 +264,9 @@ async fn dirty_documents_are_reindexed_under_the_writer_role() {
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
-async fn an_undrained_outbox_leaves_the_index_alone() {
+async fn the_pass_drains_the_outbox_first_as_reindex_dirty_does() {
+    // Python's _reindex_dirty runs drain_index_outbox under the same lock before it re-indexes:
+    // each outbox path is marked dirty, its row removed, then every dirty document re-indexed.
     let dir = tempfile::tempdir().unwrap();
     let root = dir.path();
     build_tenant(root, true);
@@ -277,17 +279,33 @@ async fn an_undrained_outbox_leaves_the_index_alone() {
             [],
         )
         .unwrap();
-    drop(primary);
     let (engine, _embed, _seen) = stub_engines().await;
     let app = Arc::new(noevia_diary::server::App::new(
         noevia_diary::config::parse(&config(root, &engine, true)).unwrap(),
     ));
     let (status, v) = call(&app, true).await;
     assert_eq!(status, StatusCode::OK, "{v}");
-    assert_eq!(v["documents"][0]["pending"], json!(true));
-    assert!(v["documents"][0]["error"].is_string());
-    assert_eq!(dirty(root), vec![ENTRY_PATH.to_owned()], "the mark stays");
-    assert_eq!(chunks(root, ENTRY_PATH), 0, "nothing was written");
+    let mut documents: Vec<&str> = v["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|d| d["document"].as_str().unwrap())
+        .collect();
+    documents.sort_unstable();
+    assert_eq!(documents, ["AI Memory/notes.md", ENTRY_PATH]);
+    assert!(v["documents"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|d| d["error"].is_null() && d["pending"] == json!(false)));
+    let outbox: i64 = primary
+        .query_row("SELECT COUNT(*) FROM workspace_index_outbox", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
+    assert_eq!(outbox, 0, "the outbox is drained");
+    assert!(dirty(root).is_empty(), "every mark is cleared");
+    assert_eq!(chunks(root, ENTRY_PATH), 1);
 }
 
 async fn plan(app: &Arc<noevia_diary::server::App>, body: &Value) -> (StatusCode, Value) {

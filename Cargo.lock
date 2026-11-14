@@ -2253,6 +2253,7 @@ dependencies = [
  "diary-corpus-parse",
  "diary-corpus-write",
  "diary-index-transform",
+ "diary-operator",
  "diary-retrieval",
  "diary-storage-backoff",
  "diary-workspace-export",

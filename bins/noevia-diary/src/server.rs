@@ -55,6 +55,10 @@ pub const VERIFIED_HEADER: &str = "x-noevia-diary-verified";
 /// "1" when Python holds a recovered managed state for this tenant (journal replayed, dirty
 /// documents reindexed once), so a read here skips nothing Python would have done.
 pub const RECOVERED_HEADER: &str = "x-noevia-diary-recovered";
+/// Shift 4, step 4: "1" when this process itself recovered the tenant (recovery::recover_for_reads,
+/// main mode only): its reads then serve with dirty documents or an undrained outbox, as Python's
+/// do once its state is recovered (a pending journal row still declines).
+pub const RECOVERED_HERE_HEADER: &str = "x-noevia-diary-recovered-here";
 /// "1" when this process is the tenant's writer: set by Python only on the D5 write routes of a
 /// tenant whose writes all go here.
 pub const WRITER_HEADER: &str = "x-noevia-diary-writer";
@@ -434,6 +438,8 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
                     return Plan::Decline;
                 }
                 managed::ready_for_write(&root, &uid, false)
+            } else if flag(headers, RECOVERED_HERE_HEADER) {
+                managed::ready_for_write(&root, &uid, true)
             } else {
                 managed::ready(&root, &uid)
             };
@@ -937,6 +943,8 @@ async fn serve_write(
     let uid = header_uid.to_ascii_lowercase();
     let app2 = app.clone();
     let task = tokio::task::spawn_blocking(move || {
+        // Shift 4, step 1: the document an append wrote, for Python's `_reindex_today` (below).
+        let mut appended: Option<String> = None;
         let reply = app2.writers
             .with_lock_as(&uid, None, app2.write_wait, |held| {
                 if crate::backup::pending(&app2.data_root.join("users").join(&uid)) {
@@ -984,8 +992,13 @@ async fn serve_write(
                     Op::Append(req) => writes::append(&ctx, req),
                     Op::Edit(req) => writes::edit(&ctx, req),
                 };
+                if let (Op::Append(_), Reply::Json(200, body)) = (&op, &saved) {
+                    appended = serde_json::from_slice::<Value>(body)
+                        .ok()
+                        .and_then(|v| v.get("document").and_then(Value::as_str).map(str::to_owned));
+                }
                 // S6b: Python's PUT /api/file and edit run `_reindex_dirty` under the same lock
-                // before they reply (append re-indexes in a background thread: left to Python).
+                // before they reply (append re-indexes in a background thread, after the lock).
                 if matches!(op, Op::File | Op::Edit(_)) && matches!(saved, Reply::Json(200, _)) {
                     if let Some(embedder) = app2.save_embedder.get() {
                         drop(ctx);
@@ -1009,6 +1022,11 @@ async fn serve_write(
         // cannot hide it from the child (front.rs tells it on the tenant's next forward).
         if app2.write_wait.is_some() && !matches!(reply, Reply::Decline | Reply::Busy) {
             app2.writers.note_native_write(&uid);
+        }
+        // Python starts `_reindex_today` once the append reached the corpus; it waits for the
+        // writer slot this task has just returned (main mode with the embedding owner only).
+        if let (Some(document), Some(embedder)) = (appended, app2.save_embedder.get()) {
+            crate::reindex::reindex_today(app2.clone(), uid.clone(), document, embedder.clone());
         }
         reply
     });
@@ -1044,7 +1062,16 @@ async fn fence(app: Arc<App>, query: &[u8], headers: &HeaderMap) -> Response<Bod
     }
     let app2 = app.clone();
     let lease = crate::lease::lease_of(headers);
-    match tokio::task::spawn_blocking(move || app2.writers.fence_as(&uid, lease)).await {
+    match tokio::task::spawn_blocking(move || {
+        app2.writers.fence_as(&uid, lease);
+        // A tenant created again under this id is recovered again (and swept) by this process.
+        app2.recovered
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .remove(&uid);
+    })
+    .await
+    {
         Ok(()) => {
             let uid = py::query_get(query, "tenant")
                 .unwrap_or_default()
