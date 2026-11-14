@@ -15,8 +15,12 @@
 //!
 //! Every request goes through [`Fetch`]; [`NetFetch`] is the on-this-network client (model_stream::net: the
 //! address checked at connect time, no redirect, no proxy) with a deadline and a body cap.
+use crate::machine_health::{Fetch, FetchError, HealthCache, ProbeOptions};
 use crate::machines::Target;
 use js_json::{wtf16, JValue};
+use std::collections::HashMap;
+use std::future::Future;
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 /// `ROLE_LABEL`.
@@ -32,8 +36,12 @@ pub const CONTEXT_MAX: f64 = 2_000_000.0;
 /// A llama-server that does not say its context gets the local engine's conservative floor.
 pub const CONTEXT_FALLBACK: u32 = 8192;
 /// #1854: the measurements that belong to this machine's engine and are never taken on another machine.
-pub const NOT_MEASURED_ON_MACHINES: [&str; 4] =
-    ["autotune", "speculativeDecoding", "longContextProfile", "presets"];
+pub const NOT_MEASURED_ON_MACHINES: [&str; 4] = [
+    "autotune",
+    "speculativeDecoding",
+    "longContextProfile",
+    "presets",
+];
 
 /// `ROLE_LABEL[role] || role`.
 pub fn label(role: &str) -> &str {
@@ -55,24 +63,18 @@ fn is_chat_role(role: &str) -> bool {
 fn js_space(c: char) -> bool {
     matches!(
         c,
-        '\t' | '\n'
-            | '\u{b}'
-            | '\u{c}'
-            | '\r'
-            | ' '
-            | '\u{a0}'
-            | '\u{1680}'
-            | '\u{2000}'..='\u{200a}'
-            | '\u{2028}'
-            | '\u{2029}'
-            | '\u{202f}'
-            | '\u{205f}'
-            | '\u{3000}'
-            | '\u{feff}'
+        '\t' | '\n' | '\u{b}' | '\u{c}' | '\r' | ' ' | '\u{a0}' | '\u{1680}' | '\u{2000}'
+            ..='\u{200a}'
+                | '\u{2028}'
+                | '\u{2029}'
+                | '\u{202f}'
+                | '\u{205f}'
+                | '\u{3000}'
+                | '\u{feff}'
     )
 }
 
-fn js_trim(s: &str) -> &str {
+pub(crate) fn js_trim(s: &str) -> &str {
     s.trim_matches(js_space)
 }
 
@@ -175,8 +177,8 @@ pub struct PropsFacts {
 /// core `propsFactsOf(body)`.
 pub fn props_facts_of(body: &JValue) -> PropsFacts {
     let n = to_number(body.get("default_generation_settings").get("n_ctx"));
-    let context_tokens = (n.fract() == 0.0 && (CONTEXT_MIN..=CONTEXT_MAX).contains(&n))
-        .then_some(n as u32);
+    let context_tokens =
+        (n.fract() == 0.0 && (CONTEXT_MIN..=CONTEXT_MAX).contains(&n)).then_some(n as u32);
     let thinking = match body.get("chat_template") {
         JValue::Str(t) if !t.is_empty() => Some(names_thinking_switch(t)),
         _ => None,
@@ -244,7 +246,12 @@ pub fn unreachable_text(t: &Target, detail: &str) -> String {
 /// core `wrongModelText(t, served)`.
 pub fn wrong_model_text(t: &Target, served: &[String]) -> String {
     let role = label(&t.role);
-    let first = served.iter().take(3).cloned().collect::<Vec<_>>().join(", ");
+    let first = served
+        .iter()
+        .take(3)
+        .cloned()
+        .collect::<Vec<_>>()
+        .join(", ");
     let first = if first.is_empty() {
         "no model".to_owned()
     } else {
@@ -286,7 +293,10 @@ pub fn connect_error(t: &Target, why: ConnectWhy) -> String {
 /// keys in Node's order.
 pub fn provider_row(t: &Target, context_tokens: Option<u32>, thinking: Option<bool>) -> JValue {
     let mut row = vec![
-        ("id".to_owned(), JValue::from(format!("machine:{}", t.machine_id))),
+        (
+            "id".to_owned(),
+            JValue::from(format!("machine:{}", t.machine_id)),
+        ),
         (
             "label".to_owned(),
             JValue::from(format!(
@@ -295,7 +305,10 @@ pub fn provider_row(t: &Target, context_tokens: Option<u32>, thinking: Option<bo
                 t.machine_name
             )),
         ),
-        ("baseUrl".to_owned(), JValue::from(format!("{}/v1", t.base_url))),
+        (
+            "baseUrl".to_owned(),
+            JValue::from(format!("{}/v1", t.base_url)),
+        ),
         ("apiKey".to_owned(), JValue::from("")),
         ("shared".to_owned(), JValue::Bool(true)),
     ];
@@ -314,4 +327,575 @@ pub fn provider_row(t: &Target, context_tokens: Option<u32>, thinking: Option<bo
     }
     row.push(("machine".to_owned(), JValue::Obj(machine)));
     JValue::Obj(row)
+}
+
+/// What a machine's server says about itself (#1851, #1854), kept beside its health result: the models it serves
+/// (`/v1/models`) and its `/props` facts. A read that fails keeps the last known value; each is `None` only when
+/// nothing has ever been read.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct MachineFacts {
+    pub models: Option<Vec<String>>,
+    pub context_tokens: Option<u32>,
+    pub thinking: Option<bool>,
+    pub vision: Option<bool>,
+}
+
+/// core `measurements(t)`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Measurements {
+    pub context_tokens: Option<u32>,
+    pub thinking: Option<bool>,
+    pub vision: Option<bool>,
+    pub not_measured: [&'static str; 4],
+}
+
+/// A `modelsAt` failure: always HTTP 502, with the code and text the Settings route shows.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModelsError {
+    pub status: u16,
+    /// `publicAddress` | `machineUnreachable` | `tooLarge`.
+    pub code: &'static str,
+    pub message: String,
+}
+
+/// core `ready(t)`: `{ ok:true }` | `{ ok:false, state, code, error }`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ready {
+    Ok,
+    Refused {
+        /// The probe's state word, or `wrongModel`.
+        state: String,
+        /// `machineUnreachable` | `machineWrongModel`.
+        code: &'static str,
+        error: String,
+    },
+}
+
+/// What chat.cjs answers for a turn whose machine is not ready (l.1253-1259).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct NotSent {
+    /// HTTP status of a turn that has not started streaming: always 503.
+    pub status: u16,
+    pub code: &'static str,
+    /// The `error` (JSON) or the `error` event's `text` (stream).
+    pub error: String,
+    /// chat-admission.cjs `log503(reason)` (#1896), for a JSON answer only.
+    pub log503: &'static str,
+    /// The `[machines] …` warning line.
+    pub warning: String,
+}
+
+/// chat.cjs's answer for a [`Ready::Refused`]; `role` is the routed role, else the target's.
+pub fn not_sent(ready: &Ready, routed_role: Option<&str>, t: &Target) -> Option<NotSent> {
+    let Ready::Refused { state, code, error } = ready else {
+        return None;
+    };
+    let role = routed_role.filter(|r| !r.is_empty()).unwrap_or(&t.role);
+    Some(NotSent {
+        status: 503,
+        code: *code,
+        error: error.clone(),
+        log503: if *code == "machineWrongModel" {
+            "machine-wrong-model"
+        } else {
+            "machine-unreachable"
+        },
+        warning: format!("[machines] {role} role's machine is {state}; the turn is not sent"),
+    })
+}
+
+/// The detail chat-machines.cjs `ready` puts after "is unreachable" for a probe that is not up.
+pub fn probe_detail(p: &crate::machine_health::Probe) -> String {
+    use crate::machine_health::State;
+    let reason = p.reason.as_deref().unwrap_or("");
+    if reason == "not-on-this-network" {
+        "its address is not on this network".to_owned()
+    } else if p.state == State::Down {
+        let r = reason
+            .strip_prefix("http-")
+            .map_or_else(|| reason.to_owned(), |rest| format!("HTTP {rest}"));
+        js_trim(&format!("it answered {r}")).to_owned()
+    } else if reason == "timeout" {
+        "no answer in time".to_owned()
+    } else {
+        String::new()
+    }
+}
+
+/// core `ready`'s decision from the probe and the facts: not up is unreachable; up but not serving the model (when
+/// the models could be read at all) is the wrong model.
+pub fn ready_of(
+    t: &Target,
+    probe: &crate::machine_health::Probe,
+    facts: Option<&MachineFacts>,
+) -> Ready {
+    use crate::machine_health::State;
+    if probe.state != State::Up {
+        return Ready::Refused {
+            state: probe.state.word().to_owned(),
+            code: "machineUnreachable",
+            error: unreachable_text(t, &probe_detail(probe)),
+        };
+    }
+    if let Some(models) = facts.and_then(|f| f.models.as_ref()) {
+        if !models.iter().any(|m| *m == t.model) {
+            return Ready::Refused {
+                state: "wrongModel".to_owned(),
+                code: "machineWrongModel",
+                error: wrong_model_text(t, models),
+            };
+        }
+    }
+    Ready::Ok
+}
+
+/// The machine's address as saved (`machine.address`): [`Target::base_url`] is `<address>:<port>`.
+pub fn address_of(t: &Target) -> &str {
+    t.base_url
+        .strip_suffix(&format!(":{}", t.port))
+        .unwrap_or(&t.base_url)
+}
+
+/// `encodeURIComponent`.
+pub fn encode_uri_component(s: &str) -> String {
+    let mut out = String::with_capacity(s.len());
+    for b in s.bytes() {
+        if b.is_ascii_alphanumeric() || b"-_.!~*'()".contains(&b) {
+            out.push(char::from(b));
+        } else {
+            out.push_str(&format!("%{b:02X}"));
+        }
+    }
+    out
+}
+
+/// The roles on another machine, in role order (core `remoteRoles`), from the `inference:machines` row's text.
+pub fn remote_roles(row: Option<&str>) -> Vec<Target> {
+    CHAT_ROLES
+        .iter()
+        .filter_map(|role| crate::machines::chat_target(row, role))
+        .collect()
+}
+
+/// core `effectiveRoles(roles)`: the Automatic roles as a turn sees them, a role on a machine naming the model that
+/// machine serves. Not an object, or nothing on a machine: unchanged.
+pub fn effective_roles(roles: &JValue, remote: &[Target]) -> JValue {
+    let JValue::Obj(items) = roles else {
+        return roles.clone();
+    };
+    let mut out = items.clone();
+    for t in remote {
+        wtf16::set(&mut out, &t.role, JValue::from(t.model.as_str()));
+    }
+    JValue::Obj(out)
+}
+
+/// core `localRoles(roles)`: the roles this machine's engine serves (a role on a machine is not checked against
+/// the local catalogue).
+pub fn local_roles(roles: &JValue, remote: &[Target]) -> JValue {
+    let JValue::Obj(items) = roles else {
+        return roles.clone();
+    };
+    JValue::Obj(
+        items
+            .iter()
+            .filter(|(k, _)| !remote.iter().any(|t| t.role == *k))
+            .cloned()
+            .collect(),
+    )
+}
+
+/// One row of the Manual list (#1849): a model a machine serves, and the roles it serves it for.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MachineModel {
+    pub model: String,
+    pub machine_id: String,
+    pub machine_name: String,
+    pub roles: Vec<String>,
+}
+
+/// core `machineModels()`.
+pub fn machine_models(remote: &[Target]) -> Vec<MachineModel> {
+    let mut out: Vec<MachineModel> = Vec::new();
+    for t in remote {
+        match out
+            .iter_mut()
+            .find(|r| r.model == t.model && r.machine_id == t.machine_id)
+        {
+            Some(row) => row.roles.push(t.role.clone()),
+            None => out.push(MachineModel {
+                model: t.model.clone(),
+                machine_id: t.machine_id.clone(),
+                machine_name: t.machine_name.clone(),
+                roles: vec![t.role.clone()],
+            }),
+        }
+    }
+    out
+}
+
+/// core `manualTarget(model, catalogue)` (#1849, #1855): a Manual pick runs on a machine when a chat role's machine
+/// serves exactly that name and this machine's catalogue does not list it. `catalogue` is read only when some role's
+/// machine serves the name; an unreadable catalogue (`Err`) keeps the pick here.
+pub async fn manual_target<C, Fut>(model: &str, remote: &[Target], catalogue: C) -> Option<Target>
+where
+    C: FnOnce() -> Fut,
+    Fut: Future<Output = Result<JValue, ()>>,
+{
+    if model.is_empty() {
+        return None;
+    }
+    let found = remote.iter().find(|t| t.model == model)?;
+    let rows = catalogue().await.ok()?;
+    if let JValue::Arr(rows) = &rows {
+        if rows.iter().any(|m| m.get("name").as_str() == Some(model)) {
+            return None;
+        }
+    }
+    Some(found.clone())
+}
+
+/// chat.cjs l.1246-1251: which machine a turn is sent to, before any request.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TurnFacts<'a> {
+    /// An Automatic turn (`wantsAuto`).
+    pub automatic: bool,
+    /// A route target row is set (`routeTarget?.row`).
+    pub route_row: bool,
+    /// The provider is the default one (this machine's engine).
+    pub default_provider: bool,
+    /// The routed role of an Automatic turn.
+    pub routed_role: Option<&'a str>,
+    /// The model a Manual turn names.
+    pub model: &'a str,
+}
+
+/// The pick of [`pick`]: nothing (the turn runs here), an Automatic role's machine, or a Manual pick that needs
+/// [`manual_target`] (the catalogue read is async).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Pick {
+    Here,
+    Role(Target),
+    Manual,
+}
+
+/// The synchronous half of chat.cjs's machine choice.
+pub fn pick(f: &TurnFacts<'_>, row: Option<&str>) -> Pick {
+    if f.route_row || !f.default_provider {
+        return Pick::Here;
+    }
+    if f.automatic {
+        return match f.routed_role.filter(|r| !r.is_empty() && is_chat_role(r)) {
+            Some(role) => crate::machines::chat_target(row, role).map_or(Pick::Here, Pick::Role),
+            None => Pick::Here,
+        };
+    }
+    Pick::Manual
+}
+
+/// The turns in flight per machine (#1880): a measurement never runs beside one.
+#[derive(Default)]
+pub struct Turns {
+    inner: Mutex<TurnsInner>,
+}
+
+type Listener = Arc<dyn Fn(&str) + Send + Sync>;
+
+#[derive(Default)]
+struct TurnsInner {
+    counts: HashMap<String, usize>,
+    listeners: Vec<(u64, Listener)>,
+    next: u64,
+}
+
+/// A counted turn; released once, by [`TurnGuard::release`] or on drop (Node's idempotent release).
+pub struct TurnGuard {
+    turns: Arc<Turns>,
+    id: String,
+    done: bool,
+}
+
+impl TurnGuard {
+    pub fn release(mut self) {
+        self.end();
+    }
+
+    fn end(&mut self) {
+        if std::mem::replace(&mut self.done, true) {
+            return;
+        }
+        let mut inner = self.turns.lock();
+        match inner.counts.get_mut(&self.id) {
+            Some(n) if *n > 1 => *n -= 1,
+            _ => {
+                inner.counts.remove(&self.id);
+            }
+        }
+    }
+}
+
+impl Drop for TurnGuard {
+    fn drop(&mut self) {
+        self.end();
+    }
+}
+
+/// An `onTurn` subscription; dropping it unsubscribes.
+pub struct Subscription {
+    turns: Arc<Turns>,
+    id: u64,
+}
+
+impl Drop for Subscription {
+    fn drop(&mut self) {
+        self.turns.lock().listeners.retain(|(id, _)| *id != self.id);
+    }
+}
+
+impl Turns {
+    fn lock(&self) -> std::sync::MutexGuard<'_, TurnsInner> {
+        self.inner
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    /// core `beginTurn(machineId)`: counted until the guard is released; every listener hears of it (a listener
+    /// that panics never fails the turn).
+    pub fn begin(self: &Arc<Self>, machine_id: &str) -> TurnGuard {
+        let listeners: Vec<Listener> = {
+            let mut inner = self.lock();
+            *inner.counts.entry(machine_id.to_owned()).or_insert(0) += 1;
+            inner.listeners.iter().map(|(_, f)| f.clone()).collect()
+        };
+        for f in listeners {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f(machine_id)));
+        }
+        TurnGuard {
+            turns: self.clone(),
+            id: machine_id.to_owned(),
+            done: false,
+        }
+    }
+
+    /// core `busy(machineId)`.
+    pub fn busy(&self, machine_id: &str) -> bool {
+        self.lock().counts.get(machine_id).is_some_and(|n| *n > 0)
+    }
+
+    /// core `onTurn(fn)`.
+    pub fn on_turn(self: &Arc<Self>, f: impl Fn(&str) + Send + Sync + 'static) -> Subscription {
+        let mut inner = self.lock();
+        inner.next += 1;
+        let id = inner.next;
+        inner.listeners.push((id, Arc::new(f)));
+        Subscription {
+            turns: self.clone(),
+            id,
+        }
+    }
+
+    /// core `during(t, fn)`: `t`'s machine counted busy while `work` runs.
+    pub async fn during<T>(
+        self: &Arc<Self>,
+        t: Option<&Target>,
+        work: impl Future<Output = T>,
+    ) -> T {
+        let guard = t.map(|t| self.begin(&t.machine_id));
+        let out = work.await;
+        drop(guard);
+        out
+    }
+}
+
+/// core `createChatMachines`'s request side over one fetch and one shared health cache.
+pub struct MachineTurns<F> {
+    health: Option<HealthCache<F>>,
+    fetch: F,
+    turns: Arc<Turns>,
+}
+
+impl<F: Fetch + Clone> MachineTurns<F> {
+    /// With the shared health cache (production) over the same fetch.
+    pub fn new(fetch: F) -> Self {
+        MachineTurns {
+            health: Some(HealthCache::new(fetch.clone())),
+            fetch,
+            turns: Arc::new(Turns::default()),
+        }
+    }
+}
+
+impl<F: Fetch> MachineTurns<F> {
+    /// `health` `None`: every machine is ready and facts are read on each call (core's `health = null`).
+    pub fn with(fetch: F, health: Option<HealthCache<F>>) -> Self {
+        MachineTurns {
+            health,
+            fetch,
+            turns: Arc::new(Turns::default()),
+        }
+    }
+
+    pub fn turns(&self) -> &Arc<Turns> {
+        &self.turns
+    }
+
+    pub fn health(&self) -> Option<&HealthCache<F>> {
+        self.health.as_ref()
+    }
+
+    /// core `modelsAt(address, port, name)`.
+    pub async fn models_at(
+        &self,
+        address: &str,
+        port: u32,
+        name: &str,
+    ) -> Result<Vec<String>, ModelsError> {
+        let fail = |code, message| ModelsError {
+            status: 502,
+            code,
+            message,
+        };
+        let url = format!("{address}:{port}/v1/models");
+        let r = match self
+            .fetch
+            .get(&url, &[], MODELS_TIMEOUT, Some(MODELS_BODY_CAP))
+            .await
+        {
+            Ok(r) => r,
+            Err(FetchError::NotOnThisNetwork) => {
+                return Err(fail(
+                    "publicAddress",
+                    "Machines must be on this network (a LAN or Tailscale address).".to_owned(),
+                ))
+            }
+            Err(_) => {
+                return Err(fail(
+                    "machineUnreachable",
+                    format!("{name} did not answer on port {port}."),
+                ))
+            }
+        };
+        if !r.ok() {
+            return Err(fail(
+                "machineUnreachable",
+                format!(
+                    "{name} answered HTTP {} on port {port}; it does not look like an OpenAI-compatible server.",
+                    r.status
+                ),
+            ));
+        }
+        match r.body.map(|b| b.map(|text| wtf16::parse(&text))) {
+            Some(Ok(Ok(body))) => Ok(model_ids(&body)),
+            _ => Err(fail(
+                "machineUnreachable",
+                format!("{name} did not list its models on port {port}."),
+            )),
+        }
+    }
+
+    /// core `propsFacts(t)`: one GET of the machine's `/props` for the model; `None` for a non-2xx answer, `Err`
+    /// for no answer, an oversized or unparsable body.
+    pub async fn props_facts(&self, t: &Target) -> Result<Option<PropsFacts>, ()> {
+        let url = format!(
+            "{}/props?model={}",
+            t.base_url,
+            encode_uri_component(&t.model)
+        );
+        let r = self
+            .fetch
+            .get(&url, &[], PROPS_TIMEOUT, Some(PROPS_BODY_CAP))
+            .await
+            .map_err(|_| ())?;
+        if !r.ok() {
+            return Ok(None);
+        }
+        match r.body {
+            Some(Ok(text)) => wtf16::parse(&text)
+                .map(|b| Some(props_facts_of(&b)))
+                .map_err(|_| ()),
+            _ => Err(()),
+        }
+    }
+
+    async fn load_facts(&self, t: &Target, prev: Option<MachineFacts>) -> MachineFacts {
+        let mut out = prev.unwrap_or_default();
+        let address = address_of(t);
+        let (models, props) = tokio::join!(
+            self.models_at(address, t.port, address),
+            self.props_facts(t)
+        );
+        if let Ok(ids) = models {
+            out.models = Some(ids);
+        }
+        if let Ok(Some(p)) = props {
+            if p.context_tokens.is_some() {
+                out.context_tokens = p.context_tokens;
+            }
+            if p.thinking.is_some() {
+                out.thinking = p.thinking;
+            }
+            if p.vision.is_some() {
+                out.vision = p.vision;
+            }
+        }
+        out
+    }
+
+    /// core `facts(t)`: cached beside the health result under `<base>#facts#<model>`, so two machines (or this
+    /// one) never share it.
+    pub async fn facts(&self, t: &Target) -> MachineFacts {
+        let Some(health) = &self.health else {
+            return self.load_facts(t, None).await;
+        };
+        let key = format!("{}#facts#{}", t.base_url, t.model);
+        health
+            .remember(
+                &key,
+                |prev| async move { Some(self.load_facts(t, prev).await) },
+            )
+            .await
+            .unwrap_or_default()
+    }
+
+    /// core `ready(t)`: the health check (shared and cached) and, when it is up, the assigned model.
+    pub async fn ready(&self, t: &Target) -> Ready {
+        let Some(health) = &self.health else {
+            return Ready::Ok;
+        };
+        let probe = health.probe(&t.base_url, &ProbeOptions::default()).await;
+        if probe.state != crate::machine_health::State::Up {
+            return ready_of(t, &probe, None);
+        }
+        let facts = self.facts(t).await;
+        ready_of(t, &probe, Some(&facts))
+    }
+
+    /// core `contextTokens(t)`: the machine's /props context, the last known on failure, else the floor.
+    pub async fn context_tokens(&self, t: &Target) -> u32 {
+        self.facts(t)
+            .await
+            .context_tokens
+            .unwrap_or(CONTEXT_FALLBACK)
+    }
+
+    /// core `measurements(t)`.
+    pub async fn measurements(&self, t: &Target) -> Measurements {
+        let f = self.facts(t).await;
+        Measurements {
+            context_tokens: f.context_tokens,
+            thinking: f.thinking,
+            vision: f.vision,
+            not_measured: NOT_MEASURED_ON_MACHINES,
+        }
+    }
+
+    /// core `measuredProvider(t)`: the provider row with the machine's measured context and thinking switch.
+    pub async fn measured_provider(&self, t: &Target) -> JValue {
+        let f = self.facts(t).await;
+        provider_row(
+            t,
+            Some(f.context_tokens.unwrap_or(CONTEXT_FALLBACK)),
+            f.thinking,
+        )
+    }
 }
