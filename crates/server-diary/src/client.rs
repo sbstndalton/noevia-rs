@@ -414,10 +414,12 @@ mod tests {
                 reqwest::Method::GET,
                 "/api/files",
                 None,
-                if expected == CallError::Tls {
-                    Duration::from_secs(2)
-                } else {
+                // Only a hang that must end in `Timeout` runs on the short clock. Every other case gets a
+                // deadline against a hang, so a slow runner cannot turn its answer into a timeout.
+                if expected == CallError::Timeout {
                     Duration::from_millis(200)
+                } else {
+                    Duration::from_secs(30)
                 },
             )
             .await

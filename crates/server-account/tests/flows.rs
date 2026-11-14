@@ -434,6 +434,53 @@ fn password_sign_in_and_its_limits() {
     );
 }
 
+/// noevia-rs#517: the `invite.create` audit records the role the invitation grants. A role
+/// other than "admin" (a junk string, a number, null) creates a member invitation and is
+/// logged as "member", never as the raw request value.
+#[test]
+fn invitation_audit_records_the_stored_role() {
+    let w = world(false);
+    let mut owner = Browser::new("10.0.0.1");
+    setup(&w, &mut owner);
+    let cases = [
+        (r#"{"role":"QA-junk-role"}"#, "member"),
+        (r#"{"role":5}"#, "member"),
+        (r#"{"role":null}"#, "member"),
+        (r#"{}"#, "member"),
+        (r#"{"role":"admin"}"#, "admin"),
+    ];
+    for (i, (body, want)) in cases.into_iter().enumerate() {
+        let (s, v, _) = call(
+            &w,
+            &mut owner,
+            "POST",
+            "/api/admin/invitations",
+            body,
+            T0 + i as i64,
+        );
+        assert_eq!(s, 201, "{body}");
+        let token = v["token"].as_str().unwrap().to_string();
+        let stored: String = w
+            .node
+            .query_row(
+                "SELECT role FROM invitations WHERE token_hash=?1",
+                [server_auth::js::digest(&token)],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(stored, want, "{body}");
+        let detail: String = w
+            .node
+            .query_row(
+                "SELECT detail FROM audit_events WHERE action='invite.create' ORDER BY id DESC LIMIT 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(detail, format!(r#"{{"role":"{want}"}}"#), "{body}");
+    }
+}
+
 #[test]
 fn invitations_disable_and_recovery() {
     let w = world(false);

@@ -573,10 +573,9 @@ path = "/api/model-manager/models"
 owner = "rust"
 methods = ["GET"]
 
-# The model role assignments, the missing-file prune and the reranker role (noevia-core
-# routes/models.cjs), listed for the web client at web.ref; Node answers them (`/api/models/{*}`
-# below already sent them there).
-
+# The model role assignments (noevia-core routes/models.cjs), listed for the web client at
+# web.ref: the front answers the GET (bins/noevia-server model_assignments.rs); other methods get
+# Node's 405 through the residual fallback.
 [[route]]
 path = "/api/models/assignments"
 owner = "rust"
@@ -719,6 +718,9 @@ path = "/api/models/prune-missing"
 owner = "rust"
 methods = ["POST"]
 
+# The reranker role (noevia-core routes/models.cjs): the front answers every method itself (no
+# `methods`): GET, PUT and DELETE as Node did, and Node's 405 for the others (bins/noevia-server
+# reranker_routes.rs).
 [[route]]
 path = "/api/models/reranker"
 owner = "rust"

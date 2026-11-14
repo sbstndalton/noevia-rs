@@ -150,7 +150,13 @@ fn what_follows_an_error_depends_on_where_it_came_from() {
     // reply's closing events follow. A failed non-streaming retry of an empty stream does not break
     // it, and the final-answer round streams after the error. A mid-stream error frame ends the
     // stream at once, as do a failed preparation and a refused tool round.
-    const BREAKS: [&str; 3] = ["engine_http_500", "engine_stalls", "engine_unreachable"];
+    // `gate_other_client_error`: a 4xx on the tool gate's forced round that is not about tool_choice (R15).
+    const BREAKS: [&str; 4] = [
+        "engine_http_500",
+        "engine_stalls",
+        "engine_unreachable",
+        "gate_other_client_error",
+    ];
     const FALLBACK: &str = "fallback_fails_then_final_pass";
     // A stream broken after reasoning only (here the forced answer after a thinking cut): the note follows.
     const NOTED: &str = "thinking_cut_forced_fails";
