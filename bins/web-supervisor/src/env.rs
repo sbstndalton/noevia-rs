@@ -218,6 +218,7 @@ mod tests {
         let mut env = Env::from_pairs([
             ("NOEVIA_RUST_AUTH_CONFIRMED", "1"),
             ("NOEVIA_START_ID", "spoof"),
+            ("NOEVIA_FRONT_ONLY", "1"),
             ("NOEVIA_RUST_AUTH", ""),
             ("NOEVIA_RUST_PROJECTS", "1"),
             ("KEEP", "1"),
@@ -228,6 +229,10 @@ mod tests {
         assert!(warnings[1].contains("NOEVIA_RUST_PROJECTS is retired"));
         assert!(!env.is_set("NOEVIA_RUST_AUTH_CONFIRMED"));
         assert!(!env.is_set("NOEVIA_START_ID"));
+        assert!(
+            !env.is_set("NOEVIA_FRONT_ONLY"),
+            "a pair front never believes it is alone"
+        );
         assert!(!env.is_set("NOEVIA_RUST_AUTH"));
         assert!(env.is_set("KEEP"));
     }
