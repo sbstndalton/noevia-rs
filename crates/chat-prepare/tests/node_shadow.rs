@@ -96,7 +96,11 @@ fn replay(f: &JValue) -> Vec<Replayed> {
             .iter()
             .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
             .collect();
-        let is_write = |name: &str| writes.contains(&name) || !boxes.iter().any(|b| b.offers(name));
+        let is_write = |name: &str| {
+            chat_prepare::toolboxes::never_standing(name)
+                || writes.contains(&name)
+                || !boxes.iter().any(|b| b.offers(name))
+        };
         // The names the recorded in-process MCP server holds (projectEditTool's server check).
         let held: Vec<&str> = items(input, "inApp")
             .iter()
@@ -581,7 +585,11 @@ fn a_manual_default_model_is_the_front_s_last_loaded_one() {
         .iter()
         .flat_map(|b| items(b, "writes").iter().filter_map(|n| n.as_str()))
         .collect();
-    let is_write = |name: &str| writes.contains(&name) || !boxes.iter().any(|b| b.offers(name));
+    let is_write = |name: &str| {
+        chat_prepare::toolboxes::never_standing(name)
+            || writes.contains(&name)
+            || !boxes.iter().any(|b| b.offers(name))
+    };
     let held: Vec<&str> = items(input, "inApp")
         .iter()
         .filter_map(|n| n.as_str())

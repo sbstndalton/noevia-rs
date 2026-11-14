@@ -6,7 +6,10 @@
 //! a blocking thread after the turn has started, at most [`MAX_RUNNING`] at a time, the rest skipped).
 //!
 //! The line holds no text of the turn: `chat prepare shadow: match`, `skip <reason>`,
-//! `failed <reason>` or `diff field=<messages|chat|turn> message=<i> unit=<u> ours=<n> core=<n>` (see `chat_prepare::shadow`).
+//! `failed <reason>` or `diff field=<f> message=<i> unit=<u> ours=<n> core=<n>`, `f` one of `messages`,
+//! `chat`, `turn`, `effort`, `thinkingOff`, `sampling`, `model`, `writes`, `public`, `editTools`
+//! and `onceTools` (see `chat_prepare::shadow`); `skip catalogue` when the per-tool facts could not
+//! be compared (the front's toolbox catalogue not current, or a build without it).
 //!
 //! Switch: `NOEVIA_CHAT_PREPARE` (config.rs): unset, empty or `node` is off (the default);
 //! `shadow` every account the executor runs; `shadow:<account id>,...` those. It only matters for
@@ -145,20 +148,29 @@ fn quiet_tools(app: &Arc<App>) -> Option<Tools> {
         .iter()
         .flat_map(|b| b.tools.iter().filter(|t| t.write).map(|t| t.name.clone()))
         .collect();
-    // index.cjs MCP_INTERNAL_SERVER: the first configured server with `internal` auth; a name is held
-    // by the first configured server offering it (mcpState.tools).
-    let internal = c.servers.iter().find(|s| s.auth == "internal");
-    let in_app = c
-        .offers
-        .iter()
-        .filter(|(_, ids)| internal.is_some_and(|s| ids.first() == Some(&s.id)))
-        .map(|(name, _)| name.clone())
-        .collect();
     Some(Tools {
         boxes: toolboxes(&c.boxes),
         writes,
-        in_app,
+        in_app: in_app_names(&c.servers, &c.offers),
     })
+}
+
+/// The tool names the in-process MCP server holds: index.cjs `MCP_INTERNAL_SERVER` is the first
+/// configured server with `internal` auth, and a name is held by the first configured server
+/// offering it (`mcpState.tools`; `offers` lists each name's servers in configured order).
+#[cfg(feature = "rust-storage-reads")]
+fn in_app_names(
+    servers: &[crate::mcp_discovery::ServerInfo],
+    offers: &std::collections::HashMap<String, Vec<String>>,
+) -> std::collections::HashSet<String> {
+    let Some(internal) = servers.iter().find(|s| s.auth == "internal") else {
+        return Default::default();
+    };
+    offers
+        .iter()
+        .filter(|(_, ids)| ids.first() == Some(&internal.id))
+        .map(|(name, _)| name.clone())
+        .collect()
 }
 
 #[cfg(not(feature = "rust-storage-reads"))]
@@ -332,8 +344,10 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Ve
     };
     let carry = |name: &str| is_public_tool_name(Some(name), boxes.unwrap_or_default());
     // isWriteTool, as the catalogue classified each tool (a name no box offers is a write).
+    // chat.cjs: `specialistPageSave.neverStanding(name) || injectedIsWriteTool(name)`.
     let is_write = |name: &str| {
-        tools.is_some_and(|t| t.writes.contains(name))
+        chat_prepare::toolboxes::never_standing(name)
+            || tools.is_some_and(|t| t.writes.contains(name))
             || !boxes.is_some_and(|b| b.iter().any(|b| b.offers(name)))
     };
     // projectEditTool's server check: the in-process MCP server holds the name.
@@ -737,5 +751,72 @@ mod tests {
             matched >= 150 && framed >= 5,
             "{matched} matched, {framed} framed"
         );
+    }
+}
+
+#[cfg(all(test, feature = "rust-storage-reads"))]
+mod holder_tests {
+    use super::in_app_names;
+    use crate::mcp_discovery::ServerInfo;
+
+    fn server(id: &str, auth: &str) -> ServerInfo {
+        ServerInfo {
+            id: id.into(),
+            auth: auth.into(),
+            directory: false,
+            error: None,
+            tool_count: None,
+            tools: Vec::new(),
+            tools_truncated: false,
+        }
+    }
+
+    fn offers(list: &[(&str, &[&str])]) -> std::collections::HashMap<String, Vec<String>> {
+        list.iter()
+            .map(|(n, ids)| (n.to_string(), ids.iter().map(|s| s.to_string()).collect()))
+            .collect()
+    }
+
+    fn sorted(set: std::collections::HashSet<String>) -> Vec<String> {
+        let mut v: Vec<String> = set.into_iter().collect();
+        v.sort();
+        v
+    }
+
+    #[test]
+    fn the_first_configured_server_offering_a_name_holds_it() {
+        // An outside server configured before the in-process one wins the name it shares.
+        let servers = [server("qa-docs", "none"), server("noevia", "internal")];
+        let o = offers(&[
+            ("project_append_file", &["qa-docs", "noevia"]),
+            ("project_replace_text", &["noevia", "qa-docs"]),
+            ("project_list_files", &["noevia"]),
+            ("qa_docs_read", &["qa-docs"]),
+        ]);
+        assert_eq!(
+            sorted(in_app_names(&servers, &o)),
+            ["project_list_files", "project_replace_text"]
+        );
+    }
+
+    #[test]
+    fn without_an_in_process_server_no_name_is_held_by_it() {
+        let servers = [server("qa-docs", "none"), server("noevia", "oauth")];
+        let o = offers(&[("project_append_file", &["noevia"])]);
+        assert!(in_app_names(&servers, &o).is_empty());
+    }
+
+    #[test]
+    fn the_first_internal_server_is_the_in_process_one() {
+        let servers = [
+            server("qa-search", "none"),
+            server("noevia", "internal"),
+            server("noevia-2", "internal"),
+        ];
+        let o = offers(&[
+            ("project_append_file", &["noevia-2"]),
+            ("project_replace_text", &["noevia"]),
+        ]);
+        assert_eq!(sorted(in_app_names(&servers, &o)), ["project_replace_text"]);
     }
 }
