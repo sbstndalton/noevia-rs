@@ -29,18 +29,30 @@
 //!                                                 pairings (facts::ALL: autotune-settings,
 //!                                                 idle-unload-read, model-assignments, preset-read,
 //!                                                 autotune-clear, autotune-resume, autotune-cancel,
-//!                                                 autotune-untuned)
+//!                                                 autotune-untuned), or one of the route pairings
+//!                                                 (route_pairings::NAMES: project-storage, close-out,
+//!                                                 decision-settings, storage-integrations,
+//!                                                 vault-mirror, storage-connection, providers,
+//!                                                 chatgpt-signin, mcp-credentials, mcp-views,
+//!                                                 provider-models, google-drive, offsite-backup,
+//!                                                 model-sizing, model-state-reads, model-evidence)
+//! release-assemble pairing NAME TREE VERDICTS     a route pairing with earlier verdicts the script has by
+//!                                                 then and this crate does not port yet: a comma list
+//!                                                 of auto-roles-write (close-out) and discovery
+//!                                                 (mcp-views), or empty
 //! ```
 //! Refusals print `assemble-release: <reason>` on stderr and exit 1; bad usage exits 2.
 
 use release_assemble::guard::{self, MoveKind};
 use release_assemble::lock::Lock;
 use release_assemble::plan::{self, Component, Resolution, Resolved};
-use release_assemble::{bridged, core_requires, digest, facts, model_pairings, tar, tree};
+use release_assemble::{
+    bridged, core_requires, digest, facts, model_pairings, route_pairings, tar, tree,
+};
 use std::path::Path;
 use std::process::ExitCode;
 
-const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | core-requires FILE MODULE | code-body FILE | pairing NAME TREE";
+const USAGE: &str = "usage: release-assemble lock-value LOCK KEY | plan LOCK SHA | check-sha256 FILE REPO REF SUM | extract TGZ DEST [STRIP] | finish TREE SHA OUT_DIR WEB CORE SERVICES [RS] | manifest TGZ | routes-toml FILE | move-capability FILE NAME VALUE KIND | project-routes-core FILE [NAME] | core-requires FILE MODULE | code-body FILE | pairing NAME TREE [VERDICTS]";
 
 fn write_out(bytes: &[u8]) -> Result<(), String> {
     use std::io::Write;
@@ -249,12 +261,42 @@ fn run(args: &[String]) -> Result<ExitCode, String> {
                 "embedding-admin" => model_pairings::embedding_admin_pairing(t)?,
                 other => match facts::by_name(other) {
                     Some(p) => facts::facts_pairing(t, p)?,
-                    None => return Ok(usage()),
+                    None => match route_pairings::by_name(t, other, earlier(t, "")) {
+                        Some(verdict) => verdict?,
+                        None => return Ok(usage()),
+                    },
                 },
             }
             Ok(ExitCode::SUCCESS)
         }
+        // The route pairings that take verdicts of pairings not ported yet: VERDICTS is a comma list of
+        // auto-roles-write (auto_roles_write_owner = rust) and discovery (md_rs_owner = rust), or empty.
+        ["pairing", which, tree_dir, verdicts] => {
+            let t = Path::new(tree_dir);
+            if verdicts
+                .split(',')
+                .any(|v| !v.is_empty() && v != "auto-roles-write" && v != "discovery")
+            {
+                return Ok(usage());
+            }
+            match route_pairings::by_name(t, which, earlier(t, verdicts)) {
+                Some(verdict) => verdict?,
+                None => return Ok(usage()),
+            }
+            Ok(ExitCode::SUCCESS)
+        }
         _ => Ok(usage()),
+    }
+}
+
+/// The earlier verdicts a route pairing takes: the project create/delete pair's front half (that pairing runs
+/// first in the script, so its front half is its verdict), and the two named in `verdicts`.
+fn earlier(t: &Path, verdicts: &str) -> route_pairings::Earlier {
+    let named = |n: &str| verdicts.split(',').any(|v| v == n);
+    route_pairings::Earlier {
+        lifecycle_rs_owner: guard::project_lifecycle_rs_owner(t),
+        auto_roles_write: named("auto-roles-write"),
+        discovery_rs_owner: named("discovery"),
     }
 }
 

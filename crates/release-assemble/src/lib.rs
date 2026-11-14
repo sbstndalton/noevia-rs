@@ -31,6 +31,11 @@
 //!   `require('<module>')`) as a Rust tokenizer, so no pairing needs node; [`model_pairings`]: track R11's
 //!   model writes, model manager proxy and embedding admin pairings on it, with `code_body`.
 //!
+//! - [`route_pairings`] (council p13): the project storage write pairing on `core_requires`, and the run of
+//!   route pairings from the close-out routes to the evidence recheck (settings, storage, providers, ChatGPT
+//!   sign-in, MCP credentials and views, Google Drive, off-site backup, model sizing, state reads,
+//!   maintenance and recheck) as one table-driven shape plus their extra checks.
+//!
 //! Nothing in the release path calls this crate yet.
 
 pub mod bridged;
@@ -41,6 +46,7 @@ pub mod guard;
 pub mod lock;
 pub mod model_pairings;
 pub mod plan;
+pub mod route_pairings;
 pub mod source;
 pub mod tar;
 pub mod tree;
