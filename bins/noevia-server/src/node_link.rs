@@ -69,7 +69,8 @@ pub struct Client {
 }
 
 const DOWN: &str = "no request is built: the caller's answer for a Node that is down";
-const BUSY: &str = "the admission refuses busy (503) without dialling";
+const BUSY: &str =
+    "the admission refuses without dialling (no answer: the caller's reply for a Node that is down, 502 for the chat gate)";
 const PROXY: &str = "the detached proxy answers 501 without connecting (legacy_proxy.rs)";
 const IDLE: &str = "never starts";
 
@@ -147,7 +148,7 @@ pub fn alone_summary() -> String {
     let count = |t: Transport| CLIENTS.iter().filter(|c| c.transport == t).count();
     format!(
         "front only: {} clients of Node dial nothing (bridge {}, model maintenance {}, approval revocation {}, \
-         proxy {}, idle {}; node_link.rs); model calls refuse busy until admission's decisions are native",
+         proxy {}, idle {}; node_link.rs); model calls are refused until admission's decisions are native",
         CLIENTS.len(),
         count(Transport::Bridge),
         count(Transport::Maint),
@@ -247,7 +248,7 @@ mod tests {
     /// Whether a line is a `#[cfg(...)]` that names `test`.
     fn test_only(line: &str) -> bool {
         let t = line.trim();
-        t.starts_with("#[cfg(") && t.contains("test")
+        t.starts_with("#[cfg(") && t.contains("test") && !t.contains("not(test)")
     }
 
     /// `[` minus `]` on a line: an attribute continues while this sums above zero.

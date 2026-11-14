@@ -402,7 +402,8 @@ async fn server_main() -> ExitCode {
     let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
     // #697: the memory watchdog (Core's inference-budget-watch.cjs, which Core no longer starts:
     // rust-budget-watch). Its first reading is one interval from now; it stops with the server.
-    // A front alone: the watchdog still guards the engine's memory, but tells Node nothing (node_link.rs).
+    // A front alone: the watchdog asks Node nothing (node_link.rs); without Node's budget its tick reads NaN
+    // and does nothing, as it did against a Node that is down (CONTINUE: a native budget source).
     let env = |k: &str| std::env::var(k).ok();
     let budget_watch = noevia_server::model_maint::budget_watch::spawn(
         &app.config.maint,

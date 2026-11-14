@@ -560,11 +560,11 @@ pub const RETIRED_SWITCHES: &[&str] = &[
     "NOEVIA_RUST_PROJECTS",
 ];
 
-/// The cargo features the permanent front routes need, and whether this build has each. The
-/// web supervisor checks the same names in `--features` before starting either process.
 /// Set by the web supervisor on a front it starts without Node (see [`Config::front_only`]).
 pub const FRONT_ONLY: &str = "NOEVIA_FRONT_ONLY";
 
+/// The cargo features the permanent front routes need, and whether this build has each. The
+/// web supervisor checks the same names in `--features` before starting either process.
 pub const FRONT_ROUTE_FEATURES: &[(&str, bool)] = &[
     ("rust-project-writes", cfg!(feature = "rust-project-writes")),
     ("rust-chatgpt-status", cfg!(feature = "rust-chatgpt-status")),
