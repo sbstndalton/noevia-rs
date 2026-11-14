@@ -22,8 +22,12 @@
 //!   it is gone.
 //! - A create in a project whose storage folder cannot be made is refused (core wrote the file to
 //!   `null/<group>/<name>` in storage, then recorded it under that name: a bug not copied).
-//! - Storage the front cannot use now ([`Storage::Refused`]) refuses with its own text where core
-//!   would have tried and failed.
+//! - Storage the front cannot use now ([`Storage::Refused`]: no admission slot, an endpoint the
+//!   account may not reach, a connection row that cannot be read) refuses every write with its own
+//!   text, before anything is checked or written; core would have tried and failed (or, for an
+//!   unreadable row, written locally).
+//! - Core's save rewrote the whole list (every project's load fix-ups, every project's skills
+//!   reconciled); here only this project is changed.
 //! - multimodal-rag's `sourceChanged` nudge is the outbox index job's (as for an upload).
 //! - A create-only write (an adopt) whose record cannot be saved is removed from storage again
 //!   (#1664, as an upload does); core left it there.
@@ -260,11 +264,12 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
         current = Some((at, found.clone()));
     }
     let expect_name = edit.expect_name.as_str().unwrap_or_default().to_owned();
+    // Storage the front cannot use now: core would have tried it (its connection is browsable) and
+    // failed; nothing may land in noevia instead.
+    if let Storage::Refused(_, message) = env.storage {
+        return Err((*message).to_owned());
+    }
     let remote = env.storage.remote();
-    let refused = match env.storage {
-        Storage::Refused(_, message) => Some(*message),
-        _ => None,
-    };
     let folder_of = |p: &JValue| p.get("projectFolder").as_str().filter(|f| !f.is_empty()).map(str::to_owned);
     let mut condition = Condition::None;
     let adopt = is_edit && !matches!(edit.adopt_to, JValue::Undefined);
@@ -278,9 +283,6 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             return Err(format!("\"{expect_name}\" cannot be moved into the project folder; nothing was saved"));
         }
         let Some(remote) = remote else {
-            if let Some(m) = refused {
-                return Err(m.to_owned());
-            }
             return Err(format!("\"{expect_name}\" was to be saved as \"{adopt_to}\" in this project's storage, which is not connected right now, so nothing was saved. Reconnect storage and try again."));
         };
         let approved = match &edit.adopt_account {
@@ -315,11 +317,6 @@ fn locked(env: &Env<'_>, id: &str, name: &str, text: &str, edit: &Edit) -> Resul
             (None, _) => Some(name.to_owned()),
         };
         if destination.as_deref() != Some(expect_name.as_str()) {
-            if remote.is_none() {
-                if let Some(m) = refused {
-                    return Err(m.to_owned());
-                }
-            }
             return Err(if remote.is_some() {
                 format!("saving now would write \"{}\" instead of editing \"{expect_name}\" in place; nothing was saved", destination.as_deref().unwrap_or(name))
             } else {
