@@ -99,11 +99,7 @@ impl std::fmt::Debug for Server {
 
 impl Server {
     /// A server at [`RPC_PATH`] with the real clock and the default deadlines.
-    pub fn new(
-        handler: Handler,
-        ports: Arc<dyn Ports + Send + Sync>,
-        other: Arc<Other>,
-    ) -> Server {
+    pub fn new(handler: Handler, ports: Arc<dyn Ports + Send + Sync>, other: Arc<Other>) -> Server {
         Server {
             handler,
             ports,
@@ -137,7 +133,13 @@ impl Server {
 
     /// One request as [`project_tools::serve`] answers it, at this server's path: the listener rule,
     /// then a project tool here and any other admitted name through `other`.
-    pub fn answer(&self, method: &str, url: &str, body: Option<&[u8]>, auth: Option<&str>) -> Reply {
+    pub fn answer(
+        &self,
+        method: &str,
+        url: &str,
+        body: Option<&[u8]>,
+        auth: Option<&str>,
+    ) -> Reply {
         match self
             .handler
             .listen(method, url, &self.path, body, auth, (self.clock)())
@@ -162,7 +164,10 @@ pub async fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
     if !addr.ip().is_loopback() {
         return Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            format!("the in-app MCP listener binds loopback only, not {}", addr.ip()),
+            format!(
+                "the in-app MCP listener binds loopback only, not {}",
+                addr.ip()
+            ),
         ));
     }
     TcpListener::bind(addr).await
@@ -252,7 +257,11 @@ async fn request(server: Arc<Server>, req: Request<Incoming>) -> Response<Full<B
 fn invalid_request() -> Reply {
     Reply {
         status: 400,
-        body: Some(crate::rpc_error(&js_json::JValue::Null, -32600.0, "invalid request")),
+        body: Some(crate::rpc_error(
+            &js_json::JValue::Null,
+            -32600.0,
+            "invalid request",
+        )),
     }
 }
 
