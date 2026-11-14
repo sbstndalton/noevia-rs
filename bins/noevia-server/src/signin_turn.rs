@@ -167,12 +167,17 @@ enum Ended {
 
 /// The next read of the body. `left` resolves when the client went away. No idle limit: core
 /// applies the local idle limit to the default provider and machines only, not to this row.
+///
+/// When several are ready at once the order is fixed (council p9-3): the client leaving, then the
+/// deadline, then the body's data, so a read past the deadline fails even with data waiting. Once
+/// the deadline ended a read the body is let go and the deadline cleared: later reads end.
 pub async fn read<B: Body>(body: &mut TurnBody<B>, left: impl Future<Output = ()>) -> Read {
     let deadline = body.deadline;
     let ended = tokio::select! {
-        r = next_of(&mut body.inner) => Ended::Read(r),
+        biased;
         () = left => Ended::Left,
         () = until(deadline) => Ended::Deadline,
+        r = next_of(&mut body.inner) => Ended::Read(r),
     };
     match ended {
         Ended::Read(r) => r,
@@ -183,6 +188,7 @@ pub async fn read<B: Body>(body: &mut TurnBody<B>, left: impl Future<Output = ()
         }
         Ended::Deadline => {
             body.inner = Inner::Bytes(None);
+            body.deadline = None;
             Read::Failed(ABORTED.to_owned())
         }
     }
@@ -276,10 +282,12 @@ impl<A: Accounts + Clone> SigninEngine<A> {
             &request.url,
             &request.body,
         );
+        // The client leaving and the deadline win over an answer that is ready at the same time.
         let answer = tokio::select! {
-            a = call => a,
+            biased;
             () = left => return Err(ABORTED.to_owned()),
             () = until(deadline) => return Err(ABORTED.to_owned()),
+            a = call => a,
         };
         turn_answer(answer, deadline)
     }
