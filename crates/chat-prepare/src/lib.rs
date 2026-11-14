@@ -62,6 +62,12 @@
 //!   `tests/fixtures/node-reroute.v1.json`, written by `tests/record_reroute.cjs` (whole turns
 //!   through `createChatHandler`); no named differences. Inference machines and routing modes are
 //!   later slices.
+//! - [`modes`] (slice P5d, first part): routing modes (#778): the local, cloud and hybrid route of
+//!   an Automatic turn, its remembered chat flags, the sensitivity check and the routing question
+//!   (`route_pending`, S9 `openChoice`) as seams, `routeTarget`, `offBoxTurn` and the meta
+//!   `routing`. Recorded in `tests/fixtures/node-modes.v1.json`, written by `tests/record_modes.cjs`
+//!   (whole turns through `createChatHandler`); no named differences. The pre-rules, the router
+//!   input and the wire changes once the route is known are later parts.
 //! - [`retrieval`] (slice P2b): a project turn's knowledge-file retrieval around its two seams (the
 //!   file-job wait and `rag.filesContext`): the project id, whether and how the turn waits, the
 //!   request (the readable files, the question, `attached`, multimodal `images`), and what chat.cjs
@@ -129,6 +135,7 @@ pub mod frame;
 pub mod history;
 pub mod js;
 pub mod memory;
+pub mod modes;
 pub mod names;
 pub mod offer;
 pub mod project;
