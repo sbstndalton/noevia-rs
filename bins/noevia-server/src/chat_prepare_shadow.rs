@@ -118,15 +118,17 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
             };
             let boxes = catalogue.map(|c| toolboxes(&c.boxes));
             let settings = settings_rows(&app);
-            let verdict = run(
-                &user_dir,
-                &body,
-                &frame,
-                &server_time_zone(),
+            // What native preparation would answer a Manual turn with: the front's own copy.
+            let last_loaded = app.config.maint.last_loaded();
+            let zone = server_time_zone();
+            let facts = Facts {
+                time_zone: &zone,
                 flags,
-                boxes.as_deref(),
-                settings.as_ref(),
-            );
+                boxes: boxes.as_deref(),
+                settings: settings.as_ref(),
+                last_loaded: last_loaded.as_deref(),
+            };
+            let verdict = run(&user_dir, &body, &frame, facts);
             drop(slot);
             eprintln!("chat prepare shadow: {}", verdict.line());
         })
@@ -239,17 +241,29 @@ pub struct Flags {
     pub brain_context: Option<bool>,
 }
 
+/// What the server knows beside the account's files (each `None`: unknown).
+#[derive(Clone, Copy)]
+pub struct Facts<'a> {
+    /// `serverTimeZone()`.
+    pub time_zone: &'a str,
+    pub flags: Flags,
+    /// `allToolboxes()`: without it a history that needs it is skipped.
+    pub boxes: Option<&'a [Toolbox]>,
+    /// The settings rows `reasoning_effort_default` and `auto_sampling_presets_enabled`.
+    pub settings: Option<&'a (JValue, JValue)>,
+    /// The front's last-loaded model.
+    pub last_loaded: Option<&'a str>,
+}
+
 /// One shadow preparation: the account's files read as core reads them.
-/// `boxes`: `allToolboxes()` (`None`: unknown, so a history that needs it is skipped).
-pub fn run(
-    user_dir: &Path,
-    body: &[u8],
-    frame: &JValue,
-    time_zone: &str,
-    flags: Flags,
-    boxes: Option<&[Toolbox]>,
-    settings: Option<&(JValue, JValue)>,
-) -> Verdict {
+pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, facts: Facts<'_>) -> Verdict {
+    let Facts {
+        time_zone,
+        flags,
+        boxes,
+        settings,
+        last_loaded,
+    } = facts;
     let Some(body) = std::str::from_utf8(body)
         .ok()
         .and_then(|t| wtf16::parse(t).ok())
@@ -292,6 +306,7 @@ pub fn run(
         body: &body,
         project,
         roles: Some(&roles),
+        last_loaded,
         frame,
         instructions: instructions.as_deref(),
         memory: memory.as_deref(),
@@ -472,15 +487,18 @@ mod tests {
     fn an_unreadable_body_is_skipped() {
         let dir = std::env::temp_dir();
         let frame = JValue::Null;
-        let flags = Flags::default();
+        let unknown = Facts {
+            time_zone: "UTC",
+            flags: Flags::default(),
+            boxes: None,
+            settings: None,
+            last_loaded: None,
+        };
         assert_eq!(
-            run(&dir, b"{not json", &frame, "UTC", flags, None, None),
+            run(&dir, b"{not json", &frame, unknown),
             Verdict::Skip("body")
         );
-        assert_eq!(
-            run(&dir, b"{}", &frame, "UTC", flags, None, None),
-            Verdict::Skip("frame")
-        );
+        assert_eq!(run(&dir, b"{}", &frame, unknown), Verdict::Skip("frame"));
     }
 
     /// Recorded free-chat hand-offs (crates/chat-prepare's node-shadow.v1.json) prepared from the files
@@ -589,15 +607,14 @@ mod tests {
                     .get("auto_sampling_presets_enabled")
                     .clone(),
             );
-            let verdict = run(
-                &dir,
-                body.as_bytes(),
-                frame,
-                tz,
+            let known = Facts {
+                time_zone: tz,
                 flags,
-                Some(&boxes),
-                Some(&rows),
-            );
+                boxes: Some(&boxes),
+                settings: Some(&rows),
+                last_loaded: input.get("lastLoaded").as_str(),
+            };
+            let verdict = run(&dir, body.as_bytes(), frame, known);
             let name = t.get("name").as_str().unwrap_or_default();
             // The recorded turns made to be skipped (what is not ported yet) say why; all others match.
             let skipped = [
@@ -622,7 +639,13 @@ mod tests {
             }
             // Without the catalogue and the settings rows: a history that needs the catalogue is skipped, and
             // a turn whose compared fields are all core's says the settings were not read.
-            let without = run(&dir, body.as_bytes(), frame, tz, flags, None, None);
+            let unknown = Facts {
+                boxes: None,
+                settings: None,
+                last_loaded: None,
+                ..known
+            };
+            let without = run(&dir, body.as_bytes(), frame, unknown);
             assert!(
                 matches!(without, Verdict::Skip("tool-history" | "settings")),
                 "{}: {}",

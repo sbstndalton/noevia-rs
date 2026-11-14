@@ -38,6 +38,7 @@
 //                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
 //   roles, pick  (left out: Manual) what autoRoles() answers and the classifier's verdict (an Automatic turn)
 //   models       (left out: none) more loaded models besides the default one (distinct role and project models)
+//   lastLoaded   what lastLoadedModel() answers (the model a Manual turn without a project model answers with)
 //   projects     (left out: none) the account's stored projects, what getProject(id) finds (P7c): no skills
 //   codeTasks    (left out: none) what codeTasksFor(project) answers (a project sharing into Chat)
 //   body         the POST /api/chat body (no skill, turnToolboxes or compactOnly; a projectId on the P7c cases)
@@ -233,6 +234,7 @@ async function addTurn(name, raw) {
     freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES,
     ...(spec.settings === undefined ? {} : { settings: spec.settings }),
     ...(spec.roles === undefined ? {} : { roles: spec.roles, pick: spec.pick }), ...(spec.models === undefined ? {} : { models: spec.models }),
+    lastLoaded: MODEL,
     ...(spec.projects === undefined ? {} : { projects: spec.projects }), ...(spec.codeTasks === undefined ? {} : { codeTasks: spec.codeTasks }),
     body: viaJson(spec.body) };
   const from = logged.length;

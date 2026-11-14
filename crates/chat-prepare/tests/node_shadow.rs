@@ -110,6 +110,7 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 free_chats: Some(free),
                 project,
                 roles: Some(input.get("roles")),
+                last_loaded: input.get("lastLoaded").as_str(),
                 time_zone: input.get("tz").as_str().unwrap(),
                 chat_framing: input.get("chatFraming").as_bool(),
                 brain_context: Some(false),
@@ -183,6 +184,16 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // Everything built is core's: a match, or (P7d) all but a Manual turn's default model.
     let covered = |v: Verdict| matches!(v, Verdict::Match | Verdict::Skip("manual-default"));
     let matched = replayed.iter().filter(|r| covered(r.verdict)).count();
+    // P7d-2: with the last-loaded model known, a Manual turn's model is compared too.
+    let full = replayed
+        .iter()
+        .filter(|r| r.verdict == Verdict::Match)
+        .count();
+    assert!(
+        full * 10 >= replayed.len() * 9,
+        "only {full} of {} fully matched",
+        replayed.len()
+    );
     // The model is compared for Automatic turns and projects with their own model: they match.
     let modelled: Vec<&Replayed> = replayed
         .iter()
@@ -277,6 +288,7 @@ fn a_difference_is_located_without_its_text() {
             free_chats: Some(&free),
             project: None,
             roles: None,
+            last_loaded: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -365,6 +377,7 @@ fn a_code_route_and_an_unreadable_free_list_are_skipped() {
             free_chats: free,
             project: None,
             roles: None,
+            last_loaded: None,
             time_zone: "UTC",
             chat_framing: framing,
             brain_context: Some(false),
@@ -447,6 +460,7 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
             free_chats: Some(&empty),
             project: None,
             roles: None,
+            last_loaded: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),
@@ -491,6 +505,7 @@ fn a_new_project_chat_takes_only_an_id_chat_cjs_makes() {
             free_chats: Some(&empty),
             project: Some(project),
             roles: None,
+            last_loaded: None,
             time_zone: input.get("tz").as_str().unwrap(),
             chat_framing: Some(false),
             brain_context: Some(false),

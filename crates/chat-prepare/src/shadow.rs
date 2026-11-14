@@ -52,6 +52,10 @@ pub struct ShadowTurn<'a> {
     /// `autoRoles()`: the account's `auto-roles.json` (`None`: not read; an Automatic turn's model
     /// is then not compared).
     pub roles: Option<&'a JValue>,
+    /// The model a Manual turn without a project model answers with in native preparation: the
+    /// front's own last-loaded model (chat.cjs: `lastLoadedModel()`, core's in-process copy; the two
+    /// copies are kept apart, so a difference shows as a `model` diff). `None`: none known.
+    pub last_loaded: Option<&'a str>,
     /// `serverTimeZone()`.
     pub time_zone: &'a str,
     /// `features.enabled('chatFraming')` and `brainContext.enabled()` (`brainContext` and
@@ -502,8 +506,9 @@ fn new_chat_id(id: &JValue, started_at: &JValue) -> bool {
 /// The frame's `model` as chat.cjs picks it for a covered turn (P7d), or why it is not compared:
 /// an Automatic turn answers with its role's model (`autoRoles()[routedRole]`, the role being core's:
 /// the classification is a decision call); a Manual project turn with the project's own model
-/// (a handed-off turn passed the chat-model check). Not compared: a Manual turn without a project
-/// model (`manual-default`: chat.cjs then asks `lastLoadedModel()`, core's own state), a project
+/// (a handed-off turn passed the chat-model check); a Manual turn without one the front's own
+/// last-loaded model (P7d-2: what native preparation would use; core asks its own copy). Not
+/// compared: such a turn when the front knows no loaded model (`manual-default`), a project
 /// with Context: High (`context-profile`: the long-context pick), an Automatic turn whose roles
 /// were not read or name no model for the role (`roles`). Known limit: auto-roles.json saved
 /// between core's read and this one shows as a `model` diff.
@@ -523,7 +528,8 @@ fn model_field(t: &ShadowTurn<'_>, project: Option<&JValue>) -> Result<JValue, &
     }
     match project.map(|p| p.get("model")) {
         Some(model) if model.truthy() => Ok(model.clone()),
-        _ => Err("manual-default"),
+        // chat.cjs: no project model on the local default provider: `lastLoadedModel()`.
+        _ => t.last_loaded.map(JValue::from).ok_or("manual-default"),
     }
 }
 
