@@ -110,6 +110,8 @@ pub struct Settings {
     pub lang: Option<String>,
     /// `CODE_VERIFY_ENDPOINT`: the pipeline's verifier.
     pub verify_endpoint: Option<String>,
+    /// Track R11: where a start's engine facts come from (`NOEVIA_RUST_ENGINE_FACTS`, code_facts.rs).
+    pub facts: crate::code_facts::Settings,
 }
 
 impl Settings {
@@ -133,6 +135,7 @@ impl Settings {
             path: get("PATH"),
             lang: get("LANG"),
             verify_endpoint: set("CODE_VERIFY_ENDPOINT"),
+            facts: crate::code_facts::Settings::from_lookup(get),
         }
     }
 
@@ -744,23 +747,46 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
         .clone()
 }
 
-/// What core says for one start, called by the service where Node reads the engine: after the
-/// body's checks and the one-task check. A project core does not know (or a bridge that is not
-/// mounted, which answers the same 404) is the "unavailable" answer: the front has just found it.
-async fn resolve(app: Arc<App>, user: String, project: String) -> Result<Resolved, Fail> {
-    let down = || fail(503, UNAVAILABLE);
+/// What core says for one start: its answer on `/internal/code/engine`, or `None`. A project core
+/// does not know (or a bridge that is not mounted, which answers the same 404) is no answer: the
+/// front has just found it.
+async fn core_facts(app: &App, user: &str, project: &str) -> Option<JValue> {
     let body = json!({ "user": user, "projectId": project });
     let (status, bytes) = app
         .config
         .research
         .node_call(ENGINE_PATH, &body, ENGINE_DEADLINE)
-        .await
-        .ok_or_else(down)?;
-    let facts = (status == 200)
+        .await?;
+    (status == 200)
         .then(|| wtf16::parse(&String::from_utf8_lossy(&bytes)).ok())
         .flatten()
         .filter(JValue::is_object)
-        .ok_or_else(down)?;
+}
+
+/// The engine facts for one start, called by the service where Node reads the engine: after the
+/// body's checks and the one-task check. Core's (the default), or the front's own behind
+/// `NOEVIA_RUST_ENGINE_FACTS` (code_facts.rs); either way a missing answer is the "unavailable" 503.
+async fn resolve(
+    app: Arc<App>,
+    user: String,
+    project: String,
+    record: JValue,
+) -> Result<Resolved, Fail> {
+    use crate::code_facts::{self, Mode};
+    let down = || fail(503, UNAVAILABLE);
+    let facts = match app.config.code.facts.mode {
+        Mode::Core => core_facts(&app, &user, &project).await.ok_or_else(down)?,
+        Mode::Shadow => {
+            let core = core_facts(&app, &user, &project).await.ok_or_else(down)?;
+            code_facts::shadow(&app, &user, &record, &core).await;
+            core
+        }
+        Mode::Rust => {
+            code_facts::native(&app, &user, &record, || core_facts(&app, &user, &project))
+                .await
+                .map_err(|_| down())?
+        }
+    };
     if facts.get("machine").as_bool() == Some(true) {
         return Err(fail(409, ON_A_MACHINE));
     }
@@ -862,8 +888,14 @@ pub async fn serve(
                     id: &project_id,
                     record: &record,
                 };
-                let resolve =
-                    || rt.block_on(resolve(Arc::clone(&app), user.clone(), project_id.clone()));
+                let resolve = || {
+                    rt.block_on(resolve(
+                        Arc::clone(&app),
+                        user.clone(),
+                        project_id.clone(),
+                        record.clone(),
+                    ))
+                };
                 service.start(&dir, Some(&user), &project, &resolve, &body)
             })
             .await;

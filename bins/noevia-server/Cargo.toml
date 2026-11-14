@@ -74,6 +74,8 @@ zeroize = { version = "=1.9.1", default-features = false, features = ["alloc"] }
 s3-sign = { path = "../../crates/s3-sign" }
 storage-path = { path = "../../crates/storage-path", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
+rustix = { version = "=1.1.5", features = ["fs"] }
+boot-schema = { path = "../../crates/boot-schema" }
 google-token-seal = { path = "../../crates/google-token-seal" }
 egress-issuer = { path = "../../crates/egress-issuer" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
@@ -100,6 +102,7 @@ provider-egress = { path = "../../crates/provider-egress" }
 server-chatgpt-status = { path = "../../crates/server-chatgpt-status", optional = true }
 # sbstndalton/noevia#2202: the MCP credential broker (mcp_broker.rs, mcp_egress.rs, mcp_routes.rs).
 secret-envelope = { path = "../../crates/secret-envelope" }
+secrets-rotate = { path = "../../crates/secrets-rotate" }
 ssrf-policy = { path = "../../crates/ssrf-policy" }
 mcp-frame = { path = "../../crates/mcp-frame" }
 tool-rate-limit = { path = "../../crates/tool-rate-limit" }
@@ -119,6 +122,10 @@ hyper = { version = "1", features = ["http1", "client", "server"] }
 code-net-guard = { path = "../../crates/code-net-guard" }
 code-acp = { path = "../../crates/code-acp" }
 code-harness = { path = "../../crates/code-harness" }
+# Track R11: the Code engine facts the front can answer for itself (code_facts.rs).
+engine-facts = { path = "../../crates/engine-facts" }
+# Track R11: the inference budget and idle unload PUTs (model_writes_routes.rs).
+model-writes = { path = "../../crates/model-writes" }
 code-pipeline = { path = "../../crates/code-pipeline" }
 code-verify = { path = "../../crates/code-verify" }
 role-engine = { path = "../../crates/role-engine" }

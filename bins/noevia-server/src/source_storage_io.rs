@@ -377,6 +377,15 @@ impl SourceStorage for Session {
         };
         writes::discard_written(self.connection(), path, etag, &mut self.transport())
     }
+
+    fn version(&self, path: &str) -> Result<Option<String>, StorageError> {
+        let _slot = self.permit()?;
+        match writes::file_version(self.connection(), path, &mut self.transport()) {
+            Ok(writes::Version::Missing) => Ok(None),
+            Ok(writes::Version::Present(etag)) => Ok(Some(etag)),
+            Err(e) => Err(convert(e)),
+        }
+    }
 }
 
 #[cfg(test)]
