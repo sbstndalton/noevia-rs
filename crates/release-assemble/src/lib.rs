@@ -27,9 +27,13 @@
 //!   idle unload, model assignments and preset reads) as one table, and [`bridged::posix_ere`], which
 //!   gives `code_has` POSIX bracket expressions (`[[]`, `[]]`, a literal `\`) as grep reads them.
 //!
+//! - [`chat_rows`] (council p12-3): the chat rows pairing (provider-row and sign-in row turns), a new block of
+//!   the script with its Rust twin.
+//!
 //! Nothing in the release path calls this crate yet.
 
 pub mod bridged;
+pub mod chat_rows;
 pub mod digest;
 pub mod facts;
 pub mod guard;
