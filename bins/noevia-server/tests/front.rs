@@ -597,6 +597,79 @@ async fn node_down_is_a_502_and_ready_is_a_503() {
     drop(reserved);
 }
 
+/// The web supervisor's front-only start (NOEVIA_FRONT_ONLY=1): ready on its own, Node's routes
+/// refused with 501 and never forwarded, even with a live process on the reserved port.
+#[tokio::test]
+async fn a_front_alone_is_ready_on_its_own_and_never_reaches_node() {
+    let (up, up_addr) = start_upstream().await;
+    let dist = dist_dir("alone");
+    let front = start_front_with(
+        up_addr,
+        &dist,
+        &[("NOEVIA_FRONT_ONLY", "1")],
+        Limits::default(),
+        "127.0.0.1",
+    )
+    .await;
+    let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
+    assert_eq!(res.status(), 200);
+    assert_eq!(res.headers()["x-noevia-api"], "1");
+    assert_eq!(text(res).await, r#"{"ready":true,"version":"rel-1"}"#);
+    for (method, path, api) in [
+        ("GET", "/api/model-manager", true),
+        ("POST", "/api/ready", true),
+        ("POST", "/api/models/pull", true),
+        ("POST", "/", false),
+        ("DELETE", "/c/x", false),
+    ] {
+        let (res, _c) = call(front, method, path, &[], b"{}").await;
+        assert_eq!(res.status(), 501, "{method} {path}");
+        assert_eq!(
+            res.headers().contains_key("x-noevia-api"),
+            api,
+            "{method} {path}"
+        );
+        let v: serde_json::Value = serde_json::from_str(&text(res).await).unwrap();
+        assert_eq!(
+            v["error"],
+            noevia_server::legacy_proxy::DETACHED_MESSAGE,
+            "{method} {path}"
+        );
+    }
+    // The bundle is still served.
+    let (res, _c) = call(front, "GET", "/c/x", &[], b"").await;
+    assert_eq!(res.status(), 200);
+    assert!(
+        up.hits.lock().unwrap().is_empty(),
+        "nothing reached Node: {:?}",
+        up.hits.lock().unwrap()
+    );
+    std::fs::remove_file(dist.join("version.json")).unwrap();
+    let front = start_front_with(
+        up_addr,
+        &dist,
+        &[("NOEVIA_FRONT_ONLY", "1")],
+        Limits::default(),
+        "127.0.0.1",
+    )
+    .await;
+    let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
+    assert_eq!(text(res).await, r#"{"ready":true,"version":"unknown"}"#);
+    // Any other value is the pair: Node answers again.
+    let front = start_front_with(
+        up_addr,
+        &dist,
+        &[("NOEVIA_FRONT_ONLY", "true")],
+        Limits::default(),
+        "127.0.0.1",
+    )
+    .await;
+    let (res, _c) = call(front, "GET", "/api/ready", &[], b"").await;
+    assert_eq!(text(res).await, r#"{"ready":true,"version":"node-v1"}"#);
+    let (res, _c) = call(front, "GET", "/api/model-manager", &[], b"").await;
+    assert!(res.headers().get("x-upstream").is_some());
+}
+
 #[tokio::test]
 async fn ready_reports_node_readiness_and_the_served_version() {
     let (_up, up_addr) = start_upstream().await;
