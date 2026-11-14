@@ -12,9 +12,12 @@
 //! # Lock order
 //!
 //! The account's specialists lock (in this process, [`Store`]) is always taken first; inside it
-//! `projects.json`'s lock ([`server_projects::store::update`]) and the transcript lock of a chat
-//! delete are each taken and released on their own, never nested, and never the other way
-//! round. Nothing that holds `projects.json`'s lock calls back into this crate.
+//! `projects.json`'s lock ([`server_projects::store::update`]) and a chat delete's locks are
+//! taken and released in turn, never the other way round. The chat delete
+//! (`server_projects::chat_delete::delete_with`) nests its own two in one fixed order, the
+//! transcript lock and then `projects.json`'s (sbstndalton/noevia#2473); nothing here takes
+//! `projects.json`'s lock around it. Nothing that holds `projects.json`'s lock calls back into
+//! this crate.
 //!
 //! # Write order and what a crash leaves
 //!
