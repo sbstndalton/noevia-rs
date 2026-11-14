@@ -188,10 +188,18 @@ async fn every_oracle_case_is_nodes_answer_through_the_front() {
     // The oracle reads zone-less Date strings in UTC; the front reads them in its own zone, as Node
     // does in the same container. Those few cases need this process to run in UTC too (CI does).
     let utc = server_export::js_date::parse("2026-01-01T00:00") == Some(1_767_225_600_000.0);
+    // noevia#2345: CI must run this in UTC (a skip there would pass silently), and two cases
+    // without "-local-" in their id are zone-dependent too: "-000000-01-01" (not ISO, so the
+    // legacy parser reads it as a local date) and [2026,1,1] (joined to "2026,1,1", also local).
+    assert!(
+        utc || std::env::var_os("CI").is_none(),
+        "CI runs this test outside UTC: its zone-dependent cases would be skipped"
+    );
+    const ZONED: [&str; 2] = ["export-date-minus-zero-year", "export-date-array"];
     let mut failures = Vec::new();
     for c in cases {
         let id = c["id"].as_str().unwrap();
-        if id.contains("-local-") && !utc {
+        if (id.contains("-local-") || ZONED.contains(&id)) && !utc {
             eprintln!("skipped {id}: this process does not run in UTC");
             continue;
         }

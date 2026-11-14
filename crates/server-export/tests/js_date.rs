@@ -10,6 +10,11 @@ fn every_node_date_case_matches() {
     let path = std::env::var("NOEVIA_DATES_FIXTURE").ok();
     // Zone-less strings read in local time; the committed fixture is UTC's answer.
     if path.is_none() && js_date::parse("2026-01-01T00:00") != Some(1_767_225_600_000.0) {
+        // noevia#2345: a skip in CI would pass silently; CI must run this in UTC.
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "CI runs this test outside UTC: every case would be skipped"
+        );
         eprintln!("skipped: this process does not run in UTC (CI sets TZ=UTC)");
         return;
     }
