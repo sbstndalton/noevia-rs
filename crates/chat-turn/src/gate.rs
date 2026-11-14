@@ -757,21 +757,20 @@ impl<'a> Tools<'a> {
             // provenance hit): its single-use handle would never be redeemed and would fill core's
             // per-account cap. Named difference: chat.cjs asks the front for the ticket and drops it.
             let once = self.once_tools.contains(name);
-            let used_grant =
-                if once || !hits.is_empty() || self.automatic_only_writes.contains(name) {
-                    None
-                } else {
-                    host.chat_wide_approved(
-                        self.chat_id.as_deref(),
-                        &self.grant_scope,
-                        &binding,
-                        &self.exchange_key,
-                    )
-                    .await
-                };
-            let asked = used_grant.is_none()
-                || !hits.is_empty()
-                || self.automatic_only_writes.contains(name);
+            // chat.cjs askedPerCall's other two terms: the card is shown whatever the grant says.
+            let asked_anyway = !hits.is_empty() || self.automatic_only_writes.contains(name);
+            let used_grant = if once || asked_anyway {
+                None
+            } else {
+                host.chat_wide_approved(
+                    self.chat_id.as_deref(),
+                    &self.grant_scope,
+                    &binding,
+                    &self.exchange_key,
+                )
+                .await
+            };
+            let asked = used_grant.is_none() || asked_anyway;
             if asked {
                 let id = format!("ap-{}", host.uuid());
                 let now = host.now_ms();
