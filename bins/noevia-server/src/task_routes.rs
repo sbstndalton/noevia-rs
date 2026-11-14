@@ -74,8 +74,9 @@ pub(crate) enum Facts {
     Off,
     Member,
     Admin(JValue),
-    /// Code mode is on, the caller an administrator, and the front runs Code tasks itself
-    /// (code_routes.rs, `NOEVIA_CODE_EXECUTOR=rust`): Node opened no store; the facts are the front's.
+    /// Code (Browser) mode is on, the caller an administrator, and the front runs Code tasks itself
+    /// (code_routes.rs, `NOEVIA_CODE_EXECUTOR=rust`; Browser tasks: browser_routes.rs,
+    /// `NOEVIA_RUST_BROWSER=1`): Node opened no store; the facts are the front's.
     Front,
 }
 
@@ -100,6 +101,14 @@ async fn facts(app: &App, user: &str, surface: Surface, admin: bool) -> Option<F
         {
             Some(Facts::Front)
         }
+        JValue::Bool(true)
+            if admin
+                && matches!(surface, Surface::Browser)
+                && app.config.browser.executor
+                && parsed.get("owner").as_str() == Some("front") =>
+        {
+            Some(Facts::Front)
+        }
         JValue::Bool(true) if admin => parsed
             .get("facts")
             .is_object()
@@ -107,6 +116,11 @@ async fn facts(app: &App, user: &str, surface: Surface, admin: bool) -> Option<F
         JValue::Bool(true) => Some(Facts::Member),
         _ => None,
     }
+}
+
+/// The Browser flag and role, as the reads ask them (browser_routes.rs).
+pub(crate) async fn browser_flag(app: &App, user: &str, admin: bool) -> Option<Facts> {
+    facts(app, user, Surface::Browser, admin).await
 }
 
 /// The Code flag and role, as the reads ask them (code_routes.rs).
@@ -170,7 +184,10 @@ pub async fn serve(
             return reply::error(StatusCode::FORBIDDEN, "Administrator required", true)
         }
         Facts::Admin(facts) => facts,
-        Facts::Front => match crate::code_routes::facts(app, &data_dir, &user).await {
+        Facts::Front => match match surface {
+            Surface::Code => crate::code_routes::facts(app, &data_dir, &user).await,
+            Surface::Browser => crate::browser_routes::facts(app, &data_dir, &user).await,
+        } {
             Some(facts) => facts,
             None => return reply::error(StatusCode::SERVICE_UNAVAILABLE, NODE_UNREACHABLE, true),
         },

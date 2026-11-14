@@ -14,6 +14,7 @@ pub mod autotune_resume_routes;
 pub mod autotune_runner;
 pub mod autotune_settings_routes;
 pub mod autotune_untuned_routes;
+pub mod browser_routes;
 pub mod calibration_cancel_routes;
 pub mod calibration_routes;
 pub mod chat_activity;
@@ -25,6 +26,7 @@ pub mod chat_facts_native;
 pub mod chat_framing_suggest;
 pub mod chat_mirror;
 pub mod chat_native;
+pub mod chat_prepare_shadow;
 pub mod chat_turn;
 pub mod chat_wire;
 #[cfg(feature = "rust-chatgpt-status")]
@@ -55,6 +57,7 @@ pub mod idle_unload_read;
 #[cfg(feature = "rust-storage-reads")]
 pub mod inapp_writes;
 pub mod inference_machines;
+pub mod kiwix_tools;
 pub mod legacy_proxy;
 #[cfg(feature = "rust-storage-reads")]
 pub mod legacy_webdav;
@@ -158,6 +161,7 @@ pub mod toolbox_picker;
 pub mod toolbox_routes;
 pub mod upkeep;
 pub mod usage_routes;
+pub mod usage_writes;
 pub mod web_address_routes;
 
 use axum::body::Body;
@@ -692,6 +696,8 @@ pub struct App {
     pub code_egress: Option<Arc<code_egress::Issuer>>,
     /// Code tasks, when the front runs them (code_routes.rs, NOEVIA_CODE_EXECUTOR=rust).
     pub code_service: std::sync::OnceLock<Arc<code_harness::service::Service>>,
+    /// Browser tasks, when the front runs them (browser_routes.rs, NOEVIA_RUST_BROWSER=1).
+    pub browser_service: std::sync::OnceLock<Arc<browser_task::service::Service>>,
     /// GET /api/providers/{id}/models: the per-account list cache (sbstndalton/noevia#2190 round 5).
     #[cfg(feature = "rust-storage-reads")]
     pub provider_models: provider_models_routes::Lists,
@@ -825,6 +831,7 @@ impl App {
             mcp: mcp_broker::Mcp::new(&config).map(Arc::new),
             code_egress: code_egress::Issuer::new(&config),
             code_service: std::sync::OnceLock::new(),
+            browser_service: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
             mcp_discovery: std::sync::OnceLock::new(),
             #[cfg(feature = "rust-storage-reads")]
@@ -985,6 +992,14 @@ async fn handle(
             native = Some(routes::Native::Projects);
         }
     }
+    // Track R5: with NOEVIA_RUST_BROWSER=1 the Browser task actions are the project routes' too
+    // (browser_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.browser.executor {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if browser_routes::owns(req.method().as_str(), at) {
+            native = Some(routes::Native::Projects);
+        }
+    }
     // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget and idle unload PUTs are
     // the models routes' too (model_writes_routes.rs); unset, they stay Node's.
     if native.is_none() && app.config.model_writes.on {
@@ -992,6 +1007,22 @@ async fn handle(
         if app.config.model_writes.answers(req.method(), at) {
             native = Some(routes::Native::Models);
         }
+    }
+    // #2550: unless the native runner runs here, the auto-tune start's POST is Node's, unparsed
+    // (the legacy proxy, as before #2516), so no spelling of its path meets the front's checks.
+    if native == Some(routes::Native::Models)
+        && [Some(path.as_str()), whatwg.as_deref()]
+            .into_iter()
+            .flatten()
+            .any(|p| {
+                autotune_read_routes::start_is_nodes(
+                    req.method().as_str(),
+                    p,
+                    app.config.autotune.is_some(),
+                )
+            })
+    {
+        native = None;
     }
     // Track R12: with NOEVIA_RUST_SETTINGS_ROUTES=1 the front answers PUT /api/routing-default
     // (routing_default_routes.rs) and GET /api/reasoning-settings (reasoning_settings_routes.rs);

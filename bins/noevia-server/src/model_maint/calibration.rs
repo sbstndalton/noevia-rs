@@ -35,6 +35,9 @@ pub const STOPPED: &str = "noevia stopped during calibration.";
 pub const NOT_RESTORED: &str = " The original profile was not restored because models.ini changed since the run started; check this model's context size.";
 /// `request('/models?reload=1', {}, 120000)`.
 pub(super) const RELOAD_TIMEOUT: Duration = Duration::from_secs(120);
+/// llamacpp-manager.cjs `PRESET_STEP_MS`: the lease a models.ini write and its 120 s router re-read
+/// need left (`maintenance.assertCovered(PRESET_STEP_MS)`).
+pub(super) const PRESET_STEP: Duration = Duration::from_secs(150);
 
 /// The state file name Core uses (`index.cjs` `calibrationStatePath`).
 pub fn state_path(data_dir: &Path, suffix: &str) -> PathBuf {
@@ -514,6 +517,14 @@ pub enum Applied {
     Refused(Option<String>),
     /// The write threw: inside a step the size failed; at the end the run failed with this text.
     Threw(String),
+    /// Written, but its re-read failed with the hold no longer excluding everyone: nothing more ran
+    /// on the lost lease (llamacpp-manager.cjs applyUnlocked's loss branch, #2550). Putting back
+    /// `before` while models.ini is still at `revision` is owed to a recovery under a fresh hold.
+    LeaseLost { revision: String, before: String },
+    /// Not written: the hold could no longer cover the write and its re-read
+    /// (`maintenance.assertCovered(PRESET_STEP_MS)` threw its coverage error before the commit,
+    /// #2608). The caller ends as for a lost lease; there is nothing of this write to restore.
+    Uncovered,
 }
 
 const UNLOAD_FIRST: &str = "Unload all router models and finish downloads before applying a profile. Other clients must remain stopped.";
@@ -541,7 +552,10 @@ impl Maint {
 
     /// [`Maint::apply_unlocked`] with the HTTP status Node's `applyUnlocked` answers (200 written,
     /// 404 not installed, 409 something loaded, 503 a reload or restore failure; a thrown write is
-    /// 500): the native auto-tune runner treats a 409 as fatal, as Node's does. `(status, error)`.
+    /// 500): the native auto-tune runner treats a 409 as fatal, as Node's does. `Ok((status,
+    /// error))`; `Err(Some((revision, before)))` when the lease was lost after the write
+    /// ([`Applied::LeaseLost`]), `Err(None)` when the hold could not cover the write and nothing
+    /// was written ([`Applied::Uncovered`]): both are Node's coverage error.
     pub async fn apply_unlocked_reply(
         &self,
         holding: &super::Hold,
@@ -549,11 +563,13 @@ impl Maint {
         base_revision: &str,
         options: &[(String, Option<String>)],
         backup: bool,
-    ) -> (u16, Option<String>) {
+    ) -> Result<(u16, Option<String>), Option<(String, String)>> {
         let (applied, status) = self
             .apply_unlocked_with_status(holding, model, base_revision, options, backup)
             .await;
-        match applied {
+        Ok(match applied {
+            Applied::LeaseLost { revision, before } => return Err(Some((revision, before))),
+            Applied::Uncovered => return Err(None),
             Applied::Ok => (200, None),
             Applied::Refused(e) => (
                 status,
@@ -562,7 +578,7 @@ impl Maint {
                 })),
             ),
             Applied::Threw(e) => (500, Some(e)),
-        }
+        })
     }
 
     async fn apply_unlocked_with_status(
@@ -638,6 +654,13 @@ impl Maint {
             Ok(Err(t)) => return (Applied::Threw(t.message), t.status.unwrap_or(500)),
             Err(_) => return (Applied::Threw("Internal error".into()), 500),
         };
+        // Row J review P1 (#2608): the write and its re-read are one step; it starts only while the
+        // hold can still cover it, or nothing is written (Node throws its 503 coverage error here).
+        // Stricter than Node's assertCovered (the last confirmation must cover the whole step)
+        // until the front marks a hold lost at the margin as Node does (sbstndalton/noevia#2641).
+        if !holding.may_start(PRESET_STEP) {
+            return (Applied::Uncovered, 503);
+        }
         if let Err(e) = ini.commit(&candidate, backup).await {
             // A settled Model Loader outcome carries its own message; nothing was reloaded.
             if e.status >= 500 {
@@ -645,10 +668,24 @@ impl Maint {
             }
             return (Applied::Threw(e.message), e.status);
         }
-        if let Ok(Ok(reply)) = self.router_reload(router, holding, None).await {
+        #[cfg(test)]
+        after_commit(ini.file(), holding);
+        let reload = self.router_reload(router, holding, None).await;
+        if let Ok(Ok(reply)) = &reload {
             if reply.ok {
                 return (Applied::Ok, 200);
             }
+        }
+        // The lease was lost after the write, or can no longer cover the re-read (Node's coverage
+        // check counts that as lost too): nothing more runs on it, not even the restore.
+        if !holding.excluded() || matches!(reload, Ok(Err("lease_lost"))) {
+            return (
+                Applied::LeaseLost {
+                    revision: super::ini::sha(&candidate.text),
+                    before: candidate.before,
+                },
+                503,
+            );
         }
         // Restore only our own version; never overwrite an operator's later edit.
         let restore = super::ini::Candidate {
@@ -665,6 +702,29 @@ impl Maint {
                 (Applied::Refused(Some(RELOAD_RESTORED.into())), 503)
             }
         }
+    }
+}
+
+/// Test hooks run right after a models.ini commit of `apply_unlocked` for that file (a lease that
+/// ends between a write and its re-read).
+#[cfg(test)]
+pub(super) type AfterCommit = std::sync::Arc<dyn Fn(&super::Hold) + Send + Sync>;
+#[cfg(test)]
+pub(super) static AFTER_COMMIT: std::sync::Mutex<Vec<(std::path::PathBuf, AfterCommit)>> =
+    std::sync::Mutex::new(Vec::new());
+#[cfg(test)]
+fn after_commit(file: &std::path::Path, holding: &super::Hold) {
+    let hooks: Vec<AfterCommit> = AFTER_COMMIT.lock().map_or_else(
+        |_| Vec::new(),
+        |h| {
+            h.iter()
+                .filter(|(p, _)| p == file)
+                .map(|(_, f)| std::sync::Arc::clone(f))
+                .collect()
+        },
+    );
+    for hook in hooks {
+        hook(holding);
     }
 }
 
@@ -935,6 +995,9 @@ pub struct LongPrompt {
     prompt_tokens: Option<f64>,
     prompt_per_second: Option<f64>,
     prompt_ms: Option<f64>,
+    /// The record when a save fell due in the chunk being fed (Node saves inside its read loop,
+    /// so the rest of that chunk, and a stop in it, come after the save).
+    due_save: Option<Progress>,
 }
 
 impl LongPrompt {
@@ -948,7 +1011,17 @@ impl LongPrompt {
             prompt_tokens: None,
             prompt_per_second: None,
             prompt_ms: None,
+            due_save: None,
         }
+    }
+
+    /// After a feed: the record as it was when Node's loop saved in that chunk (a save that fell
+    /// due there, before the rest of the chunk or a stop in it), if one did. Should two fall due
+    /// in one chunk (1.5 s apart within it), this is the later one and Node's earlier save is
+    /// not repeated: one chunk's events are read in microseconds, and under a recorded clock
+    /// they are read at one instant.
+    pub fn take_due_save(&mut self) -> Option<Progress> {
+        self.due_save.take()
     }
 
     /// One chunk of the body. `now` is read per event, as Node reads its clock.
@@ -959,6 +1032,7 @@ impl LongPrompt {
         record: &mut Progress,
     ) -> Feed {
         self.buffer.extend_from_slice(chunk);
+        self.due_save = None;
         let mut save = false;
         while let Some(cut) = self.buffer.windows(2).position(|w| w == b"\n\n") {
             let event: Vec<u8> = self.buffer.drain(..cut + 2).take(cut).collect();
@@ -1020,6 +1094,7 @@ impl LongPrompt {
                         if t - self.last_save > 1500.0 {
                             self.last_save = t;
                             save = true;
+                            self.due_save = Some(record.clone());
                         }
                     }
                 }
