@@ -542,6 +542,7 @@ async fn every_request_rechecks_the_role_and_the_machine() {
             r#"{"event":"relay.opened","taskId":"recheck-1","machine":"qa-m"}"#,
             r#"{"event":"relay.refused","taskId":"recheck-1","code":"machineUnreachable"}"#,
             r#"{"event":"relay.refused","taskId":"recheck-1"}"#,
+            r#"{"event":"relay.refused","taskId":"recheck-1","code":"machineWrongModel"}"#,
             r#"{"event":"relay.unreachable","taskId":"recheck-1"}"#,
             r#"{"event":"relay.refused","taskId":"recheck-1","code":"model_mismatch"}"#,
             r#"{"event":"relay.refused","taskId":"recheck-1","code":"model_mismatch"}"#,
