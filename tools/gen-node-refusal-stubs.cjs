@@ -29,7 +29,9 @@ if (!process.env.CORE_REF || (process.argv[3] && !process.env.NOEVIA_REF)) {
   process.stderr.write('gen-node-refusal-stubs: set CORE_REF (and NOEVIA_REF with a noevia checkout) to the recorded commits\n');
   process.exit(2);
 }
-// A switch inherited from the shell would change every base recording.
+const CORE_REF = process.env.CORE_REF;
+const NOEVIA_REF = process.env.NOEVIA_REF || 'unknown';
+// A switch inherited from the shell would change every base recording (the refs above are read first).
 for (const k of Object.keys(process.env)) if (/^(NOEVIA|COWORK)_/.test(k)) delete process.env[k];
 
 const core = path.resolve(process.argv[2] || '.');
@@ -288,8 +290,8 @@ for (const { file, fn, pathname } of calls) {
 
 process.stdout.write(`${JSON.stringify({
   generator: 'tools/gen-node-refusal-stubs.cjs',
-  core: process.env.CORE_REF,
-  noevia: process.env.NOEVIA_REF || 'unknown',
+  core: CORE_REF,
+  noevia: NOEVIA_REF,
   routes_toml_sha256: crypto.createHash('sha256').update(fs.readFileSync(routesToml)).digest('hex'),
   fills: FILLS,
   methods: METHODS,

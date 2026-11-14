@@ -200,6 +200,7 @@ fn a_dedicated_stub_the_front_fully_answers_can_be_deleted() {
             delete_file: 1,
             delete_file_lines: 10,
             delete_function: 0,
+            with_handler: 0,
             keep: 0
         }
     );
@@ -378,11 +379,16 @@ fn with_a_front_that_answers_nothing_no_recorded_stub_is_deletable() {
 fn with_a_front_that_answers_everything_every_plain_stub_is_deletable() {
     let all = |_: &str, _: &str| true;
     for a in classify(&rec(), &all) {
-        if !matches!(a.verdict, Verdict::SwitchGated | Verdict::Unrecorded) {
+        if !matches!(
+            a.verdict,
+            Verdict::SwitchGated | Verdict::Unrecorded | Verdict::Incomplete { .. }
+        ) {
             assert!(
                 matches!(
                     a.verdict,
-                    Verdict::DeleteFile | Verdict::DeleteFunction { .. }
+                    Verdict::DeleteFile
+                        | Verdict::DeleteFunction { .. }
+                        | Verdict::GuardsHandler { .. }
                 ),
                 "{}: {:?}",
                 a.file,
@@ -793,4 +799,24 @@ fn normalised_is_the_assembler_s_sed() {
     assert_eq!(owned_entry("ALL /api/x/{id}"), Some(("ALL", "/api/x/{}".to_string())));
     assert_eq!(owned_entry("/api/x"), None);
     assert_eq!(owned_entry("GET api/x"), None);
+}
+
+/// The safe delete list from the pinned recording and the pinned front manifest (no live routes.toml or dispatch, so
+/// only a re-recording moves it). `ROUTE_PINS_WRITE=1 cargo test -p route-pins` rewrites it.
+#[test]
+fn the_delete_list_golden_is_current() {
+    let r = rec();
+    let m = manifest();
+    let mut md = delete_list(&r, &classify(&r, &m.front(&r)));
+    md.push_str(
+        "\nVerdicts from `fixtures/front-owned-routes.txt` (`noevia-server --owned-routes`). Live rows are \
+         conservative: the manifest cannot show trailing-slash tolerance, the residual 404/405 answers or the page \
+         paths, all of which the front answers itself. Node's public headers are not part of the recorded replies.\n",
+    );
+    let at = concat!(env!("CARGO_MANIFEST_DIR"), "/fixtures/delete-list.md");
+    if std::env::var_os("ROUTE_PINS_WRITE").is_some() {
+        std::fs::write(at, &md).expect("write the golden");
+    }
+    let want = std::fs::read_to_string(at).unwrap_or_default();
+    assert!(want == md, "fixtures/delete-list.md is stale: ROUTE_PINS_WRITE=1 cargo test -p route-pins");
 }

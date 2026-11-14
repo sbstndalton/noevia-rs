@@ -1,7 +1,7 @@
 {
  "generator": "tools/gen-node-refusal-stubs.cjs",
  "core": "6809eca6c46a1392b9149ed47a643e218d86bc35",
- "noevia": "unknown",
+ "noevia": "11bf2da72dd69cc86ac89e85d2f9524b5e781bd2",
  "routes_toml_sha256": "9ee155882510d229904459d1ce8b3e947c3a47959c52655098c7c1af03cdfa6c",
  "fills": [
   "qa-1",
