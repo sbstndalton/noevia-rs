@@ -24,9 +24,11 @@
 //! Named differences from Node (each a refusal or a cleanup, never a different success):
 //! - an [`Opened`] lease that is dropped without [`Opened::close`] is closed (Node's lease outlived
 //!   a caller that forgot to close it);
-//! - a request whose body does not arrive within `requestTimeout` is dropped without an answer
-//!   (Node's server answers 408 and closes); an idle keep-alive connection lasts up to the head
-//!   timeout (10 s) rather than `keepAliveTimeout` (5 s);
+//! - the listener's 408 for a request that did not arrive within `requestTimeout` carries
+//!   `content-length: 0` (Node's has no length; both close), and an idle keep-alive connection
+//!   closes up to one `connectionsCheckingInterval` after `keepAliveTimeout` (listener.rs;
+//!   noevia#2676 item 5: before council p9 the first was dropped unanswered and the second lasted
+//!   the head timeout);
 //! - the `Accept` header forwarded is cut at 200 UTF-16 units of its text as the caller decoded it
 //!   (Node slices the Latin-1 string it read);
 //! - when the system's random source fails, [`Relay::open`] refuses with `machineRelayOff` ("The
@@ -296,7 +298,8 @@ pub enum BodyFail {
     TooLarge,
     /// The connection failed while reading.
     Failed,
-    /// The whole request did not arrive in time (`requestTimeout`): the connection is dropped.
+    /// The whole request did not arrive in time (`requestTimeout`): [`Reply::Cut`], which the
+    /// listener answers with Node's 408 and `Connection: close`.
     TimedOut,
 }
 

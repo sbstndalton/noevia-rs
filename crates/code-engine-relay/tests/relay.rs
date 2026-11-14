@@ -926,7 +926,7 @@ async fn a_slow_head_is_dropped_and_connections_are_capped() {
         max_connections: 2,
         ..bind::SERVER_LIMITS
     };
-    let (addr, relay, _fake) = listening(rig(), limits).await;
+    let (addr, relay, fake) = listening(rig(), limits).await;
     // A head that never ends is dropped after the head timeout.
     let mut slow = TcpStream::connect(addr).await.unwrap();
     slow.write_all(b"POST /v1/chat/completions HTTP/1.1\r\nHost: x\r\n")
@@ -936,7 +936,8 @@ async fn a_slow_head_is_dropped_and_connections_are_capped() {
     let closed = tokio::time::timeout(Duration::from_secs(3), slow.read_to_end(&mut out)).await;
     assert!(closed.is_ok(), "slowloris kept");
 
-    // A body that never completes, with a live token: dropped after the request timeout, no answer.
+    // A body that never completes, with a live token: after the request timeout, Node's 408 and
+    // the connection closes (noevia#2676 item 5).
     let lease = relay.open("slow-body", None, None).await.unwrap();
     let mut stalled = TcpStream::connect(addr).await.unwrap();
     stalled
@@ -952,7 +953,11 @@ async fn a_slow_head_is_dropped_and_connections_are_capped() {
     let mut out = Vec::new();
     let closed = tokio::time::timeout(Duration::from_secs(3), stalled.read_to_end(&mut out)).await;
     assert!(closed.is_ok(), "a stalled body kept its connection");
-    assert!(out.is_empty(), "{}", String::from_utf8_lossy(&out));
+    let head = String::from_utf8_lossy(&out).to_ascii_lowercase();
+    assert!(head.starts_with("http/1.1 408"), "{head}");
+    assert!(head.contains("connection: close"), "{head}");
+    assert!(fake.sent.lock().unwrap().is_empty(), "nothing reached the machine");
+    lease.close();
 
     // Two connections open: a third is closed at once.
     let _a = TcpStream::connect(addr).await.unwrap();
@@ -965,6 +970,35 @@ async fn a_slow_head_is_dropped_and_connections_are_capped() {
     )
     .await;
     assert_eq!(over, "", "the connection over the limit got an answer");
+}
+
+/// noevia#2676 item 5: a keep-alive connection with nothing in flight closes once
+/// `keepAliveTimeout` has passed since its last answer (Node's 5 s), not at the head timeout.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn an_idle_keep_alive_connection_closes_after_the_keep_alive_timeout() {
+    let limits = bind::Limits {
+        headers_timeout: Duration::from_secs(20),
+        keep_alive_timeout: Duration::from_millis(400),
+        connections_checking_interval: Duration::from_millis(50),
+        ..bind::SERVER_LIMITS
+    };
+    let (addr, _relay, _fake) = listening(rig(), limits).await;
+    let mut s = TcpStream::connect(addr).await.unwrap();
+    // A whole request without a body, answered (no token: refused), the connection kept alive.
+    s.write_all(b"GET /v1/models HTTP/1.1\r\nHost: x\r\n\r\n")
+        .await
+        .unwrap();
+    let started = std::time::Instant::now();
+    let mut out = Vec::new();
+    let closed = tokio::time::timeout(Duration::from_secs(5), s.read_to_end(&mut out)).await;
+    assert!(closed.is_ok(), "the idle connection was kept past the keep-alive timeout");
+    let took = started.elapsed();
+    let head = String::from_utf8_lossy(&out).to_ascii_lowercase();
+    assert!(head.starts_with("http/1.1 4"), "{head}");
+    assert!(!head.contains("connection: close"), "{head}");
+    // Closed by the keep-alive timeout: not before it, and long before the 20 s head timeout.
+    assert!(took >= Duration::from_millis(350), "{took:?}");
+    assert!(took < Duration::from_secs(5), "{took:?}");
 }
 
 /// noevia#2720 item 1: the target is read for the lease's own account. Two accounts' tasks at once
