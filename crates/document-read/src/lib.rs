@@ -97,7 +97,10 @@ impl Pages {
     pub fn to_json(&self) -> JValue {
         JValue::obj([
             ("text", JValue::Str(self.text.clone())),
-            ("nextOffset", self.next_offset.map_or(JValue::Null, JValue::Num)),
+            (
+                "nextOffset",
+                self.next_offset.map_or(JValue::Null, JValue::Num),
+            ),
             ("notice", JValue::Str(self.notice.clone())),
             ("startPage", JValue::Num(self.start_page)),
             ("endPage", JValue::Num(self.end_page)),
@@ -303,7 +306,10 @@ fn page_list(pages: &[&JValue]) -> Result<String, Thrown> {
 }
 
 fn note(id: &str, params: Vec<(&str, JValue)>) -> JValue {
-    JValue::obj([("id", JValue::Str(id.into())), ("params", JValue::obj(params))])
+    JValue::obj([
+        ("id", JValue::Str(id.into())),
+        ("params", JValue::obj(params)),
+    ])
 }
 
 /// `notes(file)`: the per-page outcomes as `[{ id, params }]` (where reading stopped, how far the
@@ -369,7 +375,10 @@ pub fn notes(file: &JValue) -> Result<Vec<JValue>, Thrown> {
     for (reason, list) in failed {
         out.push(note(
             "ocrRetryFailed",
-            vec![("pages", JValue::Str(page_list(&list)?)), ("reason", reason)],
+            vec![
+                ("pages", JValue::Str(page_list(&list)?)),
+                ("reason", reason),
+            ],
         ));
     }
     for (outcome, id) in [
@@ -391,9 +400,16 @@ pub fn notes(file: &JValue) -> Result<Vec<JValue>, Thrown> {
 fn inherited(key: &str) -> Option<String> {
     match key {
         "constructor" => Some("function Object() { [native code] }".into()),
-        "__defineGetter__" | "__defineSetter__" | "hasOwnProperty" | "__lookupGetter__"
-        | "__lookupSetter__" | "isPrototypeOf" | "propertyIsEnumerable" | "toString"
-        | "valueOf" | "toLocaleString" => Some(format!("function {key}() {{ [native code] }}")),
+        "__defineGetter__"
+        | "__defineSetter__"
+        | "hasOwnProperty"
+        | "__lookupGetter__"
+        | "__lookupSetter__"
+        | "isPrototypeOf"
+        | "propertyIsEnumerable"
+        | "toString"
+        | "valueOf"
+        | "toLocaleString" => Some(format!("function {key}() {{ [native code] }}")),
         "__proto__" => Some("[object Object]".into()),
         _ => None,
     }
@@ -434,7 +450,9 @@ pub fn note_text(n: &JValue) -> Result<String, Thrown> {
             js_str(p.get("pages"))?,
             js_str(p.get("reason"))?
         ),
-        Some("ocrRetryEmpty") => format!("pages {}: OCR retry found no text", js_str(p.get("pages"))?),
+        Some("ocrRetryEmpty") => {
+            format!("pages {}: OCR retry found no text", js_str(p.get("pages"))?)
+        }
         Some("ocrRetryUnavailable") => format!(
             "pages {}: OCR retry unavailable (no OCR service is configured)",
             js_str(p.get("pages"))?
@@ -565,12 +583,19 @@ pub fn notice(file: &JValue) -> Result<String, Thrown> {
     if !d.truthy() {
         return Ok(String::new());
     }
-    let mut s = format!("{}: {}", quote_name(file.get("name"))?, problem(file, true)?);
+    let mut s = format!(
+        "{}: {}",
+        quote_name(file.get("name"))?,
+        problem(file, true)?
+    );
     if d.get("version").truthy() {
         s.push_str(&format!(" Source version {}", js_str(d.get("version"))?));
     }
     if d.get("availableVersion").truthy() {
-        s.push_str(&format!("; text version {}", js_str(d.get("availableVersion"))?));
+        s.push_str(&format!(
+            "; text version {}",
+            js_str(d.get("availableVersion"))?
+        ));
     }
     let indexing = d.get("indexing");
     s.push_str(&format!(
@@ -595,7 +620,9 @@ pub fn documents_dir(data_dir: &Path, project_id: &str) -> PathBuf {
 
 /// `/^[a-f0-9]{64}$/`.
 fn version_like(v: &str) -> bool {
-    v.len() == 64 && v.bytes().all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
+    v.len() == 64
+        && v.bytes()
+            .all(|b| b.is_ascii_digit() || (b'a'..=b'f').contains(&b))
 }
 
 /// `JSON.parse(fs.readFileSync(versionPath(workspace, projectId, version, '.json'), 'utf8'))`: the
@@ -753,7 +780,10 @@ pub fn read_pages(
     // `text.slice(offset, offset + cap)`: both ends clamped to the length.
     let from = offset.min(len) as usize;
     let to = (offset + cap as f64).min(len) as usize;
-    let piece = text.get(from..to.max(from)).map(from_units).unwrap_or_default();
+    let piece = text
+        .get(from..to.max(from))
+        .map(from_units)
+        .unwrap_or_default();
     let next_offset = (offset + (cap as f64) < len).then_some(offset + cap as f64);
     Ok(Pages {
         text: piece,
