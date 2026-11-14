@@ -223,6 +223,9 @@ pub enum Route {
     Files,
     StorageStatus,
     WorkspaceExport,
+    /// R9 main mode: POST /api/file (read a file by the JSON body's path). Only the main process
+    /// serves it (it needs the body); Python as the parent never forwards a read with a body.
+    ReadFile,
     /// D5: PUT /api/file, POST /api/directory, POST /api/entries/append, POST /api/entries/edit.
     PutFile,
     Directory,
@@ -238,6 +241,7 @@ impl Route {
             Route::Files
                 | Route::StorageStatus
                 | Route::WorkspaceExport
+                | Route::ReadFile
                 | Route::PutFile
                 | Route::Directory
         )
@@ -260,6 +264,7 @@ pub fn route(method: &Method, path: &str) -> Option<Route> {
         ("GET", "/api/files") => Some(Route::Files),
         ("GET", "/api/storage-status") => Some(Route::StorageStatus),
         ("GET", "/api/workspace-export") => Some(Route::WorkspaceExport),
+        ("POST", "/api/file") => Some(Route::ReadFile),
         ("PUT", "/api/file") => Some(Route::PutFile),
         ("POST", "/api/directory") => Some(Route::Directory),
         ("POST", "/api/entries/append") => Some(Route::Append),
@@ -373,6 +378,7 @@ fn plan(app: &App, r: Route, headers: &HeaderMap, recovered: bool) -> Plan {
         | Route::Files
         | Route::StorageStatus
         | Route::WorkspaceExport
+        | Route::ReadFile
         | Route::PutFile
         | Route::Directory
         | Route::Append
@@ -606,8 +612,9 @@ pub(crate) async fn serve_native(
     query: Vec<u8>,
     headers: HeaderMap,
     asserted: bool,
+    body: Option<axum::body::Bytes>,
 ) -> Response<Body> {
-    serve(app, Some(r), false, query, headers, None, asserted).await
+    serve(app, Some(r), false, query, headers, body, asserted).await
 }
 
 /// R9 S3 (front.rs): a writer tenant's write (or the managed backup) for the main process, with
@@ -724,6 +731,15 @@ async fn serve(
     } else {
         None
     };
+    // POST /api/file's `body: dict`, validated by FastAPI before the handler (422: Python's).
+    let read_body = if r == Route::ReadFile {
+        match json_body(&headers, bytes.as_deref().unwrap_or_default()) {
+            Some(j) => Some(j),
+            None => return decline(),
+        }
+    } else {
+        None
+    };
 
     // ---- seam: the routes below read the tenant only from `header_uid` and `asserted` (the
     // trusted forward headers above).
@@ -750,6 +766,19 @@ async fn serve(
             }
             let h = health::health(&app.http, models, !app.auth_token.is_empty()).await;
             json_response(200, &h)
+        }
+        Route::ReadFile => {
+            let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {
+                Ok(t) => t,
+                Err(resp) => return *resp,
+            };
+            let json = read_body.unwrap_or_default();
+            let task =
+                tokio::task::spawn_blocking(move || workspace::file_read(&tenant.store, &json));
+            match task.await {
+                Ok(r) => reply(r),
+                Err(_) => internal_error(),
+            }
         }
         Route::Files | Route::StorageStatus | Route::WorkspaceExport => {
             let tenant = match resolve_tenant(&app, &header_uid, asserted, &headers, tenant) {

@@ -415,7 +415,33 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
         .get()
         .is_some_and(|n| n.iter().any(|n| n == &path));
     if let Some(r) = server::route(&parts.method, &path).filter(|r| named && !r.write()) {
-        if !declares_body(&parts.headers) {
+        // POST /api/file reads its JSON body: taken here only when it is already buffered (it was
+        // verified) or declares a bounded length; anything else goes to the child untouched.
+        let reads_body = r == server::Route::ReadFile;
+        let bounded = buffered.is_some()
+            || declared_length(&parts.headers).is_some_and(|n| n <= server::MAX_BODY as u64)
+                && !parts.headers.contains_key("transfer-encoding");
+        if (reads_body && bounded) || (!reads_body && !declares_body(&parts.headers)) {
+            let body = if reads_body {
+                let bytes = match (buffered.take(), stream.take()) {
+                    (Some(b), _) => b,
+                    (None, Some(s)) => match tokio::time::timeout(
+                        BODY_DEADLINE,
+                        axum::body::to_bytes(s, server::MAX_BODY),
+                    )
+                    .await
+                    {
+                        Ok(Ok(b)) => b,
+                        Ok(Err(_)) => return raw(413, TOO_LARGE),
+                        Err(_) => return raw(408, BODY_TIMEOUT),
+                    },
+                    (None, None) => axum::body::Bytes::new(),
+                };
+                buffered = Some(bytes.clone());
+                Some(bytes)
+            } else {
+                None
+            };
             let mut headers = parts.headers.clone();
             // A tenant the child deleted (its fence) is the child's to answer (410), never native.
             if stamp_tenant(&headers).is_some_and(|uid| {
@@ -424,7 +450,8 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
             }) {
                 headers.insert(RECOVERED_HEADER, HeaderValue::from_static("1"));
             }
-            let resp = server::serve_native(app.clone(), r, query.clone(), headers, asserted).await;
+            let resp =
+                server::serve_native(app.clone(), r, query.clone(), headers, asserted, body).await;
             if !is_decline(&resp) {
                 return resp;
             }
