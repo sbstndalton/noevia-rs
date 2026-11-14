@@ -436,7 +436,10 @@ fn a_full_queue_refuses_more_actions_but_takes_a_finish() {
     // Every waiter answers soon after the cancel (a hang fails the test instead of stalling it).
     let deadline = Instant::now() + Duration::from_secs(20);
     while !(first.is_finished() && waiting.iter().all(std::thread::JoinHandle::is_finished)) {
-        assert!(Instant::now() < deadline, "a waiting action was never answered");
+        assert!(
+            Instant::now() < deadline,
+            "a waiting action was never answered"
+        );
         std::thread::sleep(Duration::from_millis(10));
     }
     let mut refused = 0;
@@ -462,7 +465,9 @@ fn has_live_is_the_open_workspaces_own_task() {
     let r = rig(Duration::from_secs(5));
     let other = tempfile::tempdir().unwrap();
     let other = other.path().canonicalize().unwrap();
-    assert!(!r.service.has_live(&r.base, "0123abcd-0123-4abc-8def-0123456789ab"));
+    assert!(!r
+        .service
+        .has_live(&r.base, "0123abcd-0123-4abc-8def-0123456789ab"));
     let t = r.start();
     assert!(r.service.has_live(&r.base, &t));
     // Another workspace: never opened here, and not its task.

@@ -176,9 +176,9 @@ pub async fn serve(
             let (service, task) = (service(app), target.task.clone());
             let dir = server_projects::store::user_dir(&data_dir, &user).ok();
             // Off the async worker: the store map may be held by another workspace's recovery.
-            let live = tokio::task::spawn_blocking(move || {
-                matches!((&dir, &task), (Some(d), Some(t)) if service.has_live(d, t))
-            })
+            let live = tokio::task::spawn_blocking(
+                move || matches!((&dir, &task), (Some(d), Some(t)) if service.has_live(d, t)),
+            )
             .await
             .unwrap_or(false);
             live.then_some(Facts::Front)
