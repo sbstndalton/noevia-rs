@@ -20,12 +20,22 @@ pub struct Refusal {
 
 impl Refusal {
     pub fn new(status: u16, code: &'static str, message: impl Into<String>) -> Self {
-        Self { status: Some(status), code: Some(code), message: message.into(), extra: Map::new() }
+        Self {
+            status: Some(status),
+            code: Some(code),
+            message: message.into(),
+            extra: Map::new(),
+        }
     }
 
     /// A plain `Error(message)`: no status, no code.
     pub fn plain(message: impl Into<String>) -> Self {
-        Self { status: None, code: None, message: message.into(), extra: Map::new() }
+        Self {
+            status: None,
+            code: None,
+            message: message.into(),
+            extra: Map::new(),
+        }
     }
 
     pub fn with(mut self, key: &str, value: Value) -> Self {
@@ -137,14 +147,22 @@ pub fn normalize_target(t: Option<&Value>, profiles: &Profiles) -> Result<Target
         None | Some(Value::Null) => profiles.default.clone(),
         given => js::trim(&js::js_string(given)).to_owned(),
     };
-    let profile = if profile.is_empty() { profiles.default.clone() } else { profile };
+    let profile = if profile.is_empty() {
+        profiles.default.clone()
+    } else {
+        profile
+    };
     if !profiles.is_known(&profile) {
         return Err(invalid(format!(
             "Unknown embedding profile \"{profile}\" (known: {}).",
             profiles.known.join(", ")
         )));
     }
-    Ok(Target { base_url: normalize_base_url(t.get("baseUrl"))?, model, profile })
+    Ok(Target {
+        base_url: normalize_base_url(t.get("baseUrl"))?,
+        model,
+        profile,
+    })
 }
 
 /// The three targets of a configuration.
@@ -170,7 +188,11 @@ pub fn seed_from_env(
             .unwrap_or_default()
     };
     let or = |v: String, d: &str| if v.is_empty() { d.to_owned() } else { v };
-    let fallback = if fallback_model.is_empty() { "default" } else { fallback_model };
+    let fallback = if fallback_model.is_empty() {
+        "default"
+    } else {
+        fallback_model
+    };
     let active = Target {
         base_url: Some(pick(&["EMBEDDING_BASE_URL"])).filter(|v| !v.is_empty()),
         model: or(pick(&["EMBEDDING_MODEL", "EMBED_MODEL"]), fallback),
@@ -191,5 +213,12 @@ pub fn seed_from_env(
         profile: or(next_profile, &profiles.default),
     });
     let next = next.filter(|n| !same_target(Some(n), Some(&active)));
-    (State { active, next, previous: None }, warning)
+    (
+        State {
+            active,
+            next,
+            previous: None,
+        },
+        warning,
+    )
 }

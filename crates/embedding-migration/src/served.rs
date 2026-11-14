@@ -17,7 +17,10 @@ pub const MAX_ECHO_CHARS: usize = 120;
 /// `canonical`: trimmed, lower case, without one trailing `:latest`.
 fn canonical(s: &str) -> String {
     let lower = js::trim(s).to_lowercase();
-    lower.strip_suffix(":latest").map(str::to_owned).unwrap_or(lower)
+    lower
+        .strip_suffix(":latest")
+        .map(str::to_owned)
+        .unwrap_or(lower)
 }
 
 /// `looksLikePath(s)`: an absolute, home, relative or drive path, or a weights file name.
@@ -31,13 +34,19 @@ pub fn looks_like_path(s: &str) -> bool {
             let mut c = s.chars();
             matches!((c.next(), c.next(), c.next()), (Some(d), Some(':'), Some('\\' | '/')) if d.is_ascii_alphabetic())
         };
-    starts || [".gguf", ".bin", ".safetensors"].iter().any(|ext| lower.ends_with(ext))
+    starts
+        || [".gguf", ".bin", ".safetensors"]
+            .iter()
+            .any(|ext| lower.ends_with(ext))
 }
 
 /// `servesModel(ids, model)`.
 pub fn serves_model(ids: &[Value], model: &str) -> bool {
     let want = canonical(model);
-    !want.is_empty() && ids.iter().any(|id| id.as_str().is_some_and(|id| canonical(id) == want))
+    !want.is_empty()
+        && ids
+            .iter()
+            .any(|id| id.as_str().is_some_and(|id| canonical(id) == want))
 }
 
 /// The first `n` UTF-16 units of `s` (`String.prototype.slice(0, n)`), never splitting a pair.
@@ -79,7 +88,10 @@ pub fn check_served(ids: Option<&[Value]>, model: &str) -> Result<(), Refusal> {
         return Ok(());
     }
     let served = json!(echo_ids(ids));
-    let all_paths = !ids.is_empty() && ids.iter().all(|id| looks_like_path(&js::js_string(Some(id))));
+    let all_paths = !ids.is_empty()
+        && ids
+            .iter()
+            .all(|id| looks_like_path(&js::js_string(Some(id))));
     let message = if all_paths {
         format!("The embeddings server lists only a model file, not model names, so it cannot be confirmed that it serves {shown}. Start it with --alias {shown} (or load {shown} there).")
     } else {

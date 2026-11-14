@@ -103,14 +103,22 @@ pub fn cosine(a: &[f64], b: &[f64]) -> f64 {
     dot / (na.sqrt() * nb.sqrt())
 }
 
-fn number(n: f64) -> Value {
+/// A JavaScript number as JSON: integral values print without a fraction, as `JSON.stringify`
+/// does (`4`, not `4.0`); non-finite values are null.
+pub fn number(n: f64) -> Value {
+    if n.fract() == 0.0 && n.abs() < 9_007_199_254_740_992.0 {
+        return json!(n as i64);
+    }
     serde_json::Number::from_f64(n).map_or(Value::Null, Value::Number)
 }
 
 fn drop_everywhere<H: Host>(host: &H, target: &Target) {
     for entry in host.indexes() {
         if let Err(e) = host.drop_slot(&entry, target) {
-            host.log(&format!("[embedding] could not drop {} from an index ({e})", target.model));
+            host.log(&format!(
+                "[embedding] could not drop {} from an index ({e})",
+                target.model
+            ));
         }
     }
 }
@@ -134,7 +142,11 @@ pub struct Migration<H: Host> {
 
 impl<H: Host> Migration<H> {
     pub fn new(config: EmbeddingConfig, host: H, pacing: Pacing) -> Self {
-        Self { config, host, pacing }
+        Self {
+            config,
+            host,
+            pacing,
+        }
     }
 
     fn check(&self, t: &Target) -> Result<(), Refusal> {
@@ -145,7 +157,9 @@ impl<H: Host> Migration<H> {
     /// `coverageOf(target)`. `ready`: every index has at least as many vectors for `target` as for
     /// the active model, so a switch loses nothing.
     pub fn coverage_of(&self, target: Option<&Target>) -> Value {
-        let Some(target) = target else { return Value::Null };
+        let Some(target) = target else {
+            return Value::Null;
+        };
         let active = self.config.active();
         let (mut chunks, mut vectors, mut unavailable, mut behind) = (0u64, 0u64, 0u64, 0u64);
         let indexes = self.host.indexes();
@@ -174,7 +188,12 @@ impl<H: Host> Migration<H> {
     pub fn status(&self) -> Value {
         let c = self.config.get();
         let snap = self.host.snapshot();
-        let field = |k: &str| snap.as_ref().and_then(|s| s.get(k)).cloned().unwrap_or(Value::Null);
+        let field = |k: &str| {
+            snap.as_ref()
+                .and_then(|s| s.get(k))
+                .cloned()
+                .unwrap_or(Value::Null)
+        };
         let mut out = match snapshot_json(&c) {
             Value::Object(m) => m,
             _ => Map::new(),
@@ -201,7 +220,10 @@ impl<H: Host> Migration<H> {
     /// `endpointsAgree(a, b)`: the parity sample embedded at both endpoints, every cosine at least
     /// [`PARITY_MIN_COSINE`]. `{ ok, minCosine }`, or `{ ok: false, error }` when an embed failed.
     pub fn endpoints_agree(&self, a: &Target, b: &Target) -> Value {
-        let both = self.host.embed(&PARITY_SAMPLE, a).and_then(|va| Ok((va, self.host.embed(&PARITY_SAMPLE, b)?)));
+        let both = self
+            .host
+            .embed(&PARITY_SAMPLE, a)
+            .and_then(|va| Ok((va, self.host.embed(&PARITY_SAMPLE, b)?)));
         let (va, vb) = match both {
             Ok(v) => v,
             Err(e) => return json!({ "ok": false, "error": e }),
@@ -218,7 +240,11 @@ impl<H: Host> Migration<H> {
             sims.iter().copied().fold(f64::INFINITY, f64::min)
         };
         let ok = sims.iter().all(|s| s.is_finite()) && min >= PARITY_MIN_COSINE;
-        let shown = if min.is_finite() { number(js::round(min * 1e5) / 1e5) } else { Value::Null };
+        let shown = if min.is_finite() {
+            number(js::round(min * 1e5) / 1e5)
+        } else {
+            Value::Null
+        };
         json!({ "ok": ok, "minCosine": shown })
     }
 
@@ -243,7 +269,10 @@ impl<H: Host> Migration<H> {
             // A different next replaces an abandoned one: its partial vectors go.
             if let Some(old) = &before.next {
                 let o = Some(old);
-                if !same_identity(o, c.next.as_ref()) && !same_identity(o, Some(&c.active)) && !same_identity(o, c.previous.as_ref()) {
+                if !same_identity(o, c.next.as_ref())
+                    && !same_identity(o, Some(&c.active))
+                    && !same_identity(o, c.previous.as_ref())
+                {
                     drop_everywhere(host, old);
                 }
             }
@@ -262,7 +291,9 @@ impl<H: Host> Migration<H> {
             host.kick();
             if let Some(old) = &before.next {
                 let o = Some(old);
-                if !same_identity(o, Some(&before.active)) && !same_identity(o, before.previous.as_ref()) {
+                if !same_identity(o, Some(&before.active))
+                    && !same_identity(o, before.previous.as_ref())
+                {
                     drop_everywhere(host, old);
                 }
             }
@@ -284,12 +315,22 @@ impl<H: Host> Migration<H> {
             // new endpoint really gives the same vectors.
             let parity = self.endpoints_agree(&c.active, &checked);
             if parity.get("ok") != Some(&Value::Bool(true)) && !force {
-                return Err(Refusal::new(409, "parityFailed", "The new embeddings address does not give the same vectors as the current one.").with("parity", parity));
+                return Err(Refusal::new(
+                    409,
+                    "parityFailed",
+                    "The new embeddings address does not give the same vectors as the current one.",
+                )
+                .with("parity", parity));
             }
         } else if !force {
             let cov = self.coverage_of(Some(&checked));
             if cov.get("ready") != Some(&Value::Bool(true)) {
-                return Err(Refusal::new(409, "notReady", "The new model has not finished indexing every project yet.").with("coverage", cov));
+                return Err(Refusal::new(
+                    409,
+                    "notReady",
+                    "The new model has not finished indexing every project yet.",
+                )
+                .with("coverage", cov));
             }
         }
         let host = &self.host;
@@ -320,7 +361,10 @@ impl<H: Host> Migration<H> {
             let c = config.rollback()?;
             // The re-index that was under way is abandoned by a rollback: no partly built slot stays.
             drop_if_orphaned(host, before.next.as_ref(), &c);
-            host.log(&format!("[embedding] rolled back to {}/{}", c.active.profile, c.active.model));
+            host.log(&format!(
+                "[embedding] rolled back to {}/{}",
+                c.active.profile, c.active.model
+            ));
             host.kick();
             Ok::<_, Refusal>(())
         })??;
@@ -333,14 +377,23 @@ impl<H: Host> Migration<H> {
         self.config.with_lock(|config| {
             let c = config.get();
             let Some(old) = c.previous.clone() else {
-                return Err(Refusal::new(409, "noPrevious", "There is no previous embedding model to remove."));
+                return Err(Refusal::new(
+                    409,
+                    "noPrevious",
+                    "There is no previous embedding model to remove.",
+                ));
             };
             config.finish()?;
             host.kick();
-            if !same_identity(Some(&old), Some(&c.active)) && !same_identity(Some(&old), c.next.as_ref()) {
+            if !same_identity(Some(&old), Some(&c.active))
+                && !same_identity(Some(&old), c.next.as_ref())
+            {
                 drop_everywhere(host, &old);
             }
-            host.log(&format!("[embedding] removed {}/{} and its vectors", old.profile, old.model));
+            host.log(&format!(
+                "[embedding] removed {}/{} and its vectors",
+                old.profile, old.model
+            ));
             Ok(())
         })??;
         Ok(self.status())
@@ -357,7 +410,10 @@ impl<H: Host> Migration<H> {
 /// answer, `{ error, status, code?, coverage?, parity?, served? }` (the message cut to 300 units).
 pub fn refusal_half(r: &Refusal) -> Value {
     let mut out = Map::new();
-    out.insert("error".into(), json!(crate::served::slice_units(&r.message, 300)));
+    out.insert(
+        "error".into(),
+        json!(crate::served::slice_units(&r.message, 300)),
+    );
     out.insert("status".into(), json!(r.status.unwrap_or(500)));
     if let Some(code) = r.code {
         out.insert("code".into(), json!(code));

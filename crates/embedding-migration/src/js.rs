@@ -44,7 +44,14 @@ pub fn number(text: &str) -> f64 {
         "-Infinity" => return f64::NEG_INFINITY,
         _ => {}
     }
-    for (prefix, radix) in [("0x", 16), ("0X", 16), ("0o", 8), ("0O", 8), ("0b", 2), ("0B", 2)] {
+    for (prefix, radix) in [
+        ("0x", 16),
+        ("0X", 16),
+        ("0o", 8),
+        ("0O", 8),
+        ("0b", 2),
+        ("0B", 2),
+    ] {
         if let Some(digits) = t.strip_prefix(prefix) {
             if digits.is_empty() || !digits.chars().all(|c| c.is_digit(radix)) {
                 return f64::NAN;
@@ -59,8 +66,13 @@ pub fn number(text: &str) -> f64 {
     // take "inf", "nan" and "infinity", which JavaScript does not.
     let body = t.strip_prefix(['+', '-']).unwrap_or(t);
     let ok = !body.is_empty()
-        && body.chars().all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
-        && body.chars().next().is_some_and(|c| c.is_ascii_digit() || c == '.');
+        && body
+            .chars()
+            .all(|c| c.is_ascii_digit() || matches!(c, '.' | 'e' | 'E' | '+' | '-'))
+        && body
+            .chars()
+            .next()
+            .is_some_and(|c| c.is_ascii_digit() || c == '.');
     if !ok {
         return f64::NAN;
     }

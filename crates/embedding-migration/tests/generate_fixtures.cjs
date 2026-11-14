@@ -180,7 +180,7 @@ async function run(s) {
   const scrub = (v) => JSON.parse(JSON.stringify(v ?? null).split(dir).join('<DIR>'));
   const rag = sub(s.rag || { indexes: [] });
   const env = sub(s.env || {});
-  if (s.file != null) fs.writeFileSync(stateFile, sub(s.file) === null ? 'null' : String(JSON.parse(JSON.stringify(s.file).replace(/\$P(\d)/g, (_, i) => P[Number(i)]))));
+  if (s.file != null) fs.writeFileSync(stateFile, s.file.replace(/\$P(\d)/g, (_, i) => P[Number(i)]));
   const rec = { drops: [], kicks: 0, logs: [] };
   const log = (line) => rec.logs.push(String(line));
   const snapshot = s.snapshot === undefined ? SNAP : s.snapshot;

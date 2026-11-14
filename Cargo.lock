@@ -1222,6 +1222,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "embedding-migration"
+version = "0.1.0"
+dependencies = [
+ "embedding-admin",
+ "serde_json",
+ "tempfile",
+ "url",
+]
+
+[[package]]
 name = "embedding-worker"
 version = "0.1.0"
 dependencies = [

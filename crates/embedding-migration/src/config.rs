@@ -108,10 +108,17 @@ fn read_state(file: &Path, profiles: &Profiles) -> Result<Option<State>, Refusal
         if !js::js_truthy(s.get(key)) {
             return Ok(None);
         }
-        normalize_target(s.get(key), profiles).map(Some).map_err(|r| bad_state(file, &r.message))
+        normalize_target(s.get(key), profiles)
+            .map(Some)
+            .map_err(|r| bad_state(file, &r.message))
     };
-    let active = normalize_target(s.get("active"), profiles).map_err(|r| bad_state(file, &r.message))?;
-    Ok(Some(State { active, next: target("next")?, previous: target("previous")? }))
+    let active =
+        normalize_target(s.get("active"), profiles).map_err(|r| bad_state(file, &r.message))?;
+    Ok(Some(State {
+        active,
+        next: target("next")?,
+        previous: target("previous")?,
+    }))
 }
 
 fn pretty_target(t: Option<&Target>) -> String {
@@ -163,8 +170,12 @@ pub fn flock(file: &Path) -> Result<Flock, Refusal> {
     loop {
         match f.try_lock() {
             Ok(()) => return Ok(Flock { _file: f }),
-            Err(TryLockError::WouldBlock) if Instant::now() < deadline => std::thread::sleep(LOCK_RETRY),
-            Err(TryLockError::WouldBlock) => return Err(Refusal::plain("Embedding config lock timed out")),
+            Err(TryLockError::WouldBlock) if Instant::now() < deadline => {
+                std::thread::sleep(LOCK_RETRY)
+            }
+            Err(TryLockError::WouldBlock) => {
+                return Err(Refusal::plain("Embedding config lock timed out"))
+            }
             Err(TryLockError::Error(_)) => return Err(unavailable()),
         }
     }
@@ -211,7 +222,8 @@ impl EmbeddingConfig {
             Ok((config, warning)) => (config, warning.into_iter().collect()),
             Err(err) => {
                 let off_env = |k: &str| {
-                    matches!(k, "EMBEDDING_MODEL" | "EMBEDDING_PROFILE").then(|| "unavailable".to_owned())
+                    matches!(k, "EMBEDDING_MODEL" | "EMBEDDING_PROFILE")
+                        .then(|| "unavailable".to_owned())
                 };
                 let (state, _) = seed_from_env(&off_env, "default", &profiles);
                 let config = Self {
@@ -229,7 +241,13 @@ impl EmbeddingConfig {
                     damaged: Some(err.message.clone()),
                     off_for_damage: true,
                 };
-                (config, vec![format!("[embedding] {} Embeddings are off until then.", err.message)])
+                (
+                    config,
+                    vec![format!(
+                        "[embedding] {} Embeddings are off until then.",
+                        err.message
+                    )],
+                )
             }
         }
     }
@@ -243,7 +261,11 @@ impl EmbeddingConfig {
             active: self.state.active.clone(),
             next: self.state.next.clone(),
             previous: self.state.previous.clone(),
-            source: if self.saved_change || self.saved { "saved" } else { "environment" },
+            source: if self.saved_change || self.saved {
+                "saved"
+            } else {
+                "environment"
+            },
             version: self.version,
         }
     }
@@ -276,7 +298,11 @@ impl EmbeddingConfig {
     /// `withLock(action)`: runs `action` holding the publication flock when a native owner and a
     /// state file are set (else directly). A lock that cannot be had is a plain error (500).
     pub fn with_lock<R>(&mut self, action: impl FnOnce(&mut Self) -> R) -> Result<R, Refusal> {
-        let Some(file) = self.state_file.clone().filter(|_| self.native_owner && !self.in_hold) else {
+        let Some(file) = self
+            .state_file
+            .clone()
+            .filter(|_| self.native_owner && !self.in_hold)
+        else {
             return Ok(action(self));
         };
         if let Some(dir) = file.parent() {
@@ -291,7 +317,9 @@ impl EmbeddingConfig {
     }
 
     fn persist(&self, state: &State) -> std::io::Result<()> {
-        let Some(file) = &self.state_file else { return Ok(()) };
+        let Some(file) = &self.state_file else {
+            return Ok(());
+        };
         if let Some(dir) = file.parent() {
             std::fs::create_dir_all(dir)?;
         }
@@ -314,12 +342,15 @@ impl EmbeddingConfig {
 
     fn change(&mut self, next: State) -> Result<Snapshot, Refusal> {
         if self.native_owner && self.state_file.is_some() && !self.in_hold {
-            return Err(Refusal::plain("Embedding configuration requires the publication lock"));
+            return Err(Refusal::plain(
+                "Embedding configuration requires the publication lock",
+            ));
         }
         if let Some(reason) = &self.locked {
             return Err(Refusal::new(409, "badState", reason.clone()));
         }
-        self.persist(&next).map_err(|e| Refusal::plain(e.to_string()))?;
+        self.persist(&next)
+            .map_err(|e| Refusal::plain(e.to_string()))?;
         self.state = next;
         self.version += 1;
         self.saved_change = true;
@@ -334,14 +365,24 @@ impl EmbeddingConfig {
             return Err(Refusal::new(409, "badState", why));
         }
         if same_target(Some(&t), Some(&self.state.active)) {
-            return Err(Refusal::new(409, "alreadyActive", "That model, profile and address are already active."));
+            return Err(Refusal::new(
+                409,
+                "alreadyActive",
+                "That model, profile and address are already active.",
+            ));
         }
-        let next = State { next: Some(t), ..self.state.clone() };
+        let next = State {
+            next: Some(t),
+            ..self.state.clone()
+        };
         self.change(next)
     }
 
     pub fn clear_next(&mut self) -> Result<Snapshot, Refusal> {
-        let next = State { next: None, ..self.state.clone() };
+        let next = State {
+            next: None,
+            ..self.state.clone()
+        };
         self.change(next)
     }
 
@@ -352,28 +393,49 @@ impl EmbeddingConfig {
     /// `switchToNext(expected)`: next becomes active, the old active is kept as previous. When
     /// `expected` is given and next is something else by now, nothing switches.
     pub fn switch_to_next(&mut self, expected: Option<&Target>) -> Result<Snapshot, Refusal> {
-        let Some(next) = self.state.next.clone() else { return Err(Self::no_next()) };
+        let Some(next) = self.state.next.clone() else {
+            return Err(Self::no_next());
+        };
         if expected.is_some_and(|e| !same_target(Some(&next), Some(e))) {
             return Err(Refusal::new(409, "nextChanged", "The re-index target changed while the switch was being checked. Nothing was switched."));
         }
-        let after = State { active: next, next: None, previous: Some(self.state.active.clone()) };
+        let after = State {
+            active: next,
+            next: None,
+            previous: Some(self.state.active.clone()),
+        };
         self.change(after)
     }
 
     pub fn rollback(&mut self) -> Result<Snapshot, Refusal> {
         let Some(previous) = self.state.previous.clone() else {
-            return Err(Refusal::new(409, "noPrevious", "There is no previous embedding model to return to."));
+            return Err(Refusal::new(
+                409,
+                "noPrevious",
+                "There is no previous embedding model to return to.",
+            ));
         };
-        let after = State { active: previous, next: None, previous: Some(self.state.active.clone()) };
+        let after = State {
+            active: previous,
+            next: None,
+            previous: Some(self.state.active.clone()),
+        };
         self.change(after)
     }
 
     /// Forget the rollback target (the caller drops its vectors).
     pub fn finish(&mut self) -> Result<Snapshot, Refusal> {
         if self.state.previous.is_none() {
-            return Err(Refusal::new(409, "noPrevious", "There is no previous embedding model to remove."));
+            return Err(Refusal::new(
+                409,
+                "noPrevious",
+                "There is no previous embedding model to remove.",
+            ));
         }
-        let after = State { previous: None, ..self.state.clone() };
+        let after = State {
+            previous: None,
+            ..self.state.clone()
+        };
         self.change(after)
     }
 
@@ -387,12 +449,19 @@ impl EmbeddingConfig {
     /// `refuseSeeded(reasons, { transient })`: a seeded address that is not on this network. In
     /// memory only. A refused next is dropped; a refused active turns embedding off (profile
     /// `unavailable`) and locks changes.
-    pub fn refuse_seeded(&mut self, active: Option<&str>, next: Option<&str>, transient: bool) -> Snapshot {
+    pub fn refuse_seeded(
+        &mut self,
+        active: Option<&str>,
+        next: Option<&str>,
+        transient: bool,
+    ) -> Snapshot {
         if self.saved || self.saved_change {
             return self.get();
         }
         for (which, reason) in [(Which::Active, active), (Which::Next, next)] {
-            let Some(reason) = reason.filter(|r| !r.is_empty()) else { continue };
+            let Some(reason) = reason.filter(|r| !r.is_empty()) else {
+                continue;
+            };
             let target = match which {
                 Which::Active => Some(self.state.active.clone()),
                 Which::Next => self.state.next.clone(),
@@ -402,7 +471,11 @@ impl EmbeddingConfig {
                 h.reason = reason.to_owned();
                 h.transient = transient;
             } else {
-                *slot = Some(Held { reason: reason.to_owned(), transient, target });
+                *slot = Some(Held {
+                    reason: reason.to_owned(),
+                    transient,
+                    target,
+                });
                 match which {
                     Which::Next => self.state.next = None,
                     Which::Active => self.state.active.profile = "unavailable".into(),
@@ -422,7 +495,9 @@ impl EmbeddingConfig {
         if self.saved || self.saved_change {
             return self.get();
         }
-        let Some(h) = self.held_slot(which).take() else { return self.get() };
+        let Some(h) = self.held_slot(which).take() else {
+            return self.get();
+        };
         if !h.transient {
             *self.held_slot(which) = Some(h);
             return self.get();
