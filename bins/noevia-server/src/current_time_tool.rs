@@ -114,10 +114,7 @@ fn answer_with(
 ) -> Option<(String, bool)> {
     // The cheap checks first, in the bridge's order (name, body size, arguments): a call left to
     // core reads no store here.
-    if !runtime.recorded
-        || run.name != NAME
-        || js_json::wtf16::len(&run.args) > ARGS_CAP
-    {
+    if !runtime.recorded || run.name != NAME || js_json::wtf16::len(&run.args) > ARGS_CAP {
         return None;
     }
     let args = if run.args.is_empty() {
@@ -229,13 +226,20 @@ mod tests {
             Some(rt(Some("Asia/Calcutta")))
         );
         for zone in ["", "Eire", "Europe/Paris", "Asia/Kolkata"] {
-            assert_eq!(runtime_of(reported(node, icu, tz, zone)), Some(rt(None)), "{zone}");
+            assert_eq!(
+                runtime_of(reported(node, icu, tz, zone)),
+                Some(rt(None)),
+                "{zone}"
+            );
         }
         let other = Runtime {
             recorded: false,
             server_zone: Some("UTC".into()),
         };
-        assert_eq!(runtime_of(reported(node, icu, "2099z", "UTC")), Some(other.clone()));
+        assert_eq!(
+            runtime_of(reported(node, icu, "2099z", "UTC")),
+            Some(other.clone())
+        );
         assert_eq!(runtime_of(reported("99.0.0", icu, tz, "UTC")), Some(other));
         assert_eq!(
             runtime_of(Some((200, js_json::parse("{}").unwrap()))),
@@ -289,14 +293,23 @@ mod tests {
             recorded: false,
             server_zone: Some("America/New_York".into()),
         };
-        assert_eq!(a(&run(r#"{"timezone":"Europe/Berlin"}"#), &other, NOW), None);
+        assert_eq!(
+            a(&run(r#"{"timezone":"Europe/Berlin"}"#), &other, NOW),
+            None
+        );
         assert_eq!(a(&run("{}"), &rt(None), NOW), None);
         assert_eq!(a(&run(r#"{"timezone":"Mars/Olympus"}"#), &ny, NOW), None);
-        assert_eq!(a(&run(r#"{"timezone":"America/Vancouver"}"#), &ny, NOW), None);
+        assert_eq!(
+            a(&run(r#"{"timezone":"America/Vancouver"}"#), &ny, NOW),
+            None
+        );
         assert_eq!(a(&run("{}"), &ny, 1_900_000_000_000.0), None);
         assert_eq!(a(&run("[]"), &ny, NOW), None);
         assert_eq!(a(&run("{"), &ny, NOW), None);
-        assert_eq!(answer_with(&ny, &data, USER, &run("{}"), NOW, |_| false), None);
+        assert_eq!(
+            answer_with(&ny, &data, USER, &run("{}"), NOW, |_| false),
+            None
+        );
         let mut other = run("{}");
         other.name = "read_project_file".into();
         assert_eq!(a(&other, &ny, NOW), None);
