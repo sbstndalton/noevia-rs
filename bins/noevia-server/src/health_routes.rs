@@ -26,10 +26,15 @@
 //! of core's four words reads the same way. With Core down the answer is still a 200 (Node's route
 //! died with it: a 502 from the proxy before), `retrieval: "unavailable"`.
 //!
+//! With `NOEVIA_RUST_RETRIEVAL=on` the front answers `ragAvailable` and `retrieval` itself
+//! (retrieval_status.rs: the same probe, cache and words as core) and Node's snapshot is not read;
+//! with `shadow` it answers Node's and runs its own beside it, logging a difference.
+//!
 //! Each probe runs in a task of its own that the handler awaits, bounded by its own deadline: a
 //! client that goes away does not leave a half-read connection, and nothing outlives the 5 s bound.
 
-use crate::{identity, reply, snapshot, App};
+use crate::native_retrieval::Mode;
+use crate::{identity, reply, retrieval_status, snapshot, App};
 use axum::body::Body;
 use axum::http::{Method, Request, Response, StatusCode};
 use axum::response::IntoResponse;
@@ -136,6 +141,27 @@ pub fn retrieval_checked(data_dir: &Path, now_ms: i64) -> Option<(bool, &'static
     }
 }
 
+/// `shadow`: the front's own readiness beside Node's answer, detached; a difference is logged (the
+/// two states only, no data). The route has already answered with Node's.
+fn shadow(app: Arc<App>, data_dir: std::path::PathBuf, node: (bool, &'static str)) {
+    tokio::spawn(async move {
+        let (rag, word) = retrieval_status::for_app(&app, &data_dir).await;
+        if let Some(line) = shadow_line(node, (rag, word.as_str())) {
+            eprintln!("noevia-server: retrieval status shadow: {line}");
+        }
+    });
+}
+
+/// The shadow log line, `None` when the two states agree.
+pub fn shadow_line(node: (bool, &str), native: (bool, &str)) -> Option<String> {
+    (node != native).then(|| {
+        format!(
+            "differs (node ragAvailable={} retrieval={}, native ragAvailable={} retrieval={})",
+            node.0, node.1, native.0, native.1
+        )
+    })
+}
+
 fn body(inference: bool, diary: Option<bool>, rag: bool, retrieval: &str) -> String {
     let diary = match diary {
         Some(true) => "true",
@@ -176,12 +202,21 @@ pub async fn serve(
         Err(_) => return identity::Rejection::Unavailable.into_response(),
     };
     let diary_on = id.user.diary_enabled;
+    let data_dir_for_shadow = data_dir.clone();
     // A signed-in request asks Node to publish (the demand marker); when Node was idle the read waits
     // up to two seconds for it, while the probes below run.
-    let dir = data_dir.clone();
-    let snap = app
-        .demand
-        .read(data_dir.clone(), move |now| retrieval_checked(&dir, now));
+    // `NOEVIA_RUST_RETRIEVAL=on`: the front's own readiness (retrieval_status.rs) answers and Node's
+    // snapshot is neither asked for nor read; off and shadow read Node's snapshot as before.
+    let mode = app.config.retrieval.mode;
+    let native = (mode == Mode::On).then(|| {
+        let (app, dir) = (Arc::clone(app), data_dir.clone());
+        tokio::spawn(async move { retrieval_status::for_app(&app, &dir).await })
+    });
+    let snap = (mode != Mode::On).then(|| {
+        let dir = data_dir.clone();
+        app.demand
+            .read(data_dir.clone(), move |now| retrieval_checked(&dir, now))
+    });
     let (url, bearer) = default_provider_probe(&|k| std::env::var(k).ok());
     let inference = tokio::spawn(provider_up(url, bearer));
     let diary = if diary_on {
@@ -214,7 +249,16 @@ pub async fn serve(
         Some(task) => Some(task.await.unwrap_or(false)),
         None => None,
     };
-    let (rag, retrieval) = snap.await.unwrap_or((false, "unavailable"));
+    let (rag, retrieval) = match (native, snap) {
+        (Some(task), _) => task
+            .await
+            .map_or((false, "unavailable"), |(rag, word)| (rag, word.as_str())),
+        (None, Some(snap)) => snap.await.unwrap_or((false, "unavailable")),
+        (None, None) => (false, "unavailable"),
+    };
+    if mode == Mode::Shadow {
+        shadow(Arc::clone(app), data_dir_for_shadow, (rag, retrieval));
+    }
     reply::json_text(StatusCode::OK, body(inference, diary, rag, retrieval), true)
 }
 

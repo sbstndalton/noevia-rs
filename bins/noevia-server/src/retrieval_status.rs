@@ -106,7 +106,7 @@ pub enum Request {
 /// then decimal digits; anything else is NaN = the default), then clamped.
 pub fn clamp_int(value: Option<&str>, default: i64, lo: i64, hi: i64) -> i64 {
     let Some(raw) = value else { return default };
-    let s = raw.trim_start_matches(|c: char| crate_js_space(c));
+    let s = raw.trim_start_matches(js_space);
     let (negative, digits) = match s.as_bytes().first() {
         Some(b'-') => (true, s.get(1..).unwrap_or_default()),
         Some(b'+') => (false, s.get(1..).unwrap_or_default()),
@@ -123,7 +123,7 @@ pub fn clamp_int(value: Option<&str>, default: i64, lo: i64, hi: i64) -> i64 {
 }
 
 /// JS `String.prototype.trim` whitespace (what `parseInt` skips first).
-fn crate_js_space(c: char) -> bool {
+fn js_space(c: char) -> bool {
     let mut buf = [0u16; 2];
     c.encode_utf16(&mut buf)
         .first()
