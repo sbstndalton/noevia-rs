@@ -10,7 +10,7 @@
 //!
 //! The probes the front can make itself, it makes, with core's bounds (5 s each, the body counts
 //! inside the bound, redirects are failures, a 2xx is "up", no caching: core cached only the
-//! retrieval probe, and that stays Node's):
+//! retrieval probe, which is Node's unless `NOEVIA_RUST_RETRIEVAL` is on, below):
 //! - the default provider: the env-derived row (`INFERENCE_BASE_URL`, else `LEMONADE_BASE_URL`, else
 //!   core's default address; `INFERENCE_API_KEY`/`LEMONADE_API_KEY` as a bearer unless empty or the
 //!   `local` sentinel), `GET <base without a trailing slash or /v1>/v1/models`. `inferenceUp` and

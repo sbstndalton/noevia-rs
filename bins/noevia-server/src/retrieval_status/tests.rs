@@ -679,6 +679,11 @@ fn http(status: &str, body: &str) -> Vec<u8> {
     .into_bytes()
 }
 
+/// A probe client as the process has it (its own inference address is never used).
+fn client() -> Http {
+    Http::new("", None, "http://127.0.0.1:9", None).unwrap()
+}
+
 fn router_request(base: &str) -> Request {
     Request::Router {
         url: format!("{base}/v1/models"),
@@ -695,7 +700,7 @@ async fn the_router_probe_is_a_get_with_the_bearer_and_no_body() {
     )
     .await;
     assert_eq!(
-        send(router_request(&base), Duration::from_millis(2500)).await,
+        send(&client(), router_request(&base), Duration::from_millis(2500)).await,
         Found::Up
     );
     let raw = String::from_utf8(seen.await.unwrap()).unwrap();
@@ -717,7 +722,7 @@ async fn the_sidecar_probe_is_a_post_without_credentials() {
         url: format!("{base}/v1/embeddings"),
         body: body.into(),
     };
-    assert_eq!(send(request, Duration::from_millis(2500)).await, Found::Up);
+    assert_eq!(send(&client(), request, Duration::from_millis(2500)).await, Found::Up);
     let raw = String::from_utf8(seen.await.unwrap()).unwrap();
     let lower = raw.to_ascii_lowercase();
     assert!(raw.starts_with("POST /v1/embeddings HTTP/1.1\r\n"), "{raw}");
@@ -736,7 +741,7 @@ async fn an_unreachable_non_2xx_redirect_or_unreadable_answer_is_down() {
         format!("http://{a}")
     };
     assert_eq!(
-        send(router_request(&closed), Duration::from_millis(2500)).await,
+        send(&client(), router_request(&closed), Duration::from_millis(2500)).await,
         Found::Down
     );
     for reply in [
@@ -749,7 +754,7 @@ async fn an_unreachable_non_2xx_redirect_or_unreadable_answer_is_down() {
     ] {
         let (base, _seen) = one_reply(reply, Duration::ZERO).await;
         assert_eq!(
-            send(router_request(&base), Duration::from_millis(2500)).await,
+            send(&client(), router_request(&base), Duration::from_millis(2500)).await,
             Found::Down
         );
     }
@@ -763,7 +768,7 @@ async fn an_answer_over_its_cap_is_down() {
     );
     let (base, _seen) = one_reply(http("200 OK", &big), Duration::ZERO).await;
     assert_eq!(
-        send(router_request(&base), Duration::from_millis(5000)).await,
+        send(&client(), router_request(&base), Duration::from_millis(5000)).await,
         Found::Down
     );
     // Just under the cap is read.
@@ -772,7 +777,7 @@ async fn an_answer_over_its_cap_is_down() {
     assert_eq!(fits.len(), ROUTER_CAP);
     let (base, _seen) = one_reply(http("200 OK", &fits), Duration::ZERO).await;
     assert_eq!(
-        send(router_request(&base), Duration::from_millis(5000)).await,
+        send(&client(), router_request(&base), Duration::from_millis(5000)).await,
         Found::Up
     );
 }
@@ -786,11 +791,45 @@ async fn a_slow_answer_is_bounded_by_the_probe_timeout() {
     .await;
     let started = std::time::Instant::now();
     assert_eq!(
-        send(router_request(&base), Duration::from_millis(200)).await,
+        send(&client(), router_request(&base), Duration::from_millis(200)).await,
         Found::Down
     );
     assert!(
         started.elapsed() < Duration::from_secs(1),
         "the probe gave up near its own timeout"
     );
+}
+
+#[tokio::test]
+async fn a_public_or_link_local_address_is_refused_before_any_connection() {
+    // core `ragFetch` (`createServiceFetch({ linkLocal: false })`): loopback and private only.
+    // TEST-NET and link-local literals would hang until the bound if a connection were tried.
+    for base in ["http://192.0.2.10", "http://169.254.169.254", "http://[2001:db8::1]"] {
+        let started = std::time::Instant::now();
+        assert_eq!(
+            send(&client(), router_request(base), Duration::from_millis(3000)).await,
+            Found::Down,
+            "{base}"
+        );
+        let request = Request::Sidecar {
+            url: format!("{base}/v1/embeddings"),
+            body: "{}".into(),
+        };
+        assert_eq!(
+            send(&client(), request, Duration::from_millis(3000)).await,
+            Found::Down
+        );
+        assert!(
+            started.elapsed() < Duration::from_millis(1000),
+            "{base}: refused, not timed out ({:?})",
+            started.elapsed()
+        );
+    }
+}
+
+#[test]
+fn a_request_never_shows_its_bearer() {
+    let shown = format!("{:?}", router_request("http://127.0.0.1:1"));
+    assert!(!shown.contains("qa-key"), "{shown}");
+    assert!(shown.contains("<set>"), "{shown}");
 }

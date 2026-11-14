@@ -19,7 +19,8 @@
 //!   observation as the native search reads it, `project_retrieval::policy::embedding_off`);
 //! - otherwise one probe, cached for `RETRIEVAL_PROBE_TTL_MS` (default 45 s, clamped 200..300000),
 //!   bounded by `RETRIEVAL_PROBE_TIMEOUT_MS` (default 2.5 s, clamped 200..5000; the reply body counts
-//!   inside the bound), shared by concurrent callers (one request at a time; a caller that waited
+//!   inside the bound; loopback and private addresses only, each resolved address checked and
+//!   pinned, as core's `ragFetch` allows), shared by concurrent callers (one request at a time; a caller that waited
 //!   reads what the probe it waited for found);
 //! - an active target with its own address (a dedicated embedding service): `POST
 //!   <address>/v1/embeddings` with the fixed synthetic text `noevia health probe` framed as a query
@@ -42,6 +43,11 @@
 //!   front's embedding background started.
 //! - an embedding configuration that cannot be read is `degraded` here (Node holds the last good
 //!   configuration in memory and probes that).
+//! - the maintenance hold is the lease authority's (`maint.authority.held()`, as the native search
+//!   asks it); a hold only an inference gate in front of the engine knows of is not seen, and no
+//!   in-flight slot is registered for the model list (Node's `enterInference` registers one).
+//! - Node answers `degraded` when it has no inference address; the front always has one (core's
+//!   default address).
 //! - Node's `embeddingOff` also sees its own in-flight service change (and the 6 s after it); this
 //!   reads what the worker last published, as the native search does.
 use std::future::Future;
@@ -49,7 +55,7 @@ use std::path::Path;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
-use embedding_worker::{runtime, Config as EmbeddingConfig, Target};
+use embedding_worker::{http::Http, runtime, Config as EmbeddingConfig, Target};
 use project_retrieval::policy::{current_snapshot, embedding_off, observe, Observation};
 use prompt_framing::embedding_input::{self, Kind, Profile};
 use prompt_framing::js::units;
@@ -89,8 +95,8 @@ pub enum Found {
     Held,
 }
 
-/// The one request a probe makes.
-#[derive(Clone, Debug, PartialEq, Eq)]
+/// The one request a probe makes. Its `Debug` never shows the bearer.
+#[derive(Clone, PartialEq, Eq)]
 pub enum Request {
     /// `POST url` with this JSON body, no credentials; up when an item carries a vector.
     Sidecar { url: String, body: String },
@@ -100,6 +106,24 @@ pub enum Request {
         bearer: Option<String>,
         model: String,
     },
+}
+
+impl std::fmt::Debug for Request {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Request::Sidecar { url, body } => f
+                .debug_struct("Sidecar")
+                .field("url", url)
+                .field("body", body)
+                .finish(),
+            Request::Router { url, bearer, model } => f
+                .debug_struct("Router")
+                .field("url", url)
+                .field("bearer", &bearer.as_ref().map(|_| "<set>"))
+                .field("model", model)
+                .finish(),
+        }
+    }
 }
 
 /// core `rag.cjs` `clampInt(v, dflt, lo, hi)`: JS `parseInt(v, 10)` (leading whitespace, a sign,
@@ -352,59 +376,33 @@ impl Status {
     }
 }
 
-fn client() -> Option<&'static reqwest::Client> {
-    static CLIENT: OnceLock<Option<reqwest::Client>> = OnceLock::new();
-    CLIENT
-        .get_or_init(|| {
-            reqwest::Client::builder()
-                .no_proxy()
-                .redirect(reqwest::redirect::Policy::none())
-                .build()
-                .ok()
-        })
+/// The probes' client: [`Http`]'s address rules (loopback and private addresses only, every
+/// resolved address checked and pinned at connect: core `ragFetch`, `createServiceFetch`), no
+/// redirects, the reply capped and inside the bound. Its own inference address is never used.
+fn http() -> Option<&'static Http> {
+    static HTTP: OnceLock<Option<Http>> = OnceLock::new();
+    HTTP.get_or_init(|| Http::new("", None, "http://127.0.0.1", None).ok())
         .as_ref()
 }
 
-/// Sends the request within `timeout` (the reply body inside the bound) and reads it under its cap.
-pub async fn send(request: Request, timeout: Duration) -> Found {
-    let Some(client) = client() else {
-        return Found::Down;
-    };
-    let (builder, cap) = match &request {
-        Request::Sidecar { url, body } => (
-            client
-                .post(url.as_str())
-                .header("Content-Type", "application/json")
-                .body(body.clone()),
-            SIDECAR_CAP,
-        ),
+/// Sends the request through `http` within `timeout` (the reply body inside the bound) and reads it
+/// under its cap: a 2xx whose answer is up is [`Found::Up`], anything else [`Found::Down`].
+pub async fn send(http: &Http, request: Request, timeout: Duration) -> Found {
+    let answer = match &request {
+        Request::Sidecar { url, body } => {
+            http.post_json(url, None, body.clone(), timeout, SIDECAR_CAP)
+                .await
+        }
         Request::Router { url, bearer, .. } => {
-            let mut b = client
-                .get(url.as_str())
-                .header("Content-Type", "application/json");
-            if let Some(key) = bearer {
-                b = b.header("Authorization", format!("Bearer {key}"));
-            }
-            (b, ROUTER_CAP)
+            http.get_json(url, bearer.as_deref(), timeout, ROUTER_CAP)
+                .await
         }
     };
-    let read = async {
-        let mut response = builder.send().await.ok()?;
-        // `redirect: 'error'` and `!res.ok`: a 3xx (never followed) or any non-2xx is down.
-        if !response.status().is_success() {
-            return None;
+    // `Http` bounds the whole exchange (lookup, connect, reply body) by `timeout`.
+    match answer {
+        Ok((status, value)) if (200..300).contains(&status) && answer_up(&request, &value) => {
+            Found::Up
         }
-        let mut body = Vec::new();
-        while let Some(chunk) = response.chunk().await.ok()? {
-            if body.len() + chunk.len() > cap {
-                return None;
-            }
-            body.extend_from_slice(&chunk);
-        }
-        serde_json::from_slice::<serde_json::Value>(&body).ok()
-    };
-    match tokio::time::timeout(timeout, read).await {
-        Ok(Some(value)) if answer_up(&request, &value) => Found::Up,
         _ => Found::Down,
     }
 }
@@ -422,21 +420,30 @@ pub async fn for_app(app: &crate::App, data_dir: &Path) -> (bool, Word) {
     let service_url = get("EMBEDDING_SERVICE_URL");
     let held = || app.config.maint.authority.held();
     let status = process();
-    let deps_ok = embedding_worker::sqlite_vec_loader::register().is_ok();
+    // The vector extension is registered (process-wide) only once the owner runs: a shadow read
+    // with an idle background changes nothing in this process's SQLite connections.
+    let owner_ready = crate::embedding_background::running();
+    let deps_ok = owner_ready && embedding_worker::sqlite_vec_loader::register().is_ok();
+    let timeout = status.knobs.timeout;
     status
         .state(
             Inputs {
                 data_dir,
                 start: app.config.start_id.as_deref().unwrap_or_default(),
                 clock: &crate::identity::now_ms,
-                owner_ready: crate::embedding_background::running(),
+                owner_ready,
                 deps_ok,
                 seed: seed.as_ref(),
                 service_url: service_url.as_deref(),
                 maintenance_held: &held,
                 router: crate::health_routes::default_provider_probe(&get),
             },
-            |request| send(request, status.knobs.timeout),
+            |request| async move {
+                match http() {
+                    Some(client) => send(client, request, timeout).await,
+                    None => Found::Down,
+                }
+            },
         )
         .await
 }

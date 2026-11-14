@@ -304,6 +304,27 @@ impl Http {
         .await
     }
 
+    /// A `GET` of `address` (never a body) under the same address rules, no-redirect policy and
+    /// caps as the embedding requests: the retrieval readiness probe's model list (core `rag.cjs`
+    /// `probeEmbeddingRouter` sends it through the same on-this-network fetch).
+    pub async fn get_json(
+        &self,
+        address: &str,
+        bearer: Option<&str>,
+        timeout: Duration,
+        cap: usize,
+    ) -> Result<(u16, Value), String> {
+        self.request(
+            url(address)?,
+            Method::GET,
+            headers(bearer, "authorization")?,
+            None,
+            timeout,
+            cap,
+        )
+        .await
+    }
+
     /// One query vector, as core `rag.cjs` `embedFramed` asks for a single framed text: exactly one
     /// item with a vector, else an error. A foreground read: no admission lease and no ownership
     /// proof (Node's query embedding takes neither); same address rules, headers and caps as the

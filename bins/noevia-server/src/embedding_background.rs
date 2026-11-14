@@ -19,6 +19,7 @@ pub fn running() -> bool {
     RUNNING.load(Ordering::SeqCst)
 }
 
+#[doc(hidden)]
 /// Records whether the background runs ([`start`] calls it; a test of the readiness route stands in
 /// for the background with it).
 pub fn mark_running(running: bool) {
