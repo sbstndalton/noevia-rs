@@ -74,6 +74,7 @@ s3-sign = { path = "../../crates/s3-sign" }
 storage-path = { path = "../../crates/storage-path", optional = true }
 rand_core = { version = "0.6", features = ["getrandom"] }
 rustix = { version = "=1.1.5", features = ["fs"] }
+boot-schema = { path = "../../crates/boot-schema" }
 google-token-seal = { path = "../../crates/google-token-seal" }
 egress-issuer = { path = "../../crates/egress-issuer" }
 offsite-backup-format = { path = "../../crates/offsite-backup-format" }
