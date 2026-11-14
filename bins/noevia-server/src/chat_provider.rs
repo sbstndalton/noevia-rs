@@ -1338,7 +1338,8 @@ mod tests {
                 provider_id: Some("qa-provider".into()),
                 default_provider_id: Some("default".into()),
                 machine: false,
-                external: false,
+                // The sign-in row is an external row (provider-egress.cjs); core's signinRow lifts that for its kind.
+                external: true,
                 sign_in: true,
                 route_target: false,
                 authorized: false,
