@@ -390,4 +390,36 @@ impl<H: Host, R: Rows> Host for ProviderHost<'_, H, R> {
     }
     /// Draft acceptance is the local model manager's evidence: not recorded for a provider row.
     fn mtp_evidence(&self, _model: &str, _drafted: f64, _accepted: f64) {}
+    // The tool gate's log, step supervision and the framing reasoner are core's ops for every provider:
+    // delegated as they are.
+    fn gate_record(&self, event: &str, tool: &str) {
+        self.inner.gate_record(event, tool);
+    }
+    fn supervise(
+        &self,
+        round: i32,
+        outputs: &[JValue],
+        goal: &str,
+        wrote: bool,
+    ) -> impl Future<Output = String> + Send {
+        self.inner.supervise(round, outputs, goal, wrote)
+    }
+    fn condense(
+        &self,
+        kind: &str,
+        message: &str,
+        tool: &str,
+        result_text: &str,
+        model: &str,
+    ) -> impl Future<Output = Option<(String, JValue)>> + Send {
+        self.inner.condense(kind, message, tool, result_text, model)
+    }
+    fn reasoner_trace(
+        &self,
+        trace: &JValue,
+        answer_chars: f64,
+        answer_ms: f64,
+    ) -> impl Future<Output = ()> + Send {
+        self.inner.reasoner_trace(trace, answer_chars, answer_ms)
+    }
 }

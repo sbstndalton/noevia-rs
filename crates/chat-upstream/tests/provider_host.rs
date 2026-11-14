@@ -353,6 +353,29 @@ impl Host for Fake {
     fn mtp_evidence(&self, model: &str, drafted: f64, accepted: f64) {
         self.call(format!("mtp {model} {drafted} {accepted}"));
     }
+    fn gate_record(&self, event: &str, tool: &str) {
+        self.call(format!("gate {event} {tool}"));
+    }
+    async fn supervise(
+        &self,
+        _round: i32,
+        _outputs: &[JValue],
+        _goal: &str,
+        _wrote: bool,
+    ) -> String {
+        "continue".to_string()
+    }
+    async fn condense(
+        &self,
+        _kind: &str,
+        _message: &str,
+        _tool: &str,
+        _result_text: &str,
+        _model: &str,
+    ) -> Option<(String, JValue)> {
+        None
+    }
+    async fn reasoner_trace(&self, _trace: &JValue, _answer_chars: f64, _answer_ms: f64) {}
 }
 
 /// The account as of each request: the n-th `now()` reads `states[n]` (the last repeats), the n-th
