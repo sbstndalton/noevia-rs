@@ -11,6 +11,12 @@
 //! (`LLAMACPP_PRESET_PATH`): a section named there is a system model when its role is
 //! `system-routing` (or the legacy `laya`); only a name without a role falls back to the
 //! deprecated Laya name rule.
+//!
+//! Strings are handled as core handles them (sbstndalton/noevia#2584): `String.prototype.trim`'s
+//! white space (U+FEFF yes, U+0085 no), the name and label patterns' ASCII-only `/i` folding, and
+//! the roles file decoded as `readFileSync(file, 'utf8')` + `JSON.parse` read it (a bad byte is
+//! U+FFFD, a lone-surrogate escape is kept), so one odd entry does not drop every role.
+//! tests/model_kind_node.rs replays core's own answers.
 
 use prompt_framing::json::Value;
 use std::collections::HashMap;
@@ -24,29 +30,47 @@ pub fn roles_beside(presets: Option<&Path>) -> HashMap<String, String> {
     let Some(file) = presets.and_then(|p| p.parent()).map(|d| d.join(ROLES_FILE)) else {
         return HashMap::new();
     };
-    let Ok(text) = std::fs::read_to_string(file) else {
+    let Ok(bytes) = std::fs::read(file) else {
         return HashMap::new();
     };
-    roles_of(&text)
+    // `readFileSync(file, 'utf8')`: invalid sequences decode to U+FFFD, as WHATWG UTF-8 does.
+    roles_of(&String::from_utf8_lossy(&bytes))
 }
 
 /// model-system.cjs `sectionRolesOf(text)`.
 pub fn roles_of(text: &str) -> HashMap<String, String> {
-    let Ok(serde_json::Value::Object(map)) = serde_json::from_str::<serde_json::Value>(text) else {
+    use prompt_framing::js;
+    let units: Vec<u16> = text.encode_utf16().collect();
+    // `JSON.parse`; depth 1 is enough: a nested value is not a string and is skipped.
+    let Some(Value::Obj(pairs)) = prompt_framing::json::parse(&units, 1) else {
         return HashMap::new();
     };
-    map.into_iter()
-        .filter(|(name, _)| name != "*")
-        .filter_map(|(name, role)| {
-            let role = role.as_str()?.trim().to_lowercase();
-            (!role.is_empty()).then_some((name, role))
-        })
-        .collect()
+    let mut roles = HashMap::new();
+    for (name, role) in pairs {
+        let Value::Str(role) = role else { continue };
+        let role = js::trim(&role);
+        // A name holding a lone surrogate can never equal a served model's name; its role
+        // (here or elsewhere in the file) still counts for every other entry.
+        let Ok(name) = String::from_utf16(&name) else {
+            continue;
+        };
+        if role.is_empty() || name == "*" {
+            continue;
+        }
+        // A role with a lone surrogate is kept (lossily): it is a role, and never a system one.
+        roles.insert(name, js::lossy(&js::to_lower(role)));
+    }
+    roles
+}
+
+/// `String.prototype.trim` (core trims with JS white space, not Unicode `White_Space`).
+fn js_trim(value: &str) -> &str {
+    value.trim_matches(|c: char| u16::try_from(u32::from(c)).is_ok_and(mcp_frame::is_js_space))
 }
 
 /// `/^laya(?:[_.-]|$)/i` on the trimmed value.
 fn laya_token(value: &str) -> bool {
-    let v = value.trim();
+    let v = js_trim(value);
     let lower = v.to_ascii_lowercase();
     lower
         .strip_prefix("laya")
@@ -55,7 +79,7 @@ fn laya_token(value: &str) -> bool {
 
 /// `isSystemModel(id)` with no model path.
 pub fn is_system_model(roles: &HashMap<String, String>, id: &str) -> bool {
-    let key = id.trim();
+    let key = js_trim(id);
     if !key.is_empty() {
         if let Some(role) = roles.get(key) {
             return role == "system-routing" || role == "laya";
@@ -66,7 +90,7 @@ pub fn is_system_model(roles: &HashMap<String, String>, id: &str) -> bool {
 
 /// `isSystemModel(id, modelPath)`: an explicit role or the name decides, then the path's segments.
 pub fn is_system_model_at(roles: &HashMap<String, String>, id: &str, path: Option<&str>) -> bool {
-    let key = id.trim();
+    let key = js_trim(id);
     if (!key.is_empty() && roles.contains_key(key)) || laya_token(key) {
         return is_system_model(roles, id);
     }
@@ -122,13 +146,15 @@ pub fn is_chat_generation_model(
     if name.is_empty() || is_system_model(roles, name) {
         return false;
     }
-    let lower = name.to_lowercase();
+    // `/embed|rerank/i` and the label pattern fold ASCII only (no `u` flag): the Kelvin sign
+    // is not a `k` there.
+    let lower = name.to_ascii_lowercase();
     if lower.contains("embed") || lower.contains("rerank") {
         return false;
     }
     !labels.unwrap_or_default().iter().any(|l| {
         matches!(
-            l.to_lowercase().as_str(),
+            l.to_ascii_lowercase().as_str(),
             "embedding" | "embeddings" | "rerank" | "reranking" | "reranker"
         )
     })

@@ -57,10 +57,23 @@ CLOCK_HEADERS = [
     "09:",
     "x",
     "١٠:١٥ arabic digits",
+    # noevia#2590: Python's \s also strips the information separators U+001C..U+001F.
+    "\x1f09:30 x",
+    "\x1c\x1d9:05 separators",
+    "\x85 09:30 next line",
+    "\u300009:30 ideographic space",
+    "\u200b09:30 zero width space is not space",
+    # noevia#2590: \b after the minutes. Python's \w is letters (L*) and numbers; Rust's
+    # is_alphanumeric adds Other_Alphabetic marks and symbols, so these three are known deviations.
+    "10:15\u24b6 circled letter",
+    "10:15\u093e vowel sign",
+    "10:15\u0345 combining mark",
 ]
 
 # Python \d matches these Unicode decimal digits, the Rust port matches ASCII only (see spec).
 KNOWN_DEVIATION_PREFIX = "١"
+# Python \w does not match these marks and symbols after the minutes, Rust's word test does.
+WORD_BOUNDARY_DEVIATIONS = {"10:15\u24b6 circled letter", "10:15\u093e vowel sign", "10:15\u0345 combining mark"}
 
 
 def clock_cases(module):
@@ -70,7 +83,7 @@ def clock_cases(module):
         cases.append({
             "header": header,
             "expected": expected,
-            "known_deviation": header.startswith(KNOWN_DEVIATION_PREFIX),
+            "known_deviation": header.startswith(KNOWN_DEVIATION_PREFIX) or header in WORD_BOUNDARY_DEVIATIONS,
         })
     # Non-string headers: str(value) in Python never matches the time pattern.
     for header in [None, 0, 12, 12.5, True, ["09:30"], {"t": "09:30"}]:
