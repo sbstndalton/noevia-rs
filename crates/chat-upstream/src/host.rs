@@ -66,8 +66,8 @@ pub trait Rows: Sync {
     fn key(&self, provider_id: &str) -> Option<String>;
 }
 
-/// [`Now`], owned.
-#[derive(Debug, Clone, PartialEq)]
+/// [`Now`], owned. Debug prints the row as its id only (the stored row holds the key).
+#[derive(Clone, PartialEq)]
 pub struct RowsNow {
     pub user: String,
     pub user_active: bool,
@@ -75,6 +75,45 @@ pub struct RowsNow {
     pub row: Option<JValue>,
     pub member_own: bool,
     pub origin_approved: bool,
+}
+
+impl std::fmt::Debug for RowsNow {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RowsNow")
+            .field("user", &self.user)
+            .field("user_active", &self.user_active)
+            .field("row", &self.row.as_ref().and_then(crate::target::row_id))
+            .field("member_own", &self.member_own)
+            .field("origin_approved", &self.origin_approved)
+            .finish()
+    }
+}
+
+/// One request as it goes out: chat-turn's [`EngineRequest`] with the row's key in its headers. Debug
+/// prints header names only and the address through [`crate::target::printable_url`] (the request type's
+/// own derived Debug would print the bearer).
+#[derive(Clone, PartialEq)]
+pub struct Outgoing(EngineRequest);
+
+impl Outgoing {
+    /// The request, to send. Do not log it: its headers hold the key.
+    pub fn request(&self) -> &EngineRequest {
+        &self.0
+    }
+}
+
+impl std::fmt::Debug for Outgoing {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let r = &self.0;
+        let names: Vec<&str> = r.headers.iter().map(|(k, _)| k.as_str()).collect();
+        f.debug_struct("Outgoing")
+            .field("url", &crate::target::printable_url(&r.url))
+            .field("headers", &names)
+            .field("body_len", &r.body.len())
+            .field("stream", &r.stream)
+            .field("timeout_ms", &r.timeout_ms)
+            .finish()
+    }
 }
 
 /// Why a target cannot be wrapped.
@@ -125,7 +164,7 @@ impl<'a, H: Host, R: Rows> ProviderHost<'a, H, R> {
     }
 
     /// The request as it goes out, or the error it ends with before anything is sent.
-    pub fn outgoing(&self, request: &EngineRequest) -> Result<EngineRequest, &'static str> {
+    pub fn outgoing(&self, request: &EngineRequest) -> Result<Outgoing, &'static str> {
         // Not before the expiry (NaN included) is expired, as `binding::open` reads it.
         if self.inner.now_ms().partial_cmp(&self.binding.expires_ms)
             != Some(std::cmp::Ordering::Less)
@@ -165,7 +204,7 @@ impl<'a, H: Host, R: Rows> ProviderHost<'a, H, R> {
         let call = call_of(request);
         let key = self.rows.key(&self.target.provider_id);
         let planned = plan::request(&self.target, call, key.as_deref());
-        Ok(EngineRequest {
+        Ok(Outgoing(EngineRequest {
             url: planned.url,
             headers: planned.headers,
             body: request.body.clone(),
@@ -173,7 +212,7 @@ impl<'a, H: Host, R: Rows> ProviderHost<'a, H, R> {
             // The executor's own deadline for this call site (the title's 8 s included); the plan's is the
             // same for the round, the fallback and the summary.
             timeout_ms: request.timeout_ms,
-        })
+        }))
     }
 }
 
@@ -224,7 +263,7 @@ impl<H: Host, R: Rows> Host for ProviderHost<'_, H, R> {
 
     async fn request(&self, request: &EngineRequest) -> Result<Answer<Self::Body>, String> {
         let outgoing = self.outgoing(request).map_err(str::to_string)?;
-        let answer = self.inner.request(&outgoing).await?;
+        let answer = self.inner.request(outgoing.request()).await?;
         if REDIRECTS.contains(&answer.status) {
             // Dropping the body cancels it.
             return Err(REDIRECT.to_string());

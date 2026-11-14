@@ -868,7 +868,10 @@ fn deadlines_and_call_sites() {
             stream,
             timeout_ms: timeout,
         };
-        let out = host.outgoing(&req).unwrap();
+        let sent = host.outgoing(&req).unwrap();
+        // Neither the outgoing request's Debug nor the rows' prints the key (noevia#2710).
+        assert!(!format!("{sent:?}").contains("qa-key-1"), "{sent:?}");
+        let out = sent.request();
         assert_eq!(out.timeout_ms, timeout);
         assert_eq!(out.stream, stream);
         assert_eq!(out.body, req.body);
@@ -979,4 +982,16 @@ proptest! {
         prop_assert_eq!(run_on(&host, &f), Ended::Done);
         prop_assert_eq!(inner.events(), whole.events());
     }
+}
+
+#[test]
+fn rows_now_debug_prints_the_row_id_only() {
+    let row = JValue::obj([
+        ("id", JValue::Str("qa-provider".into())),
+        ("apiKey", JValue::Str("qa-stored-key".into())),
+        ("baseUrl", JValue::Str("https://qa.example".into())),
+    ]);
+    let printed = format!("{:?}", now_of(&row));
+    assert!(!printed.contains("qa-stored-key"), "{printed}");
+    assert!(printed.contains("qa-provider"), "{printed}");
 }
