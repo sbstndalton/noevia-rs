@@ -131,6 +131,21 @@ fn excerpt(text: &JValue) -> String {
 /// verdict, `advisor: 'unavailable'`): `{ outcome, reason, classification }`, or `null` when the
 /// verdict is unavailable.
 pub fn judge(request: &JValue) -> JValue {
+    let ask = load_request(request);
+    let Some(v) = load_verdict(&ask) else {
+        return JValue::Null;
+    };
+    let advisor = if v.get("ask").truthy() {
+        "unavailable"
+    } else {
+        "not_asked"
+    };
+    judgement(&v, advisor)
+}
+
+/// load-advisor.cjs judge's `request`: `{ cause, evidence: evidenceOf(evidence) }` (an unknown cause
+/// is `load`; evidence that is not an object, arrays being objects, is `null`).
+pub fn load_request(request: &JValue) -> JValue {
     let cause = request
         .get("cause")
         .as_str()
@@ -143,7 +158,8 @@ pub fn judge(request: &JValue) -> JValue {
         }
         _ => JValue::Null,
     };
-    let evidence = if ev.is_object() {
+    // `typeof e === 'object'`: an array is one too (its fields all read as missing).
+    let evidence = if matches!(ev, JValue::Obj(_) | JValue::Arr(_)) {
         JValue::obj([
             ("status", int(ev.get("status"), 0.0, 999.0)),
             ("exitCode", int(ev.get("exitCode"), -1024.0, 1024.0)),
@@ -156,16 +172,35 @@ pub fn judge(request: &JValue) -> JValue {
     } else {
         JValue::Null
     };
-    let ask = JValue::obj([("cause", JValue::from(cause)), ("evidence", evidence)]);
-    let (code, reply) = load_verdict::verdict_json(&well_formed(&ask));
-    let Ok(v) = decided(code, &reply, "load verdict") else {
-        return JValue::Null;
+    JValue::obj([("cause", JValue::from(cause)), ("evidence", evidence)])
+}
+
+/// `{ ...request, advice: { label, confidence } }`: the request [`load_request`] made, with the
+/// decision service's reading.
+pub fn with_advice(request: &JValue, label: &str, confidence: f64) -> JValue {
+    let mut out = match request {
+        JValue::Obj(items) => items.clone(),
+        _ => Vec::new(),
     };
-    let advisor = if v.get("ask").truthy() {
-        "unavailable"
-    } else {
-        "not_asked"
-    };
+    out.retain(|(k, _)| k != "advice");
+    out.push((
+        "advice".to_owned(),
+        JValue::obj([
+            ("label", JValue::from(label)),
+            ("confidence", JValue::Num(confidence)),
+        ]),
+    ));
+    JValue::Obj(out)
+}
+
+/// `loadVerdict(request)`; `None` where the module throws.
+pub fn load_verdict(request: &JValue) -> Option<JValue> {
+    let (code, reply) = load_verdict::verdict_json(&well_formed(request));
+    decided(code, &reply, "load verdict").ok()
+}
+
+/// judge's result for a verdict and who decided: `{ outcome, reason, classification }`.
+pub fn judgement(v: &JValue, advisor: &str) -> JValue {
     JValue::obj([
         ("outcome", v.get("outcome").clone()),
         ("reason", v.get("reason").clone()),

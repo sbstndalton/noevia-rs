@@ -18,6 +18,7 @@ icu_collator = "2"
 icu_locale = "2"
 rustix = { version = "1", features = ["fs"] }
 server-store = { path = "../server-store" }
+js-json = { path = "../js-json" }
 [dev-dependencies]
 proptest = "1"
 tempfile = "3"

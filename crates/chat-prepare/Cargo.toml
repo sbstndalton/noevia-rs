@@ -35,4 +35,7 @@ toolboxes-permitted = { path = "../toolboxes-permitted" }
 # reasoning-effort.cjs localEngine's `new URL(value).href` (the WHATWG URL Standard). MIT OR Apache-2.0; already in
 # Cargo.lock (prompt-framing uses it).
 url = "=2.5.8"
+# The P7a shadow's `chat` object: recent-writes.cjs fingerprint and chat-title.cjs firstUserMessage/firstReply as
+# the native executor ports them (workspace crate; no dependency back on this one).
+chat-turn = { path = "../chat-turn" }
 
