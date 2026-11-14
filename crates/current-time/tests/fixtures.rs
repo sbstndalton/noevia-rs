@@ -399,7 +399,10 @@ fn server_zones_are_the_recorded_ones() {
         .filter(|z| current_time::server_zone_recorded(z))
         .collect();
     for zone in &accepted {
-        assert!(resolved.contains(zone), "{zone} was never a recorded server zone");
+        assert!(
+            resolved.contains(zone),
+            "{zone} was never a recorded server zone"
+        );
     }
     assert_eq!(accepted.len(), 7, "{accepted:?}");
     // A TZ Node could not resolve ("") and zones it never ran under are refused.
