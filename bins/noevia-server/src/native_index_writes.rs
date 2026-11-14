@@ -406,7 +406,7 @@ impl IndexWrites {
             call: |t: &Target, input: &[String]| embed.call(t, input),
             off: |t: &Target| host.embedding_off(t),
         };
-        project_index::request::answer(ix.as_ref(), op, body, &mut embedder)
+        project_index::request::answer(&**ix, op, body, &mut embedder)
     }
 }
 
@@ -453,6 +453,29 @@ mod tests {
         let off = IndexWrites::from_lookup(&|_: &str| None).unwrap();
         assert_eq!(off.mode, Mode::Off);
         assert!(off.indexer.is_none());
+    }
+
+    #[test]
+    fn only_a_writer_that_owns_the_live_index_adds_wanted_versions() {
+        let dir = tempfile::tempdir().unwrap();
+        let data = dir.path().to_str().unwrap().to_owned();
+        let user = "0123abcd-0000-4000-8000-0000000000a2";
+        for (mode, owns) in [("off", false), ("shadow", false), ("on", true)] {
+            let env = |k: &str| match k {
+                "NOEVIA_RUST_INDEX_WRITES" => Some(mode.to_owned()),
+                "UI_DATA_DIR" => Some(data.clone()),
+                _ => None,
+            };
+            let w = IndexWrites::from_lookup(&env).unwrap();
+            assert_eq!(w.mode != Mode::Off, w.indexer.is_some(), "{mode}");
+            // A delete makes no version current: the file is filtered until its rows are gone.
+            if let Some(ix) = &w.indexer {
+                let _ = ix.delete_file("qa-p", "qa.md", Some(user), false);
+            }
+            let versions = w.search_versions("qa-p", user);
+            assert_eq!(versions.contains_key("qa.md"), owns, "{mode}: {versions:?}");
+            assert!(w.search_versions("qa-other", user).is_empty());
+        }
     }
 
     #[test]
