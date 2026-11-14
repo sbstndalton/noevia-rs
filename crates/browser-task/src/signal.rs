@@ -113,7 +113,10 @@ impl<T: Clone> Slot<T> {
 
     /// `None` when it is not settled within `limit`.
     pub fn wait_for(&self, limit: std::time::Duration) -> Option<T> {
-        let deadline = std::time::Instant::now() + limit;
+        // A limit past what the clock can hold is no limit.
+        let Some(deadline) = std::time::Instant::now().checked_add(limit) else {
+            return Some(self.wait());
+        };
         let mut slot = self.value.lock().unwrap_or_else(PoisonError::into_inner);
         loop {
             if let Some(v) = slot.as_ref() {
