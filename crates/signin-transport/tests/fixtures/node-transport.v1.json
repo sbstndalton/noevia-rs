@@ -4978,6 +4978,65 @@
   },
   {
    "input": {
+    "name": "labelledJson",
+    "body": "{\"model\":\"m-large\",\"messages\":[{\"role\":\"user\",\"content\":\"q\"}]}",
+    "sessions": [
+     {
+      "ok": true,
+      "session": {
+       "accessToken": "tok-1",
+       "accountId": "acct-1",
+       "fedRamp": false,
+       "expiresAt": 1800003600000,
+       "generation": 4
+      }
+     }
+    ],
+    "upstream": [
+     {
+      "status": 409,
+      "chunks": [
+       "eyJlcnJvciI6eyJtZXNzYWdlIjoiaGVsZCJ9fQ=="
+      ],
+      "labelled": true,
+      "contentType": "application/json; charset=utf-8"
+     }
+    ]
+   },
+   "output": {
+    "status": 409,
+    "contentType": "application/json; charset=utf-8",
+    "providerMessage": "1",
+    "text": "{\"error\":{\"message\":\"held\"}}",
+    "sent": [
+     {
+      "url": "https://backend.invalid/api/responses",
+      "headers": {
+       "content-type": "application/json",
+       "accept": "text/event-stream",
+       "authorization": "Bearer tok-1",
+       "service-account-id": "acct-1",
+       "user-agent": "noevia/0 (service-oauth; +https://github.com/sbstndalton/noevia)"
+      },
+      "body": "{\"model\":\"m-large\",\"instructions\":\"\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"q\"}]}],\"stream\":true,\"store\":false,\"include\":[\"reasoning.encrypted_content\"],\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"}}",
+      "redirect": "error"
+     }
+    ],
+    "brokerCalls": [
+     [
+      "catalogue",
+      "qa-user"
+     ],
+     [
+      "session",
+      "qa-user",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "input": {
     "name": "labelledAfter401",
     "body": "{\"model\":\"m-large\",\"messages\":[{\"role\":\"user\",\"content\":\"q\"}]}",
     "sessions": [
@@ -6904,6 +6963,142 @@
       null
      ]
     ]
+   }
+  },
+  {
+   "input": {
+    "name": "catalogueNullEntry",
+    "body": "{\"model\":\"m-large\",\"messages\":[{\"role\":\"user\",\"content\":\"q\"}]}",
+    "catalogue": {
+     "ok": true,
+     "models": [
+      null,
+      {
+       "slug": "m-large",
+       "effort": "medium",
+       "summary": "detailed",
+       "summaryParam": true,
+       "levels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+       ]
+      },
+      {
+       "slug": "m-small",
+       "summaryParam": false
+      },
+      {
+       "slug": "m-none",
+       "summary": "none",
+       "summaryParam": true,
+       "levels": []
+      },
+      {
+       "slug": "m-auto",
+       "summaryParam": true,
+       "effort": ""
+      }
+     ]
+    },
+    "sessions": [
+     {
+      "ok": true,
+      "session": {
+       "accessToken": "tok-1",
+       "accountId": "acct-1",
+       "fedRamp": false,
+       "expiresAt": 1800003600000,
+       "generation": 4
+      }
+     }
+    ],
+    "upstream": []
+   },
+   "output": {
+    "thrown": "Cannot read properties of null (reading 'slug')",
+    "sent": [],
+    "brokerCalls": [
+     [
+      "catalogue",
+      "qa-user"
+     ]
+    ]
+   }
+  },
+  {
+   "input": {
+    "name": "catalogueNullEntryAnswer",
+    "body": "{\"model\":\"m-large\",\"messages\":[{\"role\":\"user\",\"content\":\"q\"}]}",
+    "sessions": [
+     {
+      "ok": true,
+      "session": {
+       "accessToken": "tok-1",
+       "accountId": "acct-1",
+       "fedRamp": false,
+       "expiresAt": 1800003600000,
+       "generation": 4
+      }
+     }
+    ],
+    "upstream": []
+   },
+   "output": {
+    "status": 200,
+    "contentType": "application/json",
+    "providerMessage": null,
+    "text": "{\"id\":\"chatcmpl-00000000-0000-4000-8000-000000000000\",\"object\":\"chat.completion\",\"created\":1800000000,\"model\":\"m-large\",\"choices\":[{\"index\":0,\"message\":{\"role\":\"assistant\",\"content\":\"Hello\"},\"finish_reason\":\"stop\"}],\"usage\":{\"prompt_tokens\":3,\"completion_tokens\":2,\"total_tokens\":5}}",
+    "sent": [
+     {
+      "url": "https://backend.invalid/api/responses",
+      "headers": {
+       "content-type": "application/json",
+       "accept": "text/event-stream",
+       "authorization": "Bearer tok-1",
+       "service-account-id": "acct-1",
+       "user-agent": "noevia/0 (service-oauth; +https://github.com/sbstndalton/noevia)"
+      },
+      "body": "{\"model\":\"m-large\",\"instructions\":\"\",\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"q\"}]}],\"stream\":true,\"store\":false,\"include\":[\"reasoning.encrypted_content\"],\"reasoning\":{\"effort\":\"medium\",\"summary\":\"detailed\"}}",
+      "redirect": "error"
+     }
+    ],
+    "brokerCalls": [
+     [
+      "catalogue",
+      "qa-user"
+     ],
+     [
+      "session",
+      "qa-user",
+      null
+     ]
+    ]
+   }
+  },
+  {
+   "input": {
+    "name": "bodyNull",
+    "body": "null",
+    "sessions": [
+     {
+      "ok": true,
+      "session": {
+       "accessToken": "tok-1",
+       "accountId": "acct-1",
+       "fedRamp": false,
+       "expiresAt": 1800003600000,
+       "generation": 4
+      }
+     }
+    ],
+    "upstream": []
+   },
+   "output": {
+    "thrown": "Cannot read properties of null (reading 'model')",
+    "sent": [],
+    "brokerCalls": []
    }
   },
   {

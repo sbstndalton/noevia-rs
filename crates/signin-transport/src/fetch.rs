@@ -59,7 +59,11 @@ impl<B> std::fmt::Debug for Upstream<B> {
             .field("labelled", &self.labelled)
             .field(
                 "headers",
-                &self.headers.iter().map(|(k, _)| k.as_str()).collect::<Vec<_>>(),
+                &self
+                    .headers
+                    .iter()
+                    .map(|(k, _)| k.as_str())
+                    .collect::<Vec<_>>(),
             )
             .field("body", &self.body.as_ref().map(|_| "…"))
             .finish()

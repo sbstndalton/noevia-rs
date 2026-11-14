@@ -594,7 +594,10 @@ fn fetch_path_matches_core() {
         wrong.join("\n")
     );
     assert_eq!(late, LATE.len());
-    assert!(late_text > 0, "core recorded no text before any late failure");
+    assert!(
+        late_text > 0,
+        "core recorded no text before any late failure"
+    );
     assert_eq!(checked, cases.len());
     assert_eq!(named, NAMED.len());
     // The named differences answer as the port says they should.
