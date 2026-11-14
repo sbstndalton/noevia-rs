@@ -486,6 +486,12 @@ const ROUTES_TOML: &str = include_str!("../../../contracts/http/routes.toml");
 const ROUTES_TOML_ROWS: usize = 211;
 const UUID: &str = "00000000-0000-4000-8000-000000000001";
 
+/// `ROUTE_PINS_STRICT=1`: the deletion train's mode (exact pins against the live routes.toml); see noevia-server's
+/// owned_routes_tests.
+fn strict() -> bool {
+    std::env::var("ROUTE_PINS_STRICT").as_deref() == Ok("1")
+}
+
 fn manifest() -> Manifest {
     Manifest::parse(MANIFEST).expect("the pinned manifest parses")
 }
@@ -513,8 +519,11 @@ fn every_recorded_pattern_is_still_a_routes_toml_row() {
         .filter_map(|l| l.strip_prefix("path = \"")?.strip_suffix('"'))
         .collect();
     // sbstndalton/noevia#2725 item 3: the exact row count of the routes.toml the recording names (its sha256 is
-    // pinned in the fixture; a changed routes.toml fails the stale guard above or this count).
-    assert_eq!(rows.len(), ROUTES_TOML_ROWS);
+    // pinned in the fixture). Exact only in the deletion train's strict mode: a row added by another track does not
+    // make the recording wrong, a removed row the recording refuses on does (the loop below).
+    if strict() {
+        assert_eq!(rows.len(), ROUTES_TOML_ROWS);
+    }
     for s in &rec().stubs {
         for r in &s.refusals {
             if let Some(p) = &r.pattern {

@@ -8,6 +8,14 @@ use crate::routes::{Owner, ROUTES};
 /// moves (and re-run the route-pins golden).
 const PINNED: &str = include_str!("../../../crates/route-pins/fixtures/front-owned-routes.txt");
 
+/// `ROUTE_PINS_STRICT=1`: the deletion train's mode. The pins must then equal the live route table exactly. Without
+/// it a route added to the front (the common dispatch change) is reported, not failed, so these tests do not stop
+/// every track that adds a route; a pinned pair the front no longer owns still fails, because the delete list rests
+/// on it.
+fn strict() -> bool {
+    std::env::var("ROUTE_PINS_STRICT").as_deref() == Ok("1")
+}
+
 #[test]
 fn fill_replaces_parameters_wildcards_and_keeps_literals() {
     assert_eq!(
@@ -51,9 +59,13 @@ fn the_uuid_filling_has_the_uuid_shape_core_checks() {
 #[test]
 fn every_listed_pair_is_a_rust_row_method_the_front_dispatches() {
     let m = manifest();
-    // sbstndalton/noevia#2725 item 3: the exact count is the pinned manifest's (see
-    // the_manifest_is_the_pinned_fixture for the lines).
-    assert_eq!(m.len(), PINNED.lines().count());
+    // sbstndalton/noevia#2725 item 3: the exact count is the pinned manifest's in strict mode (see
+    // the_manifest_keeps_every_pinned_pair for the lines); otherwise the pins are a floor.
+    if strict() {
+        assert_eq!(m.len(), PINNED.lines().count());
+    } else {
+        assert!(m.len() >= PINNED.lines().count(), "{} pairs", m.len());
+    }
     for &(method, pattern) in &m {
         let row = ROUTES
             .iter()
@@ -161,7 +173,7 @@ fn normalised_manifest_covers_every_rust_row_core_lists_for_admin_users() {
 }
 
 #[test]
-fn the_manifest_is_the_pinned_fixture() {
+fn the_manifest_keeps_every_pinned_pair() {
     let mut out = Vec::new();
     write(&mut out).unwrap();
     let text = String::from_utf8(out).unwrap();
@@ -169,11 +181,23 @@ fn the_manifest_is_the_pinned_fixture() {
     let got: BTreeSet<&str> = text.lines().collect();
     let extra: Vec<&&str> = got.difference(&want).collect();
     let gone: Vec<&&str> = want.difference(&got).collect();
+    // A pinned pair the front stopped owning: a stub the delete list frees may be the only answer again.
     assert!(
-        extra.is_empty() && gone.is_empty(),
-        "manifest moved; new {extra:?}, gone {gone:?} (rewrite the fixture, see PINNED)"
+        gone.is_empty(),
+        "pinned pairs the front no longer owns: {gone:?} (re-pin, see PINNED, and re-run the route-pins golden)"
     );
-    assert_eq!(text, PINNED);
+    if strict() {
+        assert!(
+            extra.is_empty(),
+            "manifest moved; new {extra:?} (rewrite the fixture, see PINNED)"
+        );
+        assert_eq!(text, PINNED);
+    } else if !extra.is_empty() {
+        eprintln!(
+            "owned_routes: {} pairs not pinned yet (fine until the deletion train; ROUTE_PINS_STRICT=1 fails): {extra:?}",
+            extra.len()
+        );
+    }
 }
 
 #[test]
@@ -288,9 +312,22 @@ fn handlers_that_forward_by_method() {
         }
     }
     let pinned: BTreeSet<String> = METHOD_GUARDS.iter().map(|g| g.0.to_string()).collect();
-    assert_eq!(found, pinned);
+    if strict() {
+        assert_eq!(found, pinned);
+    } else if found != pinned {
+        // A new method-guarded forward can make the manifest over-claim its row: the deletion train (strict) must
+        // check it first; until then it is reported only.
+        eprintln!(
+            "owned_routes: method guards moved; new {:?}, gone {:?} (check before the deletion train)",
+            found.difference(&pinned).collect::<Vec<_>>(),
+            pinned.difference(&found).collect::<Vec<_>>()
+        );
+    }
     let m = manifest();
     for &(file, pattern, methods) in METHOD_GUARDS {
+        if !found.contains(file) {
+            continue;
+        }
         let listed: Vec<&str> = METHODS
             .iter()
             .copied()
