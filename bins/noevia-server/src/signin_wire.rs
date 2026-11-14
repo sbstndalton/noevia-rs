@@ -45,6 +45,9 @@ pub const SEND_FAILED: &str = "fetch failed";
 /// The message of a body read that failed part-way (undici's `TypeError: terminated`).
 pub const READ_FAILED: &str = "terminated";
 
+/// What one call answers (re-exported for the caller and the tests).
+pub type FrontAnswer = Answer<HttpBody>;
+
 /// The process's access-token cache (core's `sessions`), shared by every call.
 pub static SESSIONS: LazyLock<Mutex<SessionCache>> =
     LazyLock::new(|| Mutex::new(SessionCache::default()));
