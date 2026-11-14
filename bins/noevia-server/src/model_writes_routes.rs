@@ -146,9 +146,9 @@ pub async fn serve(
             return forward(bytes).await;
         };
         if let Some(n) = put.save {
-            let (app, actor) = (Arc::clone(app), id.user.id.clone());
+            let (store, actor) = (Arc::clone(app), id.user.id.clone());
             let saved = tokio::task::spawn_blocking(move || {
-                app.writes.writer()?.write(|tx| {
+                store.writes.writer()?.write(|tx| {
                     tx.set_inference_budget(
                         server_store::RustInferenceBudget::owned(),
                         &budget::row(n),
@@ -167,6 +167,7 @@ pub async fn serve(
                     &JValue::obj([("error", JValue::from("Could not save the budget"))]),
                 );
             }
+            core_sees(app, n).await;
         }
         return answer(put.status, &put.body);
     }
@@ -198,6 +199,32 @@ pub async fn serve(
         Ok(Some(put)) => answer(put.status, &put.body),
         Ok(None) => forward(bytes).await,
         Err(_) => identity::Rejection::Unavailable.into_response(),
+    }
+}
+
+/// After a save, asks core which figure it enforces now (the facts bridge the budget GET reads)
+/// and logs when it is not the saved one: a core that reads the row only at its start (older than
+/// track R11) keeps the old figure until it restarts, which the switch must not be paired with.
+async fn core_sees(app: &Arc<App>, n: f64) {
+    let asked = app
+        .config
+        .research
+        .node_call(
+            "/internal/models/facts",
+            &serde_json::json!({"want": "budget"}),
+            Duration::from_secs(5),
+        )
+        .await;
+    let enforced = asked
+        .filter(|(status, _)| *status == 200)
+        .and_then(|(_, bytes)| wtf16::parse(&String::from_utf8_lossy(&bytes)).ok())
+        .and_then(|facts| facts.get("budget").get("budgetGib").as_num());
+    if enforced != Some(n) {
+        log(&JValue::obj([
+            ("event", JValue::from("budget.core_differs")),
+            ("saved", JValue::Num(n)),
+            ("enforced", enforced.map_or(JValue::Null, JValue::Num)),
+        ]));
     }
 }
 
@@ -297,17 +324,23 @@ impl idle::Host for FrontIdle {
             Err(outcome) => Err(refusal_of(&outcome)),
         }
     }
-    fn reload_held(&mut self) -> Result<idle::Reply, idle::HoldRefusal> {
+    fn reload_held(&mut self) -> Result<idle::Reply, idle::CoverageLost> {
         let Some(hold) = self.hold.as_ref() else {
-            return Err(idle::HoldRefusal::Failed {
-                status: 500,
-                message: String::new(),
+            // Not reachable (save asks only under a hold): no reload, `{ ok: false }`.
+            return Ok(idle::Reply {
+                ok: false,
+                status: 0,
+                body: JValue::Undefined,
             });
         };
         let maint = Arc::clone(&self.app.config.maint);
         let outcome = self.rt.block_on(maint.reload_held(hold));
         if crate::model_maint::reload::lease_lost(&outcome) {
-            return Err(refusal_of(&outcome));
+            let body = wtf16::parse(&outcome.body).unwrap_or(JValue::Undefined);
+            return Err(idle::CoverageLost {
+                status: outcome.status,
+                message: body.get("error").as_str().unwrap_or("").to_string(),
+            });
         }
         Ok(reply_of(&outcome))
     }
@@ -329,19 +362,20 @@ impl idle::Host for FrontIdle {
         let maint = Arc::clone(&self.app.config.maint);
         self.rt.block_on(async move { maint.router_text().await })
     }
-    fn audit(&mut self, action: &str, detail: JValue) {
+    fn audit(&mut self, action: &str, detail: JValue) -> Result<(), idle::AuditFailed> {
         let (actor, action) = (self.actor.clone(), action.to_string());
         let written = self
             .app
             .writes
             .writer()
             .and_then(|w| w.write(|tx| audit(tx, &actor, &action, &detail)));
-        if written.is_err() {
+        written.map_err(|_| {
             log(&JValue::obj([(
                 "event",
                 JValue::from("idle_unload.audit_failed"),
             )]));
-        }
+            idle::AuditFailed
+        })
     }
 }
 
