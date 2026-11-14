@@ -70,6 +70,8 @@ fn toolbox(v: &JValue) -> Toolbox {
 
 struct Replayed {
     name: String,
+    /// Core's system message holds a chat frame block.
+    framed: bool,
     verdict: Verdict,
     without_catalogue: Verdict,
 }
@@ -84,9 +86,8 @@ fn replay(f: &JValue) -> Vec<Replayed> {
         }
         let input = t.get("input");
         let boxes: Vec<Toolbox> = items(input, "toolboxes").iter().map(toolbox).collect();
-        let known = |name: &str| {
-            PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name))
-        };
+        let known =
+            |name: &str| PRIVATE_CORE_TOOLS.contains(&name) || boxes.iter().any(|b| b.offers(name));
         let carry = |name: &str| is_public_tool_name(Some(name), &boxes);
         let instructions = file_bytes(input.get("instructions"));
         let memory = file_bytes(input.get("memory"));
@@ -103,12 +104,19 @@ fn replay(f: &JValue) -> Vec<Replayed> {
                 memory: memory.as_deref(),
                 free_chats: Some(free),
                 time_zone: input.get("tz").as_str().unwrap(),
+                chat_framing: input.get("chatFraming").as_bool(),
+                brain_context: Some(false),
                 history_cap: cap,
                 catalogue,
             })
         };
+        let system = items(frame, "messages")
+            .first()
+            .map(|m| m.get("content").as_str().unwrap_or_default().to_string())
+            .unwrap_or_default();
         out.push(Replayed {
             name: t.get("name").as_str().unwrap_or_default().to_string(),
+            framed: system.contains("Chat frame (set by the user)"),
             verdict: run(Some(Catalogue {
                 known_tool: &known,
                 carry_orphan_tool: &carry,
@@ -156,7 +164,21 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
         replayed.len(),
         wrong[..wrong.len().min(8)].join("\n")
     );
-    let matched = replayed.iter().filter(|r| r.verdict == Verdict::Match).count();
+    let matched = replayed
+        .iter()
+        .filter(|r| r.verdict == Verdict::Match)
+        .count();
+    let mut counts = std::collections::BTreeMap::new();
+    for r in &replayed {
+        *counts.entry(r.verdict.line()).or_insert(0) += 1;
+        *counts
+            .entry(format!(
+                "without the catalogue: {}",
+                r.without_catalogue.line()
+            ))
+            .or_insert(0) += 1;
+    }
+    println!("{} handed off: {counts:?}", replayed.len());
     assert!(
         matched * 10 >= replayed.len() * 8,
         "only {matched} of {} matched",
@@ -165,16 +187,22 @@ fn every_handed_off_free_chat_turn_is_core_s_or_named_as_not_covered() {
     // Without the catalogue only a history that needs it is skipped; everything else is the same.
     for r in &replayed {
         if r.without_catalogue != r.verdict {
-            assert_eq!(r.without_catalogue, Verdict::Skip("tool-history"), "{}", r.name);
+            assert_eq!(
+                r.without_catalogue,
+                Verdict::Skip("tool-history"),
+                "{}",
+                r.name
+            );
             assert_eq!(r.verdict, Verdict::Match, "{}", r.name);
         }
     }
     assert!(replayed
         .iter()
         .any(|r| r.without_catalogue == Verdict::Skip("tool-history")));
-    assert!(replayed
-        .iter()
-        .any(|r| r.verdict == Verdict::Skip("frame")));
+    // A confirmed frame with chat framing on: its block is built and matches.
+    let framed: Vec<&Replayed> = replayed.iter().filter(|r| r.framed).collect();
+    assert!(framed.len() >= 5, "{} framed", framed.len());
+    assert!(framed.iter().all(|r| r.verdict == Verdict::Match));
 }
 
 /// A frame whose messages are not the native ones is reported where they first differ, and a
@@ -201,6 +229,8 @@ fn a_difference_is_located_without_its_text() {
             memory: memory.as_deref(),
             free_chats: Some(&free),
             time_zone: input.get("tz").as_str().unwrap(),
+            chat_framing: Some(false),
+            brain_context: Some(false),
             history_cap: f.get("historyCap").as_num().unwrap() as usize,
             catalogue: None,
         })
