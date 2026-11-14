@@ -19,6 +19,12 @@ pub fn running() -> bool {
     RUNNING.load(Ordering::SeqCst)
 }
 
+/// Records whether the background runs ([`start`] calls it; a test of the readiness route stands in
+/// for the background with it).
+pub fn mark_running(running: bool) {
+    RUNNING.store(running, Ordering::SeqCst);
+}
+
 fn try_start(
     app: &Arc<App>,
     get: impl Fn(&str) -> Option<String>,
@@ -107,7 +113,7 @@ pub fn start(
 ) -> Result<Option<Background>, String> {
     match try_start(app, get) {
         Ok(worker) => {
-            RUNNING.store(worker.is_some(), Ordering::SeqCst);
+            mark_running(worker.is_some());
             Ok(worker)
         }
         Err(_) => {

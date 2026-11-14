@@ -176,9 +176,17 @@ fn seed(dir: &std::path::Path) {
 }
 
 async fn front(dir: &std::path::Path, diary_base: &str) -> std::net::SocketAddr {
+    front_with(dir, diary_base, &[]).await
+}
+
+async fn front_with(
+    dir: &std::path::Path,
+    diary_base: &str,
+    extra: &[(&'static str, &str)],
+) -> std::net::SocketAddr {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let addr = listener.local_addr().unwrap();
-    let env = HashMap::from([
+    let mut env = HashMap::from([
         ("NOEVIA_LEGACY_UPSTREAM", "http://127.0.0.1:9".to_string()),
         ("UI_DATA_DIR", dir.display().to_string()),
         ("PUBLIC_ORIGIN", format!("http://{addr}")),
@@ -186,6 +194,9 @@ async fn front(dir: &std::path::Path, diary_base: &str) -> std::net::SocketAddr 
         ("DIARY_AUTH_TOKEN", BEARER.to_string()),
         ("DIARY_TENANT_KEY", TENANT_KEY.to_string()),
     ]);
+    for (k, v) in extra {
+        env.insert(*k, (*v).to_string());
+    }
     let app = App::new(Config::from_lookup(|k| env.get(k).cloned()).unwrap());
     tokio::spawn(serve(
         listener,
@@ -793,5 +804,150 @@ async fn a_client_that_leaves_during_the_wait_is_not_waited_for() {
         started.elapsed() < Duration::from_millis(2500),
         "{:?}",
         started.elapsed()
+    );
+}
+
+// ── NOEVIA_RUST_RETRIEVAL: the front's own retrieval readiness (retrieval_status.rs) ────────────
+
+/// The embedding target the readiness probe reads from the process environment (no saved
+/// configuration in these data directories): the shared engine, `model`.
+fn set_embedding(model: &str) {
+    std::env::set_var("EMBEDDING_MODEL", model);
+    std::env::remove_var("EMBED_MODEL");
+    std::env::remove_var("EMBEDDING_BASE_URL");
+    std::env::remove_var("EMBEDDING_PROFILE");
+    std::env::remove_var("EMBEDDING_SERVICE_URL");
+}
+
+fn clear_embedding() {
+    std::env::remove_var("EMBEDDING_MODEL");
+}
+
+fn models(ids: &[&str]) -> Canned {
+    let data: Vec<String> = ids.iter().map(|i| format!(r#"{{"id":"{i}"}}"#)).collect();
+    Canned {
+        body: format!(r#"{{"data":[{}]}}"#, data.join(",")).into_bytes(),
+        ..Canned::ok()
+    }
+}
+
+#[tokio::test]
+async fn retrieval_on_answers_the_fronts_own_probe_and_never_asks_node() {
+    let _env = ENV.lock().await;
+    let dir = data();
+    // Each test of this file uses its own model: the probe's cache is the process's.
+    let model = "qa-embed-on";
+    set_embedding(model);
+    let engine = stand(models(&[model, "qa-chat"])).await;
+    set_provider(&engine.base, Some("sk-synthetic-key"));
+    noevia_server::embedding_background::mark_running(true);
+    // Node published "degraded": with the switch on that file is not read.
+    fresh(dir.path(), true, "degraded");
+    let addr = front_with(
+        dir.path(),
+        "http://127.0.0.1:9",
+        &[("NOEVIA_RUST_RETRIEVAL", "on")],
+    )
+    .await;
+    let started = Instant::now();
+    let r = call(addr, "GET", "/api/health", COOKIE_B).await;
+    assert_eq!(r.status, 200);
+    assert_eq!(r.text, SHAPE_UP);
+    assert!(
+        started.elapsed() < Duration::from_millis(1500),
+        "no wait for Node's snapshot: {:?}",
+        started.elapsed()
+    );
+    assert!(
+        !dir.path().join("snapshot-demand").exists(),
+        "Node is not asked to publish"
+    );
+    // Two GET /v1/models: the provider's probe and retrieval's (the engine path never POSTs).
+    let seen = engine.seen();
+    assert_eq!(seen.len(), 2, "{seen:?}");
+    assert!(seen
+        .iter()
+        .all(|s| s.method == "GET" && s.target == "/v1/models"));
+    assert!(seen
+        .iter()
+        .all(|s| s.headers["authorization"] == "Bearer sk-synthetic-key"));
+    // Inside the TTL the readiness is cached: one more provider probe only.
+    let r = call(addr, "GET", "/api/health", COOKIE_B).await;
+    assert_eq!(r.text, SHAPE_UP);
+    assert_eq!(engine.seen().len(), 3);
+    clear_embedding();
+}
+
+#[tokio::test]
+async fn retrieval_on_reads_degraded_when_the_engine_does_not_list_the_model() {
+    let _env = ENV.lock().await;
+    let dir = data();
+    set_embedding("qa-embed-missing");
+    let engine = stand(models(&["qa-chat"])).await;
+    set_provider(&engine.base, None);
+    noevia_server::embedding_background::mark_running(true);
+    let addr = front_with(
+        dir.path(),
+        "http://127.0.0.1:9",
+        &[("NOEVIA_RUST_RETRIEVAL", "ON")],
+    )
+    .await;
+    let r = call(addr, "GET", "/api/health", COOKIE_B).await;
+    assert_eq!(
+        r.text,
+        r#"{"inferenceUp":true,"lemonadeUp":true,"diaryUp":null,"ragAvailable":true,"retrieval":"degraded"}"#
+    );
+    // Without a running embedding owner: core's publisher build, `unavailable`, no probe.
+    noevia_server::embedding_background::mark_running(false);
+    set_embedding("qa-embed-no-owner");
+    let before = engine.seen().len();
+    let r = call(addr, "GET", "/api/health", COOKIE_B).await;
+    assert_eq!(
+        r.text,
+        r#"{"inferenceUp":true,"lemonadeUp":true,"diaryUp":null,"ragAvailable":false,"retrieval":"unavailable"}"#
+    );
+    assert_eq!(engine.seen().len(), before + 1, "the provider's probe only");
+    clear_embedding();
+}
+
+#[tokio::test]
+async fn retrieval_shadow_answers_nodes_snapshot_and_probes_beside_it() {
+    let _env = ENV.lock().await;
+    let dir = data();
+    set_embedding("qa-embed-shadow");
+    let engine = stand(models(&["qa-embed-shadow"])).await;
+    set_provider(&engine.base, None);
+    noevia_server::embedding_background::mark_running(true);
+    fresh(dir.path(), true, "degraded");
+    let addr = front_with(
+        dir.path(),
+        "http://127.0.0.1:9",
+        &[("NOEVIA_RUST_RETRIEVAL", "shadow")],
+    )
+    .await;
+    let r = call(addr, "GET", "/api/health", COOKIE_B).await;
+    assert_eq!(
+        r.text,
+        r#"{"inferenceUp":true,"lemonadeUp":true,"diaryUp":null,"ragAvailable":true,"retrieval":"degraded"}"#,
+        "shadow answers Node's"
+    );
+    // The detached native probe reaches the engine too (bounded wait).
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while engine.seen().len() < 2 && Instant::now() < deadline {
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    assert_eq!(engine.seen().len(), 2, "{:?}", engine.seen());
+    clear_embedding();
+}
+
+#[test]
+fn retrieval_shadow_lines_name_both_states() {
+    assert_eq!(
+        noevia_server::health_routes::shadow_line((true, "degraded"), (true, "available")).as_deref(),
+        Some("differs (node ragAvailable=true retrieval=degraded, native ragAvailable=true retrieval=available)")
+    );
+    assert_eq!(
+        noevia_server::health_routes::shadow_line((false, "unavailable"), (false, "unavailable")),
+        None
     );
 }
