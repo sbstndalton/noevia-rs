@@ -126,6 +126,8 @@ pub struct FrontDeps {
     memory_floor_gib: f64,
     /// EMBEDDING_MODEL (or EMBED_MODEL), EMBEDDING_NEXT_MODEL and RERANK_MODEL, until Core answers.
     env_sidecars: Vec<String>,
+    /// The load advisor (core load-advisor.cjs), over the deployment's decision service.
+    advisor: super::load_advisor::LoadAdvisor,
 }
 
 impl FrontDeps {
@@ -145,6 +147,7 @@ impl FrontDeps {
             read_facts,
             recoveries,
             owed: Mutex::new(Default::default()),
+            advisor: super::load_advisor::LoadAdvisor::from_lookup(get),
             env_sidecars: {
                 let embed = get("EMBEDDING_MODEL")
                     .filter(|v| !v.trim().is_empty())
@@ -987,9 +990,8 @@ impl Deps for FrontDeps {
     }
 
     async fn judge(&self, request: JValue) -> Result<JValue, Fail> {
-        // load-advisor.cjs judge: Rust's rules (load-verdict). No decision service is asked from
-        // this front yet, so a rule tie keeps the rule's verdict (`advisor: unavailable`).
-        Ok(autotune_runner::decide::judge(&request))
+        // load-advisor.cjs judge: Rust's rules (load-verdict), then on a tie the decision service.
+        Ok(self.advisor.judge(&request).await)
     }
 
     fn plan(&self, request: &JValue) -> Result<JValue, Fail> {
