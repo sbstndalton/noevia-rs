@@ -156,24 +156,29 @@ pub fn run(user_dir: &Path, body: &[u8], frame: &JValue, time_zone: &str, flags:
     })
 }
 
-/// `serverTimeZone()`: what Node's ICU resolves for the process: `TZ` (an IANA name, or a path
-/// under a `zoneinfo` directory), else where the `/etc/localtime` link finally points, else
-/// `/etc/timezone`, else `UTC`; then V8's canonical name for the UTC and GMT aliases (`UTC`). A
-/// link zone ICU maps to its canonical name (`US/Eastern`) is not mapped here: the shadow then
-/// reports a diff in the system message, which is how such a server shows up.
+/// `serverTimeZone()`: what Node's ICU resolves for the process, as measured with Node 22 (the N5
+/// builder, 2026-11-14): a set `TZ` alone decides (a leading `:` and a `posix/` or `right/` prefix
+/// dropped; an absolute path or an unknown name gives `undefined`, so `UTC`; an empty one
+/// `Etc/Unknown`, which the time part states as `UTC`); unset, where the `/etc/localtime` link
+/// finally points, else `/etc/timezone`, else `UTC`. Then V8's canonical `UTC` for the UTC and GMT
+/// aliases. A link zone ICU maps to its canonical name (`US/Eastern` to `America/New_York`) is not
+/// mapped here: the shadow then reports a diff in the system message.
 pub fn server_time_zone() -> String {
-    zone_from(
-        std::env::var("TZ").ok().as_deref(),
-        std::fs::canonicalize("/etc/localtime")
-            .ok()
-            .and_then(|p| p.to_str().map(str::to_string))
-            .as_deref(),
-        std::fs::read_to_string("/etc/timezone").ok().as_deref(),
-    )
+    let tz = std::env::var_os("TZ").map(|v| v.to_string_lossy().into_owned());
+    let localtime = std::fs::canonicalize("/etc/localtime")
+        .ok()
+        .and_then(|p| p.to_str().map(str::to_string));
+    let timezone = std::fs::read_to_string("/etc/timezone").ok();
+    let zone = zone_from(tz.as_deref(), localtime.as_deref(), timezone.as_deref());
+    if chat_prepare::time::zone(&zone).is_some() {
+        zone
+    } else {
+        "UTC".into()
+    }
 }
 
 /// The names V8 resolves to `UTC` (ICU's `Etc/UTC` and `Etc/GMT` and their links).
-const UTC_ALIASES: [&str; 16] = [
+const UTC_ALIASES: [&str; 18] = [
     "UTC",
     "Etc/UTC",
     "GMT",
@@ -190,21 +195,35 @@ const UTC_ALIASES: [&str; 16] = [
     "Etc/GMT+0",
     "GMT-0",
     "Etc/GMT-0",
+    "Greenwich",
+    "Etc/Greenwich",
 ];
 
 fn zone_from(tz: Option<&str>, localtime: Option<&str>, timezone: Option<&str>) -> String {
-    let named = |s: &str| {
-        let s = s.trim().trim_start_matches(':');
-        let s = s.rsplit_once("zoneinfo/").map_or(s, |(_, z)| z);
-        (!s.is_empty()).then(|| s.to_string())
+    let zone = match tz {
+        Some(tz) => {
+            let name = tz.strip_prefix(':').unwrap_or(tz);
+            let name = name
+                .strip_prefix("posix/")
+                .or_else(|| name.strip_prefix("right/"))
+                .unwrap_or(name);
+            if name.is_empty() || name.starts_with('/') {
+                "UTC".to_string()
+            } else {
+                name.to_string()
+            }
+        }
+        None => localtime
+            .and_then(|l| l.rsplit_once("zoneinfo/").map(|(_, z)| z.to_string()))
+            .or_else(|| {
+                timezone
+                    .map(str::trim)
+                    .filter(|t| !t.is_empty())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "UTC".into()),
     };
-    let zone = tz
-        .and_then(named)
-        .or_else(|| localtime.and_then(|l| l.rsplit_once("zoneinfo/").map(|(_, z)| z.to_string())))
-        .or_else(|| timezone.and_then(named))
-        .unwrap_or_else(|| "UTC".into());
-    let aliases = UTC_ALIASES.iter().chain(&["Greenwich", "Etc/Greenwich"]);
-    if aliases.into_iter().any(|a| a.eq_ignore_ascii_case(&zone)) {
+    if UTC_ALIASES.iter().any(|a| a.eq_ignore_ascii_case(&zone)) {
         "UTC".into()
     } else {
         zone
@@ -235,20 +254,49 @@ mod tests {
 
     #[test]
     fn the_zone_is_read_as_icu_reads_it() {
+        // Node 22 on the N5 builder (TZ=<value> node -p "Intl.DateTimeFormat().resolvedOptions().timeZone").
         assert_eq!(
             zone_from(Some("Europe/Berlin"), None, None),
             "Europe/Berlin"
         );
         assert_eq!(zone_from(Some(":Asia/Tokyo"), None, None), "Asia/Tokyo");
         assert_eq!(
-            zone_from(Some("/usr/share/zoneinfo/America/New_York"), None, None),
-            "America/New_York"
+            zone_from(Some("posix/Europe/Berlin"), None, None),
+            "Europe/Berlin"
         );
-        // V8's canonical name for the UTC aliases (the stock Debian image links Etc/UTC).
+        assert_eq!(
+            zone_from(Some("right/Europe/Berlin"), None, None),
+            "Europe/Berlin"
+        );
+        // undefined, then serverTimeZone's 'UTC'; an empty TZ is Etc/Unknown, stated as UTC.
+        assert_eq!(
+            zone_from(Some("/usr/share/zoneinfo/America/New_York"), None, None),
+            "UTC"
+        );
+        assert_eq!(
+            zone_from(Some(""), Some("/usr/share/zoneinfo/Europe/Paris"), None),
+            "UTC"
+        );
+        assert_eq!(zone_from(Some("Etc/GMT+5"), None, None), "Etc/GMT+5");
+        // TZ unset: the stock image links /etc/localtime to Etc/UTC, which V8 calls UTC.
         assert_eq!(
             zone_from(None, Some("/usr/share/zoneinfo/Etc/UTC"), None),
             "UTC"
         );
+        assert_eq!(
+            zone_from(
+                None,
+                Some("/usr/share/zoneinfo/Europe/Paris"),
+                Some("Etc/UTC")
+            ),
+            "Europe/Paris"
+        );
+        assert_eq!(
+            zone_from(None, None, Some("Australia/Adelaide\n")),
+            "Australia/Adelaide"
+        );
+        assert_eq!(zone_from(None, Some("/etc/elsewhere"), None), "UTC");
+        assert_eq!(zone_from(None, None, None), "UTC");
         for alias in [
             "Etc/GMT",
             "GMT",
@@ -261,17 +309,6 @@ mod tests {
         ] {
             assert_eq!(zone_from(Some(alias), None, None), "UTC", "{alias}");
         }
-        assert_eq!(zone_from(Some("Etc/GMT+5"), None, None), "Etc/GMT+5");
-        assert_eq!(
-            zone_from(Some(""), Some("../usr/share/zoneinfo/Europe/Paris"), None),
-            "Europe/Paris"
-        );
-        assert_eq!(
-            zone_from(None, None, Some("Australia/Adelaide\n")),
-            "Australia/Adelaide"
-        );
-        assert_eq!(zone_from(None, Some("/etc/elsewhere"), None), "UTC");
-        assert_eq!(zone_from(None, None, None), "UTC");
     }
 
     #[test]
