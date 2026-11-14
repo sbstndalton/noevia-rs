@@ -43,6 +43,8 @@ pub mod extraction;
 pub mod feature_context;
 pub mod gdrive;
 pub mod gdrive_tools;
+// Track R13: the chat's read_project_file in the front (NOEVIA_RUST_READ_FILE).
+pub mod project_file_read;
 pub mod health;
 pub mod health_routes;
 pub mod identity;
