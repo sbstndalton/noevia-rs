@@ -12,10 +12,16 @@
 //! - [`mode_for`]: reasoning-effort.cjs `modeFor`, and [`answer`] the reply.
 //!
 //! Difference from Node (documented, not a refusal): Node remembers, for its process's life, a
-//! provider and model that refused the effort parameter during a chat turn (`rejected`) and then
-//! reports `hint`; that memory is in Node's process and is not read here, so the front reports what
-//! the provider row and model say (`real`). The first turn after a restart behaves the same way in
-//! Node, and the chat turn itself still falls back and warns.
+//! provider and model that refused the effort parameter during a chat turn (`rejected`); from then on
+//! its GET reports `hint` for them, and its later turns go straight to the hint without a warning. That
+//! memory is in Node's process and is not read here, so the front keeps reporting `real` for that
+//! provider and model in Settings until Node restarts. Display only: each turn's own `meta` event still
+//! carries the mode the turn really used.
+//!
+//! Node's two throws on hand-edited data are kept ([`Thrown`], a 500): `String(model)` of an object
+//! with its own `toString` when the local engine's switch is asked, and `capabilityKey` (the
+//! `rejected` lookup of a `real` answer) on a row whose key is a truthy non-string or whose address or
+//! id cannot be joined.
 //!
 //! Fail closed (503) where Node would read a value this port cannot hold (a number past the `f64`
 //! range, a character of the lone-surrogate range, nesting past 128) in either provider file.
@@ -398,26 +404,58 @@ fn qwen3(model: &str) -> bool {
     })
 }
 
-/// reasoning-effort.cjs `nativeThinking(provider, model)`.
-fn native_thinking(provider: Option<&JValue>, model: &JValue, defaults: &Defaults) -> bool {
-    let Some(p) = provider else { return false };
-    let local = local_engine(p, defaults) && to_js_string(model).is_ok_and(|m| qwen3(&m));
-    local || p.get("machine").get("thinkingSwitch") == &JValue::Bool(true)
+/// Where Node's code throws a TypeError (its request handler answers 500).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Thrown;
+
+/// reasoning-effort.cjs `nativeThinking(provider, model)`: the regex's `String(model)` throws for an
+/// object with its own `toString`, and is only reached when the local engine matches.
+fn native_thinking(
+    provider: Option<&JValue>,
+    model: &JValue,
+    defaults: &Defaults,
+) -> Result<bool, Thrown> {
+    let Some(p) = provider else { return Ok(false) };
+    let local = if local_engine(p, defaults) {
+        qwen3(&to_js_string(model).map_err(|_| Thrown)?)
+    } else {
+        false
+    };
+    Ok(local || p.get("machine").get("thinkingSwitch") == &JValue::Bool(true))
 }
 
-/// reasoning-effort.cjs `modeFor(provider, model, effort)` without the process's `rejected` memory.
+/// Whether reasoning-effort.cjs `capabilityKey(provider, model)` returns: `[baseUrl, id, model,
+/// sha256(apiKey || '')].join('|')` (`join` writes `null`/`undefined` as '' and `String()` of the rest;
+/// `createHash().update()` takes only a string from JSON data).
+fn capability_key_returns(provider: &JValue, model: &JValue) -> bool {
+    let joinable = |v: &JValue| v.is_nullish() || to_js_string(v).is_ok();
+    // openProviderKey: a key whose `String()` throws was caught there and made ''; any other value
+    // that is not an envelope comes back as it was stored.
+    let key = provider.get("apiKey");
+    let key_hashes = !key.truthy() || matches!(key, JValue::Str(_)) || to_js_string(key).is_err();
+    joinable(provider.get("baseUrl"))
+        && joinable(provider.get("id"))
+        && joinable(model)
+        && key_hashes
+}
+
+/// reasoning-effort.cjs `modeFor(provider, model, effort)` without the process's `rejected` memory
+/// (its lookup's key is still made, and throws where Node's does).
 pub fn mode_for(
     provider: Option<&JValue>,
     model: &JValue,
     effort: &str,
     defaults: &Defaults,
-) -> &'static str {
+) -> Result<&'static str, Thrown> {
     if effort == "default" {
-        "off"
-    } else if documented(provider, model) || native_thinking(provider, model, defaults) {
-        "real"
-    } else {
-        "hint"
+        return Ok("off");
+    }
+    if !(documented(provider, model) || native_thinking(provider, model, defaults)?) {
+        return Ok("hint");
+    }
+    match provider {
+        Some(p) if capability_key_returns(p, model) => Ok("real"),
+        _ => Err(Thrown),
     }
 }
 

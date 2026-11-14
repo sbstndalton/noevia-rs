@@ -215,7 +215,14 @@ fn write(
         }
         Root::open(data_dir)
             .and_then(|root| root.write_preferences(user, request.routing))
-            .map_err(|_| Box::new(unavailable()))
+            .map_err(|_| {
+                // Removed between the check and the write: still the 410.
+                if dir.is_dir() {
+                    Box::new(unavailable())
+                } else {
+                    gone()
+                }
+            })
     };
     if !request.apply_to_existing {
         preferences()?;
@@ -248,7 +255,7 @@ fn write(
 /// Whether `dir/projects.json` is one Node's load reads as an empty list (`JSON.parse` throws, or
 /// `projects` is there but not a list), rather than one this port refuses to hold (a number past
 /// the `f64` range, deep nesting), which fails closed.
-fn unreadable(dir: &std::path::Path) -> bool {
+pub(crate) fn unreadable(dir: &std::path::Path) -> bool {
     let Ok(bytes) = std::fs::read(dir.join("projects.json")) else {
         return false;
     };

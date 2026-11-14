@@ -1571,6 +1571,144 @@
    }
   },
   {
+   "name": "project-file-malformed",
+   "input": {
+    "query": "?projectId=proj-qa-r",
+    "projects": "{"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "project-file-projects-object",
+   "input": {
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":{}}"
+   },
+   "expected": {
+    "status": 404,
+    "reply": "{\"error\":\"no such project\"}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-number-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":5,\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received type number (5)"
+   }
+  },
+  {
+   "name": "apikey-number-hint",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":5,\"capabilities\":{}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-string-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":\"qa-plain-key\",\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-own-tostring-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":{\"toString\":1},\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"real\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "apikey-array-real",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"key-qa\",\"model\":\"qa\"}]}",
+    "shared": "{\"providers\":[{\"id\":\"key-qa\",\"baseUrl\":\"http://qa:1\",\"apiKey\":[\"qa\"],\"capabilities\":{\"reasoningEffortParam\":true}}]}"
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "The \"data\" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received an instance of Array"
+   }
+  },
+  {
+   "name": "model-own-tostring-local",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":{\"toString\":1}}]}",
+    "env": {
+     "MODEL_MANAGER_KIND": "llamacpp",
+     "INFERENCE_BASE_URL": "http://qa-engine:8080/v1"
+    }
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "Cannot convert object to primitive value"
+   }
+  },
+  {
+   "name": "model-own-tostring-not-local",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"model\":{\"toString\":1}}]}"
+   },
+   "expected": {
+    "status": 200,
+    "reply": "{\"default\":\"high\",\"effort\":\"high\",\"mode\":\"hint\",\"admin\":false}",
+    "threw": null
+   }
+  },
+  {
+   "name": "model-own-tostring-machine",
+   "input": {
+    "setting": "high",
+    "query": "?projectId=proj-qa-r",
+    "projects": "{\"projects\":[{\"id\":\"proj-qa-r\",\"name\":\"QA reasoning\",\"modes\":[\"chat\"],\"provider\":\"mach-qa\",\"model\":{\"toString\":1}}]}",
+    "shared": "{\"providers\":[{\"id\":\"mach-qa\",\"baseUrl\":\"http://qa:1\",\"machine\":{\"thinkingSwitch\":true}}]}"
+   },
+   "expected": {
+    "status": null,
+    "reply": null,
+    "threw": "Cannot convert object to primitive value"
+   }
+  },
+  {
    "name": "shared-huge-number",
    "input": {
     "setting": "high",

@@ -183,6 +183,13 @@ async fn get(
                 match server_projects::chats::get_project(ctx, &pid) {
                     Ok(Some(p)) => Some(p),
                     Ok(None) => return error(StatusCode::NOT_FOUND, "no such project"),
+                    // A list Node's load reads as empty (not JSON, `projects` not a list): no project.
+                    Err(_)
+                        if server_projects::store::user_dir(&data_dir, &id.user.id)
+                            .is_ok_and(|d| crate::routing_default_routes::unreadable(&d)) =>
+                    {
+                        return error(StatusCode::NOT_FOUND, "no such project")
+                    }
                     Err(reply) => return crate::project_routes::respond(reply),
                 }
             }
@@ -209,7 +216,9 @@ async fn get(
             .filter(|v| v.truthy())
             .cloned()
             .unwrap_or_else(|| js_json::JValue::Str(String::new()));
-        let mode = read::mode_for(provider.as_ref(), &model, &effort, defaults);
+        let Ok(mode) = read::mode_for(provider.as_ref(), &model, &effort, defaults) else {
+            return error(StatusCode::INTERNAL_SERVER_ERROR, "Internal error");
+        };
         let admin = id.user.role == server_auth::Role::Admin;
         reply::json_text(
             StatusCode::OK,
