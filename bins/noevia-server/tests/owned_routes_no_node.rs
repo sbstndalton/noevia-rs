@@ -1,0 +1,248 @@
+//! The deletion train's proof that the front's route manifest (`noevia-server --owned-routes`) is safe: signed in as
+//! the owner, with every deployment switch off, every listed (method, pattern) pair is sent under both fillings, and
+//! none may come back from Node. The manifest is route-table ownership; this test checks the handler as well, so a
+//! native handler that still hands a method or a spelling on to Node is caught here, not by the text scan in
+//! owned_routes_tests (sbstndalton/noevia#2725 item 4).
+//!
+//! Opt-in: it runs only with `ROUTE_PINS_STRICT=1`, the deletion train's mode, because it sends about 1,400
+//! requests to every native handler (some do real work against the synthetic data directory) and a newly added
+//! route must not make every track's CI slower or flakier. Synthetic data only.
+#![allow(
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::indexing_slicing,
+    clippy::panic
+)]
+#[path = "support/approval_front.rs"]
+mod fixture;
+use fixture::*;
+use noevia_server::owned_routes::{fill, manifest, FILLS};
+use std::collections::BTreeSet;
+use std::net::SocketAddr;
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use tokio::net::{TcpListener, TcpStream};
+
+/// How long one request may take to send back its head. A forward to the fake Node answers at once, so a slower
+/// answer is native work (a stream, a timeout against an absent service); it is counted and printed, not failed.
+const HEAD_WITHIN: Duration = Duration::from_secs(3);
+/// The whole sweep's deadline (every wait in this file is bounded).
+const SWEEP_WITHIN: Duration = Duration::from_secs(900);
+/// The pairs that end the owner's session on purpose. They run last, so the rest of the sweep stays signed in.
+const SESSION_ENDERS: &[(&str, &str)] = &[("POST", "/api/auth/logout")];
+const PASSWORD: &str = "synthetic approval password";
+/// The harness trusts the proxy: the sweep and the re-sign-in come from different documentation addresses, so the
+/// sweep's own failed sign-ins (empty bodies on the login routes) never rate-limit the re-sign-in.
+const SWEEP_FROM: &str = "192.0.2.10";
+const SIGN_IN_FROM: &str = "192.0.2.20";
+
+fn strict() -> bool {
+    std::env::var("ROUTE_PINS_STRICT").as_deref() == Ok("1")
+}
+
+/// A fake Node that answers everything with `x-upstream: 1` and records what it saw.
+async fn recording_node() -> (SocketAddr, Arc<Mutex<Vec<String>>>) {
+    let hits = Arc::new(Mutex::new(Vec::new()));
+    let seen = Arc::clone(&hits);
+    let router = axum::Router::new().fallback(move |req: axum::extract::Request| {
+        let seen = Arc::clone(&seen);
+        async move {
+            seen.lock()
+                .unwrap()
+                .push(format!("{} {}", req.method(), req.uri().path()));
+            (
+                [("x-upstream", "1"), ("content-type", "application/json")],
+                "{}",
+            )
+        }
+    });
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(listener, router).await.unwrap();
+    });
+    (addr, hits)
+}
+
+/// The response head of one request: (status, whether it came from Node), or None when no head arrived in time.
+async fn head_of(
+    addr: SocketAddr,
+    method: &str,
+    path: &str,
+    jar: &str,
+    csrf: &str,
+) -> Option<(u16, bool)> {
+    let body = if matches!(method, "POST" | "PUT" | "PATCH" | "DELETE") {
+        "{}"
+    } else {
+        ""
+    };
+    let req = format!(
+        "{method} {path} HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\ncookie: {jar}\r\nx-csrf-token: {csrf}\r\n\
+         x-forwarded-for: {SWEEP_FROM}\r\nconnection: close\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    let read = async {
+        let mut c = TcpStream::connect(addr).await.ok()?;
+        c.write_all(req.as_bytes()).await.ok()?;
+        let mut out = Vec::new();
+        let mut buf = [0u8; 4096];
+        while !out.windows(4).any(|w| w == b"\r\n\r\n") {
+            let n = c.read(&mut buf).await.ok()?;
+            if n == 0 {
+                break;
+            }
+            out.extend_from_slice(&buf[..n]);
+        }
+        Some(out)
+    };
+    let out = tokio::time::timeout(HEAD_WITHIN, read).await.ok()??;
+    let text = String::from_utf8_lossy(&out);
+    let head = text.split("\r\n\r\n").next().unwrap_or("");
+    let status = head.split(' ').nth(1)?.parse().ok()?;
+    let from_node = head
+        .lines()
+        .any(|l| l.to_ascii_lowercase().starts_with("x-upstream:"));
+    Some((status, from_node))
+}
+
+/// Whether the jar is still a signed-in session (the session read names the jar's CSRF token only then).
+async fn signed_in(addr: SocketAddr, jar: &str, csrf: &str) -> bool {
+    let head = format!("GET /api/auth/session HTTP/1.1\r\nhost: front.test\r\ncookie: {jar}\r\n");
+    let got = tokio::time::timeout(HEAD_WITHIN * 2, http(addr, &head, "")).await;
+    matches!(got, Ok((200, body)) if body["csrfToken"].as_str() == Some(csrf))
+}
+
+/// A fresh owner session after a pair ended the old one: (jar, csrf), or None when the owner can no longer sign in.
+async fn sign_in_again(addr: SocketAddr) -> Option<(String, String)> {
+    let body = format!(r#"{{"username":"owner","password":"{PASSWORD}"}}"#);
+    let req = format!(
+        "POST /api/auth/login/password HTTP/1.1\r\nhost: front.test\r\norigin: {ORIGIN}\r\nconnection: close\r\n\
+         x-forwarded-for: {SIGN_IN_FROM}\r\ncontent-type: application/json\r\ncontent-length: {}\r\n\r\n{body}",
+        body.len()
+    );
+    let read = async {
+        let mut s = TcpStream::connect(addr).await.ok()?;
+        s.write_all(req.as_bytes()).await.ok()?;
+        let mut out = Vec::new();
+        s.read_to_end(&mut out).await.ok()?;
+        Some(String::from_utf8_lossy(&out).into_owned())
+    };
+    let text = tokio::time::timeout(HEAD_WITHIN * 2, read).await.ok()??;
+    if !text.starts_with("HTTP/1.1 200") && !text.starts_with("HTTP/1.1 201") {
+        return None;
+    }
+    let cookies: Vec<String> = text
+        .lines()
+        .filter_map(|l| {
+            l.strip_prefix("set-cookie: ")
+                .and_then(|v| v.split(';').next())
+                .map(str::to_string)
+        })
+        .collect();
+    let csrf = cookies.get(1)?.split_once('=')?.1.to_string();
+    Some((cookies.join("; "), csrf))
+}
+
+/// The sweep order: every pair under both fillings, the session enders last.
+fn sweep() -> Vec<(&'static str, String)> {
+    let pairs = manifest();
+    let mut first = Vec::new();
+    let mut last = Vec::new();
+    for &(method, pattern) in &pairs {
+        let mut paths: Vec<String> = FILLS.iter().map(|id| fill(pattern, id)).collect();
+        paths.dedup();
+        for path in paths {
+            if SESSION_ENDERS.contains(&(method, pattern)) {
+                last.push((method, path));
+            } else {
+                first.push((method, path));
+            }
+        }
+    }
+    first.extend(last);
+    first
+}
+
+#[test]
+fn the_sweep_lists_every_pair_once_per_distinct_filling_and_ends_with_the_session_enders() {
+    let s = sweep();
+    let pairs = manifest();
+    assert!(s.len() >= pairs.len());
+    assert!(s.len() <= pairs.len() * FILLS.len());
+    let distinct: BTreeSet<&(&str, String)> = s.iter().collect();
+    assert_eq!(distinct.len(), s.len(), "a request is sent twice");
+    for &(method, pattern) in SESSION_ENDERS {
+        if pairs.contains(&(method, pattern)) {
+            assert_eq!(s.last().map(|x| x.0), Some(method));
+            assert_eq!(s.last().map(|x| x.1.as_str()), Some(pattern));
+        }
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn no_listed_pair_reaches_node_for_a_signed_in_owner() {
+    if !strict() {
+        eprintln!("owned_routes_no_node: skipped (the deletion train sets ROUTE_PINS_STRICT=1)");
+        return;
+    }
+    let (node_addr, hits) = recording_node().await;
+    let (_unused, node) = node().await;
+    let f = front_with_upstream(format!("http://{node_addr}"), node).await;
+    assert!(
+        signed_in(f.addr, &f.jar, &f.csrf).await,
+        "the owner is signed in"
+    );
+    let order = sweep();
+    let total = order.len();
+    let run = async {
+        let (mut jar, mut csrf) = (f.jar.clone(), f.csrf.clone());
+        let mut reached = Vec::new();
+        let mut slow = Vec::new();
+        let mut enders = Vec::new();
+        for (method, path) in order {
+            match head_of(f.addr, method, &path, &jar, &csrf).await {
+                Some((status, true)) => reached.push(format!("{method} {path} -> {status}")),
+                Some(_) => {}
+                None => slow.push(format!("{method} {path}")),
+            }
+            if !signed_in(f.addr, &jar, &csrf).await {
+                enders.push(format!("{method} {path}"));
+                let Some(fresh) = sign_in_again(f.addr).await else {
+                    panic!("after {method} {path} the owner can no longer sign in; the rest of the sweep would be signed out");
+                };
+                (jar, csrf) = fresh;
+            }
+        }
+        (reached, slow, enders)
+    };
+    let (reached, slow, enders) = tokio::time::timeout(SWEEP_WITHIN, run)
+        .await
+        .expect("the sweep finishes within its deadline");
+    eprintln!(
+        "owned_routes_no_node: {total} requests; {} slower than {HEAD_WITHIN:?} (native work, not Node): {slow:?}",
+        slow.len()
+    );
+    // A pair that ended the session but is not listed made part of the sweep run on a new session; name it so it
+    // moves to SESSION_ENDERS (the result for it is still checked above).
+    let unlisted: Vec<&String> = enders
+        .iter()
+        .filter(|e| {
+            !SESSION_ENDERS
+                .iter()
+                .any(|(m, p)| e.as_str() == format!("{m} {p}"))
+        })
+        .collect();
+    eprintln!("owned_routes_no_node: session ended by {enders:?}");
+    let node_saw = hits.lock().unwrap().clone();
+    assert!(
+        reached.is_empty(),
+        "listed pairs answered by Node: {reached:?} (add each to HANDLER_FORWARDS or answer it natively); Node saw {} requests",
+        node_saw.len()
+    );
+    assert!(
+        unlisted.is_empty(),
+        "pairs that end the session, not in SESSION_ENDERS: {unlisted:?}"
+    );
+}
