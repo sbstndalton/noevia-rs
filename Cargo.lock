@@ -2393,6 +2393,7 @@ dependencies = [
  "chat-mirror-sched",
  "chat-prepare",
  "chat-turn",
+ "chat-upstream",
  "code-acp",
  "code-harness",
  "code-net-guard",

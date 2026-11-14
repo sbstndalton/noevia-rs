@@ -59,6 +59,8 @@ chat-mirror-sched = { path = "../../crates/chat-mirror-sched" }
 embedding-worker = { path = "../../crates/embedding-worker" }
 context-fit = { path = "../../crates/context-fit" }
 chat-turn = { path = "../../crates/chat-turn" }
+# The provider call path of a native turn (chat_provider.rs; offered only behind NOEVIA_RUST_CHAT_PROVIDERS).
+chat-upstream = { path = "../../crates/chat-upstream" }
 # Track R8 P7a: the native preparation in shadow (chat_prepare_shadow.rs; workspace crate).
 chat-prepare = { path = "../../crates/chat-prepare" }
 edit-target-lookup = { path = "../../crates/edit-target-lookup" }
