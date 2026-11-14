@@ -105,9 +105,9 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
         return;
     }
     drop(tokio::spawn(async move {
-        // allToolboxes(), as the front's toolbox catalogue holds it (None: not ready).
-        let catalogue = crate::mcp_discovery::read(&app).await;
         let _ = tokio::task::spawn_blocking(move || {
+            // allToolboxes(), as the front's catalogue stands (None: not current).
+            let catalogue = quiet_catalogue(&app);
             // index.cjs: chatFramingEnabled() and brainContext.enabled() (brainContext and chatFraming).
             let framing = crate::code_routes::feature(&app, Feature::ChatFraming);
             let flags = Flags {
@@ -134,26 +134,62 @@ pub(crate) fn spawn(app: Arc<App>, user_dir: PathBuf, body: Bytes, frame: JValue
     }));
 }
 
+/// The toolbox catalogue as it stands, read without the side effects of
+/// [`crate::mcp_discovery::read`]: no touch of the demand marker (which wakes core's publishers),
+/// no discovery refresh and no wait. The facts file as published (a stale one is refused), then
+/// discovery's current snapshot. `None` when either is not current: a history that needs the
+/// catalogue is then skipped.
+fn quiet_catalogue(app: &Arc<App>) -> Option<crate::mcp_discovery::Catalogue> {
+    let dir = app.config.data_dir.clone()?;
+    let file = dir.join(crate::mcp_discovery::FACTS_FILE);
+    let snap = crate::snapshot::read(
+        &file,
+        crate::mcp_discovery::FACTS_KIND,
+        crate::identity::now_ms(),
+    )
+    .ok()?;
+    let facts = wtf16::parse(std::str::from_utf8(&snap.raw).ok()?).ok()?;
+    let handle = crate::mcp_discovery_backend::handle(app)?;
+    let discovered = handle.source.current();
+    if discovered.generation == 0 {
+        return None;
+    }
+    crate::mcp_discovery::compose(
+        &facts,
+        &discovered,
+        &|id| handle.offered(id),
+        &handle.nextcloud_origins,
+    )
+}
+
 /// chat.cjs's two settings reads (`SELECT value FROM settings WHERE key=...`, then `?.value`):
 /// `reasoning_effort_default` and `auto_sampling_presets_enabled`, each `undefined` without a row,
 /// `null` for SQL NULL. `None` when either cannot be read (the shadow then leaves those fields out).
 fn settings_rows(app: &App) -> Option<(JValue, JValue)> {
+    // better-sqlite3's `.get()?.value`: a string for TEXT, a number for INTEGER or REAL, null for
+    // NULL (a BLOB is a Buffer: unknown here).
     let read = |key: &str| -> Option<JValue> {
         let row = app
             .writes
             .writer()
             .ok()?
             .read(|r| {
-                r.row("SELECT value FROM settings WHERE key=?1", [key], |row| {
-                    row.get::<_, Option<String>>(0)
-                })
+                r.row(
+                    "SELECT typeof(value), CAST(value AS TEXT) FROM settings WHERE key=?1",
+                    [key],
+                    |row| Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?)),
+                )
             })
             .ok()?;
-        Some(match row {
-            None => JValue::Undefined,
-            Some(None) => JValue::Null,
-            Some(Some(text)) => JValue::from(text),
-        })
+        match row {
+            None => Some(JValue::Undefined),
+            Some((kind, text)) => match (kind.as_str(), text) {
+                ("null", _) => Some(JValue::Null),
+                ("text", Some(t)) => Some(JValue::from(t)),
+                ("integer" | "real", Some(t)) => t.parse::<f64>().ok().map(JValue::Num),
+                _ => None,
+            },
+        }
     };
     Some((
         read("reasoning_effort_default")?,
@@ -531,10 +567,11 @@ mod tests {
                 "{}",
                 t.get("name").as_str().unwrap_or_default()
             );
-            // Without the catalogue (not ready yet): a history that needs it is skipped.
+            // Without the catalogue and the settings rows: a history that needs the catalogue is skipped, and
+            // a turn whose compared fields are all core's says the settings were not read.
             let without = run(&dir, body.as_bytes(), frame, tz, flags, None, None);
             assert!(
-                matches!(without, Verdict::Match | Verdict::Skip("tool-history")),
+                matches!(without, Verdict::Skip("tool-history" | "settings")),
                 "{}: {}",
                 t.get("name").as_str().unwrap_or_default(),
                 without.line()

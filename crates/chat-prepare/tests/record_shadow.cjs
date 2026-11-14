@@ -35,6 +35,7 @@
 //                replay's carryOrphanTool and knownTool read it: tools-mode.cjs isPublicToolName, PRIVATE_CORE_TOOLS)
 //   settings     (left out: no settings database) the settings table's rows chat.cjs reads, key -> value (a missing
 //                key: no row; null: SQL NULL): reasoning_effort_default and auto_sampling_presets_enabled
+//   roles, pick  (left out: Manual) what autoRoles() answers and the classifier's verdict (an Automatic turn)
 //   body         the POST /api/chat body (no projectId, skill, turnToolboxes or compactOnly)
 // HISTORY_CAP is 1000 (index.cjs). What a case records: `prepared` the whole frame or null, `refused` the logged
 // refusal reason or null, `threw` the message of what handleChat threw or null.
@@ -166,7 +167,8 @@ function handlerFor(dir) {
     chatFramingEnabled: () => S().chatFraming,
     getProvider: (id) => (id === 'default' ? { ...PROVIDER } : null),
     providerHeaders: (p, extra) => ({ 'Content-Type': 'application/json', ...(extra || {}) }),
-    autoRoles: () => null,
+    // Automatic (P7b review): the case's roles, and its classifier verdict; Manual without them.
+    autoRoles: () => structuredClone(S().roles ?? null),
     visionDescriptions: new Map(), visionProbe: async () => ({ supported: false, reason: 'qa' }),
     chatSkillRouter: { select: async () => ({ loaded: [] }) }, oauthServerIds: () => new Set(), accountReady: () => true,
     chatToolRouter: { select: async (ids) => ({ ids, routed: false }) },
@@ -180,7 +182,7 @@ function handlerFor(dir) {
     json: (res, status, body) => { L().http = { status, body }; res.end(); },
     saveChats() {}, endpointApproved: () => true, diaryHeaders: () => ({}),
     lastLoadedModel: () => MODEL, modelsInstalled: async () => [{ name: MODEL, labels: [], loaded: true }], servedCatalogue: async () => [{ name: MODEL, labels: [], loaded: true }],
-    classifyFastOrSmart: async () => { throw new Error('QA: a Manual turn is not classified'); },
+    classifyFastOrSmart: async () => { if (!S().pick) throw new Error('QA: a Manual turn is not classified'); return S().pick; },
     missingRoles, staleRolesError,
     chatWideApproved: async () => null, recordUsage() {}, recordToolUse() {}, executeToolCall: async () => 'unused', awaitApproval: async () => 'deny',
     codeTasksFor: () => [], sourceJobs: { settle: async () => ({ notReady: [], aborted: false }) },
@@ -222,7 +224,8 @@ async function addTurn(name, raw) {
   const body = viaJson(spec.body);
   const input = { tz: spec.tz, nowMs: spec.nowMs, instructions: spec.instructions, memory: spec.memory,
     freeChats: spec.freeChats && spec.freeChats.length ? spec.freeChats : null, chatFraming: spec.chatFraming, toolboxes: TOOLBOXES,
-    ...(spec.settings === undefined ? {} : { settings: spec.settings }), body: viaJson(spec.body) };
+    ...(spec.settings === undefined ? {} : { settings: spec.settings }),
+    ...(spec.roles === undefined ? {} : { roles: spec.roles, pick: spec.pick }), body: viaJson(spec.body) };
   const from = logged.length;
   let threw = null;
   const random = Math.random;
@@ -434,6 +437,21 @@ const longHistory = (n, at = (i) => (i % 2 ? assistant(`QA a${i}`) : user(`QA u$
       await addTurn(`settings_${k}_${j}`, { settings, body: req({ message }) });
     }
   }
+
+  // ── Automatic turns (P7b review): the Fast route's lowered effort and thinking switch, the role's presets ──
+  const ROLES = { fast: MODEL, smart: MODEL };
+  for (const pick of ['fast', 'smart']) {
+    for (const [k, settings] of [{}, { reasoning_effort_default: 'high' }, { reasoning_effort_default: 'low' }, { auto_sampling_presets_enabled: 'false' }].entries()) {
+      for (const [j, message] of ['QA hello', 'Write a QA poem about the sea', 'Fix this QA function: def f(x): return x +'].entries()) {
+        await addTurn(`auto_${pick}_${k}_${j}`, { roles: ROLES, pick, settings, body: req({ message }) });
+      }
+    }
+  }
+  await addTurn('auto_unassigned_pick', { roles: { fast: MODEL }, pick: 'smart', body: req() });
+  // Applied writes: the same write twice and one whose arguments differ only in key order (one fingerprint).
+  await addTurn('history_applied_dedupe', { body: req({ history: [user('QA q'), applied('append_project_file', 'QA done', { target: 'notes.md', args: '{"b":2,"a":1}' }),
+    applied('append_project_file', 'QA done again', { target: 'notes.md', args: '{"a":1,"b":2}' }), applied('append_project_file', 'QA third', { target: 'notes.md', args: '{"a":1,"b":2}' }),
+    applied('append_project_file', 'QA other', { target: 'other.md' }), applied('qa_tool', 'QA no args')] }) });
 
   // ── Seeded random turns ──────────────────────────────────────────────────────────────────────
   for (let n = 0; n < 160; n += 1) {

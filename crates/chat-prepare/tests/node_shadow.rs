@@ -368,6 +368,26 @@ fn the_effort_and_sampling_follow_the_settings_rows() {
     assert!(frames
         .iter()
         .any(|p| matches!(p.get("sampling"), JValue::Obj(items) if items.is_empty())));
+    // Automatic turns (recorded with roles and a classifier verdict): a Fast route at the account
+    // default effort runs with thinking off and the effort lowered.
+    assert!(frames
+        .iter()
+        .any(|p| p.get("thinkingOff") == &JValue::Bool(true)));
+    assert!(frames.iter().any(|p| p.get("auto") == &JValue::Bool(true)
+        && p.get("role").as_str() == Some("fast")
+        && p.get("effort").as_str() == Some("low")));
+    assert!(frames.iter().any(
+        |p| p.get("auto") == &JValue::Bool(true) && p.get("role").as_str() == Some("smart")
+    ));
+    // The same write twice, and once with its arguments in another key order: one fingerprint.
+    let dedupe = items(&f, "turns")
+        .iter()
+        .find(|t| t.get("name").as_str() == Some("history_applied_dedupe"))
+        .unwrap();
+    assert_eq!(
+        items(dedupe.get("prepared").get("chat"), "recentWrites").len(),
+        3
+    );
     let t = items(&f, "turns")
         .iter()
         .find(|t| t.get("prepared").is_object() && t.get("input").get("settings").is_object())
