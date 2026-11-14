@@ -577,7 +577,22 @@ async function runTurn(c, { handoff = false } = {}) {
       // a model the engine refused tools for is remembered (#1015). One per turn, so no case leaks into another.
       templateToolsGate: { allowsTools: async (_manager, model) => stub('allowsTools', { model, answer: true }), markUnsupported: (model) => store('templateToolsGate.markUnsupported', { model }) },
       // The front names the capabilities its executor runs (rust-chat-native.cjs CAPS_HEADER; chat-turn HANDOFF_CAPS).
-      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images']), supervising: () => false } } : {}),
+      ...(handoff ? { nativeHandoff: { requested: () => true, capabilities: () => new Set(['skills', 'once', 'provenance', 'more-tools', 'retrieved-images', 'supervise']), supervising: () => c.supervise !== undefined } } : {}),
+      // `supervise`: step supervision is on (features.stepSupervision); the decision service answers the k-th question
+      // with c.supervise[k] (step-supervision.cjs's own rules apply). Each decide is recorded as the front's supervise
+      // op sees it: its round, goal, write flag and the outputs the supervisor reads, and the action it answered.
+      ...(c.supervise !== undefined ? { stepSupervision: (() => {
+        let k = 0;
+        const real = require(path.join(server, 'step-supervision.cjs')).createStepSupervision({ enabled: () => true, log: () => {},
+          provider: { decide: async () => c.supervise[Math.min(k++, c.supervise.length - 1)] } });
+        return { decide: async (input) => {
+          const decision = await real.decide(input);
+          const outputs = input.messages.filter((m) => m.role === 'tool' || m.role === 'assistant').slice(-8)
+            .map((m) => ({ role: m.role, content: typeof m.content === 'string' ? m.content.slice(0, 1500) : '' }));
+          stub('supervise', { round: input.round, goal: input.goal, wrote: input.wrote, outputs, answer: decision.action });
+          return decision;
+        } };
+      })() } : {}),
       // `provenance`: the provenance policy is on (#769, features.provenancePolicy; index.cjs passes { enabled }).
       ...(c.provenance ? { provenancePolicy: { enabled: () => true } } : {}),
     });
@@ -607,7 +622,7 @@ async function runTurn(c, { handoff = false } = {}) {
       input: { body, project, ctxSize, auto: c.auto || null, decision: c.decision || null, titles: c.titles || null, streamIdleMs: c.streamIdleMs ?? null, appendOutcome: c.appendOutcome || null,
         loaded: c.loaded === false ? false : true, leaseRefusal: c.leaseRefusal || null, props: c.props === true,
         policy: c.policy || null, chatWide: c.chatWide === true, executeThrows: c.executeThrows || null, leaveOnCard: c.leaveOnCard === true, leaveInTool: c.leaveInTool || null,
-        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
+        retrieval: c.retrieval || null, images: c.images || null, vision: c.vision || null, visionRole: c.visionRole || null, docs: c.docs === true, pageSave: c.pageSave === true, provenance: c.provenance === true, narrow: c.narrow || null, policyAfterCut: c.policyAfterCut || null, lookups: c.lookups === true, imageHits: c.imageHits || null, supervise: c.supervise || null, storageAccount: c.storageAccount || null, editChanges: c.editChanges || null, editAccounts: c.editAccounts || null,
         skillChanges: c.skillChanges || null, storedAfterCut: c.storedAfterCut || null,
         ...(c.openRefused || c.waitUnavailable || c.redeem || c.revokeInTool || c.leaveInGrant ? { approvalFront: { openRefused: c.openRefused === true, waitUnavailable: c.waitUnavailable === true, redeem: c.redeem || null, revokeInTool: c.revokeInTool || null, ...(c.leaveInGrant ? { leaveInGrant: true } : {}) } } : {}),
         rounds: c.rounds || [], chunks: log.chunks },
@@ -1021,6 +1036,19 @@ const CASES = [
   { name: 'retrieved_image_not_seen', about: 'Retrieval found a project image; the answering model cannot see: it gets the image\'s own text and the reply a warning, all before the cut.',
     project: QA_RETRIEVED.project, images: QA_IMAGE.images, imageHits: [QA_IMAGE_HIT], body: { turnImageIds: [] },
     rounds: [answer('From the chart text: three bars.')] },
+  // Track R15: step supervision after a tool round (features.stepSupervision), asked through core's supervisor.
+  { name: 'supervise_continue', about: 'Step supervision is on; after the read the supervisor says continue: the answer follows as without it.', supervise: [{ action: 'continue' }],
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s1"}'), finish('tool_calls')] }, answer('Read it.')] },
+  { name: 'supervise_verify', about: 'The supervisor asks to verify: its check note joins the next round.', supervise: [{ action: 'verify' }],
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s2"}'), finish('tool_calls')] }, answer('Checked against the request.')] },
+  { name: 'supervise_escalate_after_write', about: 'A round that wrote (approved) and a stop verdict: the reply pauses, saying one change was saved.', supervise: [{ action: 'escalate', scores: { continue: 0.3, verify: 0.2, escalate: 0.5 } }], decision: 'approve',
+    rounds: [{ frames: [toolCall('drive_create_file', '{"name":"qa-s3.txt","content":"QA."}'), finish('tool_calls')] }] },
+  { name: 'supervise_weak_escalate', about: 'A read-only round with a weak stop verdict carries on (#1456).', supervise: [{ action: 'escalate', scores: { continue: 0.3, verify: 0.2, escalate: 0.5 } }],
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s4"}'), finish('tool_calls')] }, answer('Carried on.')] },
+  { name: 'supervise_two_rounds', about: 'Two tool rounds: the supervisor is asked after each (round 0 and 1), not after the last.', supervise: [{ action: 'continue' }, { action: 'verify' }],
+    rounds: [{ frames: [toolCall('drive_read_file', '{"fileId":"qa-file-s5"}'), finish('tool_calls')] },
+      { frames: [toolCall('drive_search_files', '{"query":"QA"}', 'qa-call-2'), finish('tool_calls')] },
+      { frames: [toolCall('drive_list_recent', '{}', 'qa-call-3'), finish('tool_calls')] }, answer('Done in three steps.')] },
 ];
 
 (async () => {

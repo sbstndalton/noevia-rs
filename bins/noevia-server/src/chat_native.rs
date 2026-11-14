@@ -69,6 +69,8 @@ const OBSERVE_EVENTS: usize = 256;
 /// the relay of a Node turn has it through its socket).
 const FORWARD_QUEUE: usize = 1024 * 1024;
 const BRIDGE_TIMEOUT: Duration = Duration::from_secs(30);
+/// Core's step supervisor answers within its own deadline (step-supervision.cjs: at most 2 s); later is `continue`.
+const SUPERVISE_TIMEOUT: Duration = Duration::from_secs(10);
 /// Core's grant check for a native turn's write (rust-chat-native.cjs GRANT_PATH; D17).
 const GRANT_PATH: &str = "/internal/chat/tools/grant";
 /// Core's revoke of the chat's grant (rust-chat-native.cjs REVOKE_PATH; Node's revokeChatGrant).
@@ -977,6 +979,28 @@ impl Host for FrontHost {
             )
             .await;
         r.is_some_and(|(s, v)| s == 200 && v.get("busy") == &JValue::Bool(true))
+    }
+
+    async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {
+        // Track R15: core's step supervisor (chat.cjs superviseNextStep) through the supervise op; no answer, or one
+        // not understood, is `continue` (the supervisor's own fallback).
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("round", js::n(f64::from(round))),
+            ("goal", js::s(goal)),
+            ("outputs", JValue::Arr(outputs.to_vec())),
+            ("wrote", JValue::Bool(wrote)),
+        ]);
+        let r = self
+            .core("/internal/chat/native/supervise", &body, SUPERVISE_TIMEOUT)
+            .await;
+        match r {
+            Some((200, v)) => match v.get("action").as_str() {
+                Some(a @ ("verify" | "escalate")) => a.to_string(),
+                _ => "continue".to_string(),
+            },
+            _ => "continue".to_string(),
+        }
     }
 
     async fn title_auto_named(&self, list: Option<&str>, chat: &str, first_message: &str) -> bool {

@@ -299,4 +299,17 @@ pub trait Host: Sync {
     fn prefill_sample(&self, model: &str, prompt: f64, first_token_ms: f64);
     /// The model's draft acceptance as evidence (model manager `recordEvidence`).
     fn mtp_evidence(&self, model: &str, drafted: f64, accepted: f64);
+
+    /// Step supervision after a tool round (chat.cjs `superviseNextStep`, asked of core's supervisor):
+    /// `continue`, `verify` or `escalate`. `outputs` are the round's last tool and assistant messages as the
+    /// supervisor reads them. No answer (or a host without the bridge) is `continue`, as the supervisor falls back.
+    fn supervise(
+        &self,
+        _round: i32,
+        _outputs: &[JValue],
+        _goal: &str,
+        _wrote: bool,
+    ) -> impl Future<Output = String> + Send {
+        async { "continue".to_string() }
+    }
 }

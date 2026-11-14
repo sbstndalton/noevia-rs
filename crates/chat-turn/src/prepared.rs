@@ -67,6 +67,9 @@ pub struct Prepared {
     /// Roadmap E: what the routed list's `more_tools` widens to, on a turn whose tools routing narrowed (`widen`,
     /// present only then; a core that narrowed hands the turn off only to a front naming `more-tools`).
     pub widen: Option<Widen>,
+    /// Step supervision is on (`supervise: true`, present only then; a core that has it on hands the turn off
+    /// only to a front naming `supervise`).
+    pub supervise: bool,
     pub route_note: String,
     pub template_gate: bool,
     /// The local model manager answers health and load; else the runtime limit is the fallback.
@@ -295,6 +298,11 @@ impl Prepared {
                 _ => return Err(Unreadable("prepared.provenance is not true".into())),
             },
             widen: widen(frame.get("widen"))?,
+            supervise: match frame.get("supervise") {
+                JValue::Undefined => false,
+                JValue::Bool(true) => true,
+                _ => return Err(Unreadable("prepared.supervise is not true".into())),
+            },
             template_gate: flag(frame, "templateGate"),
             manager_enabled: flag(frame, "managerEnabled"),
             model_lease: flag(frame, "modelLease"),

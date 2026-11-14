@@ -192,6 +192,32 @@ fn next_offset(calls: &[(f64, Slot)]) -> f64 {
         + 1.0
 }
 
+/// step-supervision.cjs `VERIFY`: the note a `verify` answer adds before the next round.
+const SUPERVISE_VERIFY: &str = "Check the preceding tool results against the user request before continuing. Identify missing evidence and uncertainty. Do not assume a failed tool succeeded.";
+
+/// What step-supervision.cjs `decide` reads of the round's messages: the last 8 tool and assistant messages, each
+/// as `{role, content}` with a text content cut to 1500 UTF-16 units (anything else as '').
+fn supervisor_outputs(messages: &[JValue]) -> Vec<JValue> {
+    let picked: Vec<&JValue> = messages
+        .iter()
+        .filter(|m| matches!(m.get("role").as_str(), Some("tool" | "assistant")))
+        .collect();
+    let skip = picked.len().saturating_sub(8);
+    picked
+        .into_iter()
+        .skip(skip)
+        .map(|m| {
+            js::obj([
+                ("role", m.get("role").clone()),
+                (
+                    "content",
+                    js::s(m.get("content").as_str().map_or(String::new(), |c| js::slice(c, 1500))),
+                ),
+            ])
+        })
+        .collect()
+}
+
 /// `new Map([...a, ...b])` as a list of pairs: `a`'s keys in order, then `b`'s new ones; `b`'s values win.
 fn map_merge(a: &[(String, String)], b: &[(String, String)]) -> Vec<(String, String)> {
     let mut out = a.to_vec();
@@ -211,6 +237,8 @@ struct Rounds {
     tools: Vec<JValue>,
     /// `more_tools` ran in this turn (chat.cjs `widened`).
     widened: bool,
+    /// #1456 `roundWrote`: a write was about to run in this round's tools.
+    round_wrote: bool,
     /// chat.cjs `nextToolRoutes`: the widened list's routes, applied when the next round starts.
     next_routes: Option<Vec<(String, String)>>,
     /// `roundMessages !== prepared.messages`: the round-0 `context` event is sent when they differ.
@@ -363,6 +391,7 @@ impl<H: Host> Turn<'_, H> {
             messages: fit.messages.clone(),
             tools: p.tools.clone(),
             widened: false,
+            round_wrote: false,
             next_routes: None,
             changed: false,
             tools_off: false,
@@ -430,6 +459,7 @@ impl<H: Host> Turn<'_, H> {
             if let Some(next) = s.next_routes.take() {
                 gate.routes = map_merge(&gate.routes, &next);
             }
+            s.round_wrote = false;
             // A loaded skill was disabled or changed: no further model round (#272).
             if self.skills.revoked(host).await {
                 break;
@@ -644,6 +674,52 @@ impl<H: Host> Turn<'_, H> {
             if s.final_pass || round == 2 || calls == 0 {
                 break;
             }
+            if p.supervise {
+                // A skill revoked in this round's tools: no supervisor call (the close reports it).
+                if self.skills.is_revoked() {
+                    break;
+                }
+                // chat.cjs superviseNextStep after the round's tools: a check note, or the reply paused.
+                let outputs = supervisor_outputs(&s.messages);
+                match host
+                    .supervise(round, &outputs, &p.message, s.round_wrote)
+                    .await
+                    .as_str()
+                {
+                    "verify" => {
+                        s.messages.push(js::obj([
+                            ("role", js::s("user")),
+                            ("content", js::s(SUPERVISE_VERIFY)),
+                        ]));
+                        s.changed = true;
+                    }
+                    "escalate" => {
+                        s.paused = true;
+                        let n = s.applied.len();
+                        let text = if n > 0 {
+                            let saved = if n == 1 {
+                                "1 change was".to_string()
+                            } else {
+                                format!("{n} changes were")
+                            };
+                            format!("{saved} saved. Step checks paused this reply before any further steps.")
+                        } else {
+                            "Step checks paused this reply before any further steps. Nothing was changed."
+                                .to_string()
+                        };
+                        host.emit(&event(
+                            "paused",
+                            vec![
+                                ("reason", js::s("supervision")),
+                                ("applied", js::count(n)),
+                                ("text", js::s(text)),
+                            ],
+                        ));
+                        break;
+                    }
+                    _ => {}
+                }
+            }
             round += 1;
         }
         if host.left() {
@@ -802,6 +878,7 @@ impl<H: Host> Turn<'_, H> {
                 too_large: c.too_large,
             };
             let outcome = gate.call(host, &call, self.exchange.tool_offset).await;
+            s.round_wrote |= outcome.wrote;
             host.emit(&outcome.event);
             s.messages.push(outcome.message);
             if let Some(result) = &outcome.read {

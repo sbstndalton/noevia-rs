@@ -271,6 +271,7 @@ const ANSWERED: &[&str] = &[
     "redeemChatGrant",
     "allowsTools",
     "inferenceBusy",
+    "supervise",
 ];
 
 impl Script {
@@ -667,6 +668,23 @@ async fn core_service(
                 .stub("allowsTools")
                 .is_none_or(|s| s.get("answer") != &JValue::Bool(false));
             ok(js::obj([("allowed", JValue::Bool(allowed))]))
+        }
+        // Track R15: core's step supervisor, answered from the recorded decide (its question checked).
+        "/internal/chat/native/supervise" => {
+            let Some(rec) = sc.stub("supervise") else {
+                sc.errors.push("supervise: not asked in Node".into());
+                return Ok(ok(js::obj([("action", js::s("continue"))])));
+            };
+            for k in ["round", "goal", "wrote", "outputs"] {
+                if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
+                    sc.errors.push(format!(
+                        "supervise: {k} {} (Node {})",
+                        js::stringify(sent.get(k)),
+                        js::stringify(rec.get(k))
+                    ));
+                }
+            }
+            ok(js::obj([("action", rec.get("answer").clone())]))
         }
         "/internal/chat/native/busy" => {
             // At the title the turn holds the route's admission lease and the model's: two counts.

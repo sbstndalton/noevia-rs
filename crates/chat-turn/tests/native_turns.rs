@@ -474,6 +474,22 @@ impl Host for Script {
         self.answer("inferenceBusy", &[("n", js::n(1.0))]) == JValue::Bool(true)
     }
 
+    async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {
+        // The recorder answers core's supervisor (step-supervision.cjs decide) with the case's verdicts.
+        self.answer(
+            "supervise",
+            &[
+                ("round", js::n(f64::from(round))),
+                ("goal", js::s(goal)),
+                ("wrote", JValue::Bool(wrote)),
+                ("outputs", JValue::Arr(outputs.to_vec())),
+            ],
+        )
+        .as_str()
+        .unwrap_or("continue")
+        .to_string()
+    }
+
     async fn title_auto_named(&self, list: Option<&str>, chat: &str, first: &str) -> bool {
         self.store(
             "chatTitles.autoNamed",
@@ -1197,7 +1213,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 113, "{ran:?}");
+    assert_eq!(ran.len(), 118, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is
