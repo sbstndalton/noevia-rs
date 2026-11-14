@@ -1045,6 +1045,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "document-read"
+version = "0.1.0"
+dependencies = [
+ "js-json",
+ "libc",
+ "sha2",
+]
+
+[[package]]
 name = "docx-text"
 version = "0.1.0"
 dependencies = [
