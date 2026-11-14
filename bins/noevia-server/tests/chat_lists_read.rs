@@ -27,6 +27,17 @@ use tokio::net::{TcpListener, TcpStream};
 const SCHEMA: &str = include_str!("../../../crates/server-store/tests/fixtures/node-schema.sql");
 const CODE: &str = "synthetic-chat-lists-code";
 const ORIGIN: &str = "http://127.0.0.1:18021";
+/// The oracle cases whose `Last updated` line depends on the zone the process runs in: a zone-less
+/// date string is read as local time (the `-local-` ones), and so are a year written `-000000` and an
+/// array, which Node joins into a legacy date string. Found by running the oracle in UTC and in
+/// America/New_York and comparing the two.
+const ZONE_DEPENDENT: [&str; 5] = [
+    "export-date-local-iso",
+    "export-date-local-month-day",
+    "export-date-local-slashes",
+    "export-date-minus-zero-year",
+    "export-date-array",
+];
 
 fn fixture() -> Value {
     let path = std::env::var("NOEVIA_CHAT_LISTS_FIXTURE").unwrap_or_else(|_| {
@@ -185,21 +196,21 @@ async fn every_oracle_case_is_nodes_answer_through_the_front() {
     let mine = f.data.join("users").join(&f.user);
     let cases = fx["cases"].as_array().unwrap();
     assert!(cases.len() >= 95, "{}", cases.len());
-    // The oracle reads zone-less Date strings in UTC; the front reads them in its own zone, as Node
-    // does in the same container. Those few cases need this process to run in UTC too (CI does).
+    // The committed oracle reads zone-less Date strings in UTC; the front reads them in its own zone,
+    // as Node does in the same container. The zone-dependent cases are checked when this process
+    // runs in UTC or when NOEVIA_CHAT_LISTS_FIXTURE is an oracle run made in this process's own zone
+    // (ORACLE_TZ for chat-lists-oracle.cjs; CI does both, UTC and America/New_York).
     let utc = server_export::js_date::parse("2026-01-01T00:00") == Some(1_767_225_600_000.0);
-    // noevia#2345: CI must run this in UTC (a skip there would pass silently), and two cases
-    // without "-local-" in their id are zone-dependent too: "-000000-01-01" (not ISO, so the
-    // legacy parser reads it as a local date) and [2026,1,1] (joined to "2026,1,1", also local).
-    assert!(
-        utc || std::env::var_os("CI").is_none(),
-        "CI runs this test outside UTC: its zone-dependent cases would be skipped"
-    );
-    const ZONED: [&str; 2] = ["export-date-minus-zero-year", "export-date-array"];
+    let own_zone_oracle = std::env::var_os("NOEVIA_CHAT_LISTS_FIXTURE").is_some();
     let mut failures = Vec::new();
     for c in cases {
         let id = c["id"].as_str().unwrap();
-        if (id.contains("-local-") || ZONED.contains(&id)) && !utc {
+        if ZONE_DEPENDENT.contains(&id) && !utc && !own_zone_oracle {
+            // A skip that nobody reads must not pass on CI.
+            assert!(
+                std::env::var_os("CI").is_none(),
+                "{id}: this process does not run in UTC and no oracle run in its own zone was given"
+            );
             eprintln!("skipped {id}: this process does not run in UTC");
             continue;
         }

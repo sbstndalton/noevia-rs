@@ -177,6 +177,13 @@ impl Owner {
             ..EngineConfig::default()
         };
         let handle = tokio::runtime::Handle::try_current().map_err(|e| e.to_string())?;
+        // S6b: a native save re-indexes with the owned configuration (server.rs serve_write),
+        // once this owner has started.
+        let save_embedder = Arc::new(HttpEmbedder::new(
+            engine.clone(),
+            config.clone(),
+            handle.clone(),
+        ));
         let embed: &'static (dyn Embed + Sync) =
             Box::leak(Box::new(HttpEmbedder::new(engine, config.clone(), handle)));
         let guard: &'static (dyn FileGuard + Sync) =
@@ -222,6 +229,7 @@ impl Owner {
             .name("embedding-guard".into())
             .spawn(move || o.guard())
             .map_err(|e| e.to_string())?;
+        let _ = app.save_embedder.set(save_embedder);
         Ok(owner)
     }
 
