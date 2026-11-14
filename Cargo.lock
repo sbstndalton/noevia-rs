@@ -526,6 +526,7 @@ dependencies = [
 name = "chat-upstream"
 version = "0.1.0"
 dependencies = [
+ "chat-turn",
  "engine-facts",
  "hmac",
  "js-json",
@@ -2190,6 +2191,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-manager-proxy"
+version = "0.1.0"
+dependencies = [
+ "form_urlencoded",
+ "js-json",
+]
+
+[[package]]
+name = "model-pull"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+]
+
+[[package]]
 name = "model-router"
 version = "0.1.0"
 dependencies = [
@@ -2430,6 +2447,8 @@ dependencies = [
  "long-profile",
  "mcp-frame",
  "mcp-servers",
+ "model-manager-proxy",
+ "model-pull",
  "model-stream",
  "model-writes",
  "offsite-backup-format",
@@ -3067,6 +3086,15 @@ name = "regex-syntax"
 version = "0.8.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6f6ff9a378485b298a5286656da665ba74413d36db0979633275d2e708145d4"
+
+[[package]]
+name = "release-assemble"
+version = "0.1.0"
+dependencies = [
+ "flate2",
+ "sha2",
+ "tempfile",
+]
 
 [[package]]
 name = "replay"

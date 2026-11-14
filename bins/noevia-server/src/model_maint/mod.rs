@@ -36,6 +36,8 @@ pub mod lease;
 // sbstndalton/noevia#2550 item 2: the auto-tune load advisor (core load-advisor.cjs).
 pub mod load_advisor;
 pub mod node_lease;
+// Track R11: `PUT /api/models/preset` behind NOEVIA_RUST_MODEL_WRITES (model_writes_routes.rs).
+pub mod preset;
 pub mod reload;
 pub mod router;
 pub mod v8_json;
