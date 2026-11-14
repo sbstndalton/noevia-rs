@@ -16,8 +16,10 @@
 //!   `req.destroy()`, so its client sees the connection reset instead (filed as noevia#2783);
 //! - every wait has a deadline: request headers [`Deadlines::headers`], the body
 //!   [`Deadlines::body`] (a body that stops arriving is answered 400 `invalid request`; Node waits for
-//!   its server-wide 300 s request timeout and answers 408), and a whole connection
-//!   [`Deadlines::connection`];
+//!   its server-wide 300 s request timeout and answers 408), and new requests on one connection
+//!   [`Deadlines::connection`] (a request in flight is still answered, then the connection closes);
+//! - an `Authorization` value that is not visible ASCII reads as no token (Node reads it as Latin-1;
+//!   no valid token has such characters, so both answer 401);
 //! - an accepted connection from a non-loopback peer is dropped unanswered (unreachable once [`bind`]
 //!   has refused every non-loopback address; defence in depth);
 //! - a tool that panics is answered as Node answers a handler that throws past `handle`: 400
@@ -56,7 +58,8 @@ pub struct Deadlines {
     pub headers: Duration,
     /// From the head to the whole body.
     pub body: Duration,
-    /// A connection's whole life, keep-alive included.
+    /// A connection's life for new requests, keep-alive included: after it the request in flight is
+    /// answered and the connection closes (an idle one at once).
     pub connection: Duration,
 }
 
@@ -174,7 +177,7 @@ pub async fn bind(addr: SocketAddr) -> io::Result<TcpListener> {
 }
 
 /// Accepts connections until `shutdown` completes. Connections already accepted finish on their own
-/// tasks (each within [`Deadlines::connection`]).
+/// tasks (each takes no new request after [`Deadlines::connection`]).
 pub async fn run<F>(listener: TcpListener, server: Arc<Server>, shutdown: F) -> io::Result<()>
 where
     F: Future<Output = ()>,
@@ -191,8 +194,7 @@ where
                     }
                     let server = Arc::clone(&server);
                     tokio::spawn(async move {
-                        let limit = server.deadlines.connection;
-                        let _ = tokio::time::timeout(limit, connection(server, stream)).await;
+                        let _ = connection(server, stream).await;
                     });
                 }
                 // Out of descriptors and the like: wait a little rather than spin.
@@ -204,15 +206,25 @@ where
 
 async fn connection(server: Arc<Server>, stream: TcpStream) -> Result<(), hyper::Error> {
     let headers = server.deadlines.headers;
+    let limit = server.deadlines.connection;
     let service = service_fn(move |req| {
         let server = Arc::clone(&server);
         async move { Ok::<_, Infallible>(request(server, req).await) }
     });
-    http1::Builder::new()
+    let conn = http1::Builder::new()
         .timer(TokioTimer::new())
         .header_read_timeout(headers)
-        .serve_connection(TokioIo::new(stream), service)
-        .await
+        .serve_connection(TokioIo::new(stream), service);
+    let mut conn = std::pin::pin!(conn);
+    tokio::select! {
+        done = conn.as_mut() => done,
+        () = tokio::time::sleep(limit) => {
+            // No further request on this connection; the one in flight still gets its reply (its
+            // token is already spent, so cutting it off would lose the answer for good).
+            conn.as_mut().graceful_shutdown();
+            conn.await
+        }
+    }
 }
 
 /// `req.url`: the request target as sent (an absolute-form target stays absolute, so it is a 404).

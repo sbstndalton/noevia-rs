@@ -81,11 +81,11 @@ impl Ports for Fake {
     }
 }
 
-/// The catalogue: core's six project tools, then one tool of another group (`other_echo`, a read)
-/// and one that fails with an empty message (`other_empty_error`).
+/// The catalogue: core's six project tools, then tools of another group: `other_echo` (a read), one
+/// that fails with an empty message (`other_empty_error`) and one that takes 600 ms (`other_slow`).
 fn definitions() -> Vec<Definition> {
     let mut defs = project_tools::definitions();
-    for name in ["other_echo", "other_empty_error"] {
+    for name in ["other_echo", "other_empty_error", "other_slow"] {
         defs.push(Definition {
             name: name.into(),
             description: Some("another group's tool".into()),
@@ -114,6 +114,10 @@ async fn start(deadlines: Deadlines, path: Option<&str>) -> Running {
     let other: Arc<Other> = Arc::new(move |inv: &Invoke| {
         seen.lock().unwrap().push(inv.name.clone());
         match inv.name.as_str() {
+            "other_slow" => {
+                std::thread::sleep(Duration::from_millis(600));
+                Ok(Some("slow answer".into()))
+            }
             "other_echo" => Ok(Some(format!(
                 "echo for {}",
                 js_json::to_js_string(&inv.ctx.user_id).unwrap()
@@ -294,7 +298,7 @@ async fn initialize_list_and_initialized_over_the_socket() {
             .map(|t| t.get("name").as_str().unwrap())
             .collect();
         let mut want: Vec<&str> = project_tools::NAMES.to_vec();
-        want.extend(["other_echo", "other_empty_error"]);
+        want.extend(["other_echo", "other_empty_error", "other_slow"]);
         assert_eq!(names, want);
     }
 
@@ -600,4 +604,23 @@ async fn binds_loopback_only_and_stops_on_shutdown() {
         .unwrap();
     // The socket is closed with it.
     assert!(TcpStream::connect(addr).await.is_err());
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn a_call_in_flight_outlives_the_connection_deadline() {
+    let run = start(
+        Deadlines {
+            connection: Duration::from_millis(300),
+            ..Deadlines::default()
+        },
+        None,
+    )
+    .await;
+    let t = token(false, false, "jti-slow");
+    let a = post(run.addr, &t, &call(1, "other_slow", "{}")).await;
+    assert_eq!(a.status, 200);
+    assert_eq!(
+        a.body,
+        r#"{"jsonrpc":"2.0","id":1,"result":{"content":[{"type":"text","text":"slow answer"}]}}"#
+    );
 }
