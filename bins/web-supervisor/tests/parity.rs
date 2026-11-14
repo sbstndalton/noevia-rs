@@ -2,10 +2,13 @@
 //! copied with the script at noevia 11bf2da7) drives this binary through stub `node` and front
 //! processes, then the bash reference, in the same environment. Both must pass every check.
 //! Needs bash >= 4.3 and a real `node` (the stubs hand `node -e` probes to it); without node the
-//! test says so and skips, it never passes silently on a partial run.
+//! test says so and skips, except under CI (`CI` set), where it fails. The suite's check count is
+//! pinned, so a partial run cannot pass.
 
 use std::path::Path;
 use std::process::Command;
+
+const SUITE_CHECKS: u32 = 363;
 
 fn have(program: &str) -> bool {
     Command::new(program)
@@ -45,6 +48,10 @@ fn summary(text: &str) -> Option<(u32, u32)> {
 #[test]
 fn the_script_suite_passes_against_the_native_supervisor_and_the_reference() {
     if !have("node") || !have("bash") {
+        assert!(
+            std::env::var_os("CI").is_none(),
+            "the parity suite needs bash and node on PATH, and CI must run it"
+        );
         eprintln!("skip - the parity suite needs bash and node on PATH");
         return;
     }
@@ -68,5 +75,6 @@ fn the_script_suite_passes_against_the_native_supervisor_and_the_reference() {
     );
     let (passed, failed) = native_counts.unwrap_or_default();
     assert_eq!(failed, 0);
-    assert!(passed > 150, "the suite ran only {passed} checks");
+    // The script's suite at noevia 11bf2da7 makes 363 checks.
+    assert_eq!(passed, SUITE_CHECKS, "the suite ran {passed} checks");
 }
