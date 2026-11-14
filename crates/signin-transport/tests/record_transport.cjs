@@ -125,7 +125,7 @@ const catalogue = [{ slug: 'm-large', effort: 'medium', summary: 'detailed', sum
 // body, failing after `failAfter` chunks with `failMessage`, or a send that rejects (`throws`).
 function upstreamResponse(u) {
   if (u.throws) throw new Error(u.throws);
-  const headers = { 'content-type': 'text/event-stream', ...(u.labelled ? { 'x-noevia-provider-message': '1' } : {}) };
+  const headers = { 'content-type': u.contentType || 'text/event-stream', ...(u.labelled ? { 'x-noevia-provider-message': '1' } : {}) };
   if (u.nobody) return new Response(null, { status: u.status, headers });
   const chunks = (u.chunks || [u.text || '']).map((x) => (typeof x === 'string' ? Buffer.from(x) : x));
   let i = 0;
@@ -214,6 +214,7 @@ const capJson = (size) => pad('{"error":{"message":"m"}', '}', size);
 const edgeCases = [
   { name: 'labelledError', upstream: [{ status: 409, text: '{"error":{"message":"held"}}', labelled: true }] },
   { name: 'labelledOk', upstream: [{ status: 200, chunks: streams.text, labelled: true }] },
+  { name: 'labelledJson', upstream: [{ status: 409, text: '{"error":{"message":"held"}}', labelled: true, contentType: 'application/json; charset=utf-8' }] },
   { name: 'labelledAfter401', sessions: [ok(), ok({ accessToken: 'tok-2' })], upstream: [{ status: 401, text: '' }, { status: 503, text: 'busy', labelled: true }] },
   { name: 'noBody200', upstream: [{ status: 200, nobody: true }] },
   { name: 'noBody200Stream', stream: true, upstream: [{ status: 200, nobody: true }] },
@@ -248,10 +249,15 @@ const edgeCases = [
   { name: 'catalogueNumber', catalogue: { ok: true, models: 0 } },
   { name: 'catalogueMissing', catalogue: { ok: true }, effort: 'ultra' },
   { name: 'catalogueNull', catalogue: { ok: true, models: null } },
+  // noevia#2717 item 4: a null catalogue entry (core throws at m.slug; the port skips it and answers as the
+  // twin without it) and a request body of JSON null (core throws at body.model; the port's 400).
+  { name: 'catalogueNullEntry', catalogue: { ok: true, models: [null, ...catalogue] } },
+  { name: 'catalogueNullEntryAnswer' },
+  { name: 'bodyNull', rawBody: 'null' },
   { name: 'catalogueNonArrayNoBody', catalogue: { ok: true, models: {} }, model: 'm-other', effort: 'low' },
 ];
 for (const e of edgeCases) {
-  fetchCases.push({ name: e.name, body: body({ ...(e.stream ? { stream: true } : {}), ...(e.effort ? { reasoning_effort: e.effort } : {}), ...(e.model ? { model: e.model } : {}) }),
+  fetchCases.push({ name: e.name, body: e.rawBody !== undefined ? e.rawBody : body({ ...(e.stream ? { stream: true } : {}), ...(e.effort ? { reasoning_effort: e.effort } : {}), ...(e.model ? { model: e.model } : {}) }),
     ...(e.catalogue ? { catalogue: e.catalogue } : {}), sessions: e.sessions || okSession(), upstream: e.upstream || [] });
 }
 
@@ -272,7 +278,7 @@ function coreTexts() {
   const fetchOut = [];
   for (const c of fetchCases) {
     const input = JSON.parse(JSON.stringify({ ...c, sessions: c.sessions, upstream: c.upstream.map((u) => ({ status: u.status, chunks: (u.chunks || [u.text || '']).map((x) => Buffer.from(x).toString('base64')),
-      ...(u.labelled ? { labelled: true } : {}), ...(u.nobody ? { nobody: true } : {}), ...(u.failAfter === undefined ? {} : { failAfter: u.failAfter, failMessage: u.failMessage || 'reset' }),
+      ...(u.labelled ? { labelled: true } : {}), ...(u.contentType ? { contentType: u.contentType } : {}), ...(u.nobody ? { nobody: true } : {}), ...(u.failAfter === undefined ? {} : { failAfter: u.failAfter, failMessage: u.failMessage || 'reset' }),
       ...(u.throws ? { throws: u.throws } : {}) })) }));
     fetchOut.push({ input, output: await runFetch(c) });
   }

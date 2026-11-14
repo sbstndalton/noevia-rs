@@ -102,7 +102,7 @@ fn requests_match_core() {
     let JValue::Arr(cases) = f.get("requests") else {
         panic!()
     };
-    assert!(cases.len() > 100, "{}", cases.len());
+    assert_eq!(cases.len(), 140, "recorded requests");
     for c in cases {
         let body = js_json::parse(&s(c.get("body"))).unwrap();
         let out = json(&JValue::Obj(request::to_responses_request(&body)));
@@ -118,7 +118,7 @@ fn streams_match_core_whole_and_cut_everywhere() {
     let JValue::Obj(streams) = f.get("streams") else {
         panic!()
     };
-    assert!(streams.len() > 25);
+    assert_eq!(streams.len(), 32, "recorded streams");
     let mut differences = 0;
     for (name, st) in streams {
         let chunks = chunks_of(st.get("chunks"));
@@ -272,9 +272,23 @@ impl Wire for FakeWire {
             fail_message: u.get("failMessage").as_str().unwrap_or("reset").to_string(),
             read: 0,
         });
+        // core's fake backend: its content type (text/event-stream unless the case names one), and
+        // the provider-message label when the case is labelled.
+        let mut headers = vec![(
+            "content-type".to_string(),
+            u.get("contentType")
+                .as_str()
+                .unwrap_or("text/event-stream")
+                .to_string(),
+        )];
+        let labelled = u.get("labelled").truthy();
+        if labelled {
+            headers.push(("x-noevia-provider-message".into(), "1".into()));
+        }
         Ok(Upstream {
             status,
-            labelled: u.get("labelled").truthy(),
+            labelled,
+            headers,
             body,
         })
     }
@@ -369,10 +383,16 @@ fn run_fetch(
                     }
                 }
             }
+            let header = |name: &str| {
+                u.headers
+                    .iter()
+                    .find(|(k, _)| k == name)
+                    .map(|(_, v)| v.clone())
+            };
             Run {
                 status: u.status,
-                content_type: Some("text/event-stream".into()),
-                provider_message: Some("1".into()),
+                content_type: header("content-type"),
+                provider_message: header("x-noevia-provider-message"),
                 text: decode_all(&bytes),
                 read_error,
                 thrown: None,
@@ -425,7 +445,9 @@ fn run_fetch(
 /// Read failures after the terminal event (see fetch_path_matches_core).
 const LATE: [&str; 2] = ["streamFailAfterFinish", "completeFailAfterError"];
 
-const NAMED: [(&str, &str); 6] = [
+const NAMED: [(&str, &str); 8] = [
+    ("catalogueNullEntry", "catalogueNullEntryAnswer"),
+    ("bodyNull", "bodyNull"),
     ("catalogueObject", "catalogueNull"),
     ("catalogueString", "catalogueString"),
     ("catalogueNumber", "catalogueNull"),
@@ -455,7 +477,7 @@ fn fetch_path_matches_core() {
     let JValue::Arr(cases) = f.get("fetch") else {
         panic!()
     };
-    assert_eq!(cases.len(), 103, "recorded fetch cases");
+    assert_eq!(cases.len(), 107, "recorded fetch cases");
     let by_name = |n: &str| {
         cases
             .iter()
@@ -465,6 +487,7 @@ fn fetch_path_matches_core() {
     let mut checked = 0;
     let mut named = 0;
     let mut late = 0;
+    let mut late_text = 0;
     let mut wrong: Vec<String> = Vec::new();
     let mut check = |ok: bool, what: String| {
         if !ok {
@@ -494,12 +517,13 @@ fn fetch_path_matches_core() {
                     got.thrown.as_ref().or(got.read_error.as_ref())
                 ),
             );
-            if let Some(prefix) = want.get("text").as_str() {
-                check(
-                    got.text.starts_with(prefix),
-                    format!("{name}: core's bytes are not a prefix"),
-                );
-            }
+            // A failed read leaves what came before it; nothing recorded counts as nothing read.
+            let prefix = want.get("text").as_str().unwrap_or("");
+            late_text += prefix.len();
+            check(
+                got.text.starts_with(prefix),
+                format!("{name}: core's bytes are not a prefix"),
+            );
             continue;
         }
         if let Some(thrown) = want.get("thrown").as_str() {
@@ -570,6 +594,7 @@ fn fetch_path_matches_core() {
         wrong.join("\n")
     );
     assert_eq!(late, LATE.len());
+    assert!(late_text > 0, "core recorded no text before any late failure");
     assert_eq!(checked, cases.len());
     assert_eq!(named, NAMED.len());
     // The named differences answer as the port says they should.
@@ -590,6 +615,10 @@ fn fetch_path_matches_core() {
                 // Unreadable list + an effort beyond the basic four: core's "could not be read" line.
                 assert_eq!(got.status, 400, "{n}");
                 assert!(got.text.contains("could not be read"), "{n}: {}", got.text);
+            }
+            "bodyNull" => {
+                assert_eq!(got.status, 400, "{n}");
+                assert!(got.text.contains("not valid JSON"), "{n}: {}", got.text);
             }
             "catalogueNonArrayNoBody" => {
                 // Unreadable list: no allowlist, a basic effort goes through to the backend.

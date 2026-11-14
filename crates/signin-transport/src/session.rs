@@ -140,8 +140,9 @@ pub fn broker_refusal(texts: &Texts, answer: &BrokerAnswer) -> Option<Refusal> {
     }
 }
 
-/// One step of `authorised(userId, send)`.
-#[derive(Debug, Clone, PartialEq)]
+/// One step of `authorised(userId, send)`. Debug is written by hand: `AskBroker` holds the token
+/// the backend refused, which never appears in any output.
+#[derive(Clone, PartialEq)]
 pub enum Step {
     /// Ask the broker for a session (with the rejected access token on the second ask).
     AskBroker { rejected_token: Option<String> },
@@ -156,6 +157,28 @@ pub enum Step {
     Pass,
     /// Answer with this error (the `x-noevia-provider-message` error response).
     Refuse(Refusal),
+}
+
+impl std::fmt::Debug for Step {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Step::AskBroker { rejected_token } => f
+                .debug_struct("AskBroker")
+                .field(
+                    "rejected_token",
+                    &rejected_token.as_ref().map(|_| "<redacted>"),
+                )
+                .finish(),
+            Step::Send(s) => f.debug_tuple("Send").field(s).finish(),
+            Step::Reject { generation, then } => f
+                .debug_struct("Reject")
+                .field("generation", generation)
+                .field("then", then)
+                .finish(),
+            Step::Pass => f.write_str("Pass"),
+            Step::Refuse(r) => f.debug_tuple("Refuse").field(r).finish(),
+        }
+    }
 }
 
 /// The state of one authorised call.
