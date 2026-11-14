@@ -211,7 +211,11 @@ fn supervisor_outputs(messages: &[JValue]) -> Vec<JValue> {
                 ("role", m.get("role").clone()),
                 (
                     "content",
-                    js::s(m.get("content").as_str().map_or(String::new(), |c| js::slice(c, 1500))),
+                    js::s(
+                        m.get("content")
+                            .as_str()
+                            .map_or(String::new(), |c| js::slice(c, 1500)),
+                    ),
                 ),
             ])
         })

@@ -673,7 +673,7 @@ async fn core_service(
         "/internal/chat/native/supervise" => {
             let Some(rec) = sc.stub("supervise") else {
                 sc.errors.push("supervise: not asked in Node".into());
-                return Ok(ok(js::obj([("action", js::s("continue"))])));
+                return ok(js::obj([("action", js::s("continue"))]));
             };
             for k in ["round", "goal", "wrote", "outputs"] {
                 if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
