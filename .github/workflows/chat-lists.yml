@@ -80,6 +80,14 @@ jobs:
           NOEVIA_DATES_FIXTURE="$RUNNER_TEMP/node-dates-ny.json" cargo test --locked -p server-export --test js_date
           node bins/noevia-server/tests/chat-lists-oracle.cjs "$PWD/core" "$RUNNER_TEMP/node-chat-lists-ny.json"
           NOEVIA_CHAT_LISTS_FIXTURE="$RUNNER_TEMP/node-chat-lists-ny.json" cargo test --locked -p noevia-server --test chat_lists_read
+      - name: The date corpus east of UTC, with each zone's own DST change days (#2344)
+        run: |
+          set -euo pipefail
+          for zone in Europe/Berlin Australia/Lord_Howe; do
+            out="$RUNNER_TEMP/node-dates-$(basename "$zone").json"
+            TZ="$zone" ORACLE_TZ="$zone" node crates/server-export/tests/js-date-oracle.cjs "$out"
+            TZ="$zone" NOEVIA_DATES_FIXTURE="$out" cargo test --locked -p server-export --test js_date
+          done
       - name: The lookup, the search and the file name
         run: |
           set -euo pipefail
@@ -96,4 +104,6 @@ jobs:
             ${{ runner.temp }}/node-chat-lists.json
             ${{ runner.temp }}/node-chat-lists-ny.json
             ${{ runner.temp }}/node-dates-ny.json
+            ${{ runner.temp }}/node-dates-Berlin.json
+            ${{ runner.temp }}/node-dates-Lord_Howe.json
           if-no-files-found: ignore

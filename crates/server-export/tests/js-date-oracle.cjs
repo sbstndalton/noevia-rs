@@ -41,7 +41,10 @@ const pieces = [
 ];
 const gen = [];
 // Local times around New York's 2026 DST changes (a gap on 8 March, an overlap on 1 November).
-for (const d of ['2026-03-08', '2026-11-01', '2026-06-15']) for (let m = 0; m < 240; m += 15) gen.push(`${d}T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
+// A run in a zone east of UTC adds that zone's own 2026 change days (noevia#2344); the UTC corpus
+// (the committed fixture) and the New York run stay as they were.
+const eastDays = { 'Europe/Berlin': ['2026-03-29', '2026-10-25'], 'Australia/Lord_Howe': ['2026-04-05', '2026-10-04'] }[process.env.TZ] || [];
+for (const d of ['2026-03-08', '2026-11-01', '2026-06-15', ...eastDays]) for (let m = 0; m < 240; m += 15) gen.push(`${d}T${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`);
 for (let i = 0; i < 1500; i++) {
   const n = 1 + Math.floor(rand() * 9);
   let s = '';
