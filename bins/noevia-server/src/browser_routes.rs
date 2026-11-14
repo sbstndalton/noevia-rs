@@ -96,7 +96,10 @@ struct NoEngine;
 
 impl browser_task::engine::Launch for NoEngine {
     fn launch(&self) -> Result<Arc<dyn browser_task::engine::Browser>, Fail> {
-        Err(Fail::public(503, "Browser mode needs a browser engine on this server."))
+        Err(Fail::public(
+            503,
+            "Browser mode needs a browser engine on this server.",
+        ))
     }
 }
 
@@ -108,11 +111,12 @@ pub fn service(app: &Arc<App>) -> Arc<Service> {
     app.browser_service
         .get_or_init(|| {
             let egress = crate::code_routes::front_egress(app).map(|e| e as Arc<dyn Egress>);
-            Service::new(Options::new(
-                Arc::new(NoEngine),
-                egress,
-                Arc::new(|e| log_browser(&e)),
-            ))
+            // The engine: the external Chromium at NOEVIA_BROWSER_ENGINE (crates/browser-cdp).
+            let launch: Arc<dyn browser_task::engine::Launch> = match &app.config.browser.engine {
+                Some(endpoint) => Arc::new(browser_cdp::CdpLaunch::new(endpoint.clone())),
+                None => Arc::new(NoEngine),
+            };
+            Service::new(Options::new(launch, egress, Arc::new(|e| log_browser(&e))))
         })
         .clone()
 }
