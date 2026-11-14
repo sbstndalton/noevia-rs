@@ -581,9 +581,9 @@ impl Shared {
 
     /// [`Shared::fenced`] with Node's `assertCovered` rule ([`Hold::covers`]).
     fn fenced_for(&self, step: Duration) -> bool {
-        self.auth.as_ref().is_none_or(|(a, g)| {
-            a.covers_step(&g.id, g.generation, STEP_MARGIN, step)
-        })
+        self.auth
+            .as_ref()
+            .is_none_or(|(a, g)| a.covers_step(&g.id, g.generation, STEP_MARGIN, step))
     }
 
     /// Gives the authority's lease back at once; idempotent, synchronous.
