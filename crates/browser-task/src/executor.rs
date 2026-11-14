@@ -25,7 +25,7 @@ use js_json::{to_js_string, wtf16, JValue};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Arc, Condvar, Mutex, PoisonError, Weak};
+use std::sync::{Arc, Mutex, PoisonError, Weak};
 use std::time::Duration;
 
 /// `ACTIONS`.

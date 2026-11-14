@@ -2337,6 +2337,7 @@ dependencies = [
  "hyper",
  "hyper-util",
  "js-json",
+ "kiwix-tools",
  "llamacpp-autoconfig",
  "llamacpp-presets",
  "long-profile",
