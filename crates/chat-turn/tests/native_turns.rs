@@ -504,7 +504,7 @@ impl Host for Script {
         Some((rendered, answer.get("trace").clone()))
     }
 
-    fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+    async fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
         // Core's reasoner-trace op: appended only when the person opted in (the case's `reasoner.traces`), as
         // chat.cjs builds the entry ({...trace, answerChars, timings: {...timings, answerMs}}).
         if self.case.get("input").get("reasoner").get("traces") != &JValue::Bool(true) {
@@ -1258,7 +1258,7 @@ fn the_native_continuation_is_node_after_the_cut() {
         ran.push(name);
     }
     eprintln!("native replay ran: {ran:?}");
-    assert_eq!(ran.len(), 154, "{ran:?}");
+    assert_eq!(ran.len(), 157, "{ran:?}");
 }
 
 /// A tool the account blocks is not offered: no request lists it, and the model's call of it anyway is

@@ -1012,8 +1012,8 @@ impl<H: Host> Turn<'_, H> {
     /// chat.cjs `prefetchTool`: the gate's read before the first round, its `tool` and `tool_result` events, then the
     /// round's messages with the note and the exchange (the result framed). False when it did not run or failed (the
     /// tool is then required instead); the checks are chat.cjs's (a revoked skill, the page save, a client gone, an
-    /// account policy other than allow). The framing reasoner's packet and the cloud hold never apply here: core keeps
-    /// those turns.
+    /// account policy other than allow). The framing reasoner's packet comes from core's condense op (#740); the cloud
+    /// hold never applies here: core keeps those turns.
     async fn prefetch(
         &mut self,
         s: &mut Rounds,
@@ -1228,7 +1228,8 @@ impl<H: Host> Turn<'_, H> {
         if let Some((trace, handed_at)) = &s.reasoner_trace {
             #[allow(clippy::cast_precision_loss)]
             let chars = js::len(&s.last.content) as f64;
-            host.reasoner_trace(trace, chars, (host.now_ms() - handed_at).max(0.0));
+            host.reasoner_trace(trace, chars, (host.now_ms() - handed_at).max(0.0))
+                .await;
         }
         host.emit(&event("done", vec![("model", js::s(p.model.clone()))]));
         self.title(s).await;

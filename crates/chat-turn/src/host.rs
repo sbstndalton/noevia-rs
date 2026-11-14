@@ -330,5 +330,11 @@ pub trait Host: Sync {
 
     /// #740 after the reply: the person's opt-in trace of the handed-on packet (`reasoningTraces.append`; core checks
     /// the opt-in). `answer_chars` the last round's content in UTF-16 units, `answer_ms` since the packet was handed.
-    fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64);
+    /// Awaited before `done`, as chat.cjs appends before it.
+    fn reasoner_trace(
+        &self,
+        trace: &JValue,
+        answer_chars: f64,
+        answer_ms: f64,
+    ) -> impl Future<Output = ()> + Send;
 }

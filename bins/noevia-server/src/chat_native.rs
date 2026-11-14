@@ -1032,17 +1032,30 @@ impl Host for FrontHost {
         }
     }
 
-    fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
-        // Track R15 (#740): the opt-in trace stays core's (the person's preference and their workspace's file).
-        self.core_later(
-            "/internal/chat/native/reasoner-trace",
-            js::obj([
-                ("user", js::s(self.user.clone())),
-                ("trace", trace.clone()),
-                ("answerChars", js::n(answer_chars)),
-                ("answerMs", js::n(answer_ms)),
-            ]),
-        );
+    async fn reasoner_trace(&self, trace: &JValue, answer_chars: f64, answer_ms: f64) {
+        // Track R15 (#740): the opt-in trace stays core's (the person's preference and their workspace's file),
+        // written before `done` as chat.cjs writes it; a trace never changes the reply.
+        let body = js::obj([
+            ("user", js::s(self.user.clone())),
+            ("trace", trace.clone()),
+            ("answerChars", js::n(answer_chars)),
+            ("answerMs", js::n(answer_ms)),
+        ]);
+        match self
+            .core(
+                "/internal/chat/native/reasoner-trace",
+                &body,
+                BRIDGE_TIMEOUT,
+            )
+            .await
+        {
+            Some((204, _)) | None => {}
+            Some((status, _)) => {
+                eprintln!(
+                    "chat native: core answered {status} to the reasoning trace; it is not kept"
+                );
+            }
+        }
     }
 
     async fn supervise(&self, round: i32, outputs: &[JValue], goal: &str, wrote: bool) -> String {

@@ -182,6 +182,12 @@ struct Script {
     revokes: Vec<String>,
     /// Set: core's revoke bridge fails, so the front revokes at its own registry instead.
     revoke_fails: bool,
+    /// Set: core's condense op answers 500, so the front hands on the raw result (#740).
+    condense_fails: bool,
+    /// The traces of the packets core's condense op handed on, not yet sent back by reasoner-trace.
+    condensed: Vec<JValue>,
+    /// The reasoner-trace calls (#740).
+    traced: usize,
 }
 
 impl Default for Script {
@@ -209,6 +215,9 @@ impl Default for Script {
             leaving: Arc::default(),
             revokes: Vec::new(),
             revoke_fails: false,
+            condense_fails: false,
+            condensed: Vec::new(),
+            traced: 0,
         }
     }
 }
@@ -263,6 +272,9 @@ const REGISTRY_CASES: &[(&str, &str)] = &[
 
 /// Recorded cases also run with core's revoke bridge failing.
 const REVOKE_FAILS: &[&str] = &["grant_redeem_refused"];
+
+/// Recorded cases whose reasoner skipped, also run with core's condense op failing (500): the raw result goes on.
+const CONDENSE_FAILS: &[&str] = &["reasoner_bad_packet"];
 
 /// The stubs this test's fakes answer.
 const ANSWERED: &[&str] = &[
@@ -681,6 +693,12 @@ async fn core_service(
                 sc.errors.push("condense: not asked in Node".into());
                 return ok(js::obj([("rendered", JValue::Null)]));
             };
+            if sc.condense_fails {
+                return Ok(json(
+                    500,
+                    &js::obj([("error", js::s("QA condense failed"))]),
+                ));
+            }
             for k in ["kind", "message", "tool", "resultText", "model"] {
                 if js::stringify(sent.get(k)) != js::stringify(rec.get(k)) {
                     sc.errors.push(format!(
@@ -691,9 +709,45 @@ async fn core_service(
                 }
             }
             match rec.get("answer") {
-                a @ JValue::Obj(_) => ok(a.clone()),
+                a @ JValue::Obj(_) => {
+                    sc.condensed.push(a.get("trace").clone());
+                    ok(a.clone())
+                }
                 _ => ok(js::obj([("rendered", JValue::Null)])),
             }
+        }
+        // #740: the trace sent back is the one condense handed on, with the answer's length as Node counts it.
+        "/internal/chat/native/reasoner-trace" => {
+            sc.traced += 1;
+            if sc.condensed.is_empty() {
+                sc.errors
+                    .push("reasoner-trace: no packet was handed on".into());
+            } else {
+                let want = sc.condensed.remove(0);
+                if js::stringify(sent.get("trace")) != js::stringify(&want) {
+                    sc.errors.push(format!(
+                        "reasoner-trace: trace {} (condense {})",
+                        js::stringify(sent.get("trace")),
+                        js::stringify(&want)
+                    ));
+                }
+            }
+            let chars = sent.get("answerChars").as_num();
+            let recorded = arr(sc.case.get("stores"))
+                .into_iter()
+                .find(|s| s.get("op").as_str() == Some("reasoningTraces.append"))
+                .map(|s| s.get("entry").get("answerChars").clone());
+            if chars.is_none_or(|c| c < 0.0 || c.fract() != 0.0)
+                || recorded.is_some_and(|r| r.as_num() != chars)
+                || !sent.get("answerMs").as_num().is_some_and(|m| m >= 0.0)
+            {
+                sc.errors.push(format!(
+                    "reasoner-trace: answerChars {} answerMs {}",
+                    js::stringify(sent.get("answerChars")),
+                    js::stringify(sent.get("answerMs"))
+                ));
+            }
+            Ok(empty(204))
         }
         "/internal/chat/native/supervise" => {
             let Some(rec) = sc.stub("supervise") else {
@@ -888,8 +942,7 @@ async fn core_service(
         | "/internal/chat/prefill"
         | "/internal/chat/native/title-save"
         | "/internal/chat/native/tools-unsupported"
-        | "/internal/chat/native/gate-record"
-        | "/internal/chat/native/reasoner-trace" => Ok(empty(204)),
+        | "/internal/chat/native/gate-record" => Ok(empty(204)),
         _ => Ok(json(404, &js::obj([("error", js::s("not found"))]))),
     }
 }
@@ -1410,7 +1463,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
         if SKIPPED.iter().any(|(n, _)| *n == name) || only.as_ref().is_some_and(|o| *o != name) {
             continue;
         }
-        match run_case(&fixture, case, &current, None, false).await {
+        match run_case(&fixture, case, &current, None, false, false).await {
             Ok(()) => ran.push(name),
             Err(e) => {
                 eprintln!("DIFFERS {name}: {e}");
@@ -1429,7 +1482,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             .iter()
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap();
-        match run_case(&fixture, case, &current, Some(decision), false).await {
+        match run_case(&fixture, case, &current, Some(decision), false, false).await {
             Ok(()) => ran.push(format!("{name} (front registry)")),
             Err(e) => {
                 eprintln!("DIFFERS {name} (front registry): {e}");
@@ -1447,11 +1500,28 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
             .iter()
             .find(|c| c.get("name").as_str() == Some(name))
             .unwrap();
-        match run_case(&fixture, case, &current, None, true).await {
+        match run_case(&fixture, case, &current, None, true, false).await {
             Ok(()) => ran.push(format!("{name} (revoke bridge fails)")),
             Err(e) => {
                 eprintln!("DIFFERS {name} (revoke bridge fails): {e}");
                 failures.push(format!("{name} (revoke bridge fails): {e}"));
+            }
+        }
+    }
+    // Core's condense op failing (#740): the front hands on the raw result, as the recorded skip.
+    for name in CONDENSE_FAILS {
+        if only.as_ref().is_some_and(|o| o != name) {
+            continue;
+        }
+        let case = cases
+            .iter()
+            .find(|c| c.get("name").as_str() == Some(name))
+            .unwrap();
+        match run_case(&fixture, case, &current, None, false, true).await {
+            Ok(()) => ran.push(format!("{name} (condense fails)")),
+            Err(e) => {
+                eprintln!("DIFFERS {name} (condense fails): {e}");
+                failures.push(format!("{name} (condense fails): {e}"));
             }
         }
     }
@@ -1470,7 +1540,7 @@ async fn the_native_executor_answers_as_the_recorded_node_turns() {
     if only.is_none() {
         assert_eq!(
             ran.len() + SKIPPED.len(),
-            cases.len() + REGISTRY_CASES.len() + REVOKE_FAILS.len()
+            cases.len() + REGISTRY_CASES.len() + REVOKE_FAILS.len() + CONDENSE_FAILS.len()
         );
     }
 }
@@ -1481,6 +1551,7 @@ async fn run_case(
     current: &Arc<Mutex<Option<Shared>>>,
     decide: Option<&str>,
     revoke_fails: bool,
+    condense_fails: bool,
 ) -> Result<(), String> {
     let input = case.get("input").clone();
     // With the front's registry its cards are the registry's: their recorded stubs are not asked for.
@@ -1500,6 +1571,7 @@ async fn run_case(
         // The engine requests core made before the cut (a Vision role's description) are core's own.
         round: pre_cut_requests(case),
         revoke_fails,
+        condense_fails,
         ..Script::default()
     }));
     *current.lock().unwrap() = Some(Arc::clone(&script));
@@ -1732,6 +1804,17 @@ async fn run_case(
         .filter(|s| s.get("op").as_str() == Some("revokeChatGrant"))
         .map(|s| s.get("chatId").as_str().unwrap_or("").to_string())
         .collect();
+    // #740: every trace Node appended was sent back once (a person without traces: the op still asked).
+    let appends = arr(case.get("stores"))
+        .iter()
+        .filter(|s| s.get("op").as_str() == Some("reasoningTraces.append"))
+        .count();
+    if appends > 0 && sc.traced != appends {
+        return Err(format!(
+            "reasoner traces: front {} node {appends}",
+            sc.traced
+        ));
+    }
     if sc.revokes != want_revokes {
         return Err(format!(
             "grant revokes: front {:?} node {want_revokes:?}",
