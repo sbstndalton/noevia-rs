@@ -12,6 +12,8 @@ pub struct SseDecoder {
     /// Undecoded tail bytes: an incomplete UTF-8 sequence at a chunk's end.
     pending: Vec<u8>,
     buffer: String,
+    /// The first code point was decoded (TextDecoder drops a byte-order mark only there).
+    started: bool,
 }
 
 /// The end of the first blank line in `s`: (start, end) of the `\r?\n\r?\n` match.
@@ -66,6 +68,7 @@ impl SseDecoder {
             match std::str::from_utf8(rest) {
                 Ok(s) => {
                     self.buffer.push_str(s);
+                    self.drop_bom();
                     return;
                 }
                 Err(e) => {
@@ -79,10 +82,22 @@ impl SseDecoder {
                         }
                         None => {
                             self.pending = bad.to_vec();
+                            self.drop_bom();
                             return;
                         }
                     }
                 }
+            }
+        }
+    }
+
+    /// `new TextDecoder()` (ignoreBOM false) drops a byte-order mark at the very start of the
+    /// stream, also when its bytes arrive in several chunks; one anywhere later is kept.
+    fn drop_bom(&mut self) {
+        if !self.started && !self.buffer.is_empty() {
+            self.started = true;
+            if let Some(rest) = self.buffer.strip_prefix('\u{FEFF}') {
+                self.buffer = rest.to_string();
             }
         }
     }
