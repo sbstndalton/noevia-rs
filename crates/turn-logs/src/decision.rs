@@ -77,17 +77,14 @@ impl DecisionLog {
     }
 
     /// The line core appends for `record(kind, entry)`: `{ at, kind, ...entry }` + `\n`. A field of
-    /// `entry` named `at` or `kind` replaces that value in its place, as the spread does; an entry
-    /// that is not an object adds no field.
+    /// `entry` named `at` or `kind` replaces that value in its place, as the spread does.
     pub fn line(&self, kind: &str, entry: &JValue) -> String {
         let mut items = vec![
             ("at".to_owned(), JValue::Str((self.now)())),
             ("kind".to_owned(), JValue::Str(kind.to_owned())),
         ];
-        if let JValue::Obj(fields) = entry {
-            for (k, v) in fields {
-                wtf16::set(&mut items, k, v.clone());
-            }
+        for (k, v) in spread(entry) {
+            wtf16::set(&mut items, &k, v);
         }
         let mut line = wtf16::stringify(&JValue::Obj(items)).unwrap_or_default();
         line.push('\n');
@@ -119,6 +116,32 @@ impl DecisionLog {
             .mode(0o600)
             .open(&self.file)?;
         f.write_all(line.as_bytes())
+    }
+}
+
+/// The own enumerable properties `{ ...value }` copies: an object's fields, an array's or a string's
+/// indexes (a string by UTF-16 unit, as JS does), nothing for any other value.
+fn spread(value: &JValue) -> Vec<(String, JValue)> {
+    match value {
+        JValue::Obj(fields) => fields.clone(),
+        JValue::Arr(items) => items.iter().enumerate().map(|(i, v)| (i.to_string(), v.clone())).collect(),
+        JValue::Str(s) => {
+            let mut out = Vec::new();
+            for c in s.chars() {
+                let mut buf = [0u16; 2];
+                let units = c.encode_utf16(&mut buf);
+                if units.len() == 1 || wtf16::lone_unit(c).is_some() {
+                    out.push((out.len().to_string(), JValue::Str(c.to_string())));
+                } else {
+                    for unit in units.iter() {
+                        let half = wtf16::lone_char(*unit).map(String::from).unwrap_or_default();
+                        out.push((out.len().to_string(), JValue::Str(half)));
+                    }
+                }
+            }
+            out
+        }
+        _ => Vec::new(),
     }
 }
 
@@ -315,7 +338,9 @@ mod tests {
         let entry = wtf16::parse(r#"{"kind":"other","b":1,"2":true,"at":"x","1":null}"#).unwrap();
         // JS: { at:'T', kind:'route', ...entry } keeps at/kind in place, index keys first ascending.
         assert_eq!(log.line("route", &entry), "{\"1\":null,\"2\":true,\"at\":\"x\",\"kind\":\"other\",\"b\":1}\n");
-        assert_eq!(log.line("route", &JValue::Str("ab".into())), "{\"at\":\"T\",\"kind\":\"route\"}\n");
+        assert_eq!(log.line("route", &JValue::Str("ab".into())), "{\"0\":\"a\",\"1\":\"b\",\"at\":\"T\",\"kind\":\"route\"}\n");
+        assert_eq!(log.line("route", &JValue::Null), "{\"at\":\"T\",\"kind\":\"route\"}\n");
+        assert_eq!(log.line("route", &JValue::Num(3.0)), "{\"at\":\"T\",\"kind\":\"route\"}\n");
     }
 
     #[test]
