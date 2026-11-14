@@ -292,3 +292,342 @@ pub const NO_CLIENT: &str = "the redirect-refusing engine client could not be bu
 pub fn origins_now() -> String {
     member_origins()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use chat_upstream::binding::{recheck, Now, Recheck};
+    use std::sync::Mutex;
+
+    const USER: &str = "00000000-0000-4000-8000-0000000000aa";
+    const URL: &str = "https://qa-provider.example/v1/chat/completions";
+
+    /// An account store from a script: the account's state as of each read.
+    struct Script(Mutex<Option<User>>);
+
+    impl Script {
+        fn member() -> Script {
+            Script(Mutex::new(Some(User {
+                id: Some(USER.into()),
+                admin: false,
+            })))
+        }
+        fn set(&self, u: Option<User>) {
+            *self.0.lock().unwrap() = u;
+        }
+    }
+
+    impl Accounts for &Script {
+        fn active(&self, _id: &str) -> Option<User> {
+            self.0.lock().unwrap().clone()
+        }
+    }
+
+    fn keys() -> SecretKeys {
+        SecretKeys::from_existing_bytes(zeroize::Zeroizing::new(vec![7u8; 32]), None).unwrap()
+    }
+
+    fn sealed(k: &SecretKeys, plain: &str) -> String {
+        k.seal(plain, None, &[1u8; 12]).unwrap()
+    }
+
+    fn write_rows(dir: &Path, shared: bool, rows: &str) {
+        let file = if shared {
+            dir.join("shared-providers.json")
+        } else {
+            let d = dir.join("users").join(USER);
+            std::fs::create_dir_all(&d).unwrap();
+            d.join("providers.json")
+        };
+        std::fs::write(file, format!(r#"{{"providers":[{rows}]}}"#)).unwrap();
+    }
+
+    fn own_row(key: &str, base: &str, extra: &str) -> String {
+        format!(r#"{{"id":"qa-provider","label":"QA provider","baseUrl":"{base}","apiKey":"{key}"{extra}}}"#)
+    }
+
+    fn frame(extra: &str) -> Prepared {
+        let f = js_json::parse(&format!(
+            r#"{{"type":"prepared","v":1,"startedAt":1,"model":"qa-model","effort":"default",
+"provider":{{"id":"qa-provider","label":"QA provider","localEngine":false,"capabilities":null}},
+"upstreamUrl":"{URL}","limitScope":"qa","messages":[],"tools":[],"routes":[],
+"writes":[],"public":[],"automaticOnlyWrites":[],"managerEnabled":false,"modelLease":false,
+"chat":{{"id":"qa-chat","key":"qa-chat","grantScope":"chat","grantHolder":null,"recentWrites":[],
+"title":{{"chatId":"qa-chat","firstMessage":"QA","enabled":false}}}},
+"turn":{{"message":"QA","streamIdleMs":0}}{extra}}}"#
+        ))
+        .unwrap();
+        Prepared::read(&f).unwrap_or_else(|e| panic!("{e:?}"))
+    }
+
+    const HOSTED: &str = r#","runtimeLimit":{"tokens":32768,"source":"Default for hosted providers"}"#;
+
+    fn row(json: &str) -> JValue {
+        js_json::parse(json).unwrap()
+    }
+
+    fn facts<'a>(user: Option<&'a User>, row: Option<&'a JValue>, origins: &'a str) -> Facts<'a> {
+        Facts {
+            offered: true,
+            default_id: "default",
+            user,
+            row,
+            member_origins: origins,
+            now_ms: 1_000.0,
+        }
+    }
+
+    fn member() -> User {
+        User {
+            id: Some(USER.into()),
+            admin: false,
+        }
+    }
+
+    #[test]
+    fn the_switch_is_one_and_the_caps_name_providers_only_then() {
+        for (v, on) in [
+            (None, false),
+            (Some(""), false),
+            (Some("0"), false),
+            (Some("true"), false),
+            (Some("yes"), false),
+            (Some("1"), true),
+            (Some(" 1 "), true),
+        ] {
+            assert_eq!(offered_by(v), on, "{v:?}");
+        }
+        assert_eq!(caps(false), chat_turn::handoff::HANDOFF_CAPS);
+        assert_eq!(caps(true), format!("{},providers", chat_turn::handoff::HANDOFF_CAPS));
+        assert!(!caps(false).split(',').any(|t| t == CAPS_TOKEN));
+    }
+
+    #[test]
+    fn without_the_offer_or_on_the_default_row_the_turn_runs_as_before() {
+        let u = member();
+        let r = row(&own_row("", "https://qa-provider.example/v1", ""));
+        let mut f = facts(Some(&u), Some(&r), "https://qa-provider.example");
+        f.offered = false;
+        // Not offered: today's path, whatever the frame says (core never hands such a turn off without it).
+        assert_eq!(plan(&frame(HOSTED), &f), Plan::Plain);
+        assert_eq!(plan(&frame(""), &f), Plan::Plain);
+        f.offered = true;
+        let mut local = frame("");
+        local.provider.id = "default".into();
+        assert_eq!(plan(&local, &f), Plan::Plain);
+    }
+
+    #[test]
+    fn a_member_own_row_is_cut_and_bound_to_the_frame() {
+        let u = member();
+        let r = row(&own_row("", "https://qa-provider.example/v1/", ""));
+        let p = frame(HOSTED);
+        let Plan::Provider(c) = plan(&p, &facts(Some(&u), Some(&r), "https://qa-provider.example"))
+        else {
+            panic!("not cut")
+        };
+        assert_eq!(c.target.url, URL);
+        assert_eq!(c.binding.user, USER);
+        assert_eq!(c.binding.provider_id, "qa-provider");
+        assert_eq!(c.binding.model, "qa-model");
+        assert_eq!(c.binding.chat_key.as_deref(), Some("qa-chat"));
+        assert!((c.binding.expires_ms - (1_000.0 + BINDING_MS)).abs() < f64::EPSILON);
+        // A stated context is the limit the frame must carry.
+        let r = row(&own_row("", "https://qa-provider.example", r#","contextTokens":65536"#));
+        let f = facts(Some(&u), Some(&r), "https://qa-provider.example");
+        assert_eq!(plan(&p, &f), Plan::Refuse(LIMIT));
+        let stated = frame(r#","runtimeLimit":{"tokens":65536,"source":"Provider setting"}"#);
+        assert!(matches!(plan(&stated, &f), Plan::Provider(_)));
+    }
+
+    #[test]
+    fn a_frame_that_disagrees_with_the_row_is_refused() {
+        let u = member();
+        let r = row(&own_row("", "https://qa-provider.example/v1", ""));
+        let f = facts(Some(&u), Some(&r), "https://qa-provider.example");
+        assert_eq!(plan(&frame(""), &f), Plan::Refuse(LIMIT), "no runtimeLimit");
+        let mut leased = frame(HOSTED);
+        leased.model_lease = true;
+        assert_eq!(plan(&leased, &f), Plan::Refuse(LOCAL_ENGINE));
+        let mut titled = frame(HOSTED);
+        titled.title.enabled = true;
+        assert_eq!(plan(&titled, &f), Plan::Refuse(LOCAL_ENGINE));
+        let mut managed = frame(HOSTED);
+        managed.manager_enabled = true;
+        assert_eq!(plan(&managed, &f), Plan::Refuse(LOCAL_ENGINE));
+        let mut moved = frame(HOSTED);
+        moved.upstream_url = "https://elsewhere.example/v1/chat/completions".into();
+        assert_eq!(plan(&moved, &f), Plan::Refuse(ADDRESS));
+        // The row with a machine address the frame was moved to is not the frame's: refused the same way.
+        let r2 = row(&own_row("", "https://qa-provider.example/other", ""));
+        let f2 = facts(Some(&u), Some(&r2), "https://qa-provider.example");
+        assert_eq!(plan(&frame(HOSTED), &f2), Plan::Refuse(ADDRESS));
+    }
+
+    #[test]
+    fn node_refusals_and_missing_facts_are_refused() {
+        let u = member();
+        let r = row(&own_row("", "https://qa-provider.example/v1", ""));
+        // A member's own row whose origin is not approved: Node answers 400.
+        assert_eq!(
+            plan(&frame(HOSTED), &facts(Some(&u), Some(&r), "")),
+            Plan::Refuse(NODE_REFUSES)
+        );
+        // An administrator's turn is not held to the member list.
+        let admin = User {
+            id: Some(USER.into()),
+            admin: true,
+        };
+        assert!(matches!(
+            plan(&frame(HOSTED), &facts(Some(&admin), Some(&r), "")),
+            Plan::Provider(_)
+        ));
+        // A shared row is not the member's own: no origin check.
+        let shared = row(&own_row("", "https://qa-provider.example/v1", r#","shared":true"#));
+        assert!(matches!(
+            plan(&frame(HOSTED), &facts(Some(&u), Some(&shared), "")),
+            Plan::Provider(_)
+        ));
+        assert_eq!(
+            plan(&frame(HOSTED), &facts(None, Some(&r), "https://qa-provider.example")),
+            Plan::Refuse(NO_ACCOUNT)
+        );
+        assert_eq!(
+            plan(&frame(HOSTED), &facts(Some(&u), None, "https://qa-provider.example")),
+            Plan::Refuse(ROW_MISSING)
+        );
+        let no_base = row(r#"{"id":"qa-provider","label":"QA provider","baseUrl":7}"#);
+        assert_eq!(
+            plan(&frame(HOSTED), &facts(Some(&u), Some(&no_base), "https://qa-provider.example")),
+            Plan::Refuse(NODE_THROWS)
+        );
+        // The sign-in provider: not this slice (read as turned off, Node's own 409).
+        let sign_in = row(
+            r#"{"id":"qa-provider","kind":"chatgpt-oauth","label":"QA","baseUrl":"https://qa-provider.example"}"#,
+        );
+        assert!(matches!(
+            plan(&frame(HOSTED), &facts(Some(&u), Some(&sign_in), "https://qa-provider.example")),
+            Plan::Refuse(NODE_REFUSES | UNSUPPORTED)
+        ));
+    }
+
+    fn rechecked(rows: &FrontRows<&Script>, b: &Binding) -> Recheck {
+        let n = rows.now(b);
+        recheck(
+            b,
+            &Now {
+                user: &n.user,
+                user_active: n.user_active,
+                row: n.row.as_ref(),
+                member_own: n.member_own,
+                origin_approved: n.origin_approved,
+            },
+        )
+    }
+
+    /// The re-check over the real provider files: passes as cut; a moved address, a deleted row, a disabled
+    /// account each fail it; the key is unsealed per request (rotation picked up; unreadable or empty: none).
+    #[test]
+    fn front_rows_read_the_files_as_they_are_now() {
+        let dir = tempfile::tempdir().unwrap();
+        let k = keys();
+        write_rows(
+            dir.path(),
+            false,
+            &own_row(&sealed(&k, "qa-key-1"), "https://qa-provider.example/v1", ""),
+        );
+        // An administrator: the member origin list (read from the environment per request) does not apply.
+        let admin = User {
+            id: Some(USER.into()),
+            admin: true,
+        };
+        let script = Script(Mutex::new(Some(admin.clone())));
+        let found = row_of(dir.path(), USER, "qa-provider", "default").expect("own row");
+        let Plan::Provider(c) = plan(&frame(HOSTED), &facts(Some(&admin), Some(&found), "")) else {
+            panic!("not cut")
+        };
+        let rows = FrontRows::new(
+            &script,
+            dir.path().to_path_buf(),
+            USER.into(),
+            "default".into(),
+            Some(keys()),
+        );
+        assert_eq!(rechecked(&rows, &c.binding), Recheck::Ok);
+        assert_eq!(rows.key("qa-provider").as_deref(), Some("qa-key-1"));
+        assert_eq!(rows.key("default"), None, "the default row's key is never read here");
+
+        // Key rotated: the next request reads the new one; the binding still holds (the key is not pinned).
+        write_rows(
+            dir.path(),
+            false,
+            &own_row(&sealed(&k, "qa-key-2"), "https://qa-provider.example/v1", ""),
+        );
+        assert_eq!(rechecked(&rows, &c.binding), Recheck::Ok);
+        assert_eq!(rows.key("qa-provider").as_deref(), Some("qa-key-2"));
+
+        // Sealed under another key: unreadable, so no bearer (openProviderKey gives '').
+        let other = SecretKeys::from_existing_bytes(zeroize::Zeroizing::new(vec![9u8; 32]), None).unwrap();
+        write_rows(
+            dir.path(),
+            false,
+            &own_row(&sealed(&other, "qa-key-3"), "https://qa-provider.example/v1", ""),
+        );
+        assert_eq!(rows.key("qa-provider"), None);
+        write_rows(dir.path(), false, &own_row("", "https://qa-provider.example/v1", ""));
+        assert_eq!(rows.key("qa-provider"), None);
+        let no_keys = FrontRows::new(
+            &script,
+            dir.path().to_path_buf(),
+            USER.into(),
+            "default".into(),
+            None,
+        );
+        assert_eq!(no_keys.key("qa-provider"), None);
+
+        // The address moved: the settings changed during this reply.
+        write_rows(dir.path(), false, &own_row("", "https://qa-moved.example/v1", ""));
+        assert_ne!(rechecked(&rows, &c.binding), Recheck::Ok);
+        // The row deleted.
+        write_rows(dir.path(), false, "");
+        assert_eq!(rechecked(&rows, &c.binding), Recheck::RowGone);
+        // Back, then the account disabled.
+        write_rows(dir.path(), false, &own_row("", "https://qa-provider.example/v1", ""));
+        assert_eq!(rechecked(&rows, &c.binding), Recheck::Ok);
+        script.set(None);
+        assert_eq!(rechecked(&rows, &c.binding), Recheck::UserChanged);
+    }
+
+    /// A shared row is found in the shared file and reads as shared; the account's own row with the same id
+    /// does not shadow it (provider_test_routes.rs `find_row`'s order), and the default id is never a row here.
+    #[test]
+    fn shared_rows_and_the_default_id() {
+        let dir = tempfile::tempdir().unwrap();
+        write_rows(
+            dir.path(),
+            true,
+            r#"{"id":"qa-provider","label":"QA shared","baseUrl":"https://qa-shared.example"}"#,
+        );
+        write_rows(dir.path(), false, &own_row("", "https://qa-own.example", ""));
+        let r = row_of(dir.path(), USER, "qa-provider", "default").unwrap();
+        assert_eq!(r.get("baseUrl").as_str(), Some("https://qa-shared.example"));
+        assert!(r.get("shared").truthy());
+        assert_eq!(row_of(dir.path(), USER, "default", "default"), None);
+        assert_eq!(row_of(dir.path(), USER, "qa-missing", "default"), None);
+        let script = Script::member();
+        let (account, row) = read_facts(&&script, dir.path(), USER, "qa-provider", "default");
+        assert_eq!(account, Some(member()));
+        assert!(row.is_some());
+        script.set(None);
+        assert_eq!(
+            read_facts(&&script, dir.path(), USER, "qa-provider", "default"),
+            (None, None),
+            "no row is read for an inactive account"
+        );
+    }
+
+    #[test]
+    fn the_provider_client_is_built() {
+        assert!(provider_client().is_some());
+    }
+}
