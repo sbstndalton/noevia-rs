@@ -82,6 +82,7 @@ pub mod model_manager_scan;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
+pub mod model_writes_routes;
 pub mod native_retrieval;
 #[cfg(feature = "rust-storage-reads")]
 pub mod nextcloud_routes;
@@ -967,6 +968,14 @@ async fn handle(
         let at = whatwg.as_deref().unwrap_or(&path);
         if code_routes::parse(req.method().as_str(), at).is_some() {
             native = Some(routes::Native::Projects);
+        }
+    }
+    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget and idle unload PUTs are
+    // the models routes' too (model_writes_routes.rs); unset, they stay Node's.
+    if native.is_none() && app.config.model_writes.on {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if app.config.model_writes.answers(req.method(), at) {
+            native = Some(routes::Native::Models);
         }
     }
     let served_bundle = match native {

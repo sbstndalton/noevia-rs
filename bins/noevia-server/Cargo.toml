@@ -120,6 +120,8 @@ code-acp = { path = "../../crates/code-acp" }
 code-harness = { path = "../../crates/code-harness" }
 # Track R11: the Code engine facts the front can answer for itself (code_facts.rs).
 engine-facts = { path = "../../crates/engine-facts" }
+# Track R11: the inference budget and idle unload PUTs (model_writes_routes.rs).
+model-writes = { path = "../../crates/model-writes" }
 code-pipeline = { path = "../../crates/code-pipeline" }
 code-verify = { path = "../../crates/code-verify" }
 role-engine = { path = "../../crates/role-engine" }
