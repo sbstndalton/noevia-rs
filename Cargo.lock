@@ -2728,6 +2728,7 @@ dependencies = [
 name = "project-index"
 version = "0.1.0"
 dependencies = [
+ "prompt-framing",
  "rusqlite",
  "serde_json",
  "sha2",

@@ -10,7 +10,7 @@
 //! result, the per-file state sizes, the embed requests and the whole index file are Node's.
 
 use project_index::chunk::{chunk_text, hash, units};
-use project_index::embed::{embed_framed, Vector};
+use project_index::embed::{DocumentEmbedder, Vector};
 use project_index::index::{self, Index, TailChunk, TailGates, TailRequest};
 use project_index::slots::Target;
 use project_index::state::{FileKey, FileState, Outcome};
@@ -49,6 +49,17 @@ fn chunk_text_matches_node() {
             .collect();
         let got = chunk_text(&units(case["text"].as_str().unwrap()));
         assert_eq!(got, want, "case {}", case["name"]);
+    }
+}
+
+/// The recorder's `bodyOf`: the text after a document frame's `title: … | text: ` prefix.
+fn body_of(t: &str) -> &str {
+    match t
+        .strip_prefix("title: ")
+        .and_then(|r| r.find('|').map(|i| (r, i)))
+    {
+        Some((r, i)) => r[i + 1..].strip_prefix(" text: ").unwrap_or(t),
+        None => t,
     }
 }
 
@@ -184,7 +195,7 @@ struct Replay {
     busy: Cell<bool>,
     failing: Cell<bool>,
     short: Cell<bool>,
-    calls: RefCell<Vec<usize>>,
+    calls: RefCell<Vec<Value>>,
     dim: usize,
 }
 
@@ -203,9 +214,17 @@ impl Replay {
         index::open_index(&self.path(project), &self.target.borrow(), &|| false)
     }
 
-    fn embed(&self, _t: &Target, texts: &[String]) -> Result<Vec<Vector>, String> {
-        let mut once = |input: &[String]| -> Result<Vec<Value>, String> {
-            self.calls.borrow_mut().push(input.len());
+    /// The recorder's endpoint: vectors of the unframed text (`bodyOf`), batch answers reversed with their index.
+    fn embed(&self, t: &Target, texts: &[String]) -> Result<Vec<Vector>, String> {
+        use project_index::index::Embed;
+        let once = |_: &Target, input: &[String]| -> Result<Vec<Value>, String> {
+            let framed = format!(
+                "{:x}",
+                Sha256::digest(serde_json::to_string(input).unwrap().as_bytes())
+            );
+            self.calls
+                .borrow_mut()
+                .push(json!({"n": input.len(), "framed": framed}));
             if self.failing.get() {
                 return Err("embeddings 500: down".into());
             }
@@ -215,12 +234,16 @@ impl Replay {
             let mut data: Vec<Value> = input
                 .iter()
                 .enumerate()
-                .map(|(i, t)| json!({"index": i, "embedding": vector_for(t, self.dim)}))
+                .map(|(i, t)| json!({"index": i, "embedding": vector_for(body_of(t), self.dim)}))
                 .collect();
             data.reverse();
             Ok(data)
         };
-        embed_framed(&mut once, texts)
+        DocumentEmbedder {
+            call: once,
+            off: |_: &Target| false,
+        }
+        .embed(t, texts)
     }
 
     fn step(&self, step: &Value) -> Value {
@@ -341,14 +364,11 @@ fn index_writes_match_node() {
                         "{at}: result\n rust {got}\n node {}",
                         step["result"]
                     );
-                    let calls: Vec<usize> = r.calls.borrow_mut().drain(..).collect();
-                    let want: Vec<usize> = step["calls"]
-                        .as_array()
-                        .unwrap()
-                        .iter()
-                        .map(|c| c.as_u64().unwrap() as usize)
-                        .collect();
-                    assert_eq!(calls, want, "{at}: embed requests");
+                    let calls = Value::Array(r.calls.borrow_mut().drain(..).collect());
+                    assert_eq!(
+                        calls, step["calls"],
+                        "{at}: embed requests (sizes and framed inputs)"
+                    );
                     let (g, v) = r.state.borrow().tracked();
                     assert_eq!(
                         json!({"generations": g, "versions": v}),

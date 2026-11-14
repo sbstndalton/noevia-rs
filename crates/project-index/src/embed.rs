@@ -80,11 +80,116 @@ pub fn embed_framed(call: &mut dyn EmbedOnce, input: &[String]) -> Result<Vec<Ve
     }
 }
 
+/// `embed(texts, { kind: 'document', target })` for index chunks: refuses while the admin has the
+/// embedding service off (`embeddingOff`), frames every text for the target's profile with no title
+/// (as the Diary's index does: a file name is not part of a chunk's text) and applies [`embed_framed`].
+/// `call` is one `/v1/embeddings` request to the target's address.
+pub struct DocumentEmbedder<C, O>
+where
+    C: FnMut(&crate::slots::Target, &[String]) -> Result<Vec<Value>, String>,
+    O: Fn(&crate::slots::Target) -> bool,
+{
+    pub call: C,
+    pub off: O,
+}
+
+/// Node's `embed` error when the embedding service is off (code `embeddingOff`).
+pub const EMBEDDING_OFF: &str = "Embedding is turned off.";
+
+/// Frames one document text for a profile (`frame(profile, [text], { kind: 'document' })`).
+pub fn frame_document(profile: &str, text: &str) -> Result<String, String> {
+    use prompt_framing::embedding_input::{frame, Kind, Profile};
+    // Named difference: Node's message also lists the known profiles.
+    let p = Profile::try_from(profile)
+        .map_err(|_| format!("Unknown embedding profile \"{profile}\""))?;
+    let units: Vec<u16> = text.encode_utf16().collect();
+    Ok(String::from_utf16_lossy(&frame(
+        p,
+        Kind::Document,
+        &units,
+        None,
+    )))
+}
+
+impl<C, O> crate::index::Embed for DocumentEmbedder<C, O>
+where
+    C: FnMut(&crate::slots::Target, &[String]) -> Result<Vec<Value>, String>,
+    O: Fn(&crate::slots::Target) -> bool,
+{
+    fn embed(
+        &mut self,
+        target: &crate::slots::Target,
+        texts: &[String],
+    ) -> Result<Vec<Vector>, String> {
+        if texts.is_empty() {
+            return Ok(Vec::new());
+        }
+        if (self.off)(target) {
+            return Err(EMBEDDING_OFF.into());
+        }
+        let framed = texts
+            .iter()
+            .map(|t| frame_document(&target.profile, t))
+            .collect::<Result<Vec<_>, _>>()?;
+        let call = &mut self.call;
+        let mut once = |input: &[String]| call(target, input);
+        embed_framed(&mut once, &framed)
+    }
+}
+
 #[cfg(test)]
 #[allow(clippy::unwrap_used, clippy::indexing_slicing)]
 mod tests {
     use super::*;
+    use crate::index::Embed;
+    use crate::slots::{Target, LEGACY_PROFILE};
     use serde_json::json;
+
+    #[test]
+    fn documents_are_framed_for_the_target_and_refused_when_off() {
+        let seen = std::cell::RefCell::new(Vec::new());
+        let mut e = DocumentEmbedder {
+            call: |_: &Target, input: &[String]| {
+                seen.borrow_mut().extend(input.iter().cloned());
+                Ok(input
+                    .iter()
+                    .enumerate()
+                    .map(|(i, _)| json!({"index": i, "embedding": [1.0]}))
+                    .collect())
+            },
+            off: |t: &Target| t.model == "qa-off",
+        };
+        let legacy = Target {
+            profile: LEGACY_PROFILE.into(),
+            model: "qa-a".into(),
+        };
+        assert_eq!(
+            e.embed(&legacy, &["raw text".into()]).unwrap(),
+            vec![Some(vec![1.0])]
+        );
+        assert_eq!(
+            *seen.borrow(),
+            vec!["raw text"],
+            "the legacy profile sends the text unchanged"
+        );
+        let off = Target {
+            model: "qa-off".into(),
+            ..legacy.clone()
+        };
+        assert_eq!(e.embed(&off, &["x".into()]).unwrap_err(), EMBEDDING_OFF);
+        assert!(
+            e.embed(&off, &[]).unwrap().is_empty(),
+            "nothing to embed is never refused"
+        );
+        let unknown = Target {
+            profile: "qa-unknown".into(),
+            model: "qa-c".into(),
+        };
+        assert!(e
+            .embed(&unknown, &["x".into()])
+            .unwrap_err()
+            .starts_with("Unknown embedding profile"));
+    }
 
     #[test]
     fn a_batch_is_ordered_by_index() {

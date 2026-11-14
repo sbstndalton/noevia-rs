@@ -76,7 +76,8 @@ let shortBatches = false;
 const calls = [];
 rag._test.setRagFetch(async (url, init) => {
   const body = JSON.parse(init.body);
-  calls.push(body.input.length);
+  // How many texts, and the sha256 of the framed inputs as JSON (the Rust side frames them itself).
+  calls.push({ n: body.input.length, framed: crypto.createHash('sha256').update(JSON.stringify(body.input)).digest('hex') });
   if (failing) return new Response('down', { status: 500 });
   if (shortBatches && body.input.length > 1) return new Response(JSON.stringify({ data: [] }), { status: 200 });
   const data = body.input.map((t, index) => ({ index, embedding: vectorFor(bodyOf(t), dim) })).reverse();
