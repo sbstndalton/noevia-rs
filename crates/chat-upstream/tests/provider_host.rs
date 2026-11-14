@@ -1066,6 +1066,10 @@ fn a_provider_rows_turn_uses_the_hosted_limit() {
                 ("source", chat_turn::js::s(source)),
             ]),
         );
-        assert_eq!(context(&f), (tokens as f64, source.to_string()), "{stated:?}");
+        assert_eq!(
+            context(&f),
+            (tokens as f64, source.to_string()),
+            "{stated:?}"
+        );
     }
 }

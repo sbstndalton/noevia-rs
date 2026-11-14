@@ -52,7 +52,8 @@ pub const ADDRESS: &str = "the frame's upstreamUrl is not the row's address";
 pub const LIMIT: &str = "the frame's runtimeLimit is not the row's hosted limit";
 pub const NODE_REFUSES: &str = "Node refuses this row's turn (sign-in or member origin)";
 pub const NODE_THROWS: &str = "the row has no text baseUrl";
-pub const UNSUPPORTED: &str = "the row needs a transport this front does not run (machine or broker)";
+pub const UNSUPPORTED: &str =
+    "the row needs a transport this front does not run (machine or broker)";
 
 /// Whether this front offers [`CAPS_TOKEN`].
 pub fn offered() -> bool {
@@ -131,7 +132,12 @@ pub fn plan(p: &Prepared, f: &Facts<'_>) -> Plan {
         chat_id: p.chat_id.as_deref(),
         space_id: p.space_id.as_deref(),
     };
-    let c = match cut::cut(&turn, &p.model, p.chat_key.as_deref(), f.now_ms + BINDING_MS) {
+    let c = match cut::cut(
+        &turn,
+        &p.model,
+        p.chat_key.as_deref(),
+        f.now_ms + BINDING_MS,
+    ) {
         Ok(c) => c,
         Err(NotCut::Node(_)) => return Plan::Refuse(NODE_REFUSES),
         Err(NotCut::Throws) => return Plan::Refuse(NODE_THROWS),
@@ -218,9 +224,14 @@ impl<A: Accounts> Rows for FrontRows<A> {
     fn now(&self, binding: &Binding) -> RowsNow {
         let user = self.accounts.active(&self.user);
         // The row only for an active account (an inactive one fails the re-check on the user anyway).
-        let row = user
-            .as_ref()
-            .and_then(|_| row_of(&self.data_dir, &self.user, &binding.provider_id, &self.default_id));
+        let row = user.as_ref().and_then(|_| {
+            row_of(
+                &self.data_dir,
+                &self.user,
+                &binding.provider_id,
+                &self.default_id,
+            )
+        });
         // No account: the re-check reads no user, inactive (UserChanged).
         cut::rows_now(
             user.as_ref(),
@@ -237,8 +248,12 @@ impl<A: Accounts> Rows for FrontRows<A> {
             return None;
         }
         let keys = self.keys.as_ref()?;
-        let row =
-            crate::provider_test_routes::find_row(&self.data_dir, &self.user, provider_id, Some(keys))?;
+        let row = crate::provider_test_routes::find_row(
+            &self.data_dir,
+            &self.user,
+            provider_id,
+            Some(keys),
+        )?;
         Some(row.key.as_str().to_string()).filter(|k| !k.is_empty())
     }
 }
@@ -344,7 +359,9 @@ mod tests {
     }
 
     fn own_row(key: &str, base: &str, extra: &str) -> String {
-        format!(r#"{{"id":"qa-provider","label":"QA provider","baseUrl":"{base}","apiKey":"{key}"{extra}}}"#)
+        format!(
+            r#"{{"id":"qa-provider","label":"QA provider","baseUrl":"{base}","apiKey":"{key}"{extra}}}"#
+        )
     }
 
     fn frame(extra: &str) -> Prepared {
@@ -361,7 +378,8 @@ mod tests {
         Prepared::read(&f).unwrap_or_else(|e| panic!("{e:?}"))
     }
 
-    const HOSTED: &str = r#","runtimeLimit":{"tokens":32768,"source":"Default for hosted providers"}"#;
+    const HOSTED: &str =
+        r#","runtimeLimit":{"tokens":32768,"source":"Default for hosted providers"}"#;
 
     fn row(json: &str) -> JValue {
         js_json::parse(json).unwrap()
@@ -399,7 +417,10 @@ mod tests {
             assert_eq!(offered_by(v), on, "{v:?}");
         }
         assert_eq!(caps(false), chat_turn::handoff::HANDOFF_CAPS);
-        assert_eq!(caps(true), format!("{},providers", chat_turn::handoff::HANDOFF_CAPS));
+        assert_eq!(
+            caps(true),
+            format!("{},providers", chat_turn::handoff::HANDOFF_CAPS)
+        );
         assert!(!caps(false).split(',').any(|t| t == CAPS_TOKEN));
     }
 
@@ -423,8 +444,10 @@ mod tests {
         let u = member();
         let r = row(&own_row("", "https://qa-provider.example/v1/", ""));
         let p = frame(HOSTED);
-        let Plan::Provider(c) = plan(&p, &facts(Some(&u), Some(&r), "https://qa-provider.example"))
-        else {
+        let Plan::Provider(c) = plan(
+            &p,
+            &facts(Some(&u), Some(&r), "https://qa-provider.example"),
+        ) else {
             panic!("not cut")
         };
         assert_eq!(c.target.url, URL);
@@ -434,7 +457,11 @@ mod tests {
         assert_eq!(c.binding.chat_key.as_deref(), Some("qa-chat"));
         assert!((c.binding.expires_ms - (1_000.0 + BINDING_MS)).abs() < f64::EPSILON);
         // A stated context is the limit the frame must carry.
-        let r = row(&own_row("", "https://qa-provider.example", r#","contextTokens":65536"#));
+        let r = row(&own_row(
+            "",
+            "https://qa-provider.example",
+            r#","contextTokens":65536"#,
+        ));
         let f = facts(Some(&u), Some(&r), "https://qa-provider.example");
         assert_eq!(plan(&p, &f), Plan::Refuse(LIMIT));
         let stated = frame(r#","runtimeLimit":{"tokens":65536,"source":"Provider setting"}"#);
@@ -484,22 +511,35 @@ mod tests {
             Plan::Provider(_)
         ));
         // A shared row is not the member's own: no origin check.
-        let shared = row(&own_row("", "https://qa-provider.example/v1", r#","shared":true"#));
+        let shared = row(&own_row(
+            "",
+            "https://qa-provider.example/v1",
+            r#","shared":true"#,
+        ));
         assert!(matches!(
             plan(&frame(HOSTED), &facts(Some(&u), Some(&shared), "")),
             Plan::Provider(_)
         ));
         assert_eq!(
-            plan(&frame(HOSTED), &facts(None, Some(&r), "https://qa-provider.example")),
+            plan(
+                &frame(HOSTED),
+                &facts(None, Some(&r), "https://qa-provider.example")
+            ),
             Plan::Refuse(NO_ACCOUNT)
         );
         assert_eq!(
-            plan(&frame(HOSTED), &facts(Some(&u), None, "https://qa-provider.example")),
+            plan(
+                &frame(HOSTED),
+                &facts(Some(&u), None, "https://qa-provider.example")
+            ),
             Plan::Refuse(ROW_MISSING)
         );
         let no_base = row(r#"{"id":"qa-provider","label":"QA provider","baseUrl":7}"#);
         assert_eq!(
-            plan(&frame(HOSTED), &facts(Some(&u), Some(&no_base), "https://qa-provider.example")),
+            plan(
+                &frame(HOSTED),
+                &facts(Some(&u), Some(&no_base), "https://qa-provider.example")
+            ),
             Plan::Refuse(NODE_THROWS)
         );
         // The sign-in provider: not this slice (read as turned off, Node's own 409).
@@ -507,7 +547,10 @@ mod tests {
             r#"{"id":"qa-provider","kind":"chatgpt-oauth","label":"QA","baseUrl":"https://qa-provider.example"}"#,
         );
         assert!(matches!(
-            plan(&frame(HOSTED), &facts(Some(&u), Some(&sign_in), "https://qa-provider.example")),
+            plan(
+                &frame(HOSTED),
+                &facts(Some(&u), Some(&sign_in), "https://qa-provider.example")
+            ),
             Plan::Refuse(NODE_REFUSES | UNSUPPORTED)
         ));
     }
@@ -535,7 +578,11 @@ mod tests {
         write_rows(
             dir.path(),
             false,
-            &own_row(&sealed(&k, "qa-key-1"), "https://qa-provider.example/v1", ""),
+            &own_row(
+                &sealed(&k, "qa-key-1"),
+                "https://qa-provider.example/v1",
+                "",
+            ),
         );
         // An administrator: the member origin list (read from the environment per request) does not apply.
         let admin = User {
@@ -556,26 +603,43 @@ mod tests {
         );
         assert_eq!(rechecked(&rows, &c.binding), Recheck::Ok);
         assert_eq!(rows.key("qa-provider").as_deref(), Some("qa-key-1"));
-        assert_eq!(rows.key("default"), None, "the default row's key is never read here");
+        assert_eq!(
+            rows.key("default"),
+            None,
+            "the default row's key is never read here"
+        );
 
         // Key rotated: the next request reads the new one; the binding still holds (the key is not pinned).
         write_rows(
             dir.path(),
             false,
-            &own_row(&sealed(&k, "qa-key-2"), "https://qa-provider.example/v1", ""),
+            &own_row(
+                &sealed(&k, "qa-key-2"),
+                "https://qa-provider.example/v1",
+                "",
+            ),
         );
         assert_eq!(rechecked(&rows, &c.binding), Recheck::Ok);
         assert_eq!(rows.key("qa-provider").as_deref(), Some("qa-key-2"));
 
         // Sealed under another key: unreadable, so no bearer (openProviderKey gives '').
-        let other = SecretKeys::from_existing_bytes(zeroize::Zeroizing::new(vec![9u8; 32]), None).unwrap();
+        let other =
+            SecretKeys::from_existing_bytes(zeroize::Zeroizing::new(vec![9u8; 32]), None).unwrap();
         write_rows(
             dir.path(),
             false,
-            &own_row(&sealed(&other, "qa-key-3"), "https://qa-provider.example/v1", ""),
+            &own_row(
+                &sealed(&other, "qa-key-3"),
+                "https://qa-provider.example/v1",
+                "",
+            ),
         );
         assert_eq!(rows.key("qa-provider"), None);
-        write_rows(dir.path(), false, &own_row("", "https://qa-provider.example/v1", ""));
+        write_rows(
+            dir.path(),
+            false,
+            &own_row("", "https://qa-provider.example/v1", ""),
+        );
         assert_eq!(rows.key("qa-provider"), None);
         let no_keys = FrontRows::new(
             &script,
@@ -587,13 +651,21 @@ mod tests {
         assert_eq!(no_keys.key("qa-provider"), None);
 
         // The address moved: the settings changed during this reply.
-        write_rows(dir.path(), false, &own_row("", "https://qa-moved.example/v1", ""));
+        write_rows(
+            dir.path(),
+            false,
+            &own_row("", "https://qa-moved.example/v1", ""),
+        );
         assert_ne!(rechecked(&rows, &c.binding), Recheck::Ok);
         // The row deleted.
         write_rows(dir.path(), false, "");
         assert_eq!(rechecked(&rows, &c.binding), Recheck::RowGone);
         // Back, then the account disabled.
-        write_rows(dir.path(), false, &own_row("", "https://qa-provider.example/v1", ""));
+        write_rows(
+            dir.path(),
+            false,
+            &own_row("", "https://qa-provider.example/v1", ""),
+        );
         assert_eq!(rechecked(&rows, &c.binding), Recheck::Ok);
         script.set(None);
         assert_eq!(rechecked(&rows, &c.binding), Recheck::UserChanged);
@@ -609,7 +681,11 @@ mod tests {
             true,
             r#"{"id":"qa-provider","label":"QA shared","baseUrl":"https://qa-shared.example"}"#,
         );
-        write_rows(dir.path(), false, &own_row("", "https://qa-own.example", ""));
+        write_rows(
+            dir.path(),
+            false,
+            &own_row("", "https://qa-own.example", ""),
+        );
         let r = row_of(dir.path(), USER, "qa-provider", "default").unwrap();
         assert_eq!(r.get("baseUrl").as_str(), Some("https://qa-shared.example"));
         assert!(r.get("shared").truthy());
@@ -660,7 +736,9 @@ mod http_tests {
                     let mut got = Vec::new();
                     // Read the head and the declared body (the client sends a small JSON body).
                     loop {
-                        let Ok(n) = s.read(&mut buf).await else { return };
+                        let Ok(n) = s.read(&mut buf).await else {
+                            return;
+                        };
                         if n == 0 {
                             return;
                         }
@@ -693,7 +771,8 @@ mod http_tests {
     #[tokio::test]
     async fn the_provider_client_follows_no_redirect() {
         let (elsewhere, elsewhere_hits) =
-            stub("HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok".into()).await;
+            stub("HTTP/1.1 200 OK\r\ncontent-length: 2\r\nconnection: close\r\n\r\nok".into())
+                .await;
         let client = provider_client().unwrap();
         for status in [301u16, 302, 303, 307, 308] {
             let (base, hits) = stub(format!(
@@ -710,7 +789,11 @@ mod http_tests {
             assert_eq!(answer.status().as_u16(), status);
             assert_eq!(hits.load(Ordering::SeqCst), 1);
         }
-        assert_eq!(elsewhere_hits.load(Ordering::SeqCst), 0, "a redirect was followed");
+        assert_eq!(
+            elsewhere_hits.load(Ordering::SeqCst),
+            0,
+            "a redirect was followed"
+        );
         let ok = client
             .post(format!("{elsewhere}/v1/chat/completions"))
             .body("{}")

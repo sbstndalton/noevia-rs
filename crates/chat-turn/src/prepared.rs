@@ -193,7 +193,10 @@ fn runtime_limit(v: &JValue, manager_enabled: bool) -> Result<Option<(u64, Strin
                 ));
             }
             let n = v.get("tokens").as_num().ok_or_else(bad)?;
-            if !(n.is_finite() && n.fract() == 0.0 && (RUNTIME_LIMIT_MIN..=RUNTIME_LIMIT_MAX).contains(&n)) {
+            if !(n.is_finite()
+                && n.fract() == 0.0
+                && (RUNTIME_LIMIT_MIN..=RUNTIME_LIMIT_MAX).contains(&n))
+            {
                 return Err(bad());
             }
             let source = v.get("source").as_str().ok_or_else(bad)?;
@@ -335,9 +338,15 @@ mod tests {
 
     #[test]
     fn the_runtime_limit_is_a_hosted_limit_or_absent() {
-        assert_eq!(Prepared::read(&frame("", false)).unwrap().runtime_limit, None);
-        for (tokens, source) in [(2048, "Provider setting"), (32_768, "Default for hosted providers"), (2_000_000, "x")]
-        {
+        assert_eq!(
+            Prepared::read(&frame("", false)).unwrap().runtime_limit,
+            None
+        );
+        for (tokens, source) in [
+            (2048, "Provider setting"),
+            (32_768, "Default for hosted providers"),
+            (2_000_000, "x"),
+        ] {
             let f = frame(
                 &format!(r#","runtimeLimit":{{"tokens":{tokens},"source":"{source}"}}"#),
                 false,
@@ -363,6 +372,9 @@ mod tests {
         // The hosted limit is the no-manager branch only: with the manager on, the frame is refused.
         let f = frame(r#","runtimeLimit":{"tokens":4096,"source":"x"}"#, true);
         assert!(Prepared::read(&f).is_err());
-        assert_eq!(Prepared::read(&frame("", true)).unwrap().runtime_limit, None);
+        assert_eq!(
+            Prepared::read(&frame("", true)).unwrap().runtime_limit,
+            None
+        );
     }
 }

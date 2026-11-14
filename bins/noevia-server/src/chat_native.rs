@@ -499,9 +499,11 @@ async fn drive(
         );
         let read = tokio::task::spawn_blocking(move || {
             let accounts = crate::chat_provider::AppAccounts(app2);
-            let (account, row) =
-                crate::chat_provider::read_facts(&accounts, &dir, &who, &id, &def);
-            let keys = row.is_some().then(|| crate::chat_provider::load_keys(&dir)).flatten();
+            let (account, row) = crate::chat_provider::read_facts(&accounts, &dir, &who, &id, &def);
+            let keys = row
+                .is_some()
+                .then(|| crate::chat_provider::load_keys(&dir))
+                .flatten();
             (account, row, keys)
         })
         .await;
