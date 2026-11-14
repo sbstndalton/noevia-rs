@@ -516,7 +516,7 @@ fn the_embedded_recordings_file_verdicts_plan_on_a_tree_built_from_their_index_u
 }
 
 /// Lines 1308-1436 of core main 8f100d0's server/index.cjs: the refusal guard block (66 guards among bridges and
-/// comments), copied verbatim so the guard rule runs on the real shapes.
+/// comments), copied verbatim (one product name in a comment replaced) so the guard rule runs on the real shapes.
 const INDEX_GUARDS: &str = include_str!("../fixtures/index-guards-core-8f100d0.txt");
 
 #[test]

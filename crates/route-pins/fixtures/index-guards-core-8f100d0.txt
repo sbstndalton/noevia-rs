@@ -63,7 +63,7 @@
   if (require('./rust-project-document-pages.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
   // And the conversation import (#2191 round 4).
   if (require('./rust-conversation-import.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
-  // And a project document's upload, on the front's Docling pipeline (#2191 round 5).
+  // And a project document's upload, on the front's extraction pipeline (#2191 round 5).
   if (require('./rust-project-documents.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
   // And the background source jobs, whose store the front owns (#2191 round 6).
   if (require('./rust-source-jobs.cjs').refuseOwned(req, res, { parseRequestUrl, json })) return;
