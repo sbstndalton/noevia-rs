@@ -295,8 +295,11 @@ fn machines_error() -> EngineError {
 /// inference-machines.cjs `urlFor(service)` from the saved state.
 /// `Ok(None)`: nothing assigned (or no `cowork.db` yet); `Err`: the store cannot be read.
 fn machine_url(data_dir: &Path, kind: &str) -> Result<Option<String>, ()> {
-    if !data_dir.join(server_store::DB_FILE).is_file() {
-        return Ok(None);
+    match std::fs::metadata(data_dir.join(server_store::DB_FILE)) {
+        Ok(m) if m.is_file() => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        // A store that cannot be looked at is unreadable (the native registry core asks fails closed too).
+        _ => return Err(()),
     }
     let store = server_store::Store::open(data_dir).map_err(|_| ())?;
     let raw: Option<String> = store
@@ -723,6 +726,11 @@ fn now_ms() -> i64 {
 /// One pass over every user's queue: the due jobs run, one user after another (one extraction at a
 /// time in this process, as one Docling slot serves them all).
 pub fn pass(data_dir: &Path, engine: &dyn Engine, switch: server_store::RustProjects) -> usize {
+    // The machine store unreadable: core reads nothing then; the jobs wait as they are, with no attempt
+    // counted, so their backoff does not grow (noevia#2614).
+    if engine.machines_unavailable() {
+        return 0;
+    }
     let limits = Limits::from_env();
     let mut ran = 0;
     for user in server_projects::extract_queue::users_with_jobs(data_dir) {
