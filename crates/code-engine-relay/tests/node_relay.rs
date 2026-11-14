@@ -377,7 +377,7 @@ async fn replay(fx: &JValue, sc: &JValue) -> Vec<String> {
         Arc::new(move |_: &str| reader.lock().unwrap().clone()),
         url,
     );
-    options.log = Arc::new(move |e| log_in.lock().unwrap().push(e));
+    options.log = Arc::new(move |e: JValue| log_in.lock().unwrap().push(e));
     if let Some(n) = o.get("bodyCap").as_num() {
         options.body_cap = n as usize;
     }
