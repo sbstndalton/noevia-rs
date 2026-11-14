@@ -447,6 +447,12 @@ fn the_pull_matches_node() {
             c.get("invalidated").as_num().unwrap_or(0.0)
         );
         assert_eq!(
+            host.scan_cleared,
+            c.get("scanCleared").as_num().unwrap_or(0.0),
+            "{}",
+            show(c)
+        );
+        assert_eq!(
             JValue::Arr(host.calls.clone()),
             *c.get("calls"),
             "{}",
@@ -581,7 +587,7 @@ fn the_mtp_artifact_check_matches_node() {
                             match artifacts.lock().unwrap().start(&repo, &files, now) {
                                 Start::Done(b) => Pending::Done(200, b),
                                 Start::Run(key) => Pending::Run(key),
-                                Start::Join(key) => Pending::Join(key),
+                                Start::Join(join) => Pending::Join(join.key),
                             }
                         }
                     });
@@ -635,6 +641,12 @@ fn the_mtp_artifact_check_matches_node() {
                     assert_eq!(
                         host.invalidated,
                         r.get("invalidated").as_num().unwrap_or(0.0)
+                    );
+                    assert_eq!(
+                        host.scan_cleared,
+                        r.get("scanCleared").as_num().unwrap_or(0.0),
+                        "{}",
+                        show(r)
                     );
                     assert_eq!(
                         JValue::Arr(host.calls.clone()),

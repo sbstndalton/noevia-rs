@@ -86,6 +86,11 @@ pub trait Host: Fetcher {
     /// One request to the model manager (or, for llama.cpp's variants, to Hugging Face), as
     /// http.cjs `fetchJson` sends it; `Err` for what `fetchJson` throws (no answer, the deadline,
     /// a redirect) or the llama.cpp manager's coverage loss.
+    ///
+    /// The llama.cpp manager's maintenance hold header (`X-Noevia-Maintenance`, while this
+    /// process holds a hold) goes only on a [`manager::Target::Manager`] request of the llama.cpp
+    /// kind; a [`manager::Target::PublicHub`] request gets nothing beyond the headers it lists
+    /// (none).
     fn send(&mut self, request: &Request) -> Result<Reply, Thrown>;
     /// llama.cpp only: the maintenance gate's `enter()` (`Err`: it is closed, core's 503 with the
     /// gate's reason). Each `Ok` is matched by one [`Host::leave`].
@@ -107,8 +112,6 @@ pub enum Outcome {
     Pass,
     /// [`Outcome`] of a body the port cannot hold (`body-unsupported`): core answers it.
     Forward,
-    /// The same artifact check is running ([`artifact::Start::Join`]): its answer, with 200.
-    Join(artifact::Key),
 }
 
 fn answer(status: u16, body: JValue) -> Outcome {
@@ -174,7 +177,8 @@ pub fn handle(
             match mtp_selection(config, call.query, host) {
                 Ok((repo, files)) => match artifact::check_shared(artifacts, &repo, &files, host) {
                     Checked::Answer(body) => answer(200, body),
-                    Checked::Join(key) => Outcome::Join(key),
+                    // A joined run that gave no answer: core's answer to a rejected promise.
+                    Checked::Failed(_) => error(500, "Internal error"),
                 },
                 Err(out) => out,
             }
