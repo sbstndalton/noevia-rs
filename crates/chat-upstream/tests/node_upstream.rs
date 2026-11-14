@@ -10,6 +10,9 @@
 
 use std::sync::LazyLock;
 
+use chat_upstream::binding::{self, Recheck};
+use chat_upstream::cut::{self, NotCut};
+use chat_upstream::host::Unsupported;
 use chat_upstream::refusal::{self, Facts};
 use chat_upstream::target::{self, Connection, Fetch, KeyUse, Refused, Target, Turn, User};
 use js_json::JValue;
@@ -177,4 +180,103 @@ fn every_recorded_refusal() {
         let stays = facts.machine || facts.sign_in || facts.route_target;
         assert_eq!(lifted, stays.then_some("provider"), "{f:?}");
     }
+}
+
+/// Every recorded target through [`cut::cut`]: Node's refusals and throws are kept, only direct keyed non-default
+/// rows of a signed-in user are cut, and a binding made at the cut passes its first re-check under the same
+/// facts ([`cut::rows_now`]), while the same turn with no origin approved any more is refused exactly when the
+/// row is a member's own (the rule `resolve` applied).
+#[test]
+fn every_recorded_target_cut_and_rechecked() {
+    let targets = arr(RECORDED.get("targets"));
+    let (mut cuts, mut origin_refused) = (0, 0);
+    for (i, t) in targets.iter().enumerate() {
+        let c = t.get("case");
+        let node = t.get("node");
+        let user = match c.get("user") {
+            JValue::Obj(_) => Some(User {
+                id: opt_text(c.get("user").get("id")).map(str::to_string),
+                admin: c.get("user").get("admin").truthy(),
+            }),
+            _ => None,
+        };
+        let machine = opt_text(c.get("machine"));
+        let row = if machine.is_some() { node.get("row") } else { c.get("row") };
+        let connection = match c.get("connection").as_str() {
+            Some("connected") => Connection::Connected,
+            Some("reconnect") => Connection::Reconnect,
+            _ => Connection::Missing,
+        };
+        let origins = c.get("origins").as_str().unwrap_or("");
+        let turn = Turn {
+            row,
+            default_id: "default",
+            user: user.as_ref(),
+            member_origins: origins,
+            machine,
+            sign_in: c.get("signIn").truthy(),
+            sign_in_enabled: c.get("signInEnabled").truthy(),
+            connection,
+            workspace_user: opt_text(c.get("workspaceUser")),
+            chat_id: opt_text(c.get("chatId")),
+            space_id: opt_text(c.get("spaceId")),
+        };
+        let got = cut::cut(&turn, "qa-model", Some("qa-chat"), 1.0e15);
+        let resolved = target::resolve(&turn);
+        let target = match resolved {
+            None => {
+                assert_eq!(got, Err(NotCut::Throws), "case {i}");
+                continue;
+            }
+            Some(Err(r)) => {
+                assert_eq!(got, Err(NotCut::Node(r)), "case {i}");
+                continue;
+            }
+            Some(Ok(t)) => t,
+        };
+        let has_user = user.as_ref().and_then(|u| u.id.as_deref()).is_some_and(|s| !s.is_empty());
+        if target.provider_id == "default" {
+            assert_eq!(got, Err(NotCut::Unsupported(Unsupported::DefaultProvider)), "case {i}");
+            continue;
+        }
+        if target.fetch != Fetch::Direct {
+            assert_eq!(got, Err(NotCut::Unsupported(Unsupported::Transport)), "case {i}");
+            continue;
+        }
+        if !has_user {
+            assert_eq!(got, Err(NotCut::NoUser), "case {i}");
+            continue;
+        }
+        let made = got.unwrap_or_else(|e| panic!("case {i}: {e:?}"));
+        assert_eq!(made.target, target, "case {i}");
+        assert_eq!(made.binding.url, target.url);
+        assert_eq!(made.binding.fingerprint, binding::fingerprint(row));
+        cuts += 1;
+        let now = cut::rows_now(user.as_ref(), true, Some(row), "default", origins, &made.binding);
+        assert_eq!(now.member_own, target.member_own, "case {i}");
+        let check = |n: &chat_upstream::host::RowsNow| {
+            binding::recheck(
+                &made.binding,
+                &binding::Now {
+                    user: &n.user,
+                    user_active: n.user_active,
+                    row: n.row.as_ref(),
+                    member_own: n.member_own,
+                    origin_approved: n.origin_approved,
+                },
+            )
+        };
+        assert_eq!(check(&now), Recheck::Ok, "case {i}: {c:?}");
+        let none = cut::rows_now(user.as_ref(), true, Some(row), "default", "", &made.binding);
+        let want = if target.member_own { Recheck::OriginRefused } else { Recheck::Ok };
+        assert_eq!(check(&none), want, "case {i}");
+        if want == Recheck::OriginRefused {
+            origin_refused += 1;
+        }
+        let gone = cut::rows_now(user.as_ref(), true, None, "default", origins, &made.binding);
+        assert_eq!(check(&gone), Recheck::RowGone, "case {i}");
+        let inactive = cut::rows_now(user.as_ref(), false, Some(row), "default", origins, &made.binding);
+        assert_eq!(check(&inactive), Recheck::UserChanged, "case {i}");
+    }
+    assert!(cuts > 100 && origin_refused > 10, "{cuts} cut, {origin_refused} origin-refused");
 }
