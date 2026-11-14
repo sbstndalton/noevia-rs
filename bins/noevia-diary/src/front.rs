@@ -291,7 +291,10 @@ pub async fn public(front: Arc<Front>, req: Request<Body>) -> Response<Body> {
     if let Some(r) = server::route(&parts.method, &path).filter(|r| named && !r.write()) {
         if !declares_body(&parts.headers) {
             let mut headers = parts.headers.clone();
-            if stamp_tenant(&headers).is_some_and(|uid| front.is_recovered(&uid)) {
+            // A tenant the child deleted (its fence) is the child's to answer (410), never native.
+            if stamp_tenant(&headers)
+                .is_some_and(|uid| !app.writers.is_fenced(&uid) && front.is_recovered(&uid))
+            {
                 headers.insert(RECOVERED_HEADER, HeaderValue::from_static("1"));
             }
             let resp = server::serve_native(app.clone(), r, query.clone(), headers, asserted).await;
