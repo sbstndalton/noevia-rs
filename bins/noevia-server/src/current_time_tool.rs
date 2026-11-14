@@ -11,16 +11,22 @@
 //! bridge as before, among them an unknown zone (core writes the error), a zone whose tz data differs
 //! between the two (sbstndalton/noevia#2653) and every call after the recorded span.
 //!
-//! The server zone is the web container's `TZ` (Node's ICU reads the same variable): only an IANA
-//! zone ID spelled as tzdb spells it ([`current_time::server_zone_from_tz`]). With `TZ` unset ICU
-//! reads the system's zone file; calls without a `timezone` argument then go to core.
+//! The server zone is the web container's `TZ` (Node's ICU reads the same variable; web-supervisor.sh
+//! starts core and the front in one container with one environment, which this relies on): only one
+//! of the zone IDs the recording ran Node under ([`current_time::server_zone_from_tz`]). With `TZ`
+//! unset ICU reads the system's zone file; calls without a `timezone` argument then go to core.
+//!
+//! The recording proves the answers for its own Node only: the front answers nothing until core's
+//! native op `runtime` has reported a Node with the recording's ICU and tz data
+//! ([`current_time::runtime_recorded`]); an older core (404) or another Node keeps every call core's.
 //!
 //! Core keeps counting the call: chat_native.rs asks core's native op `tool-used`, as for
-//! read_project_file.
+//! read_project_file. If that op does not answer (core down or older), the call is answered and its
+//! count is lost with a log line, where core's own path would have failed the call.
 use chat_turn::host::ToolRun;
 use js_json::JValue;
 use std::path::Path;
-use std::sync::OnceLock;
+use std::sync::{Mutex, OnceLock};
 
 /// The tool this module answers.
 pub const NAME: &str = "get_current_time";
@@ -41,9 +47,31 @@ pub fn server_zone() -> Option<&'static str> {
     .as_deref()
 }
 
+/// What core's op `runtime` said: `Some(true)` for a Node with the recording's ICU and tz data. Only
+/// a 200 answer is kept (an older core's 404, or a gone account, is asked again next time).
+static RUNTIME: Mutex<Option<bool>> = Mutex::new(None);
+
+/// Core's Node, if already known: whether it is the recording's.
+pub fn runtime_known() -> Option<bool> {
+    *RUNTIME
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+/// Keeps core's `runtime` answer (`{node, icu, tz}`) and says whether it is the recording's Node.
+pub fn runtime_answered(body: &JValue) -> bool {
+    let field = |k: &str| body.get(k).as_str().unwrap_or("");
+    let same = current_time::runtime_recorded(field("node"), field("icu"), field("tz"));
+    *RUNTIME
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(same);
+    same
+}
+
 /// The tool's text and failure flag when the front answers this call at `now_ms` on a server whose
 /// zone is `server_zone`; `None` leaves it to core. `active(user)` is core's account check
-/// ([`crate::project_file_read::account_active`]).
+/// ([`crate::project_file_read::account_active`]). The caller has checked core's Node
+/// ([`runtime_known`]).
 pub fn answer(
     data_dir: &Path,
     user: &str,
@@ -52,8 +80,19 @@ pub fn answer(
     now_ms: f64,
     active: impl FnOnce(&str) -> bool,
 ) -> Option<(String, bool)> {
-    let (args, _, _) = crate::project_file_read::bridge_scope(data_dir, user, run, NAME, active)?;
-    time_text(&args, server_zone, now_ms)
+    // The cheap checks first: a call left to core reads no store here.
+    if run.name != NAME {
+        return None;
+    }
+    let args = if run.args.is_empty() {
+        JValue::Obj(Vec::new())
+    } else {
+        js_json::wtf16::parse(&run.args).ok()?
+    };
+    let answer = time_text(&args, server_zone, now_ms)?;
+    // Then what core's bridge checks (the same arguments parsed again there).
+    crate::project_file_read::bridge_scope(data_dir, user, run, NAME, active)?;
+    Some(answer)
 }
 
 /// The tool's answer for these arguments, when [`current_time::verified`] holds for the zone it uses.
@@ -111,6 +150,19 @@ mod tests {
         )
         .unwrap();
         data
+    }
+
+    #[test]
+    fn runtime_must_be_the_recordings() {
+        assert_eq!(runtime_known(), None);
+        let node = |n: &str, i: &str, t: &str| {
+            js_json::parse(&format!(r#"{{"node":"{n}","icu":"{i}","tz":"{t}"}}"#)).unwrap()
+        };
+        assert!(!runtime_answered(&node("22.23.3", "78.3", "2026d")));
+        assert_eq!(runtime_known(), Some(false));
+        assert!(!runtime_answered(&js_json::parse("{}").unwrap()));
+        assert!(runtime_answered(&node("22.23.3", "78.3", "2026c")));
+        assert_eq!(runtime_known(), Some(true));
     }
 
     #[test]
