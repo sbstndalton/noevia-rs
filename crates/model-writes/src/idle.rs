@@ -220,13 +220,25 @@ pub fn global_idle_seconds(text: &str) -> Option<f64> {
     Some(0.0)
 }
 
-/// Why a maintenance hold was not taken.
+/// Why a maintenance hold was not taken (nothing is held then).
 #[derive(Debug, Clone, PartialEq)]
 pub enum HoldRefusal {
     /// Another hold is in place (core's `holdRefused`, a 409).
     Busy,
     /// The hold could not be taken or covered: core's error, answered as it is.
     Failed { status: u16, message: String },
+}
+
+/// The audit record could not be written.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct AuditFailed;
+
+/// The hold's lease ended under the reload (core's `coverageLost`, which `writePresets` throws
+/// on; every other reload failure is an answer, `{ ok: false }` at worst).
+#[derive(Debug, Clone, PartialEq)]
+pub struct CoverageLost {
+    pub status: u16,
+    pub message: String,
 }
 
 /// What [`save`] needs of the deployment.
@@ -238,11 +250,12 @@ pub trait Host {
     fn manager(&mut self, method: &str, body: Option<&str>) -> Option<Reply>;
     /// Whether the held writer exists (core's `writePresets`, the llama.cpp manager's).
     fn has_writer(&self) -> bool;
-    /// Takes the maintenance hold and checks it covers a preset write.
+    /// Takes the maintenance hold and checks it covers a preset write; on `Err` nothing is held
+    /// (a hold taken and found uncovered is released by the host, as `writePresets`'s `finally`).
     fn hold(&mut self) -> Result<(), HoldRefusal>;
-    /// The router's reload under the hold (`reloadHeld({ unload: false })`); `Err` when the hold
-    /// stopped covering it (core's `coverageLost`, answered as it is).
-    fn reload_held(&mut self) -> Result<Reply, HoldRefusal>;
+    /// The router's reload under the hold (`reloadHeld({ unload: false })`): its answer, `{ ok:
+    /// false }` for any failure but the lease ending, which is `Err`.
+    fn reload_held(&mut self) -> Result<Reply, CoverageLost>;
     /// Releases the hold.
     fn release(&mut self);
     /// `reloadPresets({ unload: false })` without a hold, where there is no held writer: `None`
@@ -250,8 +263,8 @@ pub trait Host {
     fn reload(&mut self) -> Option<Option<Reply>>;
     /// `presetsInRouter()`: the presets the router runs on, `None` when unknown.
     fn router_text(&mut self) -> Option<String>;
-    /// The audit record.
-    fn audit(&mut self, action: &str, detail: JValue);
+    /// The audit record; `Err` when it could not be written (core's audit throws: the route's 500).
+    fn audit(&mut self, action: &str, detail: JValue) -> Result<(), AuditFailed>;
 }
 
 fn call(host: &mut impl Host, method: &str, body: Option<&str>) -> Result<Written, Fail> {
@@ -284,6 +297,15 @@ pub fn save(body: &JValue, host: &mut impl Host) -> Result<JValue, Fail> {
         .map(|w| w.view.get("seconds").clone())
         .unwrap_or(JValue::Null);
     let put = js_json::wtf16::stringify(&JValue::obj([("seconds", seconds)])).unwrap_or_default();
+    let audit =
+        |host: &mut dyn FnMut(JValue) -> Result<(), AuditFailed>, w: &Written, previous: JValue| {
+            host(JValue::obj([
+                ("seconds", w.view.get("seconds").clone()),
+                ("source", w.view.get("source").clone()),
+                ("previous", previous),
+            ]))
+            .map_err(|AuditFailed| Fail::new(500, "Could not change the idle unload time", None))
+        };
     let (written, reload) = if host.has_writer() {
         host.hold().map_err(hold_failed)?;
         let written = match call(host, "PUT", Some(&put)) {
@@ -298,16 +320,19 @@ pub fn save(body: &JValue, host: &mut impl Host) -> Result<JValue, Fail> {
         } else {
             match host.reload_held() {
                 Ok(r) => Some(r),
-                Err(refusal) => {
+                Err(lost) => {
                     host.release();
-                    return Err(hold_failed(refusal));
+                    return Err(Fail::new(lost.status, &lost.message, None));
                 }
             }
         };
         host.release();
+        audit(&mut |d| host.audit(AUDIT, d), &written, previous)?;
         (written, reload)
     } else {
+        // Without the held writer the audit comes first, then the reload.
         let written = call(host, "PUT", Some(&put))?;
+        audit(&mut |d| host.audit(AUDIT, d), &written, previous)?;
         let reload = if written.preset.as_str() == Some("failed") {
             None
         } else {
@@ -315,14 +340,6 @@ pub fn save(body: &JValue, host: &mut impl Host) -> Result<JValue, Fail> {
         };
         (written, reload)
     };
-    host.audit(
-        AUDIT,
-        JValue::obj([
-            ("seconds", written.view.get("seconds").clone()),
-            ("source", written.view.get("source").clone()),
-            ("previous", previous),
-        ]),
-    );
     let apply = if written.preset.as_str() == Some("failed") {
         JValue::obj([("state", JValue::from("failed"))])
     } else if reload.as_ref().is_some_and(|r| r.ok) {

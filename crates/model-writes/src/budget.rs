@@ -1,7 +1,9 @@
 //! `PUT /api/models/inference-budget` (`routes/models.cjs`, `inference-budget.cjs`): an
 //! administrator saves the inference memory budget, from 2 GiB to the host's RAM less 4 GiB, in
 //! steps of 0.1. The caller writes the settings row and the audit record when [`Put::save`] says
-//! so; core enforces the saved figure (it reads the row on every use).
+//! so. Core enforces the saved figure only if it reads the row on every use (noevia-core
+//! `inference-budget.cjs` from track R11 on); an older core reads it once at its start and keeps
+//! enforcing the figure it read, so the caller's switch must be paired with such a core.
 
 use crate::body;
 use crate::round1;

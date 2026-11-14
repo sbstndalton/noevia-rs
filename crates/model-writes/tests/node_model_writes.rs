@@ -9,7 +9,7 @@
 )]
 
 use js_json::{wtf16, JValue};
-use model_writes::idle::{self, HoldRefusal, Host, Reply};
+use model_writes::idle::{self, AuditFailed, CoverageLost, HoldRefusal, Host, Reply};
 use model_writes::{budget, round1};
 
 fn fixture() -> JValue {
@@ -27,20 +27,57 @@ fn show(v: &JValue) -> String {
     wtf16::stringify(v).unwrap_or_else(|| "undefined".into())
 }
 
-/// The request body a case sent (`None`: the large one, over the limit).
-fn request(c: &JValue) -> Option<Vec<u8>> {
-    match c.get("request") {
-        JValue::Str(s) => Some(s.as_bytes().to_vec()),
-        JValue::Undefined
-            if c.get("requestBytes")
-                .as_num()
-                .is_some_and(|n| n > 1_048_576.0) =>
-        {
-            None
-        }
-        JValue::Undefined => Some(Vec::new()),
-        other => panic!("a request body: {}", show(other)),
+/// The recorder's `padded(total)`.
+fn padded(total: usize) -> Vec<u8> {
+    let (head, tail) = (r#"{"budgetGib":12,"seconds":600,"pad":""#, r#""}"#);
+    let mut out = head.as_bytes().to_vec();
+    out.resize(total - tail.len(), b'x');
+    out.extend_from_slice(tail.as_bytes());
+    out
+}
+
+/// Standard base64 (the recorder's `toString('base64')`).
+fn unbase64(text: &str) -> Vec<u8> {
+    let value = |c: u8| match c {
+        b'A'..=b'Z' => c - b'A',
+        b'a'..=b'z' => c - b'a' + 26,
+        b'0'..=b'9' => c - b'0' + 52,
+        b'+' => 62,
+        b'/' => 63,
+        _ => panic!("base64"),
+    };
+    let digits: Vec<u8> = text.bytes().filter(|&c| c != b'=').map(value).collect();
+    let mut out = Vec::new();
+    for chunk in digits.chunks(4) {
+        let n = chunk
+            .iter()
+            .enumerate()
+            .fold(0u32, |n, (i, d)| n | (u32::from(*d) << (18 - 6 * i)));
+        out.extend(n.to_be_bytes().iter().skip(1).take(chunk.len() - 1));
     }
+    out
+}
+
+/// The request body a case sent (`None`: over the limit).
+fn request(c: &JValue) -> Option<Vec<u8>> {
+    let bytes = match (
+        c.get("request"),
+        c.get("requestBase64"),
+        c.get("requestPadded"),
+    ) {
+        (JValue::Str(s), _, _) => s.as_bytes().to_vec(),
+        (_, JValue::Str(b), _) => unbase64(b),
+        (_, _, JValue::Num(n)) => padded(*n as usize),
+        _ if c
+            .get("requestBytes")
+            .as_num()
+            .is_some_and(|n| n > 1_048_576.0) =>
+        {
+            return None
+        }
+        _ => Vec::new(),
+    };
+    (bytes.len() <= model_writes::body::LIMIT).then_some(bytes)
 }
 
 fn no_store(c: &JValue) -> bool {
@@ -241,16 +278,21 @@ impl Host for Scripted<'_> {
                 status: 503,
                 message: "The model service could not confirm that chat is idle, so nothing was changed. Try again shortly.".into(),
             }),
+            // Taken and found uncovered: released at once, nothing held.
+            Some("uncovered") => Err(HoldRefusal::Failed {
+                status: 503,
+                message: "The model service stopped confirming that chat is held back, so the reload stopped. Try again shortly.".into(),
+            }),
             _ => {
                 self.held = true;
                 Ok(())
             }
         }
     }
-    fn reload_held(&mut self) -> Result<Reply, HoldRefusal> {
+    fn reload_held(&mut self) -> Result<Reply, CoverageLost> {
         assert!(self.held);
         if self.case.get("writer").as_str() == Some("coverage") {
-            return Err(HoldRefusal::Failed {
+            return Err(CoverageLost {
                 status: 503,
                 message: "The model service stopped confirming that chat is held back, so the reload stopped. Try again shortly.".into(),
             });
@@ -282,12 +324,14 @@ impl Host for Scripted<'_> {
             .filter(|t| *t != "throw")
             .map(str::to_string)
     }
-    fn audit(&mut self, action: &str, detail: JValue) {
-        self.audit.push(JValue::Arr(vec![
-            JValue::from(action),
-            JValue::from("qa-admin"),
-            detail,
-        ]));
+    fn audit(&mut self, action: &str, detail: JValue) -> Result<(), AuditFailed> {
+        let record = JValue::Arr(vec![JValue::from(action), JValue::from("qa-admin"), detail]);
+        self.calls.push(JValue::obj([("audit", record.clone())]));
+        if self.case.get("auditThrows").as_bool() == Some(true) {
+            return Err(AuditFailed);
+        }
+        self.audit.push(record);
+        Ok(())
     }
 }
 
