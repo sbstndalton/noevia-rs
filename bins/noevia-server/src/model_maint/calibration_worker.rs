@@ -6752,7 +6752,10 @@ mod tests {
             .unwrap();
         held.release();
         assert_eq!(
-            tokio::time::timeout(WATCHDOG, rx.recv()).await.unwrap().as_deref(),
+            tokio::time::timeout(WATCHDOG, rx.recv())
+                .await
+                .unwrap()
+                .as_deref(),
             Some("settle")
         );
     }
