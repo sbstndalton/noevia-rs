@@ -400,8 +400,9 @@ pub fn strip_boilerplate(text: &str) -> String {
         .replace("&amp;", "&")
         .replace("&lt;", "<")
         .replace("&gt;", ">");
+    // ASCII-only case folding, as JS's non-Unicode /i: "ſign in" and "cooKie" (U+017F, U+212A) stay.
     let boiler = re!(
-        r"(?i)^(cookie|accept all|subscribe|sign in|log in|share this|skip to content)(?-u:\b)"
+        r"(?i-u)^(cookie|accept all|subscribe|sign in|log in|share this|skip to content)\b"
             .to_owned()
     );
     let blanks = re!(r"[ \t]+");
