@@ -2120,6 +2120,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "model-writes"
+version = "0.1.0"
+dependencies = [
+ "chat-turn",
+ "js-json",
+ "serde_json",
+]
+
+[[package]]
 name = "nix"
 version = "0.30.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
