@@ -1,0 +1,32 @@
+[package]
+name = "code-engine-relay"
+version = "0.1.0"
+description = "Core's Code engine relay (code-machine.cjs, noevia#1853/#1876) in Rust: when the Code role runs on an inference machine, the sandbox reaches that machine only through this relay, with a per-run token, two paths (the model list and chat completions) and the task's model forced. The lease authority, the request handler with Node's answers, the bind-address rules and the environment reading, and the HTTP listener with the #1876 server limits; the machine client is the caller's (a trait). Inert: nothing uses it yet."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish.workspace = true
+
+[lints]
+workspace = true
+
+[dependencies]
+js-json = { path = "../js-json" }
+# Already in Cargo.lock (egress-proxy, embedding-worker, many): the token's randomness, its base64url
+# text and the SHA-256 the lease map is keyed by. MIT OR Apache-2.0.
+getrandom = "0.3.4"
+base64 = "0.22"
+sha2 = "0.10"
+hex = "0.4"
+tokio = { version = "1", features = ["sync", "time", "macros", "net", "rt"] }
+tokio-util = "0.7"
+# The listener (listener.rs), as the front serves: the same versions as bins/noevia-server, all in
+# Cargo.lock. MIT.
+hyper = { version = "1", features = ["http1", "server"] }
+hyper-util = { version = "0.1", default-features = false, features = ["tokio"] }
+http-body-util = "0.1"
+bytes = "1"
+futures-util = "0.3"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "time", "sync", "net", "io-util"] }

@@ -150,6 +150,8 @@ async fn stub(seen: Seen, handler: Handler) -> SocketAddr {
 #[derive(Default)]
 struct CoreState {
     role: Option<Value>,
+    /// Core still runs Code tasks itself: its facts name no `owner: 'front'`.
+    node_owns: bool,
     leases: Vec<String>,
     released: Vec<String>,
 }
@@ -159,6 +161,7 @@ fn core_handler(state: Arc<Mutex<CoreState>>) -> Handler {
         let ok = |v: Value| (200, "application/json", v.to_string());
         let mut st = state.lock().unwrap();
         match path {
+            "/internal/tasks/facts" if st.node_owns => ok(json!({"enabled": true, "facts": {}})),
             "/internal/tasks/facts" => ok(json!({"enabled": true, "owner": "front"})),
             "/internal/code/engine" => {
                 if body["projectId"] != PROJECT {
@@ -366,6 +369,10 @@ struct Opts {
     facts: Option<&'static str>,
     /// The registry puts the Code role on an inference machine.
     code_machine: bool,
+    /// `NOEVIA_FEATURE_CODE_HARNESS=true` (the chat edge reads it for a Cowork start).
+    harness: bool,
+    /// `NOEVIA_RUST_COWORK=1`: the front answers a Cowork start.
+    cowork: bool,
 }
 
 struct Rig {
@@ -486,6 +493,12 @@ async fn rig(o: Opts) -> Rig {
     }
     if o.review {
         env.insert("NOEVIA_FEATURE_PLANNER_REVIEW", "true".into());
+    }
+    if o.harness {
+        env.insert("NOEVIA_FEATURE_CODE_HARNESS", "true".into());
+    }
+    if o.cowork {
+        env.insert("NOEVIA_RUST_COWORK", "1".into());
     }
     if let Some(mode) = o.facts {
         env.insert("NOEVIA_RUST_ENGINE_FACTS", mode.into());
@@ -1250,6 +1263,221 @@ async fn the_front_s_engine_facts_ask_core_only_for_the_tune_state() {
                 "{mode} {roles:?}: {leased:?}"
             );
         }
+    })
+    .await;
+}
+
+// ── 6. Cowork from chat (council p1: the R7 leftover) ──────────────────────────────────────
+
+/// A Cowork session's message: routes/chat.cjs's body.
+fn cowork(project: &str, repository: Value, message: Value) -> Value {
+    json!({"mode": "cowork", "projectId": project, "repository": repository, "message": message, "history": []})
+}
+
+impl Rig {
+    async fn chat(&self, body: Value) -> (u16, Value) {
+        self.call(OWNER, "POST", "/api/chat", Some(body)).await
+    }
+
+    fn asked(&self, path: &str) -> Vec<Value> {
+        self.core_seen
+            .lock()
+            .unwrap()
+            .iter()
+            .filter(|(m, p, _)| m == "POST" && p == path)
+            .map(|(_, _, b)| b.clone())
+            .collect()
+    }
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_cowork_start_from_chat_is_the_front_s_task_with_node_s_answers() {
+    within(async {
+        let r = rig(Opts {
+            executor: true,
+            harness: true,
+            cowork: true,
+            ..Opts::default()
+        })
+        .await;
+        *r.agent.lock().unwrap() = Agent::Ask;
+        let recorded = &fixture(SERVICE)["scenarios"];
+        let refusals = &recorded["refusals"]["answers"];
+        let with_mode = |answer: &Value| {
+            let mut body = answer["body"].clone();
+            body["mode"] = json!("cowork");
+            (answer["status"].as_u64().unwrap() as u16, body)
+        };
+
+        // code-service.cjs's own refusals, as Node recorded them for the Code route, with the Cowork
+        // route's `mode` beside them (routes/chat.cjs `{error: publicMessage, mode: 'cowork'}`).
+        for (body, node) in [
+            (
+                cowork(PROJECT, json!("elsewhere"), json!(RUN)),
+                &refusals[1],
+            ),
+            (cowork(PROJECT, json!(7), json!(RUN)), &refusals[2]),
+            (
+                cowork(PROJECT, json!("qa-repo"), json!(" \u{2028}\u{feff} ")),
+                &refusals[3],
+            ),
+            (
+                cowork(PROJECT, json!("qa-repo"), json!("x".repeat(8001))),
+                &refusals[4],
+            ),
+        ] {
+            assert_eq!(r.chat(body.clone()).await, with_mode(node), "{body}");
+        }
+        // No message at all: `String(undefined || '')` is empty.
+        let mut silent = cowork(PROJECT, json!("qa-repo"), json!(null));
+        silent.as_object_mut().unwrap().remove("message");
+        assert_eq!(
+            r.chat(silent).await,
+            (
+                400,
+                json!({"error": "Describe the task.", "mode": "cowork"})
+            )
+        );
+        // index.cjs `getProject(String(body.projectId))`: no URI decoding (the Code route decodes).
+        for project in ["qa-missing", "qa%2Dproject"] {
+            assert_eq!(
+                r.chat(cowork(project, json!("qa-repo"), json!(RUN))).await,
+                (404, json!({"error": "project not found", "mode": "cowork"})),
+                "{project}"
+            );
+        }
+        assert_eq!(
+            r.engine_asked(),
+            0,
+            "every refusal came before the engine facts"
+        );
+
+        // The start: only `repository` and `message` reach the service (index.cjs passes
+        // `{ repository, prompt: message }`), so the chat body's other fields change nothing: the
+        // default capabilities, the first harness, the direct preparation, as Node's recorded start.
+        let mut body = cowork(PROJECT, json!("qa-repo"), json!(RUN));
+        body["harness"] = json!("codex");
+        body["promptPreparation"] = json!("planner");
+        body["capabilities"] = json!([]);
+        body["domains"] = json!(["qa.example.org"]);
+        let (status, answer) = r.chat(body).await;
+        assert_eq!(status, 202, "{answer}");
+        assert_eq!(keys(&answer), ["mode", "task"]);
+        assert_eq!(answer["mode"], json!("cowork"));
+        let task = answer["task"]["taskId"].as_str().unwrap().to_string();
+        let tenant = r.data.join("users").join(OWNER).display().to_string();
+        let pairs = [(tenant.as_str(), "<BASE>/tenant"), (task.as_str(), T1)];
+        assert_eq!(
+            norm(&answer["task"], &pairs),
+            recorded["cancel-while-waiting"]["answers"][0]["body"],
+            "the task as Node's recorded start"
+        );
+
+        // One task per project, across the Code route and Cowork alike.
+        assert_eq!(
+            r.chat(cowork(PROJECT, json!("qa-repo"), json!(GREET)))
+                .await,
+            (
+                409,
+                json!({"error": "This project already has a task running.", "mode": "cowork"})
+            )
+        );
+        let (status, second) = r
+            .start(json!({"repository": "qa-repo", "prompt": GREET}))
+            .await;
+        assert_eq!(
+            (status, second),
+            (
+                409,
+                json!({"error": "This project already has a task running."})
+            )
+        );
+
+        // It is the front's task: the Code panel reads it, the harness ran it, its card waits.
+        let card = r.card(&task, "execute_command").await;
+        assert_eq!(r.sandbox.lock().unwrap().prompts, 1);
+        assert_eq!(r.engine_asked(), 1, "one engine-facts call per start");
+        assert!(card["id"].as_str().is_some_and(|id| !id.is_empty()));
+        assert!(
+            r.asked("/internal/chat/cowork").is_empty(),
+            "core was never asked to start it"
+        );
+        assert!(r.asked("/internal/chat/turn").is_empty());
+
+        let (status, cancelled) = r
+            .call(OWNER, "POST", &r.code(&format!("/{task}/cancel")), None)
+            .await;
+        assert_eq!(status, 200, "{cancelled}");
+        assert_eq!(r.ended(&task).await["status"], json!("cancelled"));
+        // The chat gate's lease and the task's own lease were both given back.
+        r.quiet().await;
+    })
+    .await;
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn a_cowork_start_goes_to_core_unless_the_front_owns_code() {
+    within(async {
+        let body = cowork(PROJECT, json!("qa-repo"), json!(RUN));
+        // Executor switch unset (NOEVIA_RUST_COWORK set): core's, as before, the body as sent.
+        let unset = rig(Opts {
+            harness: true,
+            cowork: true,
+            ..Opts::default()
+        })
+        .await;
+        // Both switches on, but core still runs Code tasks (no `owner: 'front'`): never a second writer.
+        let node = rig(Opts {
+            executor: true,
+            harness: true,
+            cowork: true,
+            ..Opts::default()
+        })
+        .await;
+        node.core.lock().unwrap().node_owns = true;
+        // The executor's switch on and NOEVIA_RUST_COWORK unset: core's, as today in production.
+        let unflipped = rig(Opts {
+            executor: true,
+            harness: true,
+            ..Opts::default()
+        })
+        .await;
+        for (what, r) in [
+            ("switch unset", &unset),
+            ("core owns Code", &node),
+            ("NOEVIA_RUST_COWORK unset", &unflipped),
+        ] {
+            assert_eq!(
+                r.chat(body.clone()).await,
+                (202, json!({"relayed": "/internal/chat/cowork"})),
+                "{what}"
+            );
+            assert_eq!(r.asked("/internal/chat/cowork"), vec![body.clone()], "{what}");
+            assert_eq!(r.engine_asked(), 0, "{what}");
+            assert_eq!(r.sandbox.lock().unwrap().prompts, 0, "{what}");
+            assert!(
+                !r.data.join("users").join(OWNER).join("jobs").exists(),
+                "{what}: no journal"
+            );
+            r.quiet().await;
+        }
+        // The edge's refusals stay the edge's, whoever owns Code: a member, the harness off.
+        let (status, member) = node.call(MEMBER, "POST", "/api/chat", Some(body.clone())).await;
+        assert_eq!(status, 403, "{member}");
+        let off = rig(Opts {
+            executor: true,
+            cowork: true,
+            ..Opts::default()
+        })
+        .await;
+        assert_eq!(
+            off.chat(body.clone()).await,
+            (
+                409,
+                json!({"error": "Cowork needs the coding harness, which is off on this server.", "mode": "cowork"})
+            )
+        );
+        assert!(off.asked("/internal/chat/cowork").is_empty());
     })
     .await;
 }
