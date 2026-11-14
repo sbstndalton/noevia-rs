@@ -84,7 +84,10 @@ pub mod model_assignments;
 pub mod model_downloads_read;
 pub mod model_kind;
 pub mod model_maint;
+pub mod model_manager_routes;
 pub mod model_manager_scan;
+pub mod model_pull_post;
+pub mod model_pull_routes;
 pub mod model_routes;
 pub mod model_sizing;
 pub mod model_state_routes;
@@ -755,6 +758,8 @@ pub struct App {
     pub extraction: Option<Arc<extraction::HttpEngine>>,
     /// GET /api/plugins/directory: its client and hour-long cache (#2190).
     pub plugin_directory: plugin_directory_routes::Directory,
+    /// Track R11 (S11): GET /api/models/mtp-artifact's process-wide check state.
+    pub mtp_artifact: Arc<model_pull_routes::State>,
 }
 
 impl App {
@@ -875,6 +880,7 @@ impl App {
                 config.plugin_directory.clone(),
             ),
             auto_roles: auto_roles_routes::Writer::default(),
+            mtp_artifact: Arc::new(model_pull_routes::State::new(config.model_pull_hub.clone())),
             proxy: legacy_proxy::LegacyProxy::new(config.upstream.clone(), config.trust_proxy),
             statics: static_files::StaticFiles::new(config.dist.clone()),
             version,
@@ -994,11 +1000,21 @@ async fn handle(
             native = Some(routes::Native::Projects);
         }
     }
-    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget and idle unload PUTs are
-    // the models routes' too (model_writes_routes.rs); unset, they stay Node's.
+    // Track R11: with NOEVIA_RUST_MODEL_WRITES=rust the inference budget, idle unload and preset
+    // PUTs, GET /api/models/mtp-artifact and POST /api/models/pull are the models routes' too
+    // (model_writes_routes.rs, model_pull_routes.rs, model_pull_post.rs); unset, they stay Node's.
     if native.is_none() && app.config.model_writes.on {
         let at = whatwg.as_deref().unwrap_or(&path);
         if app.config.model_writes.answers(req.method(), at) {
+            native = Some(routes::Native::Models);
+        }
+    }
+    // Track R11 (S9b): with NOEVIA_RUST_MODEL_MANAGER=rust every method under /api/model-manager/
+    // but the exact scan GET is the models routes' too (model_manager_routes.rs, which relays the
+    // sweep start to Node itself); unset, they stay Node's.
+    if app.config.model_manager.on {
+        let at = whatwg.as_deref().unwrap_or(&path);
+        if app.config.model_manager.answers(req.method(), at) {
             native = Some(routes::Native::Models);
         }
     }
