@@ -6575,8 +6575,8 @@ mod tests {
     }
 
     /// #2608: a run whose lease cannot cover a profile write (each renewal confirms it for only
-    /// 10 s: it keeps excluding everyone, but Node's `assertCovered` sees it lapse within its 15 s
-    /// margin) writes nothing and ends as a lost lease does
+    /// 10 s: it keeps excluding everyone, but neither Node's `assertCovered` margin nor the whole
+    /// step fits) writes nothing and ends as a lost lease does
     /// (llamacpp-calibration.cjs: the coverage error is `e.coverageLost`, so the step fails, the run
     /// restores nothing on that lease, and a recovery is owed only once a write has happened; this
     /// was the run's first write, so none is).

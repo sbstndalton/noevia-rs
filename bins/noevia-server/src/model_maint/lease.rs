@@ -531,21 +531,6 @@ impl Authority {
         })
     }
 
-    /// inference-maintenance.cjs `assertCovered(step)` for a lease of this authority: not lapsing
-    /// within `margin`, and `step` plus `margin` inside its hard cap (a long step is covered by
-    /// renewal, not by its whole length fitting one renewal).
-    pub fn covers_step(&self, id: &str, generation: u64, margin: Duration, step: Duration) -> bool {
-        let now = Instant::now();
-        let state = self.lock();
-        state.holder.as_ref().is_some_and(|e| {
-            e.id == id
-                && e.generation == generation
-                && !e.fenced
-                && now + margin < e.renewed_until
-                && now + step + margin < e.hard_at
-        })
-    }
-
     /// Whether any lease is held now.
     pub fn held(&self) -> bool {
         let now = Instant::now();

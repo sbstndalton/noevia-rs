@@ -656,7 +656,9 @@ impl Maint {
         };
         // Row J review P1 (#2608): the write and its re-read are one step; it starts only while the
         // hold can still cover it, or nothing is written (Node throws its 503 coverage error here).
-        if !holding.covers(PRESET_STEP) {
+        // Stricter than Node's assertCovered (the last confirmation must cover the whole step)
+        // until the front marks a hold lost at the margin as Node does (sbstndalton/noevia#2641).
+        if !holding.may_start(PRESET_STEP) {
             return (Applied::Uncovered, 503);
         }
         if let Err(e) = ini.commit(&candidate, backup).await {
