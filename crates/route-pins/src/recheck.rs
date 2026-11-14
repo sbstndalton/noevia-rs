@@ -33,7 +33,7 @@ pub enum Drift {
     /// index.cjs no longer calls the stub's refusal function: the stub is no longer in the request chain, so its
     /// recorded refusals say nothing about today's core (re-record before trusting its verdict).
     NotCalled { file: String, function: String },
-    /// A list fact changed: `field` is `importers`, `string_refs`, `mentions`, `index_uses` or `behind` (as
+    /// A list fact changed: `field` is `importers`, `string_refs`, `mentions`, `index_uses`, `env` or `behind` (as
     /// `pattern <- file`: a line number moving inside a file is not drift).
     Changed {
         file: String,
@@ -67,7 +67,7 @@ pub struct Rechecked {
 impl Rechecked {
     /// The stub facts this check leaves as recorded.
     pub fn kept_as_recorded() -> &'static [&'static str] {
-        &["refusals", "switched", "env", "pairing", "owned_routes"]
+        &["refusals", "switched", "pairing", "owned_routes"]
     }
 }
 
@@ -219,13 +219,57 @@ pub fn index_uses(index: &str, file: &str) -> Vec<String> {
     uses.into_iter().collect()
 }
 
-/// Whether index.cjs still calls the stub's refusal: `require('./x').fn(`.
+/// Whether index.cjs still calls the stub's refusal in the request chain, in one of the recorder's two shapes
+/// (`callRe` over the text from `async function handleRequestInner`): `require('./x').fn(req, res, p, json` or
+/// `require('./x').fn(req, res, {`.
 pub fn still_called(index: &str, stub: &Stub) -> bool {
-    index.contains(&format!(
-        "require('{}').{}(",
+    let Some(start) = index.find("async function handleRequestInner") else {
+        return false;
+    };
+    let handler = index.get(start..).unwrap_or("");
+    let call = format!(
+        "require('{}').{}(req, res, ",
         require_spec(&stub.file),
         stub.function
-    ))
+    );
+    handler.match_indices(&call).any(|(at, _)| {
+        let rest = handler.get(at + call.len()..).unwrap_or("");
+        rest.starts_with("p, json") || rest.starts_with('{')
+    })
+}
+
+/// The recorder's `envNames(file)`: the `NOEVIA_*`/`COWORK_*` names a stub reads (`process.env.X`, `env.X`, or a
+/// quoted `'NOEVIA_X'`), sorted. A stub that names one is switch-gated, never deleted.
+pub fn env_names(text: &str) -> Vec<String> {
+    let upper_tail = |t: &str| -> String {
+        t.chars()
+            .take_while(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || *c == '_')
+            .collect()
+    };
+    let wanted = |n: &str| n.starts_with("NOEVIA_") || n.starts_with("COWORK_");
+    let mut out = BTreeSet::new();
+    for (at, _) in text.match_indices("env.") {
+        let rest = text.get(at + 4..).unwrap_or("");
+        // `[A-Z][A-Z0-9_]+`: an upper-case letter first, two characters at least.
+        if rest.chars().next().is_some_and(|c| c.is_ascii_uppercase()) {
+            let name = upper_tail(rest);
+            if name.len() >= 2 && wanted(&name) {
+                out.insert(name);
+            }
+        }
+    }
+    for (at, _) in text.match_indices('\'') {
+        let rest = text.get(at + 1..).unwrap_or("");
+        for prefix in ["NOEVIA_", "COWORK_"] {
+            if let Some(tail) = rest.strip_prefix(prefix) {
+                let name = upper_tail(tail);
+                if !name.is_empty() && tail.get(name.len()..).is_some_and(|t| t.starts_with('\'')) {
+                    out.insert(format!("{prefix}{name}"));
+                }
+            }
+        }
+    }
+    out.into_iter().collect()
 }
 
 /// The recorder's `lines(f)`: `split('\n').length`.
@@ -402,6 +446,7 @@ pub fn recheck(rec: &Recording, tree: &Tree) -> Result<Rechecked, String> {
         n.string_refs = refs;
         n.mentions = mentions;
         n.index_uses = index_uses(index, &s.file);
+        n.env = env_names(text);
         let patterns: BTreeSet<String> = s
             .refusals
             .iter()
@@ -419,6 +464,7 @@ pub fn recheck(rec: &Recording, tree: &Tree) -> Result<Rechecked, String> {
             ("string_refs", &s.string_refs, &n.string_refs),
             ("mentions", &s.mentions, &n.mentions),
             ("index_uses", &s.index_uses, &n.index_uses),
+            ("env", &s.env, &n.env),
             ("behind", &was_behind, &now_behind),
         ] {
             drift.extend(changed(&s.file, field, was, now));

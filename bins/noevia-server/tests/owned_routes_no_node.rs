@@ -36,9 +36,23 @@ const PASSWORD: &str = "synthetic approval password";
 /// Diary work, and the deletion train deletes no Diary stub until it ends). Remove the hold with the move.
 const HELD: &[&str] = &["/api/diary", "/api/profile/diary-connectors"];
 
-fn held(pattern: &str) -> bool {
-    HELD.iter().any(|h| pattern.starts_with(h))
+/// The pairs a signed-in owner can use to start a sign-in with an outside host without any body (a provider's
+/// device login or model list, any `…/connect`). Left out so the sweep never dials out; the deletion train checks
+/// them by hand or with egress blocked.
+fn outbound(pattern: &str) -> bool {
+    // An optional tail (`{*?}`) is filled with nothing, so the pattern and its filled path agree.
+    let p = pattern.trim_end_matches("{*?}");
+    p.ends_with("/connect")
+        || (p.starts_with("/api/providers/") && (p.ends_with("/device") || p.ends_with("/models")))
 }
+
+fn held(pattern: &str) -> bool {
+    HELD.iter().any(|h| pattern.starts_with(h)) || outbound(pattern)
+}
+
+/// Native handlers that call Node themselves on the same public path (not a forward): the readiness read asks Node's
+/// own readiness. A Node hit on one of these is not a leak.
+const NODE_PROBES: &[&str] = &["GET /api/ready"];
 /// The harness trusts the proxy: the sweep and the re-sign-in come from different documentation addresses, so the
 /// sweep's own failed sign-ins (empty bodies on the login routes) never rate-limit the re-sign-in.
 const SWEEP_FROM: &str = "192.0.2.10";
@@ -114,11 +128,32 @@ async fn head_of(
     Some((status, from_node))
 }
 
-/// Whether the jar is still a signed-in session (the session read names the jar's CSRF token only then).
-async fn signed_in(addr: SocketAddr, jar: &str, csrf: &str) -> bool {
-    let head = format!("GET /api/auth/session HTTP/1.1\r\nhost: front.test\r\ncookie: {jar}\r\n");
-    let got = tokio::time::timeout(HEAD_WITHIN * 2, http(addr, &head, "")).await;
-    matches!(got, Ok((200, body)) if body["csrfToken"].as_str() == Some(csrf))
+/// Whether the jar is still a signed-in session: Some(true) when the session read names the jar's CSRF token (it
+/// does only for a signed-in session), Some(false) on any other complete answer, None when no answer came in time.
+async fn session_state(addr: SocketAddr, jar: &str, csrf: &str) -> Option<bool> {
+    let req = format!(
+        "GET /api/auth/session HTTP/1.1\r\nhost: front.test\r\ncookie: {jar}\r\nconnection: close\r\n\r\n"
+    );
+    let read = async {
+        let mut s = TcpStream::connect(addr).await.ok()?;
+        s.write_all(req.as_bytes()).await.ok()?;
+        let mut out = Vec::new();
+        s.read_to_end(&mut out).await.ok()?;
+        Some(String::from_utf8_lossy(&out).into_owned())
+    };
+    let text = tokio::time::timeout(HEAD_WITHIN * 2, read).await.ok()??;
+    if !text.starts_with("HTTP/1.1 ") {
+        return None;
+    }
+    Some(text.starts_with("HTTP/1.1 200") && text.contains(&format!(r#""csrfToken":"{csrf}""#)))
+}
+
+/// [`session_state`] with one retry when no answer came: Some(false) only on a definite signed-out answer.
+async fn signed_in(addr: SocketAddr, jar: &str, csrf: &str) -> Option<bool> {
+    match session_state(addr, jar, csrf).await {
+        Some(v) => Some(v),
+        None => session_state(addr, jar, csrf).await,
+    }
 }
 
 /// A fresh owner session after a pair ended the old one: (jar, csrf), or None when the owner can no longer sign in.
@@ -176,6 +211,27 @@ fn sweep() -> Vec<(&'static str, String)> {
 }
 
 #[test]
+fn outbound_sign_ins_are_held_by_shape() {
+    for yes in [
+        "/api/mcp-oauth/{id}/connect",
+        "/api/providers/x/device",
+        "/api/providers/{providerId}/models{*?}",
+        "/api/providers/qa-1/models",
+    ] {
+        assert!(held(yes), "{yes}");
+    }
+    for no in [
+        "/api/providers",
+        "/api/providers/{id}",
+        "/api/providers/test",
+        "/api/models",
+        "/api/connectors",
+    ] {
+        assert!(!held(no), "{no}");
+    }
+}
+
+#[test]
 fn the_sweep_lists_every_pair_once_per_distinct_filling_and_ends_with_the_session_enders() {
     let s = sweep();
     let pairs = manifest();
@@ -197,7 +253,8 @@ fn the_sweep_lists_every_pair_once_per_distinct_filling_and_ends_with_the_sessio
     }
 }
 
-#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+// Four workers: a native handler that blocks its thread must not stall the client's own deadlines.
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn no_listed_pair_reaches_node_for_a_signed_in_owner() {
     if !strict() {
         eprintln!("owned_routes_no_node: skipped (the deletion train sets ROUTE_PINS_STRICT=1)");
@@ -206,8 +263,9 @@ async fn no_listed_pair_reaches_node_for_a_signed_in_owner() {
     let (node_addr, hits) = recording_node().await;
     let (_unused, node) = node().await;
     let f = front_with_upstream(format!("http://{node_addr}"), node).await;
-    assert!(
+    assert_eq!(
         signed_in(f.addr, &f.jar, &f.csrf).await,
+        Some(true),
         "the owner is signed in"
     );
     let order = sweep();
@@ -217,23 +275,30 @@ async fn no_listed_pair_reaches_node_for_a_signed_in_owner() {
         let mut reached = Vec::new();
         let mut slow = Vec::new();
         let mut enders = Vec::new();
+        let mut unsure = Vec::new();
         for (method, path) in order {
             match head_of(f.addr, method, &path, &jar, &csrf).await {
                 Some((status, true)) => reached.push(format!("{method} {path} -> {status}")),
                 Some(_) => {}
                 None => slow.push(format!("{method} {path}")),
             }
-            if !signed_in(f.addr, &jar, &csrf).await {
-                enders.push(format!("{method} {path}"));
+            let state = signed_in(f.addr, &jar, &csrf).await;
+            if state != Some(true) {
+                // No answer twice: not counted as an ender, but sign in again so the rest stays signed in.
+                if state.is_none() {
+                    unsure.push(format!("{method} {path}"));
+                } else {
+                    enders.push(format!("{method} {path}"));
+                }
                 let Some(fresh) = sign_in_again(f.addr).await else {
                     panic!("after {method} {path} the owner can no longer sign in; the rest of the sweep would be signed out");
                 };
                 (jar, csrf) = fresh;
             }
         }
-        (reached, slow, enders)
+        (reached, slow, enders, unsure)
     };
-    let (reached, slow, enders) = tokio::time::timeout(SWEEP_WITHIN, run)
+    let (reached, slow, enders, unsure) = tokio::time::timeout(SWEEP_WITHIN, run)
         .await
         .expect("the sweep finishes within its deadline");
     eprintln!(
@@ -250,8 +315,22 @@ async fn no_listed_pair_reaches_node_for_a_signed_in_owner() {
                 .any(|(m, p)| e.as_str() == format!("{m} {p}"))
         })
         .collect();
-    eprintln!("owned_routes_no_node: session ended by {enders:?}");
+    eprintln!("owned_routes_no_node: session ended by {enders:?}; canary silent after {unsure:?}");
     let node_saw = hits.lock().unwrap().clone();
+    // A forward that took longer than the head window (or lost its `x-upstream` header) still shows in Node's log
+    // under the swept request's own method and path. Native handlers' own Node calls use other paths.
+    let swept: BTreeSet<String> = sweep()
+        .into_iter()
+        .map(|(m, p)| format!("{m} {p}"))
+        .collect();
+    let leaked: BTreeSet<&String> = node_saw
+        .iter()
+        .filter(|h| swept.contains(h.as_str()) && !NODE_PROBES.contains(&h.as_str()))
+        .collect();
+    assert!(
+        leaked.is_empty(),
+        "Node saw listed pairs (a slow or header-stripped forward): {leaked:?}"
+    );
     assert!(
         reached.is_empty(),
         "listed pairs answered by Node: {reached:?} (add each to HANDLER_FORWARDS or answer it natively); Node saw {} requests",

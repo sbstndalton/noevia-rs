@@ -150,7 +150,7 @@ fn a_new_importer_on_core_main_turns_a_file_delete_into_a_function_delete() {
     let t = tree(&[
         (
             "server/index.cjs",
-            "require('./rust-a.cjs').refuseOwned(req, res);\n",
+            "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').refuseOwned(req, res, p, json);\n",
         ),
         ("server/rust-a.cjs", "module.exports = {};\n"),
         ("server/rust-a.test.cjs", "require('./rust-a.cjs')"),
@@ -202,7 +202,7 @@ fn an_unchanged_tree_has_no_drift_and_keeps_the_verdicts() {
     let t = tree(&[
         (
             "server/index.cjs",
-            "require('./rust-a.cjs').refuseOwned(req, res);",
+            "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').refuseOwned(req, res, p, json);",
         ),
         ("server/rust-a.cjs", "x\n"),
     ]);
@@ -229,7 +229,10 @@ fn an_edited_or_uncalled_stub_needs_a_re_record() {
     )]);
     let t = tree(&[
         // index.cjs still requires the file but calls something else now.
-        ("server/index.cjs", "require('./rust-a.cjs').owned(req);"),
+        (
+            "server/index.cjs",
+            "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').owned(req);",
+        ),
         ("server/rust-a.cjs", "a\nb\nc\n"),
     ]);
     let r = recheck(&rec, &t).unwrap();
@@ -303,7 +306,7 @@ fn the_embedded_recording_s_facts_are_in_the_rules_shape() {
     }
     assert_eq!(
         Rechecked::kept_as_recorded(),
-        ["refusals", "switched", "env", "pairing", "owned_routes"],
+        ["refusals", "switched", "pairing", "owned_routes"],
         "the facts left as recorded are named in the module docs"
     );
 }
@@ -365,7 +368,7 @@ fn a_new_handler_on_core_main_turns_a_file_delete_into_delete_with_handler() {
     let t = tree(&[
         (
             "server/index.cjs",
-            "require('./rust-a.cjs').refuseOwned(req, res);",
+            "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').refuseOwned(req, res, p, json);",
         ),
         ("server/rust-a.cjs", "x\n"),
         ("server/routes/a.cjs", "router.get('/api/rust-a', h);"),
@@ -401,7 +404,7 @@ fn moved_hit_lines_drop_their_method_facts_but_are_not_drift() {
     v["behind"] = serde_json::json!({"/api/rust-a": ["server/routes/a.cjs:1"]});
     v["behind_methods"] = serde_json::json!({"server/routes/a.cjs:1": ["PUT"]});
     let rec = recording(vec![v]);
-    let index = "require('./rust-a.cjs').refuseOwned(req, res);";
+    let index = "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').refuseOwned(req, res, p, json);";
     // Same line: the facts stay.
     let same = tree(&[
         ("server/index.cjs", index),
@@ -429,5 +432,86 @@ fn moved_hit_lines_drop_their_method_facts_but_are_not_drift() {
     assert_eq!(
         r.recording.stubs[0].behind["/api/rust-a"],
         ["server/routes/a.cjs:2"]
+    );
+}
+
+#[test]
+fn a_refusal_counts_as_called_only_in_the_request_chain_in_the_recorder_s_shapes() {
+    let mut st: Stub = serde_json::from_value(stub("server/rust-a.cjs", 1, &[], &[])).unwrap();
+    let chain = "async function handleRequestInner(req, res) {\n";
+    assert!(still_called(
+        &format!("{chain}require('./rust-a.cjs').refuseOwned(req, res, p, json)"),
+        &st
+    ));
+    assert!(still_called(
+        &format!("{chain}require('./rust-a.cjs').refuseOwned(req, res, {{ json }})"),
+        &st
+    ));
+    // Before the request chain, another argument shape, or no chain at all: not the recorder's call.
+    assert!(!still_called(
+        &format!("require('./rust-a.cjs').refuseOwned(req, res, p, json)\n{chain}"),
+        &st
+    ));
+    assert!(!still_called(
+        &format!("{chain}require('./rust-a.cjs').refuseOwned(req, res)"),
+        &st
+    ));
+    assert!(!still_called(
+        "require('./rust-a.cjs').refuseOwned(req, res, p, json)",
+        &st
+    ));
+    st.function = "refuseOther".into();
+    assert!(!still_called(
+        &format!("{chain}require('./rust-a.cjs').refuseOwned(req, res, p, json)"),
+        &st
+    ));
+}
+
+#[test]
+fn env_names_follow_the_recorder_s_pattern() {
+    let src = "if (process.env.NOEVIA_RUST_X === '1') x(); const v = env.COWORK_Y; read('NOEVIA_Z_2'); \
+               process.env.HOME; env.NOEVIA_; env.N; 'NOEVIA_open; env.noevia_q; 'COWORK_W' + env.NOEVIA_RUST_X";
+    assert_eq!(
+        env_names(src),
+        [
+            "COWORK_W",
+            "COWORK_Y",
+            "NOEVIA_",
+            "NOEVIA_RUST_X",
+            "NOEVIA_Z_2"
+        ]
+    );
+    assert!(env_names("module.exports = {};").is_empty());
+}
+
+#[test]
+fn a_stub_that_gains_a_switch_on_core_main_is_kept() {
+    let rec = recording(vec![stub(
+        "server/rust-a.cjs",
+        2,
+        &["server/index.cjs"],
+        &["refuseOwned"],
+    )]);
+    let t = tree(&[
+        (
+            "server/index.cjs",
+            "async function handleRequestInner(req, res) {\nrequire('./rust-a.cjs').refuseOwned(req, res, p, json);",
+        ),
+        ("server/rust-a.cjs", "process.env.NOEVIA_RUST_A\n"),
+    ]);
+    let r = recheck(&rec, &t).unwrap();
+    assert_eq!(
+        r.drift,
+        [Drift::Changed {
+            file: "server/rust-a.cjs".into(),
+            field: "env",
+            added: vec!["NOEVIA_RUST_A".into()],
+            removed: vec![],
+        }]
+    );
+    let front = |_: &str, _: &str| true;
+    assert_eq!(
+        classify(&r.recording, &front)[0].verdict,
+        Verdict::SwitchGated
     );
 }
