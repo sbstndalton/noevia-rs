@@ -27,9 +27,14 @@
 //!   idle unload, model assignments and preset reads) as one table, and [`bridged::posix_ere`], which
 //!   gives `code_has` POSIX bracket expressions (`[[]`, `[]]`, a literal `\`) as grep reads them.
 //!
+//! - [`core_requires`] (council p12): the node-backed `core_requires` (does a Core module really call
+//!   `require('<module>')`) as a Rust tokenizer, so no pairing needs node; [`model_pairings`]: track R11's
+//!   model writes, model manager proxy and embedding admin pairings on it, with `code_body`.
+//!
 //! Nothing in the release path calls this crate yet.
 
 pub mod bridged;
+pub mod core_requires;
 pub mod digest;
 pub mod facts;
 pub mod guard;
